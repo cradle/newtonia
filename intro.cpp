@@ -99,6 +99,7 @@ void Intro::toggle_pause() {
 
 void Intro::tick(int delta) {
   if (is_finished() || unfocused || paused) return;
+  camera_delta_pending_ += delta;
   time += delta;
   if (time >= auto_start_ms) {
     dismiss();
@@ -137,12 +138,12 @@ Point Intro::focus() const {
 }
 
 void Intro::draw() {
-  // Keep the game's camera smoothing and draw-timing baseline ticking so the
-  // first frame after dismissal doesn't see a multi-second frame delta.
-  Uint32 now = SDL_GetTicks();
-  int frame_delta = (int)(now - game->last_draw_time_);
-  game->last_draw_time_ = now;
-  for (GLShip *gs : *game->players) gs->smooth_camera(frame_delta);
+  // Keep the game's camera smoothing ticking while the intro holds the world:
+  // banked from this state's own tick, the same way GLGame::draw takes it from
+  // GLGame::tick (a wall clock here would hand the first frame after dismissal
+  // however long the player left the intro up).
+  for (GLShip *gs : *game->players) gs->smooth_camera(camera_delta_pending_);
+  camera_delta_pending_ = 0;
 
   glClear(GL_COLOR_BUFFER_BIT);
   glViewport(0, 0, window.x(), window.y());

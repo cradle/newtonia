@@ -176,3 +176,109 @@ is deliberately excluded — local split screen doesn't exist on the touch
 platforms. The iPhone's extra-wide aspect can show toroidal wrap twins of
 off-centre rocks in the small early-level worlds; if one bothers you,
 nudge that scene or crop.
+
+## Video capture (`shots/video.sh`)
+
+The same idea one dimension further: instead of composing a scene and
+capturing one instant, **render a recorded replay** (REPLAY.md) frame by
+frame to an MP4. That's a gameplay video of a real run — the store page's
+trailer footage — rebuildable from the command line whenever the game
+changes.
+
+```sh
+shots/video.sh --info                             # what's in best.nrp?
+shots/video.sh                                    # best.nrp -> shots/out/gameplay.mp4
+shots/video.sh --replay recent --out promo.mp4
+shots/video.sh --start 0:30 --duration 1:00       # trim to a highlight
+shots/video.sh --no-hud --size 2560x1440          # pure world, 1440p
+```
+
+Pick the run first — a replay file is a whole run, and a trailer wants a
+minute of it. `--info` prints the header (score, level reached, length),
+`--start`/`--duration` take `90`, `1:30` or `500ms`. Whatever you cut,
+the harness skips ahead **without rendering**, so trimming makes the
+render shorter rather than throwing frames away afterwards.
+
+Defaults worth knowing: 1920x1080 at 60 fps, the in-game HUD ON (a store
+video usually wants the score and lives) and the REPLAY watermark,
+timeline and control hints OFF — `--chrome` puts them back, `--no-hud`
+takes the HUD and minimap away too.
+
+**This is a render, not a screen recording.** Frame N is always exactly
+one frame time after frame N-1, whatever the machine managed, so a slow
+headless GL context produces a smooth 60 fps video rather than a stuttery
+one — and the same replay renders the same frames every time (the e2e
+driver asserts that byte for byte). Under Xvfb expect 1080p to run well
+below real time; it is still every frame.
+
+Picture and sound are **two passes over the same replay**, run in
+parallel, because they cannot be one: SDL calls the audio callback with
+the mixer lock held and the game takes that lock on every sound call, so
+pacing the mixer from inside the callback deadlocks the game thread. The
+video pass renders as fast as it can with no audio; the audio pass walks
+the same records with the same fixed timestep, never draws, and throttles
+itself to the audio device's real-time rate — so it costs the clip's own
+duration, and the two line up by construction. The script muxes them
+(x264 CRF 16 + AAC). Each pass reports its numbers; the audio pass also
+prints a **sync margin** (one mixer buffer, ~23 ms, is the floor) and
+warns if the sim ever fell behind the device, which is the one condition
+that would drift sound against picture.
+
+**Two things about the output that surprise.** Star fields are the worst
+case h264 has: thousands of tiny high-contrast points, all moving, all
+different every frame. The opening 90 s of a real run came out at 177 MB at
+the default CRF 16 (visually lossless, the right default for a master you
+hand to a store) — `--crf 20` roughly halves it and `--crf 24` roughly
+quarters it, with the stars the first thing to go soft. And the audio pass
+is the only REAL-TIME half of the render, so it is the one to protect: the
+script nices the video pass and the encoder below it, because saturating
+every core measured a 135 ms stall in the paced sim where the same window
+rendered alone measured 23 ms. If the pass warns about a stall anyway, free
+up the machine and re-run it — a smaller `--size` will not help, that pass
+never draws.
+
+**Uploading it somewhere.** Every platform re-encodes what you give it, so
+hand over the harness's own output and never a re-encode of it — two lossy
+passes over a starfield is where the stars turn to mush. That is also the
+argument for rendering ABOVE the resolution you're targeting: YouTube gives
+1440p and 2160p uploads a better codec and a far bigger bitrate allowance
+than 1080p, which this game's content needs more than most. `--size
+2560x1440` costs about 1.7x the render time of 1080p (10 s took 40 s of wall
+clock on a 4-core software-GL box, so a 90 s clip is a few minutes) and a
+correspondingly bigger file. The muxed audio is AAC 320k — cheap next to the
+video, and a master should not be the place quality is saved.
+
+**On Windows use `shots\video.ps1`, not video.sh.** The POSIX script streams
+frames through a fifo, and MSYS2's fifos are emulated for MSYS2-linked
+programs — a native `newtonia.exe` cannot open one, so that script cannot work
+there however it is invoked. The PowerShell twin takes the same options
+(`-Replay`, `-Start`, `-Duration`, `-Size`, `-Crf`, `-NoHud`, `-Chrome`,
+`-Info`), downloads a leaderboard `season/run_id` for you, and uses
+`NEWTONIA_VIDEO=-` — frames on stdout, piped to ffmpeg **through cmd**,
+because a PowerShell pipeline decodes bytes as text and would destroy them.
+It also runs the two passes one after the other rather than together: the
+audio pass is the real-time half and starving it costs sync.
+
+**There is also a CI route, parked.** `.github/workflows/disabled/video.yml`
+builds, renders and uploads the mp4 as a downloadable artifact — no build, no
+bash, no ffmpeg, no GPU at the other end, which is the answer for a machine
+that cannot build the game. It is kept in `disabled/` rather than live because
+artifact storage is a 2 GB quota shared with every other workflow in this repo
+and a 90 s 1440p CRF 16 render is ~240 MB of it; a handful of trailers would
+fill the account. Move the file into `.github/workflows/`, render what you
+need, download it, delete the artifact, and move the file back. It keeps
+artifacts for one day and prints their size and share of the quota into the
+job summary. `crf` is the cheap lever if you do need it live: 20 roughly
+halves the file, 24 roughly quarters it.
+
+Rendering locally costs no quota at all, so that is the habit worth having.
+
+Direct control, if you'd rather not use the script — `NEWTONIA_VIDEO`
+(rgb24 frame stream; a fifo works, and `-` means stdout), `NEWTONIA_VIDEO_AUDIO` (s16 mix; the
+other pass), `NEWTONIA_VIDEO_REPLAY`, `_SIZE`, `_FPS`, `_START_MS`,
+`_MS`, `_HUD`, `_CHROME`, `_SEED`, `_INFO`. Full notes in
+`video_capture.h`.
+
+Like shot mode, a capture touches no player data: no Steam, no
+achievements, no preference writes, no saves (playback already writes
+nothing). Verified end to end by `test/e2e/video.sh`.

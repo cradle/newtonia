@@ -53,6 +53,10 @@ private:
   void toggle_pause();   // freeze the auto-start countdown / intro tune
   Point focus() const;
 
+  // Ticked ms the camera smoothing has not been charged for yet (draw()
+  // spends it) — the intro's copy of GLGame::camera_delta_pending_.
+  int camera_delta_pending_ = 0;
+
   static const int auto_start_ms = 5000;  // auto-start if nothing pressed
   static const int input_delay_ms = 300;  // ignore held-over shoot input
 

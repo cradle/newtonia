@@ -12,6 +12,7 @@
 #include "typer.h"
 #include "preferences.h"
 #include "shot_scene.h"
+#include "video_capture.h"
 #include "state.h"
 #include "touch_controls.h"
 #include "net_transport.h"
@@ -630,8 +631,14 @@ void init_controllers_and_audio() {
   }
 }
 
+// Which set of GLUT callbacks init() installs. The two offline harnesses run
+// their own minimal frame loops and must NOT get the interactive ones: those
+// dereference the StateManager (never created here) and write preferences on
+// reshape.
+enum HarnessMode { HARNESS_NONE = 0, HARNESS_SHOT, HARNESS_VIDEO };
+
 void init(int &argc, char* argv[], float width, float height,
-          bool shot_mode = false);
+          HarnessMode harness = HARNESS_NONE);
 
 // ---- screenshot harness (NEWTONIA_SHOT; see shots/README.md) ----
 // A parallel, minimal frame loop: no StateManager, no Steam, no preference
@@ -686,7 +693,7 @@ static int shot_main(int argc, char *argv[]) {
   load_preferences();  // star density etc.; never written back
   int w = ShotScene::width()  > 0 ? ShotScene::width()  : g_prefs.window_width;
   int h = ShotScene::height() > 0 ? ShotScene::height() : g_prefs.window_height;
-  init(argc, argv, (float)w, (float)h, /*shot_mode=*/true);
+  init(argc, argv, (float)w, (float)h, HARNESS_SHOT);
   // A window taller than the desktop gets clamped by the WM (Windows
   // especially: title bar + taskbar make a 1080p display unable to hold a
   // 1080-tall window). Fullscreen sidesteps that — the capture is the
@@ -699,6 +706,55 @@ static int shot_main(int argc, char *argv[]) {
   shot_reshape(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
   return shot_ok ? EXIT_SUCCESS : 1;
+}
+
+// ---- video harness (NEWTONIA_VIDEO; see shots/README.md) ----
+// The shot loop's sibling, replaying a recording instead of composing a scene:
+// same absence of StateManager/Steam/saves, but it runs for thousands of
+// frames and writes every one of them. Tick and capture live in the SAME
+// callback (the shot loop can split them because it captures once) so the
+// frame stream and the sim clock cannot drift apart by a frame. The audio pass
+// runs the same loop with nothing to draw.
+static State *video_state = nullptr;
+
+static void video_reshape(int w, int h) {
+  Typer::resize(w, h);
+  touch_controls_resize(w, h);
+  if (video_state) video_state->resize(w, h);
+}
+
+static void video_frame() {
+  if (!video_state) return;
+  video_state->tick(VideoCapture::next_delta_ms());
+  if (VideoCapture::wants_frame()) {
+    video_state->draw();
+    // Read the back buffer BEFORE the swap — undefined afterwards.
+    VideoCapture::capture(glutGet(GLUT_WINDOW_WIDTH),
+                          glutGet(GLUT_WINDOW_HEIGHT));
+    glutSwapBuffers();
+  }
+  VideoCapture::frame_done();
+  if (VideoCapture::done()) glutLeaveMainLoop();
+}
+
+static int video_main(int argc, char *argv[]) {
+  if (!VideoCapture::init()) return 1;
+  if (VideoCapture::info_only()) return 0;
+  load_preferences();  // star density etc.; never written back
+  // The window is opened at the capture size in BOTH passes: the audio pass
+  // never draws, but the distance attenuation is measured against the camera
+  // viewport (CLAUDE.md "Audio"), so a different window would mix the world at
+  // different volumes than the frames show.
+  init(argc, argv, (float)VideoCapture::width(), (float)VideoCapture::height(),
+       HARNESS_VIDEO);
+  init_controllers_and_audio();
+  VideoCapture::audio_start();  // after the mixer exists
+  video_state = VideoCapture::build_state();
+  if (!video_state) { VideoCapture::finish(); return 1; }
+  video_reshape(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
+  glutMainLoop();
+  VideoCapture::finish();
+  return VideoCapture::ok() ? EXIT_SUCCESS : 1;
 }
 
 int main(int argc, char* argv[]) {
@@ -746,6 +802,9 @@ int main(int argc, char* argv[]) {
   // Screenshot harness: render one composed scene to an image and exit —
   // before Steam/achievements/invites init, none of which a shot needs.
   if (ShotScene::requested()) return shot_main(argc, argv);
+  // Same deal for the video harness: a replay rendered to a frame or audio
+  // stream, before any of the platform services a capture has no use for.
+  if (VideoCapture::requested()) return video_main(argc, argv);
   s_tap_debug = SDL_getenv("NEWTONIA_TAP_DEBUG") != NULL;
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
@@ -812,7 +871,7 @@ int main(int argc, char* argv[]) {
 }
 
 void init(int &argc, char* argv[], float width, float height,
-          bool shot_mode) {
+          HarnessMode harness) {
   glutInit(&argc, argv);
 
   // Request an OpenGL 3.3 Core Profile context.
@@ -847,13 +906,28 @@ void init(int &argc, char* argv[], float width, float height,
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  if (shot_mode) {
-    // Screenshot harness: its own display/idle/reshape trio, and nothing
-    // else — the interactive callbacks below dereference the StateManager
-    // (never created in shot mode) and write preferences on reshape.
+  if (harness == HARNESS_SHOT) {
     glutDisplayFunc(shot_display);
     glutReshapeFunc(shot_reshape);
     glutIdleFunc(shot_tick);
+    return;
+  }
+  if (harness == HARNESS_VIDEO) {
+    // One tick and one captured frame per display callback, so the frame
+    // stream cannot gain or lose a frame against the sim clock; idle only
+    // asks for the next one. glutLeaveMainLoop has to RETURN here rather than
+    // exit() (freeglut's default) — the capture is only finished once the
+    // stream is closed and the summary logged. The option and its constants
+    // are freeglut extensions (#defines, hence the guard); Apple's GLUT has
+    // neither, and doesn't need them — its glutLeaveMainLoop is already the
+    // exit(0) shim (gl_compat.h), where stdio teardown flushes the streams
+    // and only the summary is lost.
+#ifdef GLUT_ACTION_ON_WINDOW_CLOSE
+    glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS);
+#endif
+    glutDisplayFunc(video_frame);
+    glutReshapeFunc(video_reshape);
+    glutIdleFunc(glutPostRedisplay);
     return;
   }
   glutDisplayFunc(draw);
