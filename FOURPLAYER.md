@@ -164,6 +164,21 @@ do not get boards of their own. The client half already works this way —
 Ordered so each step compiles and is testable on its own. Estimated shape:
 ~7 PRs.
 
+**Landing strategy (decided 2026-08-09): master-based PRs + a dark-launch
+gate — no unfinished behavior in master.** Every PR bases on master and
+merges sequentially (a step's dependency arrives through master, never by
+stacking PRs). Because tags and Steam beta deploys can be cut from master
+at any time, every intermediate merge must be inert: A2–A5 implement
+against `MAX_PLAYERS`, but the JOIN caps keep reading a separate
+activation constant (`LOCAL_PLAYER_CAP`, = 2 until further notice) so a
+third player cannot join a real game before the whole feature is in —
+without this, the window between A2 (join caps raised) and A3 (grid
+renderer) would let a player join and get no viewport. The
+`NEWTONIA_START_PLAYERS` test hook (A6) bypasses the gate under an env
+var so headless CI and the shots harness exercise 3–4P throughout.
+Phase A then ends with one final one-line PR flipping `LOCAL_PLAYER_CAP`
+to `MAX_PLAYERS` once everything is verified — 4P appears atomically.
+
 ### A0 — Board: one co-op slot (its own PR, deployed first)
 Implements D10, entirely in `board/` plus one client line, shippable ahead of
 everything else:
