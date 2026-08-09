@@ -273,9 +273,17 @@ private:
   void draw_objects(float direction = 0.0f, bool minimap = false,
                     float cam_x = 0.0f, float cam_y = 0.0f,
                     float cull_r = 0.0f) const;
-  void draw_world(GLShip *glship = NULL, bool primary = true) const;
+  void draw_world(GLShip *glship = NULL, int vp_index = 0) const;
   void draw_perspective(GLShip *glship) const;
-  void setup_viewport(bool primary) const;
+  // One viewport's pixel rectangle (GL origin: bottom-left). THE geometry
+  // definition for the split layout (FOURPLAYER.md D4): 1 player full
+  // window, 2 players the orientation-following strip split, 3-4 players a
+  // 2x2 grid (P1 top-left, P2 top-right, P3 bottom-left, P4 bottom-right;
+  // at 3 players the free bottom-right cell hosts the minimap). draw,
+  // dividers and hit-tests must all read it, never re-derive it.
+  struct ViewportRect { int x, y, w, h; };
+  ViewportRect viewport_rect(int vp_index) const;
+  void setup_viewport(int vp_index) const;
 
   // When a generation introduces a new object type, hand this state to a
   // freshly-created Intro state (intro.h/cpp) that shows the object
