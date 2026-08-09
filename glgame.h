@@ -213,6 +213,7 @@ private:
   // Is this pad already bound to a player? The pause menu only answers to
   // pads that are playing, so an unknown pad's A still joins player 2.
   bool is_player_controller(SDL_JoystickID which) const;
+  bool pad_may_command(SDL_JoystickID which) const;
   // Every screen whose only move is "leave" — the GAME OVER card, the
   // terminal disconnect card, a finished replay — draws the shared
   // RETURN TO MENU row, so all of them answer like a menu: confirm

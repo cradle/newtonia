@@ -1,8 +1,8 @@
 # 4-Player Mode — Implementation Plan
 
-Status: **Phase A in progress** — A0 (board co-op slot), A1 (player
-slots/preferences), A2 (unified join + pad registries, gated) and A3 (grid
-renderer + viewport/audio maths) merged or in review; A4–A6 pending.
+Status: **Phase A in progress** — A0–A3 merged; A4 (gameplay N-safety
+sweep: unseated-pad authority gate, per-pad nav latches, seat tints) in
+review; A5–A6 pending.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -271,11 +271,16 @@ The core of the phase.
   LOCAL_PLAYER_CAP), but the flip makes pads 3/4 openable, and an unseated
   pad must not keep quit/pause/confirm authority. Gate those branches on
   `is_player_controller` (or an explicit "no-seat pads navigate only" rule)
-  and make the nav hysteresis per-pad BEFORE the flip PR.
+  and make the nav hysteresis per-pad BEFORE the flip PR. **Done in A4**:
+  `pad_may_command` gates GUIDE/BACK/game-over-RT (a player's pad, or any
+  pad when no player has one — the long-shipped keyboard+couch-pad case),
+  and the nav-stick/RT latches are per-pad slots.
 - intro.cpp:249: dismissal iterates every player's shoot binding instead of
   the p1/p2 pair.
-- Nova/blast partner checks (glgame.cpp:1831, :4985): loop all other players
-  instead of assuming the partner is `front()`.
+- ~~Nova/blast partner checks (glgame.cpp:1831, :4985)~~ — moved to Phase B:
+  both sites are netplay-only protocol code (client blast vs the host ship),
+  exactly-2P until Phase B rewrites peer identity anyway; generalising them
+  now would churn code no test can reach.
 - Verify the friendly-fire body-collision site (glgame.cpp:7187) iterates all
   player *pairs* (it sits inside the object-pair loop, so it should — confirm
   with a 3P test, don't assume).

@@ -6,6 +6,7 @@
 #include "typer.h"
 #include "glstarfield.h"
 #include <SDL.h>
+#include "preferences.h"  // MAX_PLAYERS sizes the nav-pad latches
 
 class State {
 public:
@@ -78,13 +79,26 @@ protected:
   // axis sample (jitter, or the release ramp) would read as a fresh
   // confirm. Pre-arm the edge: the trigger must be SEEN released before
   // it can confirm in this state.
-  void nav_assume_rt_held() { nav_rt_ = true; }
+  void nav_assume_rt_held() {
+    // The caller doesn't know which pad is mid-hold, so pre-arm them all —
+    // exactly what the old shared latch did.
+    for (int i = 0; i < NAV_PADS; i++) nav_pads_[i].rt = true;
+  }
 
 private:
-  // nav_key_from_controller hysteresis: stick up/down/left/right armed, and
-  // the right-trigger edge.
-  bool nav_stick_[4] = {false, false, false, false};
-  bool nav_rt_ = false;
+  // nav_key_from_controller hysteresis, PER PAD: one shared latch let a
+  // drifting idle pad hold the arm and deaden stick-nav for everyone
+  // (FOURPLAYER.md A4). Slots claim by instance id, first-free; more pads
+  // than slots degrades to sharing slot 0 (never expected — opens are
+  // bounded by the seat cap).
+  static const int NAV_PADS = MAX_PLAYERS;
+  struct NavPad {
+    SDL_JoystickID id = -1;
+    bool stick[4] = {false, false, false, false};  // up/down/left/right armed
+    bool rt = false;                               // right-trigger edge
+  };
+  NavPad nav_pads_[NAV_PADS];
+  NavPad &nav_pad(SDL_JoystickID which);
 
   bool finished;
   State* next_state;
