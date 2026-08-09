@@ -753,7 +753,7 @@ static void key_hint(int key, char *out, size_t n, const char *verb) {
 
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   Ship* p1 = glgame->players->front()->ship;
-  if(glgame->players->size() < 2) {
+  if((int)glgame->players->size() < LOCAL_PLAYER_CAP) {
     // -40 (not -10): a real margin inside the title-safe edge, matching the
     // bottom-row hints (Xbox compliance) — pulled down further by the
     // cutout inset so this row stays aligned with the LEVEL/score/weapons
@@ -762,11 +762,18 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(p1->is_alive() || p1->lives > 0) {
       // The join invitation blinks — it is an offer, not the only move here.
       if((glgame->current_time/1400) % 2 && !is_touch_mode()) {
-        if(glgame->has_free_controller())
-          Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press start to join", 8);
+        int next_seat = (int)glgame->players->size() + 1;
+        char join_hint[40];
+        if(glgame->has_free_controller()) {
+          snprintf(join_hint, sizeof(join_hint),
+                   "player %d press start to join", next_seat);
+          Typer::draw_centered(Typer::scaled_window_width/2, top_y, join_hint, 8);
+        }
 #ifndef _GAMING_XBOX
-        // Keyboard join hint — on Xbox the only join path is a second controller.
-        else if(!is_steam_gamemode())
+        // Keyboard join hint — on Xbox the only join path is a second
+        // controller, and Enter only ever joins the P2 seat (FOURPLAYER.md
+        // D3: P3/P4 are controller-first).
+        else if(!is_steam_gamemode() && next_seat == 2)
           Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press enter to join", 8);
 #endif
       }

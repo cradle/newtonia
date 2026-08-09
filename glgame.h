@@ -49,7 +49,7 @@ namespace Replay { class Recorder; class Reader; }
 
 class GLGame : public State {
 public:
-  GLGame(SDL_GameController *controller = NULL);
+  GLGame(SDL_GameController *controller = NULL, bool allow_dev_players = true);
   GLGame(const Save::GameState &save, SDL_GameController *controller = NULL);
   // Online host: adopts the Ready session from the lobby; the remote peer
   // drives player 2 via INPUT messages and receives 10 Hz snapshots.
@@ -182,7 +182,9 @@ private:
   // Play a bullet-impact sound for a non-fatal hazard hit, rate-limited so a
   // burst of hits can't starve the mixer channel pool.
   void play_hazard_hit_sound(Mix_Chunk *snd);
-  void add_player2(SDL_GameController *ctrl);
+  // The one local-join path (FOURPLAYER.md D6); gated on LOCAL_PLAYER_CAP.
+  void add_local_player(SDL_GameController *ctrl, bool with_keys,
+                        bool bypass_cap = false);
   // include_asteroids=false skips capturing the asteroid list (the delta
   // path diffs asteroids itself and would otherwise discard the capture).
   Save::GameState build_save_data(bool include_asteroids = true) const;

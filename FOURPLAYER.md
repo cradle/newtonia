@@ -1,7 +1,8 @@
 # 4-Player Mode — Implementation Plan
 
-Status: **Phase A in progress** — A0 (board co-op slot) and A1 (player
-slots/preferences) implemented; A2–A6 pending.
+Status: **Phase A in progress** — A0 (board co-op slot), A1 (player
+slots/preferences) and A2 (unified join + pad registries, gated) merged or
+in review; A3–A6 pending.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -261,6 +262,16 @@ The core of the phase.
   N captures/frame round-robin (`lens_on_screen` already skips off-screen).
 
 ### A4 — Gameplay N-safety sweep
+- **Unknown-pad authority (flip blocker, found in A2 review):** an opened pad
+  that owns no seat can BACK-exit a live run (glgame.cpp unknown-pad ladder),
+  GUIDE-pause, and drive the game-over card/board prompt with RT; menus also
+  run every pad through ONE shared nav-stick hysteresis (state.cpp
+  `nav_stick_`), so a drifting idle pad can deaden nav for everyone. Harmless
+  today (only seatable pads are opened — A2 bounds opens by
+  LOCAL_PLAYER_CAP), but the flip makes pads 3/4 openable, and an unseated
+  pad must not keep quit/pause/confirm authority. Gate those branches on
+  `is_player_controller` (or an explicit "no-seat pads navigate only" rule)
+  and make the nav hysteresis per-pad BEFORE the flip PR.
 - intro.cpp:249: dismissal iterates every player's shoot binding instead of
   the p1/p2 pair.
 - Nova/blast partner checks (glgame.cpp:1831, :4985): loop all other players
@@ -289,9 +300,8 @@ The core of the phase.
 
 ### A6 — Tests, shots, docs
 - Headless e2e: xdotool can synthesise Enter (P2 join) but not controllers,
-  so add a test hook env `NEWTONIA_START_PLAYERS=N` (alongside
-  `NEWTONIA_START_GENERATION`/`NEWTONIA_ALL_WEAPONS`) that spawns N players at
-  game start, keyboard-inert beyond P2. E2e cases: 4P spawn + split renders
+  so the `NEWTONIA_START_PLAYERS=N` hook (landed with A2; beta-gated,
+  cheat-marked, bypasses LOCAL_PLAYER_CAP) spawns N players at game start. E2e cases: 4P spawn + split renders
   (screenshot), 3P minimap cell, revive with 2 fallen, 4P save/resume, 4P
   game-over latch, 4P replay playback.
 - shots/: a 4P split scene for store assets and layout review (also the
