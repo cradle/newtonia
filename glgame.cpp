@@ -3357,15 +3357,20 @@ void GLGame::board_maybe_start() {
   board_->connect(net_board_url());
   std::string season(h.game_version,
                      strnlen(h.game_version, sizeof(h.game_version)));
-  board_->qualify(season, h.player_count, h.final_score);
+  // The board keeps one co-op slot: every run with >= 2 players competes
+  // on the players=2 board (FOURPLAYER.md D10), so send the slot, not the
+  // raw count — the replay HEADER keeps the true count. The worker
+  // normalizes too; sending the slot keeps the echoed `players` matching.
+  const int board_players = std::min((int)h.player_count, 2);
+  board_->qualify(season, board_players, h.final_score);
   board_score_ = h.final_score;
   board_q_season_ = season;
-  board_q_players_ = h.player_count;
+  board_q_players_ = board_players;
   board_q_retried_ = false;
   board_phase_ = BoardQualifying;
   board_deadline_ = current_time + BOARD_QUALIFY_TIMEOUT_MS;
   SDL_Log("board: qualify season=%s players=%u score=%u", season.c_str(),
-          (unsigned)h.player_count, (unsigned)h.final_score);
+          (unsigned)board_players, (unsigned)h.final_score);
 }
 
 void GLGame::board_tick() {

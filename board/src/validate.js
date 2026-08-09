@@ -50,6 +50,11 @@ export const MAX_RECORD_BYTES = 8 * 1024 * 1024;
 export const MAX_SUBMISSION_BYTES = 32 * 1024 * 1024;
 export const MIN_SUBMISSION_BYTES = HEADER_FIXED + 9;
 
+// Largest player_count a run may carry (FOURPLAYER.md D10): 3–4 player
+// runs are admitted, and the worker keys every co-op count (>= 2) onto
+// the single players=2 co-op board.
+export const MAX_PLAYERS = 4;
+
 // The season key is the header's game_version, verbatim (LEADERBOARD.md).
 // Bound it to printable non-space ASCII so it is safe as a D1 key, an R2
 // key segment, and a log token without any escaping downstream.
@@ -192,7 +197,7 @@ export function validate_submission(buf) {
   if (hd.flags & FLAG_CHEATED) return { ok: false, reason: "cheated" };
   if (!(hd.flags & FLAG_CLEAN)) return { ok: false, reason: "not-clean" };
   if (hd.score === 0) return { ok: false, reason: "zero-score" };
-  if (hd.player_count !== 1 && hd.player_count !== 2)
+  if (hd.player_count < 1 || hd.player_count > MAX_PLAYERS)
     return { ok: false, reason: "bad-players" };
   const w = walk_records(buf, hd.header_size);
   if (!w.ok) return w;
