@@ -5938,7 +5938,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // the recorded join position, and split-screen engages via
   // players->size() the moment it lands.
   if (net_mode_ == NetReplay) {
-    while (players->size() < s.players.size() && players->size() < 2) {
+    while (players->size() < s.players.size() &&
+           (int)players->size() < MAX_PLAYERS) {
       GLShip *ghost = new GLCar(grid, true);
       ghost->ship->set_missile_asteroids((std::list<Object *> *)objects);
       ship_objects->push_back(ghost->ship);
@@ -8197,10 +8198,10 @@ void GLGame::draw(void) {
   }
   else if(net_mode_ == NetReplay) {
     // Replay playback: the same viewports the game showed while being
-    // played — one full view for a solo run, split-screen for a 2-player
-    // run, each following its own ghost (REPLAY.md R2).
-    draw_world(players->front(), true);
-    if (players->size() > 1) draw_world(players->back(), false);
+    // played — one full view for a solo run, the split layout for a co-op
+    // run, each viewport following its own ghost (REPLAY.md R2).
+    int vp = 0;
+    for (GLShip *gs : *players) draw_world(gs, vp++);
     draw_map();
     Overlay::net_overlays(this);  // generation banner + shared GAME OVER card
     Overlay::replay_hud(this);
@@ -8210,17 +8211,13 @@ void GLGame::draw(void) {
     // front of the list, client = back). Once the local player is fully
     // out and spectating has begun, the camera hands off to the peer. The
     // peer draws their own view.
-    draw_world(camera_target(), true);
+    draw_world(camera_target(), 0);
     draw_map();
     Overlay::net_overlays(this);
   }
   else {
-    if(players->size() > 0) {
-      draw_world(players->front(), true);
-    }
-    if(players->size() > 1) {
-      draw_world(players->back(), false);
-    }
+    int vp = 0;
+    for (GLShip *gs : *players) draw_world(gs, vp++);
     //Draw map after - for partial translucency
     if (!shot_hide_hud_) draw_map();
   }
@@ -8237,14 +8234,21 @@ void GLGame::draw(void) {
 
 int GLGame::num_x_viewports() const {
   // Online each machine draws one view; a replay reproduces the recorded
-  // game's own layout (split-screen for 2 players), like offline.
+  // game's own layout, like offline. 2 players split along the window's
+  // long axis; 3-4 players use the 2x2 grid in either orientation (D4).
   if (net_mode_ == NetHost || net_mode_ == NetClient) return 1;
-  return (players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
+  size_t n = players->size();
+  if (n <= 1) return 1;
+  if (n >= 3) return 2;
+  return (window.x() > window.y()) ? 2 : 1;
 }
 
 int GLGame::num_y_viewports() const {
   if (net_mode_ == NetHost || net_mode_ == NetClient) return 1;
-  return (players->size() == 0) ? 1 : (window.x() > window.y()) ? 1 : players->size();
+  size_t n = players->size();
+  if (n <= 1) return 1;
+  if (n >= 3) return 2;
+  return (window.x() > window.y()) ? 1 : 2;
 }
 
 bool GLGame::is_visible_to_any_player(const Ship &ship) const {
@@ -8252,7 +8256,8 @@ bool GLGame::is_visible_to_any_player(const Ship &ship) const {
     if(!glship->ship->is_alive()) continue;
     float fov_deg = glship->view_angle();
     float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
-    float aspect = window.x() / (float)(window.y() / num_y_viewports());
+    float aspect = (window.x() / (float)num_x_viewports()) /
+                   (window.y() / (float)num_y_viewports());
     float half_w = half_h * aspect;
     float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
     float dist = glship->ship->position.distance_to(ship.position);
@@ -8266,7 +8271,8 @@ bool GLGame::is_visible_to_any_player(Point p) const {
     if(!glship->ship->is_alive()) continue;
     float fov_deg = glship->view_angle();
     float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
-    float aspect = window.x() / (float)(window.y() / num_y_viewports());
+    float aspect = (window.x() / (float)num_x_viewports()) /
+                   (window.y() / (float)num_y_viewports());
     float half_w = half_h * aspect;
     float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
     float dist = glship->ship->position.distance_to(p);
@@ -8360,9 +8366,11 @@ static bool shock_bolt_reaches(const std::vector<Point> &pts,
 
 // Half-diagonal, in world units, of what one camera can see. Anything nearer
 // than this MIGHT be on screen; anything further certainly is not.
-static float camera_screen_radius(float fov_deg, Point window, int y_viewports) {
+static float camera_screen_radius(float fov_deg, Point window, int x_viewports,
+                                  int y_viewports) {
   float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
-  float half_w = half_h * (window.x() / (window.y() / (float)y_viewports));
+  float half_w = half_h * ((window.x() / (float)x_viewports) /
+                           (window.y() / (float)y_viewports));
   return sqrtf(half_w * half_w + half_h * half_h);
 }
 
@@ -8393,7 +8401,7 @@ float GLGame::net_listener_volume(Point p) const {
   if (!me || !me->ship->is_alive()) return 0.0f;
   // Online is always one full-window viewport (the peer is on their own box).
   return listener_falloff(me->ship->position.distance_to(p),
-                          camera_screen_radius(me->view_angle(), window, 1));
+                          camera_screen_radius(me->view_angle(), window, 1, 1));
 }
 
 bool GLGame::all_players_local() const {
@@ -8440,7 +8448,8 @@ float GLGame::sound_volume_for_point(Point p) const {
     // Split-screen: each player's viewport is a fraction of the window.
     float v = listener_falloff(
         glship->ship->position.distance_to(p),
-        camera_screen_radius(glship->view_angle(), window, num_y_viewports()));
+        camera_screen_radius(glship->view_angle(), window,
+                             num_x_viewports(), num_y_viewports()));
     if(v > best) best = v;
   }
   return best;
@@ -8462,7 +8471,8 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
     // Viewport rectangle in world units (camera at z=1000, FOV-derived)
     float fov_deg = glship->view_angle();
     float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
-    float aspect = window.x() / (float)(window.y() / num_y_viewports());
+    float aspect = (window.x() / (float)num_x_viewports()) /
+                   (window.y() / (float)num_y_viewports());
     float half_w = half_h * aspect;
     // Reject if outside the on-screen rectangle
     if(fwd <= 0.0f || fwd > half_h || fabsf(side) > half_w) continue;
@@ -8475,22 +8485,28 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
 }
 
 
-void GLGame::setup_viewport(bool primary) const {
-  if(split_screen() && window.x() <= window.y()) {
-    primary = !primary; //HACK: Fix this
-  }
-  if(primary) {
-    glViewport(0, 0, window.x()/num_x_viewports(), window.y()/num_y_viewports());
-  } else {
-    if(window.x() > window.y()) {
-      glViewport(window.x()/num_x_viewports(), 0, window.x()/num_x_viewports(), window.y()/num_y_viewports());
-    } else {
-      glViewport(0, window.y()/num_y_viewports(), window.x()/num_x_viewports(), window.y()/num_y_viewports());
-    }
-  }
+GLGame::ViewportRect GLGame::viewport_rect(int vp_index) const {
+  int nx = num_x_viewports(), ny = num_y_viewports();
+  int w = window.x() / nx, h = window.y() / ny;
+  // Column left-to-right; row TOP-down (player 1 top-left), flipped to
+  // GL's bottom-left viewport origin.
+  int col = vp_index % nx;
+  int row = vp_index / nx;
+  if (row >= ny) row = ny - 1;  // paranoia: never place outside the window
+  ViewportRect r;
+  r.x = col * w;
+  r.y = (ny - 1 - row) * h;
+  r.w = w;
+  r.h = h;
+  return r;
 }
 
-void GLGame::draw_world(GLShip *glship, bool primary) const {
+void GLGame::setup_viewport(int vp_index) const {
+  ViewportRect r = viewport_rect(vp_index);
+  glViewport(r.x, r.y, r.w, r.h);
+}
+
+void GLGame::draw_world(GLShip *glship, int vp_index) const {
   float nx = (float)num_x_viewports();
   float ny = (float)num_y_viewports();
   float fovy = (glship == NULL) ? 85.0f
@@ -8501,7 +8517,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   float view[16]; mat4_lookat(view, 0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
   float pv[16]; mat4_mul(pv, proj, view);
   gles2_set_vp(pv);
-  setup_viewport(primary);
+  setup_viewport(vp_index);
   draw_perspective(glship);
 
   float osd_hw = window.x() / nx;
@@ -8516,7 +8532,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   float ortho[16];
   mat4_ortho(ortho, -safe_hw, safe_hw, -safe_hh, safe_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
-  setup_viewport(primary);
+  setup_viewport(vp_index);
   float saved_sw = Typer::scaled_window_width;
   Typer::scaled_window_width = capped_hw / Typer::scale * nx;
   Uint64 pc0 = SDL_GetPerformanceCounter();
@@ -8536,7 +8552,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // Camera is at z=1000; gluPerspective FOV is vertical.
   float fov_deg = glship ? glship->view_angle() : 85.0f;
   float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
-  float aspect = window.x() / (float)(window.y() / num_y_viewports());
+  float aspect = (window.x() / (float)num_x_viewports()) /
+                 (window.y() / (float)num_y_viewports());
   float half_w = half_h * aspect;
   float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f; // 10% margin for edge objects
 
@@ -8742,10 +8759,17 @@ void GLGame::draw_map() const {
   // touch_osd_enabled() is false there and a phone browser kept the
   // minimap while every other layout had gone touch.
   if (is_touch_mode()) return;
-  float minimap_size = num_y_viewports() == 2 ? window.y()/6 : window.y()/4;
+  // Solo: corner map. 2-player strip split: small map on the divider. 2x2
+  // grid: at 3 players the free bottom-right cell hosts a bigger map (it
+  // owns the whole quadrant); at 4 a small one sits on the centre crosshair.
+  bool grid = split_screen() && num_x_viewports() == 2 && num_y_viewports() == 2;
+  bool free_cell_map = grid && players->size() == 3;
+  float minimap_size = !split_screen() ? window.y()/4
+                     : free_cell_map   ? window.y()/3
+                                       : window.y()/6;
 
   if(split_screen()) {
-    /* DRAW CENTER LINE */
+    /* DRAW THE VIEWPORT DIVIDERS */
     float center_ortho[16];
     mat4_ortho(center_ortho, -(float)window.x(), (float)window.x(),
                -(float)window.y(), (float)window.y(), -1.0f, 1.0f);
@@ -8757,7 +8781,16 @@ void GLGame::draw_map() const {
       mb.clear();
       mb.begin(GL_LINES);
       mb.color(1.0f, 1.0f, 1.0f, 0.5f);
-      if(window.x() < window.y()) {
+      if (grid) {
+        // Cross through the centre; each arm splits around the minimap only
+        // where the map actually sits on it (4P centre — at 3P the map is
+        // in the free cell, off both lines).
+        float gap = free_cell_map ? 0.0f : minimap_size;
+        mb.vertex(0, -window.y()); mb.vertex(0, -gap);
+        mb.vertex(0, gap); mb.vertex(0, window.y());
+        mb.vertex(-window.x(), 0); mb.vertex(-gap, 0);
+        mb.vertex(gap, 0); mb.vertex(window.x(), 0);
+      } else if(window.x() < window.y()) {
         mb.vertex(-window.x(), 0); mb.vertex(-minimap_size, 0);
         mb.vertex(minimap_size, 0); mb.vertex(window.x(), 0);
       } else {
@@ -8788,6 +8821,10 @@ void GLGame::draw_map() const {
     int safe_px_x = (int)(window.x() * (1.0f - Overlay::SAFE_AREA_SCALE) / 2.0f);
     int safe_px_y = (int)(window.y() * (1.0f - Overlay::SAFE_AREA_SCALE) / 2.0f);
     glViewport(map_x + safe_px_x, (int)Overlay::CORNER_INSET + safe_px_y, minimap_size, minimap_size);
+  } else if (free_cell_map) {
+    // Centre of the free bottom-right cell (GL origin bottom-left).
+    glViewport(window.x()*3/4 - minimap_size/2, window.y()/4 - minimap_size/2,
+               minimap_size, minimap_size);
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   }
