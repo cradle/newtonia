@@ -1,9 +1,9 @@
 # 4-Player Mode — Implementation Plan
 
 Status: **Phase A COMPLETE** (up to 4 local players live; P3/P4 join by
-controller). **Phase B underway** — B1 (NetPeer refactor) merged; B2
-(the PROTO 25 + savegame v19 flag day, PB-D3) in this PR. Netplay stays
-2-player until B7 (`NET_PLAYER_CAP`).
+controller). **Phase B underway** — B1 (NetPeer refactor) and B2 (PROTO
+25 + savegame v19 flag day) merged; B3 (worker multi-join, PB-D5) in
+this PR. Netplay stays 2-player until B7 (`NET_PLAYER_CAP`).
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -55,7 +55,7 @@ the code is already N-player-safe.
 | Gameplay stragglers | Nova/blast friendly-fire partner check assumes partner is `front()` (glgame.cpp:1831, :4985); Intro dismissal ORs exactly the p1/p2 shoot bindings (intro.cpp:249) |
 | Options menu | `OPT_ROWS_DESKTOP` P1/P2 rows (menu.cpp:73); `[2]` state arrays (menu.h:158); hand-unrolled seed/commit (menu.cpp:286, :1930) |
 | Save read cap | `read_count(f, cnt, 2)` for players (savegame.cpp:479); `net_state_sane` rejects >2 (net_session.cpp:250) |
-| Netplay (Phase B) | one `NetSession`/transport/assembler/delta-baseline; `player_id() = role==Host ? 1 : 2` (net_session.h:198); WELCOME hardcodes id 2 (net_session.cpp:429/524); positional player matching in snapshots (glgame.cpp:5805); signal worker rooms are host+1 joiner (signal/src/worker.js:14/566); lobby strings "PLAYER 2 …" |
+| Netplay (Phase B) | one `NetSession`/transport/assembler/delta-baseline (B1 moved per-peer state into `NetPeer`; B2 made WELCOME/snapshots/headers seat-keyed; B3 made the signal worker host+3-joiners with per-jid tags/offers/identity) — remaining: host fan-out + lobby (B4), per-seat resume (B5); lobby strings "PLAYER 2 …" |
 
 ---
 

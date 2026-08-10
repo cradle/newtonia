@@ -203,14 +203,23 @@ bool json_field(const std::string &json, const char *key, std::string &out) {
   return unescape_into(json, begin, i, out);
 }
 
-std::string offer_frame(const std::string &sdp) {
-  return "{\"t\":\"offer\",\"pv\":\"" + std::to_string(Net::PROTO_VERSION) +
-         "\",\"sdp\":\"" + json_escape(sdp) + "\"}";
+std::string offer_frame(const std::string &sdp, const std::string &to) {
+  std::string f = "{\"t\":\"offer\",\"pv\":\"" +
+                  std::to_string(Net::PROTO_VERSION) + "\"";
+  if (!to.empty()) f += ",\"to\":\"" + json_escape(to) + "\"";
+  return f + ",\"sdp\":\"" + json_escape(sdp) + "\"}";
 }
 
 std::string answer_frame(const std::string &sdp) {
   return "{\"t\":\"answer\",\"pv\":\"" + std::to_string(Net::PROTO_VERSION) +
          "\",\"sdp\":\"" + json_escape(sdp) + "\"}";
+}
+
+std::string cand_frame(const std::string &mid, const std::string &cand,
+                       const std::string &to) {
+  std::string f = "{\"t\":\"cand\",\"mid\":\"" + json_escape(mid) + "\"";
+  if (!to.empty()) f += ",\"to\":\"" + json_escape(to) + "\"";
+  return f + ",\"cand\":\"" + json_escape(cand) + "\"}";
 }
 
 bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
@@ -220,6 +229,7 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   ev.text2.clear();
   ev.platform = 0;       // Identity-only fields — reset so a prior event's
   ev.verified = false;   // values can never leak into a reused Event.
+  ev.peer.clear();       // "from" stamp (PB-D5) — same leak rule.
   if (t == "room") {
     ev.kind = NetSignal::Event::Room;
     json_field(frame, "token", ev.text2);  // reclaim token (M3-1)
@@ -238,6 +248,7 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   if (t == "cand") {
     ev.kind = NetSignal::Event::Cand;
     json_field(frame, "mid", ev.text2);
+    json_field(frame, "from", ev.peer);  // sending joiner (host side, PB-D5)
     return json_field(frame, "cand", ev.text);
   }
   if (t == "offer") {
@@ -248,6 +259,7 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   if (t == "answer") {
     ev.kind = NetSignal::Event::Answer;
     json_field(frame, "pv", ev.text2);
+    json_field(frame, "from", ev.peer);  // answering joiner (PB-D5)
     return json_field(frame, "sdp", ev.text);
   }
   if (t == "identity") {
@@ -257,6 +269,7 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
     ev.kind = NetSignal::Event::Identity;
     json_field(frame, "role", ev.text2);
     json_field(frame, "name", ev.text);
+    json_field(frame, "from", ev.peer);  // which joiner (host side, PB-D5)
     unsigned plat = 0;
     ev.platform = json_uint_field(frame, "platform", plat) ? (uint8_t)plat : 0;
     bool ver = false;
@@ -267,6 +280,7 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   if (t == "peer") {
     std::string e;
     if (!json_field(frame, "ev", e)) return false;
+    json_field(frame, "from", ev.peer);  // which joiner (host side, PB-D5)
     if (e == "join") { ev.kind = NetSignal::Event::PeerJoin; return true; }
     if (e == "leave" || e == "host-lost") { ev.kind = NetSignal::Event::PeerLeave; return true; }
     return false;  // unknown peer events (e.g. host-back) are skipped

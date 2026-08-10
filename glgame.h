@@ -482,6 +482,14 @@ private:
     net_worker_session_ = worker;
     net_refresh_join_banner();
   }
+  // The worker joiner id (B3 `from` stamp) of the peer this session is
+  // bound to — set by the lobby at hand-off and by the rehost door when it
+  // adopts an answer. Empty against a pre-multi-join worker. In-game
+  // Identity events are accepted only when their stamp matches: with the
+  // room now admitting extra joiners, an unmatched announce is a THIRD
+  // party whose badge must not overwrite the paired peer's.
+  std::string net_peer_jid_;
+  void net_set_peer_jid(const std::string &jid) { net_peer_jid_ = jid; }
   void net_apply_peer_attestation(const NetIdentity &attested) {
     NetPeer &p = net_peer_make();
     p.attested = attested;

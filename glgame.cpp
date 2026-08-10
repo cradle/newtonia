@@ -2465,8 +2465,13 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
       return NetSigHandled;
     case NetSignal::Event::Identity:
       // Worker peer attestation (NETPLAY.md V0): a rejoiner re-attests, so
-      // refresh the badge in-game. Only a verified result promotes fields.
-      if (ev.verified) {
+      // refresh the badge in-game. Only a verified result promotes fields,
+      // and only for the PAIRED joiner: the multi-join worker (B3) stamps
+      // the announcing jid, and an unmatched stamp is another joiner in
+      // the room — folding it here would rename our live peer. Both empty
+      // = the pre-multi-join worker, which only ever relayed the paired
+      // joiner's identity.
+      if (ev.verified && ev.peer == net_peer_jid_) {
         NetIdentity att;
         att.platform = ev.platform;
         att.platform_trust = NET_TRUST_ATTESTED;
@@ -2681,6 +2686,11 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_rehost_->set_remote_answer(ev.text);
       net_peer_make().session = new NetSession(net_rehost_, NetSession::HostRole);
       net_rehost_ = nullptr;
+      // The answering joiner is the peer this session binds to (B3 `from`
+      // stamp; empty against an old worker) — scope in-game Identity
+      // events to it. A rejoiner gets a FRESH jid, so this updates on
+      // every adoption.
+      net_peer_jid_ = ev.peer;
     } else if (ev.kind == NetSignal::Event::Cand) {
       NetTransport *t =
           net_rehost_ ? net_rehost_

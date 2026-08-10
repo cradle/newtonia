@@ -5,15 +5,26 @@
 // Wire protocol (JSON text frames, all fields lowercase):
 //   host  -> /ws?role=host            {t:"room", code}        assigned code
 //   join  -> /ws?role=join&code=ABCDE {t:"joined"}             or {t:"err",reason}
-//   host  -> {t:"offer", sdp}         relayed to the joiner (also replayed to
-//                                     a joiner who arrives after the offer)
-//   join  -> {t:"answer", sdp}        relayed to the host
-//   both  <- {t:"peer", ev:"join"|"leave"}
+//   host  -> {t:"offer", sdp[, to]}   addressed (`to` = joiner id) offers go
+//                                     to that joiner and are stored per-jid;
+//                                     an UNADDRESSED offer keeps the legacy
+//                                     single-pair semantics — it goes to the
+//                                     oldest connected joiner, or is stored
+//                                     and replayed once to the next arrival
+//   join  -> {t:"answer", sdp}        relayed to the host, stamped {from: jid}
+//   both  -> {t:"cand", mid, cand[, to]}  trickle ICE, same addressing rules;
+//                                     joiner->host cands are stamped {from}
+//   host  <- {t:"peer", ev:"join"|"leave", from}
+//   join  <- {t:"peer", ev:"host-lost"|"host-back"}   (broadcast to all)
 //   any   <- {t:"err", reason:"no-such-room"|"room-full"|"expired"}
 //
-// Rooms hold exactly one host and at most one joiner. The joiner slot
-// reopens when the joiner disconnects (Milestone 2 rejoin); the room dies
-// when the host disconnects or after ROOM_TTL_MS.
+// Rooms hold one host and up to MAX_JOINERS joiners (FOURPLAYER.md PB-D5).
+// Each joiner socket is tagged ["joiner", "j:<n>"] with a monotonically
+// increasing per-room id — tags are the only per-socket state that survives
+// DO hibernation, so the jid lives there and is never reused, which is what
+// keeps the late-verify race (attest_identity) simple. A joiner's slot
+// reopens when its socket disconnects; the room dies when the host
+// disconnects past its grace or after ROOM_TTL_MS.
 
 import { verifySteamTicket } from "./steam_verify.js";
 import { verifyPlayGamesCode } from "./play_games_verify.js";
@@ -38,8 +49,17 @@ const RATE_WINDOW_MS = 10 * 60 * 1000;
 // the room survives for a grace period instead of dying; the host reclaims
 // its slot with the token minted at room creation.
 const HOST_GRACE_MS = 2 * 60 * 1000;
+// Env-overridable (RATE_HOST_LIMIT / RATE_JOIN_LIMIT) so the wrangler-dev
+// protocol tests — ten-plus rooms and dozens of joins in one window from
+// one IP — can raise them without touching production defaults.
 const HOST_LIMIT = 10;
 const JOIN_LIMIT = 30;
+
+// PB-D5: joiners per room (host + 3 = the 4-player ceiling). The GAME's own
+// seat cap (NET_PLAYER_CAP) stays authoritative below this — a 2-player
+// build's host simply never offers to a third joiner, which then waits and
+// backs out on its own lobby timeout.
+const MAX_JOINERS = 3;
 
 // SDP frames are relayed verbatim into DO memory; cap them so a peer can't
 // pin unbounded memory or flood the relay. Oversized frames are dropped.
@@ -401,7 +421,7 @@ export default {
       try {
         const pre = await room.fetch(new Request("https://room/exists"));
         const st = await pre.json();
-        if (st.host && !st.joiner) ice = await turn_ice_servers(env);
+        if (st.host && !st.full) ice = await turn_ice_servers(env);
       } catch (e) {}
       return room.fetch(new Request(
           `https://room/join?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}`, request));
@@ -414,8 +434,9 @@ export default {
 // Per-IP fixed-window rate limiter. One instance per client IP (keyed by
 // idFromName), counting host-creates and join-attempts separately.
 export class Limiter {
-  constructor(state) {
+  constructor(state, env) {
     this.state = state;
+    this.env = env;  // test-only limit overrides (see HOST_LIMIT)
     // The window counters MUST survive DO eviction. An idle Durable Object
     // is evicted and its constructor re-runs on the next request; if these
     // lived only in memory (as they used to), that reset the fixed window
@@ -437,9 +458,11 @@ export class Limiter {
       this.l.hostCount = 0;
       this.l.joinCount = 0;
     }
+    const host_limit = Number(this.env && this.env.RATE_HOST_LIMIT) || HOST_LIMIT;
+    const join_limit = Number(this.env && this.env.RATE_JOIN_LIMIT) || JOIN_LIMIT;
     let allowed;
-    if (action === "host") allowed = ++this.l.hostCount <= HOST_LIMIT;
-    else allowed = ++this.l.joinCount <= JOIN_LIMIT;
+    if (action === "host") allowed = ++this.l.hostCount <= host_limit;
+    else allowed = ++this.l.joinCount <= join_limit;
     await this.state.storage.put("limits", this.l);
     // Self-clean: once a full window elapses with no further hits the stored
     // count is meaningless, so free it via the alarm rather than leaving one
@@ -471,20 +494,58 @@ export class Room {
     this.env = env;  // for the identity verifier's platform API key / dev flag
     this.r = { offer: null, host_cands: [], host_token: null,
                host_lost_at: 0, created: 0, closed: false,
-               // Last attested identity per role, kept for replay to a peer
-               // that arrives (or a host that reclaims) after attestation.
-               host_identity: null, joiner_identity: null };
+               // The host's last attested identity, kept for replay to a
+               // joiner that arrives after attestation.
+               host_identity: null,
+               // PB-D5 per-joiner state. next_jid is the monotonic id mint
+               // (never reused — see the module header); jids[jid] holds
+               // {identity, verify_at, claim_at, epoch} and outlives its
+               // socket when a VERIFIED identity was attested (a host
+               // reclaim replays it — socket closed != player gone, the
+               // game rides the independent WebRTC transport; unverified
+               // claims are reaped so a claim flood can't grow the record
+               // past the DO storage value cap). Addressed offers/cands
+               // are relay-only — a jid's socket is connected for its
+               // whole life, so there is nothing to buffer for it; the
+               // legacy offer/host_cands slot above keeps the unaddressed
+               // 2P semantics.
+               next_jid: 1, jids: {} };
     state.blockConcurrencyWhile(async () => {
       const stored = await state.storage.get("room");
-      if (stored) this.r = stored;
+      // Spread over the defaults: a room stored by the pre-multi-join
+      // worker lacks the per-jid fields and must not resurrect undefined.
+      if (stored) this.r = { next_jid: 1, jids: {}, ...stored };
     });
   }
 
   async save() { await this.state.storage.put("room", this.r); }
 
-  // Live sockets by tag (hibernation-safe — survives DO eviction).
+  // Live sockets by tag (hibernation-safe — survives DO eviction). Every
+  // joiner carries BOTH the generic "joiner" tag (dispatch) and its own
+  // "j:<n>" tag (addressing).
   hostWs()   { return this.state.getWebSockets("host")[0]   || null; }
-  joinerWs() { return this.state.getWebSockets("joiner")[0] || null; }
+  joinerWss() { return this.state.getWebSockets("joiner"); }
+  joinerWsById(jid) {
+    return this.state.getWebSockets("j:" + jid)[0] || null;
+  }
+  // The oldest connected joiner — the unaddressed-frame target (legacy 2P
+  // hosts know only one peer). Jids are monotonic, so oldest = smallest; a
+  // socket accepted by the PRE-multi-join worker carries no jid tag
+  // (deploy-moment survivor) and counts as oldest of all.
+  oldestJoinerWs() {
+    let best = null, best_jid = Infinity;
+    for (const ws of this.joinerWss()) {
+      const jid = this.jidOf(ws);
+      const k = jid === null ? 0 : jid;
+      if (k < best_jid) { best_jid = k; best = ws; }
+    }
+    return best;
+  }
+  jidOf(ws) {
+    for (const tag of this.state.getTags(ws))
+      if (tag.startsWith("j:")) return Number(tag.slice(2));
+    return null;
+  }
 
   safeSend(ws, obj) { try { ws.send(JSON.stringify(obj)); } catch (e) {} }
 
@@ -510,8 +571,12 @@ export class Room {
 
     if (url.pathname === "/exists") {
       // Worker's pre-mint probe: is there an open slot worth minting for?
+      // `joiner` (any-connected) kept for shape compatibility; the worker
+      // reads `full` since multi-join.
+      const n = this.joinerWss().length;
       return new Response(
-          JSON.stringify({ host: !!this.hostWs(), joiner: !!this.joinerWs() }),
+          JSON.stringify({ host: !!this.hostWs(), joiner: n > 0,
+                           joiners: n, full: n >= MAX_JOINERS }),
           { headers: { "Content-Type": "application/json" } });
     }
 
@@ -563,7 +628,8 @@ export class Room {
       // waits and the reclaimed host's fresh offer is relayed on arrival.
       if (!this.alive(now))
         return this.reject_ws(this.r.closed ? "host-closed" : "no-such-room");
-      if (this.joinerWs()) return this.reject_ws("room-full");
+      if (this.joinerWss().length >= MAX_JOINERS)
+        return this.reject_ws("room-full");
       const pair = new WebSocketPair();
       await this.accept_joiner(pair[1], ice);
       return new Response(null, { status: 101, webSocket: pair[0] });
@@ -589,13 +655,24 @@ export class Room {
                           username: s.username, credential: s.credential });
   }
 
+  // Per-jid identity bookkeeping (identity/verify_at/claim_at/epoch).
+  // Created on first touch; identity-BEARING entries outlive their socket
+  // (reclaim replay), identity-less disconnected ones are pruned on the
+  // next accept_joiner so a churny room can't grow the record unbounded.
+  jid_entry(jid) {
+    if (!this.r.jids[jid])
+      this.r.jids[jid] = { identity: null, verify_at: 0, claim_at: 0, epoch: 0 };
+    return this.r.jids[jid];
+  }
+
   // ---- peer identity attestation (NETPLAY.md V0/V1) ----------------------
   // A client announced {t:"identity", platform, name, cred?}. Bound the
   // claimed fields, verify the credential against the platform backend, store
-  // the attested result for replay, and push it to the peer. Verification
+  // the attested result for replay, and push it to the peers. Verification
   // NEVER rejects the room: a failure attests nothing (verified:false) and
-  // the peer renders a role label.
-  async attest_identity(role, msg) {
+  // the peers render a role label. `jid` names the announcing joiner (null
+  // for the host); all its bookkeeping lives in this.r.jids[jid].
+  async attest_identity(role, msg, jid) {
     let platform = Number(msg.platform);
     if (!Number.isInteger(platform) || platform < 0 || platform > 255)
       platform = 0;
@@ -667,63 +744,48 @@ export class Room {
         // client rejoin) are seconds-to-minutes apart; only a flood is
         // dropped, and a dropped frame KEEPS the last attestation (no demote).
         const now = Date.now();
-        const at_key = role === "host" ? "host_verify_at" : "joiner_verify_at";
-        if (this.r[at_key] && now - this.r[at_key] < VERIFY_MIN_INTERVAL_MS)
+        const jent = role === "joiner" ? this.jid_entry(jid) : null;
+        const at = jent ? jent.verify_at : this.r.host_verify_at || 0;
+        if (at && now - at < VERIFY_MIN_INTERVAL_MS)
           return;  // flooded: keep the prior attestation, spend no backend call
         // PERSIST the throttle stamp BEFORE the backend call: this DO hibernates
         // between idle messages, and an unpersisted stamp would reset on
         // eviction — a peer pacing frames across evictions could then defeat
         // the guard. Saving first makes it durable.
-        this.r[at_key] = now;
+        if (jent) jent.verify_at = now; else this.r.host_verify_at = now;
         await this.save();
         // Occupancy epoch, captured before the verify: the input gate is
         // open across the non-storage await, so the announcing socket can
-        // drop AND a different player can take the role while the platform
-        // round-trip is in flight. drop_joiner/drop_host bump the epoch; a
-        // mismatch after the await means whoever we verified no longer
-        // occupies the slot — writing their identity back would resurrect a
-        // departed player's verified badge onto the replacement (and the
-        // never-demote guard would then pin it against correction).
-        const ep_key = role === "host" ? "host_id_epoch" : "joiner_id_epoch";
-        const epoch = this.r[ep_key] || 0;
+        // drop while the platform round-trip is in flight. drop_joiner/
+        // drop_host bump the epoch. For the HOST role a mismatch means the
+        // socket flapped — the reclaimed socket re-announces anyway, so a
+        // cross-flap verify is discarded. For a JOINER the jid makes this
+        // simple (PB-D5): jids are never reused, so a bumped epoch can only
+        // mean the announcer ITSELF departed — never a replacement in its
+        // slot — and the account just proven is still the player the peers
+        // are mid-game with over the (independent) WebRTC transport (the
+        // field-hit fast-ICE case, 2026-08-07). Store the attestation (a
+        // host reclaim replays it) and push it to the peers now.
+        const epoch = jent ? jent.epoch : this.r.host_id_epoch || 0;
         const v = await verify();
         // The room can be torn down (host `close`, TTL/grace expiry) while the
         // verify fetch is in flight — the input gate is open across a non-storage
         // await. Don't write identity back onto a dead/tombstoned room.
         if (this.r.closed || !this.r.host_token) return;
-        if ((this.r[ep_key] || 0) !== epoch) {
-          // The announcing socket dropped mid-verify (drop_host/drop_joiner
-          // bumped the epoch). Two very different cases share that bump:
-          //   OCCUPIED again — a different player may hold the slot now:
-          //   discard, or the departed occupant's verified badge would land
-          //   on the replacement (and never-demote would pin it there).
-          //   VACANT — the common, field-hit case (Steam joiner vs Android
-          //   host, 2026-08-07): a fast ICE connect hands the lobby off and
-          //   the JOINER closes its signaling socket while the platform
-          //   round-trip is still in flight. The account just proven is
-          //   still the player the peer is mid-game with over the
-          //   (independent) WebRTC transport — store the attestation (a
-          //   host reclaim replays it) and push it to the peer now. A later
-          //   replacement can't inherit it: accept_joiner clears any stored
-          //   joiner identity when a new socket takes the slot.
-          const occupied = role === "host" ? this.hostWs() : this.joinerWs();
-          // The +1 proves the ONLY occupancy change since this announce is
-          // the announcer's own departure. Anything more (a replacement
-          // joined — whether or not it has also departed by now) means this
-          // verify belongs to an OLDER occupant: last-resolver-wins would
-          // let its slow verify overwrite the newer late-stored badge.
-          const sole_departure = (this.r[ep_key] || 0) === epoch + 1;
-          if (!v || occupied || !sole_departure) {
-            console.log(`identity ${role} verify discarded (slot changed ` +
-                        `occupants mid-verify)`);
+        const jent2 = role === "joiner" ? this.r.jids[jid] : null;
+        const epoch_now = role === "joiner" ? (jent2 ? jent2.epoch : -1)
+                                            : this.r.host_id_epoch || 0;
+        if (epoch_now !== epoch) {
+          if (role === "host" || !v || !jent2) {
+            console.log(`identity ${role} verify discarded (announcer gone ` +
+                        `mid-verify)`);
             return;
           }
-          const late_key = role === "host" ? "host_identity" : "joiner_identity";
-          this.r[late_key] = { platform, name: v.name || "", verified: true };
+          jent2.identity = { platform, name: v.name || "", verified: true };
           await this.save();
-          this.broadcast_identity(role);
-          console.log(`identity ${role} late verify attested to vacant slot ` +
-                      `(announcer closed mid-verify)`);
+          this.broadcast_identity(role, jid);
+          console.log(`identity joiner j:${jid} late verify attested after ` +
+                      `announcer closed mid-verify`);
           return;
         }
         if (v) {
@@ -742,10 +804,18 @@ export class Room {
     // the warmed single-use credential may be gone by then) — and none of
     // them may overwrite verified:true with verified:false: keep the stored
     // attestation and re-push it so a reclaimed peer still hears it.
-    const id_key = role === "host" ? "host_identity" : "joiner_identity";
-    const prev = this.r[id_key];
+    const ent = role === "joiner" ? this.jid_entry(jid) : null;
+    const prev = ent ? ent.identity : this.r.host_identity;
     if (!attested.verified && prev && prev.verified) {
-      this.broadcast_identity(role);
+      // Rate-limited on the claim stamp: the re-push exists for a
+      // reclaimed peer's credential-less re-announce, which happens once —
+      // an unthrottled repeat was a free relay-amplification lever.
+      const rnow = Date.now();
+      const rat = ent ? ent.claim_at : this.r.host_claim_at || 0;
+      if (rat && rnow - rat < VERIFY_MIN_INTERVAL_MS) return;
+      if (ent) ent.claim_at = rnow; else this.r.host_claim_at = rnow;
+      await this.save();
+      this.broadcast_identity(role, jid);
       console.log(`identity ${role} kept verified attestation ` +
                   `(unverified re-announce, credlen=${cred.length})`);
       return;
@@ -755,22 +825,22 @@ export class Room {
       // still cost a billed storage put (the whole room record) plus a
       // relay per frame — the same per-message flood gap the verify
       // throttle was added for. An identical repeat claim is free to drop
-      // (nothing to store, the peer already heard it / replay covers late
-      // joiners); a CHANGED claim is rate-limited per role on its own
+      // (nothing to store, the peers already heard it / replay covers late
+      // joiners); a CHANGED claim is rate-limited per announcer on its own
       // stamp, so a claim flood can't meter-spin storage writes while a
       // later credentialed verify (separate stamp) is unaffected.
       if (prev && !prev.verified && prev.platform === attested.platform &&
           prev.name === attested.name)
         return;
-      const c_key = role === "host" ? "host_claim_at" : "joiner_claim_at";
       const cnow = Date.now();
-      if (this.r[c_key] && cnow - this.r[c_key] < VERIFY_MIN_INTERVAL_MS)
+      const cat = ent ? ent.claim_at : this.r.host_claim_at || 0;
+      if (cat && cnow - cat < VERIFY_MIN_INTERVAL_MS)
         return;  // flooded: keep the prior claim, spend no storage write
-      this.r[c_key] = cnow;
+      if (ent) ent.claim_at = cnow; else this.r.host_claim_at = cnow;
     }
-    this.r[id_key] = attested;
+    if (ent) ent.identity = attested; else this.r.host_identity = attested;
     await this.save();
-    this.broadcast_identity(role);
+    this.broadcast_identity(role, jid);
     // credlen distinguishes "client sent no credential" (credlen=0 — e.g. the
     // iOS simulator not issuing an identity-verification signature) from
     // "credential sent but rejected" (credlen>0 with verified=false — a real
@@ -779,29 +849,47 @@ export class Room {
                 `verified=${attested.verified} credlen=${cred.length}`);
   }
 
-  // Push a role's stored attestation to the OTHER side (the peer consumes it
-  // as its partner's identity). No-op when the peer isn't connected yet — the
-  // stored copy is replayed on join/reclaim instead.
-  broadcast_identity(role) {
-    const id = role === "host" ? this.r.host_identity : this.r.joiner_identity;
-    if (!id) return;
-    const peer = role === "host" ? this.joinerWs() : this.hostWs();
-    if (peer) this.safeSend(peer, { t: "identity", role, platform: id.platform,
-                                    name: id.name, verified: id.verified });
+  // PB-D5 identity fan-out. The host's attestation goes to every joiner; a
+  // joiner's goes to the HOST only, stamped with its jid ({from}) since
+  // "joiner" alone no longer identifies who. Joiner badges are NOT fanned
+  // to other joiners yet — 2P clients apply identity frames role-blind, so
+  // another joiner's badge would overwrite the host's on their screen; B4's
+  // roster consumer re-adds that leg. No-op for peers not connected yet —
+  // the stored copy is replayed on join/reclaim instead.
+  identity_frame(role, jid) {
+    const id = role === "host" ? this.r.host_identity
+                               : (this.r.jids[jid] || {}).identity;
+    if (!id) return null;
+    const frame = { t: "identity", role, platform: id.platform,
+                    name: id.name, verified: id.verified };
+    if (role === "joiner") frame.from = String(jid);
+    return frame;
   }
 
-  // Replay a role's stored attestation to a socket that just (re)joined.
-  replay_identity(ws, role) {
-    const id = role === "host" ? this.r.host_identity : this.r.joiner_identity;
-    if (id) this.safeSend(ws, { t: "identity", role, platform: id.platform,
-                                name: id.name, verified: id.verified });
+  broadcast_identity(role, jid) {
+    const frame = this.identity_frame(role, jid);
+    if (!frame) return;
+    if (role === "host") {
+      for (const j of this.joinerWss()) this.safeSend(j, frame);
+    } else {
+      const h = this.hostWs();
+      if (h) this.safeSend(h, frame);
+    }
+  }
+
+  // Replay one stored attestation to a socket that just (re)joined.
+  replay_identity(ws, role, jid) {
+    const frame = this.identity_frame(role, jid);
+    if (frame) this.safeSend(ws, frame);
   }
 
   async accept_host(ws, code, now, ice) {
     this.state.acceptWebSocket(ws, ["host"]);
-    this.r = { offer: null, host_cands: [], host_token: crypto.randomUUID(),
+    this.r = { offer: null, offer_pv: null, host_cands: [],
+               host_token: crypto.randomUUID(),
                host_lost_at: 0, created: now, closed: false,
-               host_identity: null, joiner_identity: null };
+               host_identity: null,
+               next_jid: 1, jids: {} };
     await this.save();
     await this.state.storage.setAlarm(now + ROOM_TTL_MS);
     this.send_ice(ws, ice);
@@ -820,6 +908,8 @@ export class Room {
       try { old.close(1000); } catch (e) {}
     }
     this.state.acceptWebSocket(ws, ["host"]);
+    // The stored offer belonged to the dead socket's transports; the
+    // host re-offers on the fresh one.
     this.r.offer = null;
     this.r.offer_pv = null;
     this.r.host_cands = [];
@@ -827,37 +917,65 @@ export class Room {
     await this.save();
     this.send_ice(ws, ice);
     this.safeSend(ws, { t: "room", code, token: this.r.host_token });
-    const j = this.joinerWs();
-    if (j) this.safeSend(j, { t: "peer", ev: "host-back" });
-    // The reclaimed host missed any identity the joiner sent while it was
-    // gone; replay it. The host re-announces its own on the fresh Room frame.
-    this.replay_identity(ws, "joiner");
+    for (const j of this.joinerWss())
+      this.safeSend(j, { t: "peer", ev: "host-back" });
+    // The reclaimed host missed any identity the joiners sent while it was
+    // gone; replay every jid's (including late-attested departed ones — the
+    // player is still mid-game over WebRTC). The host re-announces its own
+    // on the fresh Room frame.
+    for (const jid of Object.keys(this.r.jids))
+      this.replay_identity(ws, "joiner", jid);
   }
 
   async accept_joiner(ws, ice) {
-    this.state.acceptWebSocket(ws, ["joiner"]);
-    // A vacant-slot late verify (attest_identity's epoch-mismatch path) may
-    // have stored the DEPARTED occupant's identity after drop_joiner nulled
-    // it. This socket may be a different player: clear the stale badge so
-    // the never-demote guard can't pin the old verified name onto the new
-    // occupant (whose own announce arrives momentarily).
-    if (this.r.joiner_identity) {
-      this.r.joiner_identity = null;
-      await this.save();
+    // Mint the jid and carry it in the socket's tags — the only per-socket
+    // state that survives hibernation. Never reused (see the header), which
+    // is what keeps the late-verify race one-sided: a fresh player can
+    // never inherit a departed jid's badge.
+    const jid = this.r.next_jid;
+    this.r.next_jid = jid + 1;
+    this.state.acceptWebSocket(ws, ["joiner", "j:" + jid]);
+    this.jid_entry(jid);
+    // Prune entries whose socket is gone and whose identity isn't a
+    // VERIFIED attestation: keeps the room record bounded under churn — an
+    // unverified claim costs nothing to mint, so claim-then-leave loops
+    // must not accrete storage toward the DO's per-value cap. Verified
+    // entries stay for the reclaim replay, and a recent verify_at means a
+    // platform round-trip may still be in flight for the departed jid (the
+    // late-attest path) — give it well past the verify window first.
+    const prune_now = Date.now();
+    for (const k of Object.keys(this.r.jids)) {
+      const e = this.r.jids[k];
+      if ((!e.identity || !e.identity.verified) && Number(k) !== jid &&
+          !this.joinerWsById(k) &&
+          (!e.verify_at || prune_now - e.verify_at > 15000))
+        delete this.r.jids[k];
     }
+    await this.save();
     this.send_ice(ws, ice);
     this.safeSend(ws, { t: "joined" });
     const h = this.hostWs();
-    if (h) this.safeSend(h, { t: "peer", ev: "join" });
+    if (h) this.safeSend(h, { t: "peer", ev: "join", from: String(jid) });
+    // Replay the legacy unaddressed offer slot — CONSUMED on delivery: the
+    // SDP is single-use, so a second joiner must never receive the same
+    // one. (Addressed offers are relay-only; a fresh jid can't have one.)
     if (this.r.offer) {
       const replay = { t: "offer", sdp: this.r.offer };
       if (this.r.offer_pv) replay.pv = this.r.offer_pv;
       this.safeSend(ws, replay);
       // Trickle: candidates the host gathered before this joiner arrived.
       for (const c of this.r.host_cands) this.safeSend(ws, c);
+      this.r.offer = null;
+      this.r.offer_pv = null;
+      this.r.host_cands = [];
+      await this.save();
     }
-    // Replay the host's attested identity to a joiner that arrived after it
-    // was announced (the common ordering: host registers, then joiner).
+    // Replay the host's attested identity ONLY. Joiner badges are not
+    // fanned to other joiners yet: today's 2P clients apply identity
+    // frames role-blind (the single attested_peer_ slot), so a replayed
+    // joiner badge — including a rejoiner's OWN — would overwrite the
+    // host's on their screen. B4's lobby roster adds the per-jid consumer
+    // and the fan-out with it.
     this.replay_identity(ws, "host");
   }
 
@@ -873,7 +991,7 @@ export class Room {
     if (!msg || typeof msg !== "object") return;
     const tags = this.state.getTags(ws);
     if (tags.includes("host")) await this.from_host(msg);
-    else if (tags.includes("joiner")) await this.from_joiner(msg);
+    else if (tags.includes("joiner")) await this.from_joiner(msg, this.jidOf(ws));
   }
 
   async webSocketClose(ws) { await this.drop(ws); }
@@ -892,51 +1010,98 @@ export class Room {
     // covers real drops.
     if (msg.t === "close") { await this.expire("host-closed"); return; }
     if (msg.t === "identity") { await this.attest_identity("host", msg); return; }
+    // A well-formed addressed frame carries to:"<digits>" (PB-D5); anything
+    // else is the legacy unaddressed form.
+    const to = typeof msg.to === "string" && /^\d{1,6}$/.test(msg.to)
+        ? Number(msg.to) : null;
     if (msg.t === "offer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
-      this.r.offer = msg.sdp; // kept for a joiner (or rejoiner) arriving later
       // Version stamp (pv): stored with the offer so the replay to a
       // late-arriving joiner carries it too — the game fails fast on a
       // mismatch before ICE. Old games send no pv.
-      this.r.offer_pv =
-        typeof msg.pv === "string" && msg.pv.length <= 8 ? msg.pv : null;
-      this.r.host_cands = []; // fresh offer = fresh transport = old cands stale
-      await this.save();
-      const j = this.joinerWs();
-      if (j) this.safeSend(j, msg);
+      const pv = typeof msg.pv === "string" && msg.pv.length <= 8 ? msg.pv : null;
+      if (to !== null) {
+        // Addressed (per-jid) offer: relay-only. A jid's socket is
+        // connected for its whole life (the host can only learn a jid
+        // from its join event), so a disconnected target means the jid
+        // departed — the offer is stale by definition and storing it
+        // would only grow the room record (a host re-offers to the
+        // REPLACEMENT jid on its join event).
+        const j = this.joinerWsById(to);
+        if (j) this.safeSend(j, msg);
+      } else {
+        // Legacy unaddressed offer (2P hosts): to the oldest connected
+        // joiner NOW — consumed, not stored, since an SDP is single-use —
+        // or stored for a one-shot replay to the next arrival.
+        const j = this.oldestJoinerWs();
+        if (j) {
+          this.safeSend(j, msg);
+          if (this.r.offer) {
+            this.r.offer = null;
+            this.r.offer_pv = null;
+            this.r.host_cands = [];
+            await this.save();
+          }
+        } else {
+          this.r.offer = msg.sdp;
+          this.r.offer_pv = pv;
+          this.r.host_cands = [];
+          await this.save();
+        }
+      }
     }
     // Trickle ICE (M3-2b): relay candidates. Only BUFFER (persist) them
-    // when there's no joiner yet — the buffer exists solely to replay to a
-    // joiner arriving mid-gather, so once a joiner is present each
+    // when the target isn't connected yet — the buffer exists solely to
+    // replay to a joiner arriving mid-gather, so once it is present each
     // candidate is relayed live and persisting it is pure cost (it was
     // re-serializing the whole room record, offer SDP included, per
-    // candidate). Candidates after the joiner arrives don't touch storage.
+    // candidate). Candidates after the target arrives don't touch storage.
     if (msg.t === "cand" && typeof msg.cand === "string" &&
         msg.cand.length <= MAX_CAND_LEN) {
       const frame = { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand };
-      const j = this.joinerWs();
-      if (j) {
-        this.safeSend(j, frame);
-      } else if (this.r.host_cands.length < MAX_CANDS) {
-        this.r.host_cands.push(frame);
-        await this.save();
+      if (to !== null) {
+        // Relay-only, like the addressed offer above.
+        const j = this.joinerWsById(to);
+        if (j) this.safeSend(j, frame);
+      } else {
+        const j = this.oldestJoinerWs();
+        if (j) {
+          this.safeSend(j, frame);
+        } else if (this.r.host_cands.length < MAX_CANDS) {
+          this.r.host_cands.push(frame);
+          await this.save();
+        }
       }
     }
   }
 
-  async from_joiner(msg) {
-    if (msg.t === "identity") { await this.attest_identity("joiner", msg); return; }
+  async from_joiner(msg, jid) {
+    if (msg.t === "identity") {
+      // jid null = a pre-multi-join socket surviving the deploy; its
+      // announce would key the map under "null" — skip (the badge falls
+      // to the role label for that bounded transition window).
+      if (jid !== null) await this.attest_identity("joiner", msg, jid);
+      return;
+    }
+    // Joiner frames are stamped {from: jid} for the host (PB-D5) — the
+    // joiner itself never learns its jid; the worker derives it from the
+    // socket's tag, so old joiners need no change. A null jid (pre-deploy
+    // socket) forwards unstamped, exactly the old frames.
     if (msg.t === "answer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
       const h = this.hostWs();
-      if (h) this.safeSend(h, msg);
+      if (h) this.safeSend(h, jid === null ? msg : { ...msg, from: String(jid) });
     }
     if (msg.t === "cand" && typeof msg.cand === "string" &&
         msg.cand.length <= MAX_CAND_LEN) {
       // No buffering: the host is connected whenever a joiner exists (or
       // in grace, when its dead transport couldn't use them anyway).
       const h = this.hostWs();
-      if (h) this.safeSend(h, { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand });
+      if (h) {
+        const frame = { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand };
+        if (jid !== null) frame.from = String(jid);
+        this.safeSend(h, frame);
+      }
     }
   }
 
@@ -945,9 +1110,11 @@ export class Room {
   async drop_host(ws) {
     if (this.r.host_lost_at && !this.hostWs()) return;   // already in grace
     if (this.state.getWebSockets("host").some((w) => w !== ws)) return; // superseded
+    // Every stored offer belonged to the dead socket's transports.
     this.r.offer = null;
     this.r.offer_pv = null;
     this.r.host_cands = [];
+    this.r.offers = {};
     this.r.host_lost_at = Date.now();
     // Invalidate any host verify still in flight (see attest_identity's
     // epoch check). Reclaim requires the token, so the occupant can't
@@ -956,35 +1123,54 @@ export class Room {
     this.r.host_id_epoch = (this.r.host_id_epoch || 0) + 1;
     await this.save();
     await this.state.storage.setAlarm(this.r.host_lost_at + HOST_GRACE_MS);
-    const j = this.joinerWs();
-    if (j) this.safeSend(j, { t: "peer", ev: "host-lost" });
+    for (const j of this.joinerWss())
+      this.safeSend(j, { t: "peer", ev: "host-lost" });
   }
 
   async drop_joiner(ws) {
-    if (this.state.getWebSockets("joiner").some((w) => w !== ws)) return;
-    // The stored offer likely belongs to a transport that joiner was
-    // party to; replaying it to a REjoiner dead-ends the handshake. The
-    // host re-offers on peer-leave (lobby) or on its rejoin flow (game),
-    // and that fresh offer is stored and replayed instead.
-    this.r.offer = null;
-    this.r.offer_pv = null;
-    this.r.host_cands = [];
-    // The departed joiner's attestation is stale — a different player may
-    // take the slot. Drop it so a host reclaim can't replay the old identity,
-    // and clear the verify/claim throttle stamps too: a fast rejoiner
-    // (within VERIFY_MIN_INTERVAL_MS) would otherwise be throttled and
-    // never attested, since clients announce their identity only once on
-    // connect. Bumping the epoch invalidates any verify still in flight
-    // for the departed occupant (see attest_identity) — without it the
-    // resolving verify would write the old identity right back over this
-    // deliberate null.
-    this.r.joiner_identity = null;
-    this.r.joiner_verify_at = 0;
-    this.r.joiner_claim_at = 0;
-    this.r.joiner_id_epoch = (this.r.joiner_id_epoch || 0) + 1;
+    const jid = this.jidOf(ws);
+    if (jid === null) {
+      // A socket accepted by the PRE-multi-join worker (no jid tag, alive
+      // across the deploy): give it the old drop semantics — clear the
+      // legacy offer slot when it was the last joiner and tell the host,
+      // unstamped, so the lobby's re-offer flow still runs.
+      if (this.joinerWss().length === 0) {
+        this.r.offer = null;
+        this.r.offer_pv = null;
+        this.r.host_cands = [];
+        await this.save();
+      }
+      const h0 = this.hostWs();
+      if (h0) this.safeSend(h0, { t: "peer", ev: "leave" });
+      return;
+    }
+    // Superseded: another socket already carries THIS jid's tag (jids are
+    // never reused, so this can only be error-then-close double delivery).
+    if (this.state.getWebSockets("j:" + jid).some((w) => w !== ws)) return;
+    // The legacy offer slot is cleared when this was the only joiner — the
+    // 2P flow this room may be serving; the host re-offers on peer-leave
+    // (lobby) or its rejoin flow (game). Addressed offers are relay-only,
+    // so there is no per-jid buffer to clear.
+    if (this.joinerWss().length === 0) {
+      this.r.offer = null;
+      this.r.offer_pv = null;
+      this.r.host_cands = [];
+    }
+    // Bump the jid's epoch: invalidates any verify still in flight enough
+    // for attest_identity to notice the departure (the late path may still
+    // attest it to this jid — never to a replacement, since jids are not
+    // reused). An UNVERIFIED identity dies with the socket (a claim is
+    // free to mint, so keeping it would let claim-then-leave churn grow
+    // the room record without bound); verified ones stay for the host
+    // reclaim replay.
+    const ent = this.r.jids[jid];
+    if (ent) {
+      ent.epoch = (ent.epoch || 0) + 1;
+      if (ent.identity && !ent.identity.verified) ent.identity = null;
+    }
     await this.save();
     const h = this.hostWs();
-    if (h) this.safeSend(h, { t: "peer", ev: "leave" });
+    if (h) this.safeSend(h, { t: "peer", ev: "leave", from: String(jid) });
   }
 
   // Close all sockets and reset room state. A host-close leaves a "closed"
@@ -995,8 +1181,10 @@ export class Room {
     for (const ws of this.state.getWebSockets()) {
       try { ws.send(bye); ws.close(1000); } catch (e) {}
     }
-    this.r = { offer: null, host_cands: [], host_token: null,
-               host_lost_at: 0, created: 0, closed: reason === "host-closed" };
+    this.r = { offer: null, offer_pv: null, host_cands: [],
+               host_token: null, host_lost_at: 0, created: 0,
+               closed: reason === "host-closed", host_identity: null,
+               next_jid: 1, jids: {} };
     await this.save();
     await this.state.storage.setAlarm(Date.now() + HOST_GRACE_MS);
   }
@@ -1015,8 +1203,9 @@ export class Room {
     for (const ws of this.state.getWebSockets()) {
       try { ws.send(JSON.stringify({ t: "err", reason: "expired" })); ws.close(1000); } catch (e) {}
     }
-    this.r = { offer: null, host_cands: [], host_token: null,
-               host_lost_at: 0, created: 0, closed: false };
+    this.r = { offer: null, offer_pv: null, host_cands: [],
+               host_token: null, host_lost_at: 0, created: 0, closed: false,
+               host_identity: null, next_jid: 1, jids: {} };
     await this.state.storage.deleteAll();
   }
 }

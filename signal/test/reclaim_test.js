@@ -48,12 +48,15 @@ function check(name, cond) {
   check("joiner sees host-lost", hl.t === "peer" && hl.ev === "host-lost");
   await t(300);
 
-  // 4. A fresh host must NOT be able to squat the in-grace code.
-  //    (direct probe: role=host mints random codes, so hit /exists via a
-  //    join attempt on a second slot instead — full room refuses.)
+  // 4. The in-grace room is still ALIVE: a second joiner is admitted into
+  //    an open seat (multi-join, PB-D5 — this used to assert room-full
+  //    back when rooms held one joiner; capacity_test.mjs owns the cap
+  //    assertions now). Close it again so the rest of the flow stays 1:1.
   const squat = await connect(`?role=join&code=${code}`);
   const sq = await squat._recv();
-  check("second joiner refused (room-full, room still alive)", sq.t === "err" && sq.reason === "room-full");
+  check("second joiner admitted (room still alive in grace)", sq.t === "joined");
+  squat.close();
+  await t(200);
 
   // 5. Reclaim with a WRONG token is refused.
   const bad = await connect(`?role=host&code=${code}&token=nope`);

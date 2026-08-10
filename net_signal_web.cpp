@@ -117,17 +117,17 @@ public:
     open(url + "?role=join&code=" + upper);
   }
 
-  void send_offer(const std::string &sdp) override {
-    send_frame(NetSig::offer_frame(sdp));
+  void send_offer(const std::string &sdp, const std::string &to) override {
+    send_frame(NetSig::offer_frame(sdp, to));
   }
 
   void send_answer(const std::string &sdp) override {
     send_frame(NetSig::answer_frame(sdp));
   }
 
-  void send_cand(const std::string &mid, const std::string &cand) override {
-    send_frame("{\"t\":\"cand\",\"mid\":\"" + NetSig::json_escape(mid) +
-               "\",\"cand\":\"" + NetSig::json_escape(cand) + "\"}");
+  void send_cand(const std::string &mid, const std::string &cand,
+                 const std::string &to) override {
+    send_frame(NetSig::cand_frame(mid, cand, to));
   }
 
   void send_close() override { send_frame("{\"t\":\"close\"}"); }

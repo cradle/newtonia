@@ -22,6 +22,8 @@
 
 #include <SDL.h>
 
+#include <map>
+
 #include <set>
 #include <string>
 #include <vector>
@@ -230,6 +232,14 @@ private:
   // in here and hand it to the GLGame at construction. Empty until the
   // `identity` message arrives (or forever, on a legacy/unverified peer).
   NetIdentity attested_peer_;
+  // Multi-join worker scoping (B3): the room admits several joiners, so a
+  // hosting lobby keys attestations by the announcing jid (the frame's
+  // `from` stamp) and only the jid whose ANSWER we adopt becomes
+  // attested_peer_ — a third joiner's badge must never overwrite the
+  // paired peer's. Legacy frames (no `from` — the pre-multi-join worker,
+  // which only ever relays the paired joiner) fold directly as before.
+  std::map<std::string, NetIdentity> jid_attested_;
+  std::string paired_jid_;  // the jid whose answer created session_
   // A signaling worker was actually used (room-code flow) — the session is
   // ONLINE-strict for identity display. The manual clipboard fallback clears
   // this (worker-less = OFFLINE, the peer's claimed name renders). Set true
