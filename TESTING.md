@@ -375,6 +375,12 @@ test/e2e/threeseat.sh # B4b smoke, now a SEATS=3 nseat.sh run (wrapper keeps
                      # the THREESEAT-SMOKE-OK contract)
 test/e2e/threeseat_rejoin.sh # B5 smoke, now a SEATS=3 nseat_rejoin.sh run
                      # (wrapper keeps the THREESEAT-REJOIN-OK contract)
+test/e2e/pairstart.sh # B7 shipping pair flow at the DEFAULT cap (the one
+                     # driver with NO NEWTONIA_NET_TEST_SEATS pin): a host +
+                     # one joiner lands in the waiting room at 2/4, must NOT
+                     # auto-start, and the host's ENTER starts the game with
+                     # one peer (lib.sh pins every classic 2P driver to the
+                     # pairwise cap; this covers what an install actually runs)
 test/e2e/shock_net.sh # PROTO 22: Shock chain-lightning both ways. Both sides
                      # launch with NEWTONIA_ALL_WEAPONS=1, fire held, and must
                      # log "shock bolt received" (MSG_SHOCK) both directions with

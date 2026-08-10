@@ -265,8 +265,8 @@ bool net_state_sane(const Save::GameState &s) {
   if (s.world_x < 500.0f || s.world_x > 200000.0f) return false;
   if (s.world_y < 500.0f || s.world_y > 200000.0f) return false;
   // PROTO 25: up to MAX_PLAYERS seats on the wire (the live session count
-  // stays gated by NET_PLAYER_CAP until the B7 flip; this is the SANITY
-  // bound, not the seat policy). Seat ids, when present (v19+), must be
+  // is gated by net_seat_cap(); this is the SANITY bound, not the seat
+  // policy). Seat ids, when present (v19+), must be
   // distinct and in range — a duplicate would fold two ships onto one
   // slot in the seat-keyed restore paths.
   if (s.players.size() < 1 || s.players.size() > (size_t)MAX_PLAYERS)

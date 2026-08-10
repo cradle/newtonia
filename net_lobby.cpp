@@ -81,6 +81,13 @@ static bool s_join_force_relay = false;
 const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
 // RoomHost: the "TAP TO SHARE" line, padded to finger height.
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
+// RoomHost waiting room (B7 touch pass): TAP TO START, between the room
+// code (anchor 220, 48-size glyphs reach ~124) and the share band's
+// padded top (-38; this band's padded box stops at -36 — they must not
+// overlap or a start tap could share instead). Only drawn — and only
+// tappable — once a peer is seated, the touch twin of the desktop
+// "ENTER - START GAME" row.
+const TapBand kStartBand(0.5f, 40, 22, 32.0f);
 // CodeEntry LAN host bands (touch): above the soft keyboard (max 3).
 // Filled BOTTOM-UP — one host uses only the lowest band, sitting in
 // the free space just above the keyboard, well clear of the code
@@ -2050,9 +2057,8 @@ void NetLobby::draw() {
           Typer::draw_centered(0, -180, "A LAN PLAYER IS CONNECTING", 12);
         if (blink) {
           if (waiting_room()) {
-            // Touch waiting room (post-B7 only; unreachable until the cap
-            // flips there): count line only — the tap-to-start band lands
-            // with the B7 touch pass.
+            // Touch waiting room: the count line (the per-seat name roster
+            // stays a desktop nicety — vertical space is scarce here).
             char buf[40];
             snprintf(buf, sizeof(buf), "WAITING FOR PLAYERS %d/%d",
                      (int)seated_.size() + 1, net_seat_cap());
@@ -2061,6 +2067,9 @@ void NetLobby::draw() {
             Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
           }
         }
+        // Steady, not on the blink phase — a vanishing tap target reads
+        // as a dead button mid-blink (the share band is steady too).
+        if (waiting_room() && !seated_.empty()) kStartBand.draw("TAP TO START");
       } else {
         lines.push_back("ROOM CODE");
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
@@ -2877,6 +2886,13 @@ void NetLobby::touch_tap(float nx, float ny) {
         if (floating_kb_up_) floating_kb_available_ = true;
       break;
     case RoomHost:
+      // The waiting room's start band outranks the share band below it —
+      // waiting_room_start() guards itself (no-op when nobody is seated
+      // or the hand-off already happened), so a stale tap is safe.
+      if (waiting_room() && !seated_.empty() && kStartBand.contains(nx, ny)) {
+        waiting_room_start();
+        break;
+      }
       if (kShareBand.contains(nx, ny) && !room_code_.empty() &&
           net_share_available())
         // Share ONE universal link, regardless of the host's platform: the
