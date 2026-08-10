@@ -464,7 +464,34 @@ Sequential master-based PRs, inert until the B7 flip:
   the rejoin door re-welcomes onto seat 2, so a non-front peer's
   mid-game drop degrades (wrong-peer pause/rejoin, no crash) until
   B5's per-seat resume.
-- **B5 — Per-seat resume/rejoin + spectate cycling** (PB-D7).
+- **B5 — Per-seat resume/rejoin + spectate cycling** (PB-D7). LANDED:
+  per-peer loss detection (RX watchdog + transport watch + EV_BYE by
+  sender, per seat), per-seat park (NetPeer::parked; the hull freezes
+  shielded) with the play-on policy — the room pauses only when the LAST
+  live remote drops (net_rejoin_parked_ is now the room-pause latch) —
+  and the rejoin doors serve the LOWEST parked seat first (serialized on
+  purpose: the relay offer is one unaddressed slot, so simultaneous
+  rejoiners would scramble; the second waits its turn). Identity events
+  fold by jid across the roster; pings/RTT are per peer. Spectate
+  cycles: spectate_target() follows the first living other player and
+  advances as they fall. The 2P fast-loss-detect (PeerJoin while
+  healthy) stays N=1-only — a rejoiner's fresh jid can't name a seat at
+  N>1, so the watchdogs carry it. A doorless loss is terminal only when
+  ALL peers are gone. "player N lost/rejoined" log strings keep the 2P
+  grep contract at seat 2. Verified by `test/e2e/threeseat_rejoin.sh`
+  (SIGKILL seat 3 mid-game → play-on unpaused → relaunch rejoins seat 3)
+  plus the unchanged 2P suite. Post-review hardening: paused-tick
+  watchdog baselines, the parked-shield re-assert, held-input suppress
+  and the pause/BYE/cosmetic-event/touch-exit gates all generalized off
+  the front peer (play-on must keep serving the healthy seats); the
+  spectate camera skips parked hulls at N>1; a relay adoption at N>1
+  closes the still-beaconing LAN door (its blob was minted for that
+  seat). Still open for B6/B7: a rejoiner is seated by
+  lowest-parked-seat, not identity — two simultaneous drops can swap
+  hulls if they rejoin in the other order; and at N>1 a rejoiner whose
+  adoption transport flaps waits out the full ICE timeout before the
+  door re-arms (the fast PeerJoin re-offer is N=1-only — a fresh jid
+  cannot name a seat).
 - **B6 — Multi-instance e2e**: extend test/e2e's lib to N joiner
   instances; 3-and-4-seat connect/play/drop/rejoin/game-over suites; a
   soak. CI stays 2-instance (runner cost); the N-instance suite runs
