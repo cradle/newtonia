@@ -2246,8 +2246,8 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
       // OFF with the rule enabled), so re-announce it here too.
       // Targeted (B4): only the peer whose first INPUT just landed needs
       // the resync — re-syncing the others would blip their HUDs.
-      if (!running) net_send_event_to(net_peer_make(), Net::EV_PAUSE);
-      net_send_event_to(net_peer_make(), Net::EV_FRIENDLY_FIRE,
+      if (!running) net_send_event_to(peer, Net::EV_PAUSE);
+      net_send_event_to(peer, Net::EV_FRIENDLY_FIRE,
                         friendly_fire ? 1u : 0u);
     }
 
