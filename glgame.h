@@ -93,6 +93,12 @@ public:
   // The peer's ship on this machine (the entry local_player() is not), or
   // NULL in single-machine play. The spectate camera target.
   GLShip *remote_player() const;
+  // PROTO 25 seat lookups (FOURPLAYER.md PB-D3): the ship sitting in a
+  // 1-based wire seat (NULL if unoccupied), and the seat this machine's
+  // own pilot occupies (host/offline 1, client its WELCOME assignment).
+  GLShip *player_by_seat(int seat) const;
+  int net_local_seat() const;
+  Ship *net_firer_ship(int seat) const;
   // The ship the camera follows: normally the local player, but the peer
   // once this machine's player is fully out and spectating has begun.
   GLShip *camera_target() const;

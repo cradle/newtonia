@@ -30,8 +30,11 @@ use_home() {
 # field FILE NAME -> value from replay_check.py
 field() { python3 "$CHECK" "$1" | sed -n "s/^$2=//p"; }
 
-# save_run_id -> hex of the savegame's trailing run_id (v17 appends it last)
-save_run_id() { tail -c 8 "$SAVE" | od -An -tx1 | tr -d ' \n'; }
+# save_run_id -> hex of the savegame's run_id append (v17). No longer the
+# trailing 8 bytes: v18 appended time-slow (int32 ms + u8 owner) and v19
+# one seat byte per player after it — these runs are SOLO, so the tail is
+# run_id(8) ms(4) owner(1) seat(1) and run_id starts 14 bytes from the end.
+save_run_id() { tail -c 14 "$SAVE" | head -c 8 | od -An -tx1 | tr -d ' \n'; }
 # header run_id, byte-reversed to match od's little-endian byte order
 file_run_id() { dd if="$1" bs=1 skip=32 count=8 2>/dev/null | od -An -tx1 | tr -d ' \n'; }
 
@@ -101,7 +104,10 @@ key "$W" Escape; sleep 2
 stop_at_menu $P
 [ -f "$RDIR/recent.nrp" ] || fail "S1: NEW GAME did not rotate into recent"
 [ "$(file_run_id "$RDIR/recent.nrp")" = "$RID1" ] || fail "S1: recent is not the old run"
-[ -f "$RDIR/best.nrp" ] || fail "S1: clean non-cheated run should promote first best"
+# A scoreless run never promotes (replay.cpp maybe_promote_best — the
+# board refuses score-0 entries, LEADERBOARD.md): this drifting run scored
+# 0, so no best yet. S2's scoring run promotes the first best instead.
+[ -f "$RDIR/best.nrp" ] && fail "S1: scoreless run must not promote best"
 [ "$(file_run_id "$RDIR/current.nrp")" = "$RID1" ] && fail "S1: new game reused old run_id"
 
 echo "===== S2: higher-scoring run replaces best ====="

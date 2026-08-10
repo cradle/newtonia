@@ -123,9 +123,14 @@ static const float *seat_tint(int player_index) {
 // the grid — P1 blue ship, P2 orange car, P3 green ship, P4 violet car —
 // so diagonal partners never share both shape and colour.
 static GLShip *make_seat_ship(const Grid &grid, int seat) {
-  if (seat == 0) return new GLShip(grid, true);
-  if (seat == 2) return new GLShip(grid, true, seat_tint(seat));
-  return new GLCar(grid, true, seat_tint(seat));
+  GLShip *gs;
+  if (seat == 0) gs = new GLShip(grid, true);
+  else if (seat == 2) gs = new GLShip(grid, true, seat_tint(seat));
+  else gs = new GLCar(grid, true, seat_tint(seat));
+  // PROTO 25 wire identity: seats are 1-based on the wire (0 = "not a
+  // seated player"), while this helper's arg is the 0-based list index.
+  gs->ship->net_seat = (uint8_t)(seat + 1);
+  return gs;
 }
 
 // with_bindings=false applies only the seat's scalars (sensitivity, camera
@@ -256,6 +261,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
   grid.update((std::list<Object *>*)objects);
 
   GLShip *object = new GLShip(grid, true);
+  object->ship->net_seat = 1;
   set_player_keys(object, 0);
   object->ship->is_local_player = true;
   // A new game begins legitimately: lift any XR-057 suppression left over
@@ -452,15 +458,20 @@ GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
   net_room_code_ = room_code;
   net_room_token_ = room_token;
   // The save-restore base constructor made every saved ship a local
-  // player; the last one is the REMOTE peer's — strip its bindings and
+  // player; every seat but 1 is a REMOTE peer's — strip its bindings and
   // arm the host-side remote semantics (add_remote_player's arming minus
-  // the spawn: restore_state already placed the hull).
+  // the spawn: restore_state already placed the hull). Seat-keyed since
+  // PROTO 25 (an online v19 save names each ship's seat); a pre-v19
+  // online save was always [P1, peer], and its positional seats (i+1)
+  // pick the same ships.
   if (players->size() >= 2) {
-    GLShip *remote = players->back();
-    remote->ship->is_local_player = false;
-    remote->clear_keys();
-    remote->set_controller(NULL);
-    remote->ship->net_remote_gun = true;
+    for (auto *gs : *players) {
+      if (gs->ship->net_seat == 1) continue;
+      gs->ship->is_local_player = false;
+      gs->clear_keys();
+      gs->set_controller(NULL);
+      gs->ship->net_remote_gun = true;
+    }
     players->front()->ship->net_report_shots = true;
   }
   net_peer_make().lost = true;
@@ -703,10 +714,15 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     hazards->push_back(Hazard::from_state(sh, world));
   }
 
-  // Restore players — each seat gets its hull/tint (make_seat_ship)
+  // Restore players — each seat gets its hull/tint (make_seat_ship). A
+  // v19+ file names each entry's seat; pre-v19 (seat 0) falls back to the
+  // old positional rule (entry i = seat i+1) — identical while seats are
+  // dense, and the hull/tint/net_seat all follow the SAVED seat once B4
+  // makes them sparse.
   for (const auto &sp : save.players) {
     bool is_p1 = players->empty();
-    GLShip *gs = make_seat_ship(grid, (int)players->size());
+    int seat_idx = sp.seat ? (int)sp.seat - 1 : (int)players->size();
+    GLShip *gs = make_seat_ship(grid, seat_idx);
     set_player_keys(gs, (int)players->size());
     // Set before restore_state() so restored weapons attribute correctly.
     gs->ship->is_local_player = true;
@@ -1336,6 +1352,7 @@ void GLGame::update_presence() const {
 void GLGame::add_remote_player() {
   if((int)players->size() >= NET_PLAYER_CAP) return;
   GLShip* object = new GLCar(grid, true);
+  object->ship->net_seat = (uint8_t)(players->size() + 1);
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
@@ -1574,7 +1591,7 @@ void GLGame::net_ping_tick(int delta) {
     if (buffered > 0) NET_LOG("net: tx buffered %d bytes\n", buffered);
   }
   std::vector<uint8_t> p;
-  Net::put_header(p, Net::MSG_PING, net_mode_ == NetHost ? 1 : 2);
+  Net::put_header(p, Net::MSG_PING, (uint8_t)net_local_seat());
   Net::put_u32(p, (uint32_t)SDL_GetTicks());
   net_session()->transport()->send_unreliable(&p[0], p.size());
 }
@@ -1584,7 +1601,7 @@ bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
     uint32_t t = r.u32();
     if (!r.ok) return true;
     std::vector<uint8_t> p;
-    Net::put_header(p, Net::MSG_PONG, net_mode_ == NetHost ? 1 : 2);
+    Net::put_header(p, Net::MSG_PONG, (uint8_t)net_local_seat());
     Net::put_u32(p, t);
     net_session()->transport()->send_unreliable(&p[0], p.size());
     return true;
@@ -1793,6 +1810,16 @@ void net_decay_render_offset(Object &o, int delta,
 void GLGame::net_host_poll() {
   NetTransport *t = net_session()->transport();
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
+  // PROTO 25: a peer's effect messages (SHOT/LANCE/SHOCK) name the firing
+  // seat in the header. Resolve it — bounded to REMOTE seats only (2..),
+  // so a bad byte can never point a peer's effects at the host's own ship.
+  // At one peer this is exactly the old `remote`; at B4 it picks the
+  // sending peer's ship out of the roster.
+  auto firer_by_header = [&](const Net::Header &h) -> Ship * {
+    if (h.player_id < 2) return remote;  // legacy-shaped byte: old behaviour
+    GLShip *gs = player_by_seat(h.player_id);
+    return gs ? gs->ship : remote;
+  };
 
   // Mid-gap marker (host side): fires once when INPUT silence crosses
   // 300 ms, with our send-buffer depth at that instant — pairs with the
@@ -1881,12 +1908,13 @@ void GLGame::net_host_poll() {
       uint32_t id = r.u32();
       float sx = r.f32(), sy = r.f32(), svx = r.f32(), svy = r.f32();
       uint8_t flags = r.u8();
-      if (!r.ok || !remote) continue;
+      Ship *firer = firer_by_header(h);
+      if (!r.ok || !firer) continue;
       if (std::isfinite(sx) && std::isfinite(sy) && std::isfinite(svx) &&
           std::isfinite(svy) && svx * svx + svy * svy < 25.0f) {
-        remote->net_spawn_reported_bullet(id, Point(sx, sy), Point(svx, svy),
-                                          (flags & 1) != 0, (flags & 2) != 0,
-                                          (flags & 4) != 0);  // PROTO 18 pierce
+        firer->net_spawn_reported_bullet(id, Point(sx, sy), Point(svx, svy),
+                                         (flags & 1) != 0, (flags & 2) != 0,
+                                         (flags & 4) != 0);  // PROTO 18 pierce
         // Replay tee: the remote gun's sound cue — its bullets ride the
         // snapshots, but the pew never would (the outbox tee is suppressed
         // with the rest of the remote gun sim).
@@ -1901,14 +1929,15 @@ void GLGame::net_host_poll() {
       // here — ship damage is host authority, and the polyline is already
       // on the wire, so no extra message is needed. The size guard skips
       // resolution if the receive bailed without pushing a pulse.
-      if (!remote) continue;
-      size_t before = remote->lance_pulses.size();
-      if (net_receive_lance_pulse(r, remote) &&
-          remote->lance_pulses.size() > before) {
-        replay_record_polyline(Replay::FX_LANCE, remote,
-                               remote->lance_pulses.back().points);
-        resolve_lance_ship_hits(remote, remote->lance_pulses.back().points);
-        net_resolve_polyline_block(remote->lance_pulses.back().points);
+      Ship *firer = firer_by_header(h);
+      if (!firer) continue;
+      size_t before = firer->lance_pulses.size();
+      if (net_receive_lance_pulse(r, firer) &&
+          firer->lance_pulses.size() > before) {
+        replay_record_polyline(Replay::FX_LANCE, firer,
+                               firer->lance_pulses.back().points);
+        resolve_lance_ship_hits(firer, firer->lance_pulses.back().points);
+        net_resolve_polyline_block(firer->lance_pulses.back().points);
       }
       continue;
     }
@@ -1917,10 +1946,11 @@ void GLGame::net_host_poll() {
       // ship + zap sound, then apply station/mini HULL damage from it host-
       // side (enemy kills arrive as bullet_id-0 MSG_HIT_SHIP claims, asteroids
       // as MSG_HIT). One hull hit per bolt, like a bullet.
-      if (!remote) continue;
+      Ship *firer = firer_by_header(h);
+      if (!firer) continue;
       std::vector<Point> pts;
-      if (!net_receive_shock_pulse(r, remote, &pts)) continue;
-      replay_record_polyline(Replay::FX_SHOCK, remote, pts);
+      if (!net_receive_shock_pulse(r, firer, &pts)) continue;
+      replay_record_polyline(Replay::FX_SHOCK, firer, pts);
       // The bolt's blocked endpoint (teleport evade / tough chip / ghost
       // feedback) is the host's call — the client stopped its arc without
       // claiming (offline-consistency, Glenn 2026-08-02).
@@ -1928,13 +1958,13 @@ void GLGame::net_host_poll() {
       if (station != NULL && station->is_alive() &&
           shock_bolt_reaches(pts, station->position, station->radius)) {
         station->hit();
-        if (!station->is_alive() && remote->is_local_player)
+        if (!station->is_alive() && firer->is_local_player)
           Achievements::unlock("station_destroyed");
       }
       if (mini_station != NULL && mini_station->is_alive() &&
           shock_bolt_reaches(pts, mini_station->position, mini_station->radius)) {
-        remote->explode(mini_station->position, mini_station->velocity);
-        remote->score += GLMiniStation::REWARD;
+        firer->explode(mini_station->position, mini_station->velocity);
+        firer->score += GLMiniStation::REWARD;
         mini_station->destroy();
         if (station_explode_sound != NULL)
           Mix_PlayChannel(-1, station_explode_sound, 0);
@@ -1949,7 +1979,7 @@ void GLGame::net_host_poll() {
         if (!shock_bolt_reaches(pts, h->position, h->radius)) continue;
         if (h->kind_of() == Hazard::SEEKER) {
           h->destroy();
-          remote->score += Hazard::SEEKER_REWARD;
+          firer->score += Hazard::SEEKER_REWARD;
           if (station_explode_sound != NULL)
             Mix_PlayChannel(-1, station_explode_sound, 0);
         } else {
@@ -1959,8 +1989,8 @@ void GLGame::net_host_poll() {
             shed_comet_fragment(h);
           }
           if (!h->is_alive()) {
-            remote->score += (h->kind_of() == Hazard::COMET)
-                                 ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+            firer->score += (h->kind_of() == Hazard::COMET)
+                                ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
             if (station_explode_sound != NULL)
               Mix_PlayChannel(-1, station_explode_sound, 0);
           }
@@ -1970,9 +2000,9 @@ void GLGame::net_host_poll() {
       // exactly like the host's own bolt-vs-partner (score, no achievement).
       if (friendly_fire && !players->empty()) {
         Ship *partner = players->front()->ship;
-        if (partner->is_alive() && partner != remote &&
+        if (partner->is_alive() && partner != firer &&
             shock_bolt_reaches(pts, partner->position, partner->radius))
-          remote->shock_hit_ship(partner);
+          firer->shock_hit_ship(partner);
       }
       continue;
     }
@@ -1985,6 +2015,9 @@ void GLGame::net_host_poll() {
       uint32_t bullet_id = r.u32();
       uint32_t target_id = r.u32();  // PROTO 16: exact enemy claimed
       float hx = r.f32(), hy = r.f32();
+      // PROTO 25: the claimant is the header's seat (deliberately shadows
+      // the function-scope `remote` for the rest of this handler).
+      Ship *remote = firer_by_header(h);
       if (!r.ok || !remote || !std::isfinite(hx) || !std::isfinite(hy))
         continue;
       if (bullet_id == 0) {
@@ -2080,6 +2113,9 @@ void GLGame::net_host_poll() {
       // sender already killed its copy, making that a no-op.
       uint32_t id = r.u32();
       uint32_t bullet_id = r.u32();  // PROTO 14: the killing bullet
+      // PROTO 25: the claimant is the header's seat (shadows the outer
+      // `remote` for this handler, like the MSG_HIT_SHIP case).
+      Ship *remote = firer_by_header(h);
       if (!r.ok || !remote) continue;
       for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
         Asteroid *a = *oi;
@@ -2896,6 +2932,11 @@ void nx_write_projectile(Save::Stream &out, const Object &o) {
 }
 
 void nx_write_ship(Save::Stream &out, const Ship &s) {
+  // PROTO 25: each ship record leads with its seat (the PROTO-16 enemy
+  // net_ship_id pattern), so receivers key records by seat instead of
+  // list position. Replay files recorded pre-v19 carry no seat byte —
+  // the reader gates on the GameState's seats being stamped.
+  nx_write(out, s.net_seat);
   nx_write(out, (uint8_t)s.is_alive());
   nx_write(out, s.temperature);
   nx_write(out, (int32_t)s.time_until_respawn);
@@ -4062,7 +4103,7 @@ void GLGame::net_send_event(uint8_t code, uint32_t arg) {
   // with no session at all — level completion and pause still fire events.
   if (!net_session()) return;
   std::vector<uint8_t> msg;
-  Net::put_header(msg, Net::MSG_EVENT, net_mode_ == NetHost ? 1 : 2);
+  Net::put_header(msg, Net::MSG_EVENT, (uint8_t)net_local_seat());
   Net::put_u8(msg, code);
   Net::put_u32(msg, arg);
   net_session()->transport()->send_reliable(&msg[0], msg.size());
@@ -4200,18 +4241,9 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
         Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
       }
       break;
-    case Net::EV_REMOTE_SHOT: {
-      // The host player's gun, attenuated by distance to our ship. Our
-      // own shots play locally; this event only ever describes P1.
-      if (players->empty()) break;
-      Ship *shooter = players->front()->ship;
-      float vol = net_listener_volume(shooter->position);
-      if (vol > 0.0f && shooter->shoot_sound) {
-        Mix_VolumeChunk(shooter->shoot_sound, (int)(MIX_MAX_VOLUME * vol));
-        Mix_PlayChannel(-1, shooter->shoot_sound, 0);
-      }
-      break;
-    }
+    // (EV_REMOTE_SHOT retired at PROTO 25 — nothing wrote it since the
+    // PROTO 17 MSG_SHOT echo; a code 12 in an old replay's records falls
+    // to the default case and is dropped silently.)
     case Net::EV_WORLD_SHOT:
     case Net::EV_WORLD_BOOM:
     case Net::EV_STATION_BOOM: {
@@ -4241,10 +4273,9 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       // Non-fatal ship-vs-asteroid bounce: debris spray on that ship
       // (explode() fills the object's own debris, which is never
       // serialized — hence invisible on the client until now).
+      // PROTO 25: arg bits 0-7 are the seat (1..MAX_PLAYERS; was 1|2).
       int idx = (int)(arg & 0xff);
-      GLShip *gs = NULL;
-      if (idx == 1 && !players->empty()) gs = players->front();
-      else if (idx == 2 && players->size() >= 2) gs = players->back();
+      GLShip *gs = player_by_seat(idx);
       if (gs && gs->ship->is_alive()) {
         gs->ship->explode(gs->ship->position, gs->ship->velocity * 0.25f);
         if (arg & 0x100)
@@ -5254,6 +5285,10 @@ void GLGame::tick_net_client(int delta) {
     return;
   }
 
+  // PROTO 25: outgoing messages stamp this machine's real seat (the
+  // WELCOME assignment) instead of the literal 2.
+  uint8_t my_seat = (uint8_t)net_local_seat();
+
   // Client hit-authority (PROTO 13): every would-kill consume detected
   // in the step loop kills the asteroid HERE — instantly, even mid-stall
   // — and sends a reliable MSG_HIT claim the host honors. Fragments,
@@ -5265,7 +5300,7 @@ void GLGame::tick_net_client(int delta) {
   // velocity, same id) instead of re-rolling its own gun sim.
   for (const Ship::NetShotReport &r : Ship::net_shot_reports) {
     std::vector<uint8_t> msg;
-    Net::put_header(msg, Net::MSG_SHOT, 2);
+    Net::put_header(msg, Net::MSG_SHOT, my_seat);
     Net::put_u32(msg, r.id);
     Net::put_f32(msg, r.x);
     Net::put_f32(msg, r.y);
@@ -5296,7 +5331,9 @@ void GLGame::tick_net_client(int delta) {
     const std::vector<Point> &pts = rep.second;
     if (pts.size() < 2 || pts.size() > 17) continue;
     std::vector<uint8_t> msg;
-    Net::put_header(msg, Net::MSG_LANCE, 2);
+    Net::put_header(msg, Net::MSG_LANCE,
+                    rep.first && rep.first->net_seat ? rep.first->net_seat
+                                                     : my_seat);
     Net::put_u8(msg, (uint8_t)pts.size());
     for (const Point &p : pts) {
       Net::put_f32(msg, p.x());
@@ -5313,7 +5350,9 @@ void GLGame::tick_net_client(int delta) {
     const std::vector<Point> &pts = rep.second;
     if (pts.size() < 2 || pts.size() > 15) continue;
     std::vector<uint8_t> msg;
-    Net::put_header(msg, Net::MSG_SHOCK, 2);
+    Net::put_header(msg, Net::MSG_SHOCK,
+                    rep.first && rep.first->net_seat ? rep.first->net_seat
+                                                     : my_seat);
     Net::put_u8(msg, (uint8_t)pts.size());
     for (const Point &p : pts) {
       Net::put_f32(msg, p.x());
@@ -5327,7 +5366,7 @@ void GLGame::tick_net_client(int delta) {
   // the referenced clone gets consumed there (exactly-once per shot).
   for (const Ship::NetShipHit &c : Ship::net_ship_hit_claims) {
     std::vector<uint8_t> msg;
-    Net::put_header(msg, Net::MSG_HIT_SHIP, 2);
+    Net::put_header(msg, Net::MSG_HIT_SHIP, my_seat);
     Net::put_u8(msg, c.kind);
     Net::put_u32(msg, c.bullet_id);
     Net::put_u32(msg, c.target_id);
@@ -5351,7 +5390,7 @@ void GLGame::tick_net_client(int delta) {
       if (dup != net_predicted_kills_.end() && current_time < dup->second)
         continue;
       std::vector<uint8_t> msg;
-      Net::put_header(msg, Net::MSG_HIT, 2);
+      Net::put_header(msg, Net::MSG_HIT, my_seat);
       Net::put_u32(msg, c.ast_id);
       Net::put_u32(msg, c.bullet_id);
       net_session()->transport()->send_reliable(&msg[0], msg.size());
@@ -5446,7 +5485,7 @@ void GLGame::net_client_send_input() {
   in.warp_echo = net_prev_warp_;
 
   std::vector<uint8_t> msg;
-  Net::encode_input(msg, in, 2);
+  Net::encode_input(msg, in, (uint8_t)net_local_seat());
   net_session()->transport()->send_unreliable(&msg[0], msg.size());
 
   // Reliable mirror (see net_mirror_* in glgame.h): every input CHANGE
@@ -5544,7 +5583,11 @@ void GLGame::net_client_poll() {
       float sx = r.f32(), sy = r.f32(), svx = r.f32(), svy = r.f32();
       uint8_t flags = r.u8();
       if (!r.ok || players->empty()) continue;
-      Ship *host_ship = players->front()->ship;
+      // PROTO 25: the header names the firing seat (the host's own player
+      // today; another peer's relayed shot at B4). Never our own seat —
+      // our shots are already local.
+      Ship *host_ship = net_firer_ship(h.player_id);
+      if (!host_ship) continue;
       float lead = net_lead_ms();
       if (std::isfinite(sx) && std::isfinite(sy) && std::isfinite(svx) &&
           std::isfinite(svy) && svx * svx + svy * svy < 25.0f) {
@@ -5560,9 +5603,11 @@ void GLGame::net_client_poll() {
     }
     if (h.msg_type == Net::MSG_LANCE) {
       // Host lance pulse echo (PROTO 18): display-only flash + sound on
-      // the host's ship; its kills arrive as ordinary removal records.
+      // the firing seat's ship; its kills arrive as ordinary removal
+      // records.
       if (players->empty()) continue;
-      Ship *host_ship = players->front()->ship;
+      Ship *host_ship = net_firer_ship(h.player_id);
+      if (!host_ship) continue;
       size_t before = host_ship->lance_pulses.size();
       if (net_receive_lance_pulse(r, host_ship) &&
           host_ship->lance_pulses.size() > before)
@@ -5572,11 +5617,14 @@ void GLGame::net_client_poll() {
     }
     if (h.msg_type == Net::MSG_SHOCK) {
       // Host shock bolt echo (PROTO 22): display-only exact segments + zap
-      // sound on the host's ship; kills replicate as removal/score records.
+      // sound on the firing seat's ship; kills replicate as removal/score
+      // records.
       if (players->empty()) continue;
+      Ship *shock_firer = net_firer_ship(h.player_id);
+      if (!shock_firer) continue;
       std::vector<Point> pts;
-      if (net_receive_shock_pulse(r, players->front()->ship, &pts))
-        replay_record_polyline(Replay::FX_SHOCK, players->front()->ship, pts);
+      if (net_receive_shock_pulse(r, shock_firer, &pts))
+        replay_record_polyline(Replay::FX_SHOCK, shock_firer, pts);
       continue;
     }
     if (h.msg_type == Net::MSG_BOUNCE) {
@@ -6000,10 +6048,19 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // authoritative one (~0.35 per snapshot) so corrections don't jerk.
   // NetReplay: there is no local ship — EVERY ship takes the remote snap
   // path (is_local false), so all ghosts ride the records exactly.
+  // PROTO 25: a v19+ entry names its seat — resolve the ship BY seat; a
+  // pre-v19 stream (seat 0, old replay files) keeps the positional walk.
+  // Both are the same pairing while seats are dense (entry i = seat i+1).
   auto it = players->begin();
   for (size_t i = 0; i < s.players.size() && it != players->end(); i++, ++it) {
-    Ship *ship = (*it)->ship;
-    bool is_local = net_mode_ == NetClient && (*it == players->back());
+    GLShip *gs_rec = *it;
+    if (s.players[i].seat) {
+      GLShip *by_seat = player_by_seat(s.players[i].seat);
+      if (!by_seat) continue;  // that seat has no local ship (yet)
+      gs_rec = by_seat;
+    }
+    Ship *ship = gs_rec->ship;
+    bool is_local = net_mode_ == NetClient && (gs_rec == players->back());
 
     // Mid-respawn on the host: skip the full restore — restore_state runs
     // respawn(), which would resurrect the corpse (burning a life) every
@@ -6161,8 +6218,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       // controls (and suppresses our held INPUT bits until re-press), so
       // the local prediction starts the level with controls released too,
       // exactly like the host's own player.
-      (*it)->net_shoot_held = false;
-      (*it)->net_secondary_held = false;
+      gs_rec->net_shoot_held = false;
+      gs_rec->net_secondary_held = false;
     }
   }
 
@@ -6301,8 +6358,16 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
                                    bool apply) {
   uint32_t nplayers = 0;
   if (!nx_read(in, nplayers)) return false;
+  // PROTO 25: each record leads with its seat byte — but only when the
+  // GameState itself carries stamped seats (v19+; always true on the live
+  // wire, absent in pre-v19 replay files, which keep the positional walk).
+  bool seat_led = !s.players.empty() && s.players[0].seat != 0;
   auto it = players->begin();
   for (uint32_t i = 0; i < nplayers; i++) {
+    uint8_t rec_seat = 0;
+    if (seat_led && (!nx_read(in, rec_seat) || rec_seat == 0 ||
+                     rec_seat > MAX_PLAYERS))
+      return false;
     NetShipExtras ex;
     if (!nx_read(in, ex.alive) || !nx_read(in, ex.temperature) ||
         !nx_read(in, ex.time_until_respawn) || !nx_read(in, ex.time_left_invincible) ||
@@ -6316,16 +6381,25 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
       if (!nx_read_projectiles(in, NULL, false, 0.0f)) return false;
       continue;
     }
-    if (it == players->end()) return false;
-    Ship *ship = (*it)->ship;
+    GLShip *gs_rec;
+    if (seat_led) {
+      gs_rec = player_by_seat(rec_seat);
+      if (!gs_rec) return false;
+    } else {
+      if (it == players->end()) return false;
+      gs_rec = *it;
+    }
+    Ship *ship = gs_rec->ship;
 
     // The host moved this ship discontinuously (respawn, teleport, new-level
     // spawn) since the last snapshot: the pose is absolute. For the local
     // ship that overrides net_apply_state's prediction blend, which would
     // otherwise slide the ship across the world to the new position.
     // (NetClient only — replay ghosts snap in net_apply_state already.)
-    if (net_mode_ == NetClient && *it == players->back() &&
-        i < s.players.size()) {
+    bool local_ship = net_mode_ == NetClient &&
+                      (seat_led ? (int)rec_seat == net_local_seat()
+                                : gs_rec == players->back());
+    if (local_ship && i < s.players.size()) {
       if (net_have_warp_ && ex.warp_count != net_prev_warp_ && ex.alive) {
         ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
         ship->velocity = Point(s.players[i].vel_x, s.players[i].vel_y);
@@ -6381,7 +6455,8 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     // game hummed for every local player, so the hum keys off the
     // replicated invincibility for all of them. This is also the ONLY hum
     // source in playback: quiet restores suppress respawn()'s.
-    bool local_ship = net_mode_ == NetClient && (i + 1 == nplayers);
+    // (local_ship computed at the top of the loop — by seat on a v19+
+    // stream, by list position on a legacy one.)
     bool hum_ship = net_mode_ == NetReplay ? true : local_ship;
     ship->set_shield_hum(hum_ship && ship->is_alive() && ship->invincible &&
                          ex.god_ms <= 0);
@@ -6410,7 +6485,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     if (!nx_read_projectiles(in, ship, net_world_rebuilt_last_apply_,
                              net_lead_ms(), /*own_bullets=*/local_ship))
       return false;
-    ++it;
+    if (!seat_led) ++it;
   }
 
   // v6: mini-station bullets (see nx_write_mini_station_bullets). The
@@ -8055,10 +8130,10 @@ void GLGame::tick(int delta) {
   if (host_online || replay_) {
     // Non-fatal ship-vs-asteroid bounces (debris + armour ting). Enemy
     // ships collide through the same code; only player ships are sent.
+    // PROTO 25: the arg's low byte is the ship's seat (only player ships
+    // carry one — an enemy's impact stays local, as before).
     for (const Ship::NetShipImpact &si : Ship::net_ship_impacts) {
-      uint32_t idx = 0;
-      if (!players->empty() && players->front()->ship == si.ship) idx = 1;
-      else if (players->size() >= 2 && players->back()->ship == si.ship) idx = 2;
+      uint32_t idx = si.ship->net_seat;
       if (idx)
         net_send_event(Net::EV_SHIP_IMPACT, idx | (si.ting ? 0x100u : 0u));
     }
@@ -8091,9 +8166,13 @@ void GLGame::tick(int delta) {
     // The client spawns exact clones instantly — without this a host
     // bullet exists there only via the 10 Hz snapshot rebuild, popping in
     // up to a snapshot interval late and already down-range.
+    // PROTO 25: the header stamps the FIRER's seat (p1 = 1 — it used to
+    // stamp literal 2, proof nothing read it; the receivers resolve the
+    // firing ship by this byte now, which is what lets B4 relay peer
+    // effects with attribution).
     for (const Ship::NetShotReport &r : Ship::net_shot_reports) {
       std::vector<uint8_t> msg;
-      Net::put_header(msg, Net::MSG_SHOT, 2);
+      Net::put_header(msg, Net::MSG_SHOT, 1);
       Net::put_u32(msg, r.id);
       Net::put_f32(msg, r.x);
       Net::put_f32(msg, r.y);
@@ -8109,7 +8188,9 @@ void GLGame::tick(int delta) {
       const std::vector<Point> &pts = rep.second;
       if (pts.size() < 2 || pts.size() > 17) continue;
       std::vector<uint8_t> msg;
-      Net::put_header(msg, Net::MSG_LANCE, 2);
+      Net::put_header(msg, Net::MSG_LANCE,
+                      rep.first && rep.first->net_seat ? rep.first->net_seat
+                                                       : 1);
       Net::put_u8(msg, (uint8_t)pts.size());
       for (const Point &p : pts) {
         Net::put_f32(msg, p.x());
@@ -8123,7 +8204,9 @@ void GLGame::tick(int delta) {
       const std::vector<Point> &pts = rep.second;
       if (pts.size() < 2 || pts.size() > 15) continue;
       std::vector<uint8_t> msg;
-      Net::put_header(msg, Net::MSG_SHOCK, 2);
+      Net::put_header(msg, Net::MSG_SHOCK,
+                      rep.first && rep.first->net_seat ? rep.first->net_seat
+                                                       : 1);
       Net::put_u8(msg, (uint8_t)pts.size());
       for (const Point &p : pts) {
         Net::put_f32(msg, p.x());
@@ -8134,9 +8217,11 @@ void GLGame::tick(int delta) {
     // PROTO 19: authoritative ricochets — the sim's real bounce of any
     // id-carrying bullet overrides the client's local approximation, so
     // both screens fly the same post-bounce trajectory.
+    // The bounced bullet's id already names its firing seat (top nibble);
+    // the header carries the sender's seat like every host message.
     for (const Ship::NetBounceReport &r : Ship::net_bounce_reports) {
       std::vector<uint8_t> msg;
-      Net::put_header(msg, Net::MSG_BOUNCE, 2);
+      Net::put_header(msg, Net::MSG_BOUNCE, 1);
       Net::put_u32(msg, r.id);
       Net::put_f32(msg, r.x);
       Net::put_f32(msg, r.y);
@@ -9531,6 +9616,39 @@ GLShip *GLGame::local_player() const {
 GLShip *GLGame::remote_player() const {
   if (players->size() < 2) return NULL;
   return net_mode_ == NetClient ? players->front() : players->back();
+}
+
+// PROTO 25 seat lookups. Seats are 1-based wire ids stamped on every
+// player ship at creation (Ship::net_seat); records key on them instead
+// of list position so B4's sparse seats need no reader change.
+GLShip *GLGame::player_by_seat(int seat) const {
+  if (seat <= 0) return NULL;
+  for (auto *gs : *players)
+    if ((int)gs->ship->net_seat == seat) return gs;
+  return NULL;
+}
+
+// The seat THIS machine's pilot sits in: the host is always 1, a client
+// the seat WELCOME assigned (2 until B4 hands out 3..4). Meaningful in
+// any mode — offline and replay both report 1 (P1's machine).
+int GLGame::net_local_seat() const {
+  if (net_mode_ == NetClient) {
+    NetSession *s = net_session();
+    return s ? s->player_id() : 2;
+  }
+  return 1;
+}
+
+// Client-side: the ship a relayed effect's header seat names (PROTO 25).
+// Never this machine's own seat — its effects are already local — and a
+// byte that resolves nowhere falls back to the host's ship, the only
+// possible firer before B4's relays.
+Ship *GLGame::net_firer_ship(int seat) const {
+  if (seat != net_local_seat()) {
+    GLShip *gs = player_by_seat(seat);
+    if (gs) return gs->ship;
+  }
+  return players->empty() ? NULL : players->front()->ship;
 }
 
 GLShip *GLGame::camera_target() const {

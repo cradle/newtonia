@@ -457,6 +457,11 @@ bool Save::serialize_game(Save::Stream &f, const Save::GameState &s) {
     // v18 append: in-flight time-slow effect (sim ms remaining + owner).
     ok = ok && wv(f, s.time_slow_ms_left) && wv(f, s.time_slow_player);
 
+    // v19 append: per-player seat ids, in players order (PROTO 25 /
+    // FOURPLAYER.md PB-D3). No count byte — the players count above bounds
+    // the walk, exactly like the v14 per-player append.
+    for (const auto &p : s.players) ok = ok && wv(f, p.seat);
+
     return ok;
 }
 
@@ -481,10 +486,9 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
     // legitimate save never approaches them), so a count past them was
     // going to be rejected anyway.
     //
-    // Players: MAX_PLAYERS, not net_state_sane()'s 2 — offline saves carry
-    // up to four players (FOURPLAYER.md A5) while online snapshots stay
-    // 2-player until Phase B; net_state_sane still rejects >2 after the
-    // parse. An OLDER build reading a 3-4 player save fails this bound and
+    // Players: MAX_PLAYERS, matching net_state_sane()'s cap since PROTO 25
+    // (the wire itself stays 2-player until the B7 NET_PLAYER_CAP flip).
+    // An OLDER build reading a 3-4 player save fails this bound and
     // ignores the file (treated as no save) — the standard downgrade
     // outcome, same as any unknown-format file.
     ok = ok && read_count(f, cnt, MAX_PLAYERS);
@@ -552,6 +556,12 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
     // default (= no effect running).
     if (version >= 18) {
         ok = ok && rv(f, s.time_slow_ms_left) && rv(f, s.time_slow_player);
+    }
+
+    // Per-player seat ids appended in v19 (PROTO 25); older saves keep the
+    // 0 default, which readers treat as positional (entry i = seat i+1).
+    if (version >= 19) {
+        for (auto &p : s.players) ok = ok && rv(f, p.seat);
     }
 
     return ok;

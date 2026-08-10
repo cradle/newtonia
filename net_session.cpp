@@ -5,6 +5,7 @@
 
 #include "net_policy.h"
 #include "net_protocol.h"
+#include "preferences.h"  // MAX_PLAYERS (net_state_sane's seat bound)
 #include "savegame.h"
 
 // ---- base64 -------------------------------------------------------------
@@ -247,7 +248,24 @@ bool net_state_sane(const Save::GameState &s) {
   if (!std::isfinite(s.world_x) || !std::isfinite(s.world_y)) return false;
   if (s.world_x < 500.0f || s.world_x > 200000.0f) return false;
   if (s.world_y < 500.0f || s.world_y > 200000.0f) return false;
-  if (s.players.size() < 1 || s.players.size() > 2) return false;
+  // PROTO 25: up to MAX_PLAYERS seats on the wire (the live session count
+  // stays gated by NET_PLAYER_CAP until the B7 flip; this is the SANITY
+  // bound, not the seat policy). Seat ids, when present (v19+), must be
+  // distinct and in range — a duplicate would fold two ships onto one
+  // slot in the seat-keyed restore paths.
+  if (s.players.size() < 1 || s.players.size() > (size_t)MAX_PLAYERS)
+    return false;
+  {
+    uint8_t seat_mask = 0;
+    for (size_t i = 0; i < s.players.size(); i++) {
+      uint8_t seat = s.players[i].seat;
+      if (seat == 0) continue;  // pre-v19 record: positional
+      if (seat > MAX_PLAYERS) return false;
+      uint8_t bit = (uint8_t)(1u << (seat - 1));
+      if (seat_mask & bit) return false;
+      seat_mask |= bit;
+    }
+  }
   // Time-slow countdown (PROTO 24): the apply clamps to the legal window;
   // reject only values no honest peer can produce (negative / absurd).
   if (s.time_slow_ms_left < 0 || s.time_slow_ms_left > 60000) return false;
@@ -429,7 +447,7 @@ void send_hello(NetTransport *t) {
 void send_welcome(NetTransport *t) {
   std::vector<uint8_t> msg;
   Net::put_header(msg, Net::MSG_WELCOME, 1);
-  Net::put_u8(msg, 2);     // assigned player id
+  Net::put_u8(msg, 2);     // assigned seat (always 2 until B4's fan-out)
   Net::put_u16(msg, 8);    // step_size (ms) — informational for now
   Net::put_u16(msg, 100);  // snapshot period (ms)
   append_identity(msg);
@@ -524,7 +542,10 @@ void NetSession::update(int delta_ms) {
       uint8_t assigned = r.u8();
       (void)r.u16();  // step size
       (void)r.u16();  // snapshot period
-      if (!r.ok || assigned != 2) continue;
+      // PROTO 25: STORE the assigned seat (2..MAX_PLAYERS) instead of
+      // validating literal 2 and discarding — player_id() returns it.
+      if (!r.ok || assigned < 2 || assigned > MAX_PLAYERS) continue;
+      assigned_seat_ = assigned;
       parse_identity(r, peer_identity_);
       log_identity(peer_identity_);
       // The client-side twin of the host's pre-WELCOME policy gate. There

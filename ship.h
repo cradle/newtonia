@@ -444,6 +444,12 @@ class Ship : public CompositeObject {
     // be re-stamped each time). 0 = never assigned.
     uint32_t net_ship_id = 0;
     static uint32_t net_next_ship_id;
+    // PROTO 25: the seat this PLAYER ship occupies (1..MAX_PLAYERS; P1/host
+    // = 1). Stamped by GLGame at every player-creation site (list position
+    // + 1 — dense until B4's sparse seats) and by the seat-keyed restore
+    // paths. 0 = not a seated player ship (enemies, stations). Partitions
+    // the bullet-id mint and keys snapshot ship records.
+    uint8_t net_seat = 0;
     // True for ships a player pilots (set by the GLShip/GLCar wrappers);
     // enemies and stations stay false. Missile homing keys off it:
     // with friendly fire off a missile must not seek the partner.
