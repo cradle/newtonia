@@ -17,9 +17,18 @@ export function connect(qs) {
     const ws = new WebSocket(BASE + qs);
     const inbox = [];
     const waiters = [];
+    // 15 s timeout: a missing frame FAILS the suite instead of hanging
+    // the CI step forever (resolves null; _recvType passes it through).
     ws._recv = () => new Promise((res) => {
       if (inbox.length) return res(inbox.shift());
-      waiters.push(res);
+      const timer = setTimeout(() => {
+        const i = waiters.indexOf(wrapped);
+        if (i >= 0) waiters.splice(i, 1);
+        console.log("FAIL frame wait timed out");
+        res(null);
+      }, 15000);
+      const wrapped = (f) => { clearTimeout(timer); res(f); };
+      waiters.push(wrapped);
     });
     ws._recvType = async (t, tries = 12) => {
       for (let i = 0; i < tries; i++) {

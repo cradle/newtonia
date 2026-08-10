@@ -1031,23 +1031,50 @@ void NetLobby::pump_signal(int delta) {
         set_status("ROOM FOUND - WAITING FOR THE HOST");
         break;
       case NetSignal::Event::Identity:
-        // Worker peer attestation (NETPLAY.md V0): fold it in for the badge
-        // and hand it to the game at construction.
-        apply_peer_attestation(ev.platform, ev.text, ev.verified);
+        // Worker peer attestation (NETPLAY.md V0), scoped for the
+        // multi-join worker (B3): a JOINER consumes only the host's
+        // attestation (its own — replayed on a rejoin — or another
+        // joiner's must not overwrite the host's badge); a HOST keys
+        // stamped joiner attestations by jid and folds only the paired
+        // one (selected when its answer is adopted below). Legacy frames
+        // (no role/from — the pre-multi-join worker, which only ever
+        // relays the paired peer's) fold directly.
+        if (!hosting_) {
+          if (ev.text2 == "host" || ev.text2.empty())
+            apply_peer_attestation(ev.platform, ev.text, ev.verified);
+        } else if (ev.peer.empty()) {
+          apply_peer_attestation(ev.platform, ev.text, ev.verified);
+        } else if (ev.verified) {
+          NetIdentity att;
+          att.platform = ev.platform;
+          att.platform_trust = NET_TRUST_ATTESTED;
+          att.name = net_sanitize_name(ev.text);
+          att.name_trust =
+              att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+          jid_attested_[ev.peer] = att;
+          if (ev.peer == paired_jid_)
+            apply_peer_attestation(ev.platform, ev.text, ev.verified);
+        }
         break;
       case NetSignal::Event::PeerJoin:
         set_status("PLAYER 2 IS CONNECTING");
         break;
       case NetSignal::Event::PeerLeave:
         set_status("PLAYER 2 LEFT THE ROOM");
-        // The departed joiner's attestation leaves with them (the worker
-        // nulls its copy in drop_joiner for the same reason): a DIFFERENT
+        // The departed joiner's attestation leaves with them: a DIFFERENT
         // player can take the slot, and if their own verify fails or their
         // platform has no verifier, a kept attested_peer_ would be folded
         // onto them at hand-off — the replacement would wear the previous
         // joiner's attested name and badge for the whole game. The new
         // joiner's announce re-attests through the worker as usual.
-        attested_peer_ = NetIdentity();
+        // Stamped (multi-join worker): scope the clear to the departed jid
+        // — a THIRD joiner leaving must not strip the paired peer's badge.
+        if (ev.peer.empty()) {
+          attested_peer_ = NetIdentity();
+        } else {
+          jid_attested_.erase(ev.peer);
+          if (ev.peer == paired_jid_) attested_peer_ = NetIdentity();
+        }
         // The room drops its stored offer with the joiner; put ours back
         // so the next joiner gets it replayed.
         if (hosting_ && transport_ && transport_->local_description_ready())
@@ -1093,6 +1120,26 @@ void NetLobby::pump_signal(int delta) {
           transport_ = nullptr;
           connect_wait_ms_ = 0;
           screen_ = WaitConnect;
+          // The answering joiner is the peer this session binds to (B3
+          // `from` stamp; empty on a pre-multi-join worker): select its
+          // stored attestation — its announce usually precedes its answer
+          // — and scope later Identity events to it.
+          paired_jid_ = ev.peer;
+          if (!ev.peer.empty()) {
+            std::map<std::string, NetIdentity>::iterator it =
+                jid_attested_.find(ev.peer);
+            if (it != jid_attested_.end()) {
+              attested_peer_ = it->second;
+              // The same greppable line apply_peer_attestation logs — the
+              // attestation is only now known to be OUR peer's.
+              NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
+                      attested_peer_.name.c_str(),
+                      net_platform_label(attested_peer_.platform),
+                      (unsigned)attested_peer_.platform);
+            } else {
+              attested_peer_ = NetIdentity();
+            }
+          }
         }
         break;
       case NetSignal::Event::Error:
@@ -1487,6 +1534,7 @@ void NetLobby::tick(int delta) {
           session_ = nullptr;
           GLGame *game = new GLGame(session, (SDL_GameController *)0);
           game->net_set_worker_session(used_worker_);
+          game->net_set_peer_jid(paired_jid_);  // scope in-game Identity events
           game->net_apply_peer_attestation(attested_peer_);
           // The advertised name freezes here for the session: the loss
           // re-beacon must repeat what a LAN joiner tapped and remembered

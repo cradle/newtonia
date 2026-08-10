@@ -110,10 +110,10 @@ function check(name, cond) {
         !!late && late.role === "joiner" && late.name === "DROID" &&
         late.platform === 5 && late.verified === true);
 
-  // 7. A replacement joiner does NOT inherit the late-stored badge:
-  //    accept_joiner clears the stored identity, so the replacement's own
-  //    FAILED verify lands as its unverified claim — the never-demote guard
-  //    must not re-push the departed player's verified name onto it.
+  // 7. A replacement joiner does NOT inherit the late-stored badge: it is
+  //    a fresh jid with its own identity entry (per-jid since PB-D5), so
+  //    the replacement's own FAILED verify lands as its unverified claim —
+  //    the departed player's verified name can never be pinned onto it.
   const join3 = await connect(`?role=join&code=${code}`);
   await join3._recvType("joined");
   await join3._recvType("identity");  // the host's identity, replayed
