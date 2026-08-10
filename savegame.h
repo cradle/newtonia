@@ -54,6 +54,14 @@ struct Player {
     int      enemy_kills = 0;           // enemy ships destroyed this game
     bool     died_this_generation = false;
     uint32_t weapons_fired_mask = 0;    // bit = (int)WeaponEntry::Kind fired this game
+
+    // v19 append (PROTO 25, FOURPLAYER.md PB-D3) — the seat this entry
+    // belongs to (1..MAX_PLAYERS; 1 = host/P1). 0 = a pre-v19 file, which
+    // readers treat as "positional": entry i is seat i+1, today's implicit
+    // rule made explicit. Written at the end of the file like the v11
+    // block. Snapshots share this struct, so the wire carries it too, and
+    // net restore paths key ship records by seat instead of list position.
+    uint8_t  seat = 0;
 };
 
 // ── Asteroid ─────────────────────────────────────────────────────────────────
@@ -184,7 +192,9 @@ struct GameState {
     // so exit→continue appends to one continuous replay file).
     // 18 = TimeSlow pickup type + in-flight time-slow effect (ms remaining
     // and the owning player's index) appended at the end.
-    static constexpr uint16_t VERSION = 18;
+    // 19 = per-player seat id appended at the end (PROTO 25 / FOURPLAYER.md
+    // PB-D3: snapshots and net restore key ship records by seat).
+    static constexpr uint16_t VERSION = 19;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of

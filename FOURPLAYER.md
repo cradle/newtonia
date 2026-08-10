@@ -1,8 +1,9 @@
 # 4-Player Mode — Implementation Plan
 
 Status: **Phase A COMPLETE** (up to 4 local players live; P3/P4 join by
-controller). **Phase B (online 4P) planned and starting** — see §4 for
-the expanded, research-backed plan; netplay stays 2-player until B7.
+controller). **Phase B underway** — B1 (NetPeer refactor) merged; B2
+(the PROTO 25 + savegame v19 flag day, PB-D3) in this PR. Netplay stays
+2-player until B7 (`NET_PLAYER_CAP`).
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.

@@ -6,7 +6,9 @@
 // Every message starts with a 4-byte header:
 //   uint8 proto_version (= PROTO_VERSION)
 //   uint8 msg_type      (Net::MsgType)
-//   uint8 player_id
+//   uint8 player_id     (sender's seat 1..MAX_PLAYERS since PROTO 25;
+//                        for relayed SHOT/LANCE/SHOCK effects it is the
+//                        FIRER's seat, which the receiver resolves)
 //   uint8 reserved      (0)
 // All multi-byte fields are little-endian and packed/unpacked explicitly
 // byte-by-byte — structs are never memcpy'd onto the wire (native and web
@@ -172,7 +174,20 @@ namespace Net {
 //     still advances step_size per step), so the whole session slows in
 //     lockstep and the collector's rotation comp is re-asserted from the
 //     owner index on each apply.
-const uint8_t PROTO_VERSION = 24;
+// 25: The 4-player seat flag day (FOURPLAYER.md PB-D3) — still a 2-player
+//     wire in practice (NET_PLAYER_CAP), but every seat-shaped byte becomes
+//     meaningful so B4's fan-out is additive: WELCOME's assigned-id byte is
+//     STORED by the client (NetSession::player_id() returns it) instead of
+//     validated-and-discarded; snapshot ship records (GameState players via
+//     savegame v19's seat append, and each nx ship-extras record) lead with
+//     the seat id, replacing the positional zips; the header player_id byte
+//     is stamped with the sender's real seat (the host stamped literal 2 on
+//     its own SHOT/LANCE/SHOCK echoes — nothing read it) and the receivers
+//     of relayed effects resolve the firer BY that seat; bullet ids are
+//     partitioned by seat in the top nibble so cross-ship scans stay
+//     unambiguous; EV_SHIP_IMPACT's arg reads as seat 1..MAX_PLAYERS;
+//     EV_REMOTE_SHOT (dead since PROTO 17) loses its reader.
+const uint8_t PROTO_VERSION = 25;
 
 // Peer identity (badge metadata) rides HELLO/WELCOME as an APPEND, not a
 // PROTO bump: `u8 platform (NetPlatform), u8 name_len, name_len bytes
@@ -269,12 +284,13 @@ enum EventCode {
   // host computed it (distance to the nearest player).
   EV_ROID_BOUNCE = 10,
   // A player ship bounced off (or was rammed by) an asteroid without
-  // dying; arg = player index (1=host,2=client) | 0x100 when the
-  // armoured-face ting applies.
+  // dying; arg = seat 1..MAX_PLAYERS | 0x100 when the armoured-face
+  // ting applies (widened from 1|2 at PROTO 25).
   EV_SHIP_IMPACT = 11,
-  // The host player fired their gun — the client plays it attenuated by
-  // distance to its own ship (the client's shots are local, and the
-  // host simulates the client's weapon itself).
+  // Retired at PROTO 25 (kept for numbering, like EV_ROID_TING): the
+  // MSG_SHOT echo superseded it at PROTO 17 and nothing wrote it since;
+  // old replay files may still carry code 12 — the reader's default
+  // case drops it silently.
   EV_REMOTE_SHOT = 12,
   // Host-simulated world actors (enemies, mini-station): a gunshot / a
   // ship-class explosion / the big station explosion, at a packed

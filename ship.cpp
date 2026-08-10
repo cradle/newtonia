@@ -835,6 +835,7 @@ Save::Player Ship::capture_state() const {
   p.enemy_kills          = enemy_kills;
   p.died_this_generation = died_this_generation;
   p.weapons_fired_mask   = weapons_fired_mask;
+  p.seat                 = net_seat;  // v19: 0 for non-seated ships (enemies)
 
   // Primary weapons
   list<Weapon::Base*>::const_iterator cprimary = primary;
@@ -907,6 +908,9 @@ bool Ship::net_weapons_roster_matches(const Save::Player &p) const {
 }
 
 void Ship::restore_state(const Save::Player &p, const Grid &grid) {
+  // v19: adopt the record's seat; a pre-v19 record (seat 0) keeps the
+  // creation-site stamp (positional), never clears it.
+  if (p.seat) net_seat = p.seat;
   score           = p.score;
   lives           = p.lives;
   kills           = p.kills;
@@ -2466,7 +2470,13 @@ void Ship::net_report_last_bullet() {
   }
   if (!net_report_shots) return;
   Particle &b = bullets.back();
-  b.net_id = ++net_shot_seq;
+  // PROTO 25: seat-partitioned ids — the seat in the top nibble keeps
+  // cross-ship id scans (MSG_BOUNCE walks every ship) unambiguous once
+  // several seats mint concurrently. The seq wraps within its 28-bit
+  // space; the seat bits keep the id nonzero (0 stays the "no clone to
+  // consume" sentinel — see the lance/shock claim paths).
+  net_shot_seq = (net_shot_seq + 1) & 0x0FFFFFFFu;
+  b.net_id = ((uint32_t)(net_seat ? net_seat : 1) << 28) | net_shot_seq;
   NetShotReport r;
   r.id = b.net_id;
   r.x = b.position.x(); r.y = b.position.y();

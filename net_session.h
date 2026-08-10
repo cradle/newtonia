@@ -194,8 +194,13 @@ public:
 
   Phase phase() const { return phase_; }
   Role role() const { return role_; }
-  // 1 = host, 2 = client. Valid from construction (fixed by role in M1).
-  int player_id() const { return role_ == HostRole ? 1 : 2; }
+  // The LOCAL side's seat (1..MAX_PLAYERS). Host is always 1. A client
+  // starts at the provisional 2 and adopts the seat WELCOME assigns
+  // (PROTO 25 stores it; until B4 the host only ever assigns 2, so the
+  // value is stable from construction either way).
+  int player_id() const {
+    return role_ == HostRole ? 1 : (int)assigned_seat_;
+  }
   uint8_t reject_reason() const { return reject_reason_; }
 
   // The peer's identity as parsed from its HELLO (host role) / WELCOME
@@ -216,6 +221,7 @@ private:
   bool hello_sent_;
   int handshake_ms_;  // time spent in Handshaking, for the timeout
   NetIdentity peer_identity_;
+  uint8_t assigned_seat_ = 2;  // client role: seat from WELCOME (2..MAX_PLAYERS)
 };
 
 #endif /* NET_SESSION_H */
