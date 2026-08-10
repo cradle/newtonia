@@ -30,7 +30,6 @@ rm -f "$PREF_DIR/savegame.dat"
 # 1. 4P grid runs and survives a level skip
 NEWTONIA_BETA=1 NEWTONIA_START_PLAYERS=4 ./newtonia > /dev/null 2>&1 & PID=$!
 newgame; alive "4P start"
-grep_log_players=4
 sleep 3; alive "4P running"
 xdotool key --window $W n; sleep 2; alive "4P after skip-level"
 xdotool key --window $W Escape; sleep 2   # exit to menu, auto-saving
