@@ -705,7 +705,12 @@ void NetLobby::lan_host_update(int delta) {
     return;
   }
   NET_LOG("[lobby] lan joiner completed - adopting the lan transport\n");
-  if (waiting_room()) {
+  if (waiting_room() && screen_ == RoomHost) {
+    // Screen-gated on purpose: after fall_back_to_manual the waiting-room
+    // pump (also RoomHost-gated) never runs, so an adoption here would
+    // mint a session nobody updates — a joiner wedged mid-handshake. The
+    // manual fallback is structurally pairwise (PB-D6); off RoomHost the
+    // classic single-pair adoption below takes the exchange instead.
     // B4b (PB-D6): the LAN door mints a FRESH offer per accepted exchange
     // (an SDP is single-use) instead of pairing once and closing. The
     // adopted transport becomes a pending waiting-room session on the
@@ -731,9 +736,13 @@ void NetLobby::lan_host_update(int delta) {
     lan_transport_ = nullptr;  // owned by the session now
     // Re-arm the door: Announce is a single-exchange object, so restart
     // it and mint a fresh no-STUN transport whose blob the tick above
-    // hands over once gathering completes.
+    // hands over once gathering completes. The blob must be CLEARED
+    // explicitly — stop()/start() keep the stored offer, and the old
+    // one is spent: a joiner served it answers a dead transport and
+    // grinds to ICE failure holding a seat.
     lan_announce_.stop();
     lan_offer_set_ = false;
+    lan_announce_.set_offer_blob(std::string());
     if (lan_announce_.start(lan_beacon_name_)) {
       lan_transport_ = NetTransport::create();
       if (lan_transport_) {
@@ -1064,6 +1073,11 @@ void NetLobby::waiting_room_update(int delta) {
       sp.session = pj.session;
       sp.jid = pj.lan ? std::string() : it->first;
       sp.seat = pj.seat;
+      if (!sp.jid.empty()) {
+        std::map<std::string, NetIdentity>::const_iterator at =
+            jid_attested_.find(sp.jid);
+        if (at != jid_attested_.end()) sp.attested = at->second;
+      }
       seated_.push_back(sp);
       NET_LOG("[lobby] waiting room: seat %d filled (%s)\n", sp.seat,
               it->first.c_str());
@@ -1116,6 +1130,9 @@ void NetLobby::waiting_room_start() {
     GLGame::NetSeated ns;
     ns.session = sp.session;
     ns.jid = sp.jid;
+    // Late attestation upgrades the seating-time capture; the capture
+    // covers a peer whose signal socket dropped after seating.
+    ns.attested = sp.attested;
     if (!sp.jid.empty()) {
       std::map<std::string, NetIdentity>::const_iterator it =
           jid_attested_.find(sp.jid);
@@ -2062,8 +2079,8 @@ void NetLobby::draw() {
                    (int)seated_.size() + 1, net_seat_cap());
           lines.push_back(blink ? buf : "");
           for (const SeatedPeer &sp : seated_) {
-            std::string name;
-            if (!sp.jid.empty()) {
+            std::string name = sp.attested.name;
+            if (name.empty() && !sp.jid.empty()) {
               std::map<std::string, NetIdentity>::const_iterator it =
                   jid_attested_.find(sp.jid);
               if (it != jid_attested_.end()) name = it->second.name;

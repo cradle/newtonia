@@ -9,7 +9,7 @@
 #
 # Both instances run relay-only (NEWTONIA_NET_FORCE_RELAY=1), so the
 # whole session flows through Cloudflare TURN on the tiny-TTL creds:
-# connect, assert "ice path relay/relay", idle until the credential
+# connect, assert "ice path seat 2 relay/relay", idle until the credential
 # expiry kills the allocation (expiry + one allocation lifetime,
 # typically 5-15 min), then assert the auto-pause -> AUTO-rejoin
 # self-repair — the rejoin mints FRESH creds, so it must reconnect even
@@ -40,7 +40,7 @@ done
 alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; kill $PA $PB; exit 1; }
 grep -a "ice path" "$OUT/host.log" "$OUT/joiner.log"
-grep -aq "ice path relay/relay" "$OUT/host.log" || {
+grep -aq "ice path seat 2 relay/relay" "$OUT/host.log" || {
   echo "NOT RELAYED - is TURN minting creds? (check TURN_KEY_ID/TURN_API_TOKEN)"; kill $PA $PB; exit 1; }
 
 echo "== relayed and playing; waiting out the credential expiry (up to 20 min)"
@@ -59,7 +59,7 @@ for i in $(seq 1 60); do
 done
 [ -n "$REJOINED" ] || { echo "NO SELF-REPAIR"; kill $PA $PB; exit 1; }
 grep -aq "auto-rejoining room" "$OUT/joiner.log" || { echo "REJOIN WAS NOT AUTOMATIC"; kill $PA $PB; exit 1; }
-[ "$(grep -ac 'ice path relay/relay' "$OUT/host.log")" -ge 2 ] || echo "note: repaired path was not relay/relay (check second 'ice path' line)"
+[ "$(grep -ac 'ice path seat 2 relay/relay' "$OUT/host.log")" -ge 2 ] || echo "note: repaired path was not relay/relay (check second 'ice path' line)"
 
 kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null
 assert_clean "$OUT/host.log" "$OUT/joiner.log"

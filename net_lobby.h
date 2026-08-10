@@ -159,6 +159,10 @@ private:
     NetSession *session;
     std::string jid;  // "" for LAN-door peers
     int seat;
+    // Captured from jid_attested_ at seating time: a seated peer whose
+    // SIGNAL socket later drops keeps its badge (the p2p link is what
+    // seats it; PeerLeave erases the jid_attested_ entry).
+    NetIdentity attested;
   };
   std::vector<SeatedPeer> seated_;
   int lan_door_serial_ = 0;  // mints the synthetic "lan#N" pending keys

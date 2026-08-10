@@ -2852,7 +2852,9 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // Re-sync the room rule — the rejoiner may be a fresh app launch
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
-      NET_LOG("net: ice path %s\n",
+      // Same "seat N" format as the ctor's adoption log — turnexpiry.sh
+      // greps both lines for the relay/relay path.
+      NET_LOG("net: ice path seat %d %s\n", (int)net_peer_make().seat,
              net_session()->transport()->connection_info().c_str());
       // Host paused (auto-paused on the disconnect, or by hand): the
       // paused tick never reaches the 10 Hz send, so push the keyframe
@@ -4443,6 +4445,19 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_banner_ms_ = 3000;
   net_refresh_join_banner();
   net_assembler_ = new Net::SnapshotAssembler();
+  // B4b: the host's snapshot lists every seat in seat order, so on a 3-4
+  // player roster OUR hull isn't necessarily last. The whole client keeps
+  // the "local = players->back()" convention (shot reporting, prediction,
+  // smoothing, force mirroring — dozens of sites), so rotate our WELCOME
+  // seat's ship to the back instead of re-keying every site. At 2P and on
+  // seatless pre-v19 rosters back() is already ours: a no-op.
+  {
+    GLShip *mine = player_by_seat(net_local_seat());
+    if (mine && mine != players->back()) {
+      players->remove(mine);
+      players->push_back(mine);
+    }
+  }
   // PROTO 14: the local ship reports every shot it fires (id, spawn,
   // exact velocity) so the host spawns clones instead of re-rolling.
   if (!players->empty()) {
@@ -4460,19 +4475,21 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   // the only hum authority on a client.
   Ship::net_quiet_respawn = true;
 
-  // The save-restore base constructor bound player-1 keys to the FIRST ship,
-  // but on the client the local player is the LAST one; the first is the
-  // remote host's ship. Strip the ghost's bindings and give the local ship
-  // this machine's player-1 controls.
+  // The save-restore base constructor bound player-1 keys to the FIRST ship
+  // and flagged EVERY saved ship as a local player, but on the client only
+  // the rotated-to-back ship is this machine's. Strip bindings and the
+  // local-player flag from every other hull (the host's AND, at 3-4P, the
+  // other clients' — achievements and lifetime stats must not attribute
+  // their actions to this machine) and give the local ship this machine's
+  // player-1 controls.
   if (players->size() >= 2) {
-    GLShip *remote = players->front();
-    // The save-restoring base ctor flags every saved ship as a local
-    // player; the first ship here is the HOST's — achievements and
-    // lifetime stats must not attribute its actions to this machine.
-    remote->ship->is_local_player = false;
-    remote->clear_keys();
-    remote->set_controller(NULL);
     GLShip *local = players->back();
+    for (GLShip *gs : *players) {
+      if (gs == local) continue;
+      gs->ship->is_local_player = false;
+      gs->clear_keys();
+      gs->set_controller(NULL);
+    }
     set_player_keys(local, 0);
     if (controller) local->set_controller(controller);
   }

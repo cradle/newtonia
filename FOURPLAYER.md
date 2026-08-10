@@ -450,11 +450,20 @@ Sequential master-based PRs, inert until the B7 flip:
   addressed offers/cands, seats reserved at session creation, roster +
   ENTER-START, auto-start when full), the LAN door's fresh-offer re-arm,
   and the multi-session `GLGame` host ctor (`GLGame::NetSeated`).
-  Verified by `test/e2e/threeseat.sh` (3-seat connect/auto-start/play
-  smoke; run locally against a wrangler-dev relay). Touch hosts get the
-  roster count line but no tap-to-start band yet (B7's touch pass), and
+  The client binds its LOCAL hull by WELCOME seat (rotated to
+  `players->back()` at construction so the client-wide back()-is-local
+  convention holds on 3-4P rosters; every other hull is stripped of
+  bindings and the local-player flag). Verified by
+  `test/e2e/threeseat.sh` (3-seat connect/auto-start/play smoke; run
+  locally against a wrangler-dev relay). Known B4b limits: touch hosts
+  get the roster count line but no tap-to-start band (B7's touch pass);
   a pre-multi-join worker degrades the waiting room to the classic
-  single pair (no jids to key on).
+  single pair (no jids to key on); seats 3+ render the P2 hull model
+  (cosmetic); and IN-GAME loss handling is still front-peer-only —
+  EV_BYE and the transport-failure watch see only the front peer and
+  the rejoin door re-welcomes onto seat 2, so a non-front peer's
+  mid-game drop degrades (wrong-peer pause/rejoin, no crash) until
+  B5's per-seat resume.
 - **B5 — Per-seat resume/rejoin + spectate cycling** (PB-D7).
 - **B6 — Multi-instance e2e**: extend test/e2e's lib to N joiner
   instances; 3-and-4-seat connect/play/drop/rejoin/game-over suites; a
