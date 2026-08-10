@@ -114,6 +114,9 @@ public:
   // The ship the camera follows: normally the local player, but the peer
   // once this machine's player is fully out and spectating has begun.
   GLShip *camera_target() const;
+  // B5: the ship the spectate camera follows — the first living OTHER
+  // player (respawning ones as fallback), advancing as they fall.
+  GLShip *spectate_target() const;
 
   // Spectator flow (netplay co-op). When the local player runs out of lives
   // while the peer is still in it, a 5 s "SPECTATING IN N" countdown runs on
@@ -395,13 +398,16 @@ private:
     // above: the rejoin-Ready refresh replaces `identity` wholesale with
     // the CLAIMED wire parse, which would demote an attested badge to the
     // role label — so the refresh re-folds this copy on top. Cleared once
-    // per loss (net_host_rejoin_park_remote): the slot may be refilled by
+    // per loss (net_host_rejoin_park_peer): the slot may be refilled by
     // a DIFFERENT friend, whose own announce re-attests through the
     // worker (Event::Identity restores it).
     NetIdentity attested;
     // Transport dead / dead-man tripped. Room-level questions go through
     // the any/all predicates below, which diverge at B4.
     bool lost = false;
+    // B5: this peer's once-per-loss park ran (hull frozen, session
+    // dropped, attestation cleared). Cleared when its rejoin completes.
+    bool parked = false;
     // ---- Host input pipeline for this peer's INPUT stream ----
     uint32_t last_input_seq = 0;
     bool have_input = false;  // first INPUT initialises the counters
@@ -477,6 +483,29 @@ private:
   // Out-of-line: NetSession is forward-declared here, and deleting an
   // incomplete type would skip its destructor (transport never closed).
   void net_drop_session();
+  void net_drop_session(NetPeer &p);  // B5: per-seat form
+  // B5 seat lookups over the peer roster (player_by_seat's sibling).
+  NetPeer *net_peer_by_seat(int seat) const {
+    for (NetPeer *p : net_peers_)
+      if ((int)p->seat == seat) return p;
+    return nullptr;
+  }
+  // The rejoin door serves ONE open seat at a time: the lowest lost seat
+  // whose session is gone (a lost peer with a session is a door adoption
+  // mid-handshake). Serialized on purpose — the relay offer is a single
+  // unaddressed slot, so two simultaneous rejoiners would scramble.
+  NetPeer *net_door_peer() const {
+    NetPeer *door = nullptr;
+    for (NetPeer *p : net_peers_)
+      if (p->lost && !p->session && (!door || p->seat < door->seat))
+        door = p;
+    return door;
+  }
+  NetPeer *net_handshaking_lost_peer() const {
+    for (NetPeer *p : net_peers_)
+      if (p->lost && p->session) return p;
+    return nullptr;
+  }
   // Display context for the peer identity (net_identity.h): a room-code
   // session ran through the signaling worker, so it is ONLINE-strict — a
   // stranger is possible, only ATTESTED fields render. The manual clipboard
@@ -643,7 +672,9 @@ private:
   void net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg = 0,
                          bool tee = true);
   void net_host_poll_peer(NetPeer &peer);  // one peer's drain (B4)
-  void net_handle_event(uint8_t code, uint32_t arg);
+  // `from` names the peer whose transport delivered the event (host-side
+  // drain); null on the client/replay paths, where the sender is the host.
+  void net_handle_event(uint8_t code, uint32_t arg, NetPeer *from = nullptr);
   void net_spark_asteroid_at(float x, float y);
   void net_set_generation_banner(int gen);
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
@@ -679,9 +710,12 @@ private:
   // there would stomp the "JOINED <NAME> SERVER" greeting and announce a
   // "change" the joiner never saw. Later events are real toggles.
   bool net_ff_synced_ = false;
-  void net_ping_tick(int delta);
+  void net_ping_tick(int delta);  // B5: probes every live peer
   // Answers PING / consumes PONG; true when the message was one of them.
-  bool net_handle_ping_pong(uint8_t msg_type, Net::Reader &r);
+  // `from` = the peer whose transport delivered it (host drain); null on
+  // the client, where the counterparty is the front (host) peer.
+  bool net_handle_ping_pong(uint8_t msg_type, Net::Reader &r,
+                            NetPeer *from = nullptr);
   // PROTO 18: parse an MSG_LANCE body and push the pulse onto shooter's
   // lance_pulses (display-only flash + attenuated lance sound); false on
   // a malformed body. Shared by the host and client receive paths.
@@ -762,14 +796,20 @@ private:
   // net_room_code_ is for relay joins — a loss hands the game to a
   // browsing NetLobby that auto-selects that name when it reappears.
   bool net_host_lan_rejoin_poll(int delta);  // false = LAN unavailable
-  void net_host_rejoin_park_remote();  // once per loss: park + pause
+  // Once per loss per SEAT: park the hull + drop the session; pauses the
+  // room only when the last live remote went (PB-D7 play-on policy).
+  void net_host_rejoin_park_peer(NetPeer &p);
+  int net_rehost_seat_ = 0;  // the seat the open relay/LAN door serves
   void net_host_rejoin_session_update(int delta);  // shared adopt/resume
   void net_lan_rejoin_reset();
   bool net_lan_door_open() const;
   NetLan::Announce net_lan_announce_;
   NetTransport *net_lan_rehost_ = nullptr;  // owned until adopted
   bool net_lan_offer_set_ = false;
-  bool net_rejoin_parked_ = false;   // the once-per-loss park/pause ran
+  // B5: the ROOM-level pause latch — set when the last live peer's park
+  // paused the game (per-seat park state lives on NetPeer::parked);
+  // cleared when any rejoin completes so the next full loss pauses afresh.
+  bool net_rejoin_parked_ = false;
   std::string net_lan_host_name_;    // client: LAN host to rediscover
   // Host: the name the lobby's beacon advertised, frozen at hand-off for
   // the whole session — the loss re-beacon repeats it verbatim so a
