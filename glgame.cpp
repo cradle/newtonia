@@ -408,12 +408,31 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
 }
 
 GLGame::GLGame(NetSession *session, SDL_GameController *controller)
+  : GLGame(std::vector<NetSeated>(1, NetSeated{session, std::string(),
+                                               NetIdentity()}),
+           controller) {}
+
+// B4b (PB-D6): the real host ctor — every seated waiting-room session
+// becomes a NetPeer + a remote hull on its WELCOME seat. The 2P flow
+// arrives here through the single-session delegator above with one entry
+// and an empty jid/attestation (the lobby's post-construction
+// net_set_peer_jid / net_apply_peer_attestation hand-over fills them),
+// so at N=1 this is the old body with the peer adoption in a loop.
+GLGame::GLGame(const std::vector<NetSeated> &seated,
+               SDL_GameController *controller)
   : GLGame(controller, /*allow_dev_players=*/false) {
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
-  net_peer_make().session = session;
-  net_peer_make().seat = (uint8_t)session->peer_seat();
-  net_peer_make().identity = session->peer_identity();
+  for (const NetSeated &s : seated) {
+    NetPeer &p = net_peer_add();
+    p.session = s.session;
+    p.seat = (uint8_t)s.session->peer_seat();
+    p.identity = s.session->peer_identity();
+    p.jid = s.jid;
+    p.attested = s.attested;
+    net_apply_attested(p.identity, s.attested);
+  }
+  if (!seated.empty()) net_peer_jid_ = seated.front().jid;
   // Greet the friend who just connected the moment the hosted game starts
   // ("GLENN JOINED"), at the attention-drawing banner spot above centre.
   // Composed again by the lobby's post-construction attestation/context
@@ -429,9 +448,11 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   // extras kill it again, and the joiner watches player 1 "die" at start.
   players->front()->ship->respawn(grid, false);
   players->front()->ship->bullets.clear();  // no lethal spawn-flash debris
-  add_remote_player();
-  NET_LOG("net: ice path %s\n",
-         net_session()->transport()->connection_info().c_str());
+  for (NetPeer *p : net_peers_) {
+    add_remote_player(p->seat);
+    NET_LOG("net: ice path seat %d %s\n", (int)p->seat,
+            p->session->transport()->connection_info().c_str());
+  }
   // Co-op scoring parity: the initial hull costs a life, so each co-op
   // player fields the same total ship count as a solo run — otherwise a
   // pair banks two free hulls and the high scores aren't comparable.
@@ -1350,10 +1371,10 @@ void GLGame::update_presence() const {
 
 // Player 2 for online play: same wiring as add_local_player but with no local
 // controller or key bindings — the peer drives it via INPUT messages.
-void GLGame::add_remote_player() {
-  if((int)players->size() >= NET_PLAYER_CAP) return;
+void GLGame::add_remote_player(uint8_t seat) {
+  if((int)players->size() >= net_seat_cap()) return;
   GLShip* object = new GLCar(grid, true);
-  object->ship->net_seat = (uint8_t)(players->size() + 1);
+  object->ship->net_seat = seat ? seat : (uint8_t)(players->size() + 1);
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);

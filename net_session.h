@@ -142,6 +142,13 @@ namespace Save { struct GameState; }
 // on its own (see the definition).
 bool net_state_sane(const Save::GameState &s);
 
+// B4b: the LIVE seat ceiling every online-join gate asks (lobby seats,
+// add_remote_player, the LAN door) — NET_PLAYER_CAP until the B7 flip,
+// or the NEWTONIA_NET_TEST_SEATS override (clamped 2..MAX_PLAYERS) so
+// multi-instance e2e runs can exercise 3-4 seats before it. Distinct from
+// net_state_sane's MAX_PLAYERS bound, which is wire sanity, not policy.
+int net_seat_cap();
+
 // Per-float screens shared by net_state_sane and the projectile parse. The
 // limits are far outside anything legal (the world caps at 200000 units and
 // wire pose checks use ~3 units/ms) — they exist to keep a NaN or an absurd

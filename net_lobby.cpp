@@ -419,6 +419,7 @@ NetLobby::~NetLobby() {
   // never advertised (joiner, or non-Steam build).
   Invites::clear_joinable();
   lan_teardown();  // beacon/browse sockets + the LAN door's transport
+  teardown_waiting_room();  // pending + seated peers not handed to a game
   delete session_;  // closes + deletes the transport it owns
   if (!session_ && transport_) {
     transport_->close();
@@ -447,6 +448,7 @@ void NetLobby::set_status(const char *text, int show_ms) {
 
 void NetLobby::reset_to_choose() {
   fail_headline_ = "SOMETHING WENT WRONG";
+  teardown_waiting_room();
   delete session_;
   session_ = nullptr;
   if (transport_) {
@@ -585,6 +587,10 @@ void NetLobby::confirm() {
     } else {
       set_status("THE CODE IS 5 LETTERS");
     }
+  } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
+    // PB-D6: the room screen's first-ever confirm — START GAME with
+    // whoever is seated (the room also auto-starts when it fills).
+    waiting_room_start();
   } else if (lan_rejoin_browsing() && lan_sel_ >= 0) {
     // Enter/A on a highlighted row of the rejoin wait screen (see draw's
     // RoomJoining case): join it instead of waiting out the budget.
@@ -617,6 +623,10 @@ void NetLobby::confirm() {
 // playable through the Milestone 1 clipboard flow.
 void NetLobby::fall_back_to_manual(const char *why) {
   NET_LOG("[lobby] manual fallback: %s\n", why);
+  // The manual clipboard flow is structurally pairwise (PB-D6): a waiting
+  // room losing its relay tears its un-started peers down and falls back
+  // to the 2P rescue path like any host.
+  teardown_waiting_room();
   if (signal_) {
     signal_->close();
     delete signal_;
@@ -630,6 +640,9 @@ void NetLobby::fall_back_to_manual(const char *why) {
   // The clipboard blob must carry every candidate: back to non-trickle
   // (always before start_* — the host deferred its start to the Room
   // frame that never came, the joiner starts at paste time).
+  // A waiting-room host deleted its probe transport at the Room frame
+  // (offers were per-jid) — mint a fresh one for the manual blob.
+  if (hosting_ && !transport_) transport_ = NetTransport::create();
   if (transport_) transport_->set_trickle(false);
   if (hosting_ && transport_) transport_->start_host();  // was deferred
   screen_ = hosting_ ? HostGathering : JoinWaitOffer;
@@ -658,7 +671,7 @@ void NetLobby::lan_teardown() {
 // closes (its room is killed so the code dies with it).
 void NetLobby::lan_host_update(int delta) {
   if (!lan_announce_.running()) return;
-  if (session_) {  // the relay door won while we were beaconing
+  if (!waiting_room() && session_) {  // the relay door won while beaconing
     lan_teardown();
     return;
   }
@@ -692,6 +705,45 @@ void NetLobby::lan_host_update(int delta) {
     return;
   }
   NET_LOG("[lobby] lan joiner completed - adopting the lan transport\n");
+  if (waiting_room()) {
+    // B4b (PB-D6): the LAN door mints a FRESH offer per accepted exchange
+    // (an SDP is single-use) instead of pairing once and closing. The
+    // adopted transport becomes a pending waiting-room session on the
+    // next free seat; the door re-arms below for the next couch joiner.
+    // The relay door stays open beside it — a mixed LAN+relay roster is
+    // fine, though with a worker in the session the display context
+    // stays ONLINE-strict, so a LAN peer's claimed name renders as its
+    // role label until B5 revisits per-peer display contexts.
+    int seat = next_free_seat();
+    if (seat == 0) {
+      NET_LOG("[lobby] lan joiner ignored - room full\n");
+      return;
+    }
+    lan_transport_->set_remote_answer(sdp);
+    PendingJoiner pj;
+    pj.session = new NetSession(lan_transport_, NetSession::HostRole, seat);
+    pj.seat = seat;
+    pj.lan = true;
+    pj.offer_sent = true;  // its blob went over TCP, nothing to relay
+    char key[24];
+    snprintf(key, sizeof(key), "lan#%d", lan_door_serial_++);
+    pending_[key] = pj;
+    lan_transport_ = nullptr;  // owned by the session now
+    // Re-arm the door: Announce is a single-exchange object, so restart
+    // it and mint a fresh no-STUN transport whose blob the tick above
+    // hands over once gathering completes.
+    lan_announce_.stop();
+    lan_offer_set_ = false;
+    if (lan_announce_.start(lan_beacon_name_)) {
+      lan_transport_ = NetTransport::create();
+      if (lan_transport_) {
+        lan_transport_->set_lan_only(true);
+        lan_transport_->set_trickle(false);
+        lan_transport_->start_host();
+      }
+    }
+    return;
+  }
   // The room stays OPEN (it used to be killed here): the WaitConnect
   // handoff gives it to GLGame via net_adopt_signal exactly like a
   // relay pairing, so a LAN session keeps the relay session's whole
@@ -955,6 +1007,136 @@ void NetLobby::apply_peer_attestation(uint8_t platform, const std::string &name,
 
 // Drives the room-code flow: pushes our SDP into the room when ready and
 // reacts to relay events. No-op in the manual fallback (signal_ == null).
+// ---- B4b waiting room (PB-D6) --------------------------------------------
+
+bool NetLobby::waiting_room() const {
+  return hosting_ && net_seat_cap() > 2;
+}
+
+int NetLobby::next_free_seat() const {
+  for (int s = 2; s <= net_seat_cap(); s++) {
+    bool used = false;
+    for (const SeatedPeer &sp : seated_)
+      if (sp.seat == s) used = true;
+    for (std::map<std::string, PendingJoiner>::const_iterator it =
+             pending_.begin();
+         it != pending_.end(); ++it)
+      if (it->second.session && it->second.seat == s) used = true;
+    if (!used) return s;
+  }
+  return 0;
+}
+
+void NetLobby::drop_pending(const std::string &key, const char *why) {
+  std::map<std::string, PendingJoiner>::iterator it = pending_.find(key);
+  if (it == pending_.end()) return;
+  NET_LOG("[lobby] waiting room: dropping joiner %s (%s)\n", key.c_str(), why);
+  if (it->second.session) {
+    delete it->second.session;  // closes + deletes the transport it owns
+  } else if (it->second.transport) {
+    it->second.transport->close();
+    delete it->second.transport;
+  }
+  pending_.erase(it);
+}
+
+void NetLobby::teardown_waiting_room() {
+  while (!pending_.empty())
+    drop_pending(pending_.begin()->first, "lobby teardown");
+  for (SeatedPeer &sp : seated_) delete sp.session;
+  seated_.clear();
+}
+
+// Pump every mid-handshake joiner and watch the seated links: Ready seats
+// a session (auto-starting once the room fills), a failure frees its seat
+// for the next joiner. Runs from tick() beside the LAN door, not from
+// pump_signal — a signal-less (LAN-only) waiting room still advances.
+void NetLobby::waiting_room_update(int delta) {
+  if (!waiting_room() || screen_ != RoomHost || handed_off_to_game_) return;
+  for (std::map<std::string, PendingJoiner>::iterator it = pending_.begin();
+       it != pending_.end();) {
+    PendingJoiner &pj = it->second;
+    if (!pj.session) { ++it; continue; }
+    pj.session->update(delta);
+    NetSession::Phase p = pj.session->phase();
+    if (p == NetSession::Ready) {
+      SeatedPeer sp;
+      sp.session = pj.session;
+      sp.jid = pj.lan ? std::string() : it->first;
+      sp.seat = pj.seat;
+      seated_.push_back(sp);
+      NET_LOG("[lobby] waiting room: seat %d filled (%s)\n", sp.seat,
+              it->first.c_str());
+      char buf[48];
+      snprintf(buf, sizeof(buf), "PLAYER %d JOINED", sp.seat);
+      set_status(buf);
+      pending_.erase(it++);
+      continue;
+    }
+    if (p == NetSession::Rejected || p == NetSession::Failed ||
+        (pj.session->transport() && pj.session->transport()->failed())) {
+      std::string key = it->first;
+      ++it;
+      drop_pending(key, "handshake failed");
+      continue;
+    }
+    ++it;
+  }
+  // A seated link dying before START frees the seat. No grace machinery
+  // here — pre-start there is nothing to park; the joiner just re-joins.
+  for (size_t i = 0; i < seated_.size();) {
+    NetTransport *t = seated_[i].session->transport();
+    if (t && t->failed()) {
+      char buf[48];
+      snprintf(buf, sizeof(buf), "PLAYER %d LEFT", seated_[i].seat);
+      set_status(buf);
+      NET_LOG("[lobby] waiting room: seat %d link died pre-start\n",
+              seated_[i].seat);
+      delete seated_[i].session;
+      seated_.erase(seated_.begin() + i);
+    } else {
+      i++;
+    }
+  }
+  // Full house: nothing left to wait for.
+  if ((int)seated_.size() + 1 >= net_seat_cap()) waiting_room_start();
+}
+
+// The waiting-room twin of the WaitConnect hand-off: every seated session
+// moves into ONE GLGame, each peer's jid + attestation riding in its
+// NetSeated entry instead of the front-peer setters. Joiners still
+// mid-handshake are dropped — the room stays open, and until B5's
+// per-seat rejoin lands their side fails on its own timeout.
+void NetLobby::waiting_room_start() {
+  if (seated_.empty() || handed_off_to_game_) return;
+  while (!pending_.empty())
+    drop_pending(pending_.begin()->first, "game starting");
+  std::vector<GLGame::NetSeated> peers;
+  for (SeatedPeer &sp : seated_) {
+    GLGame::NetSeated ns;
+    ns.session = sp.session;
+    ns.jid = sp.jid;
+    if (!sp.jid.empty()) {
+      std::map<std::string, NetIdentity>::const_iterator it =
+          jid_attested_.find(sp.jid);
+      if (it != jid_attested_.end()) ns.attested = it->second;
+    }
+    peers.push_back(ns);
+  }
+  seated_.clear();  // the sessions are the game's now
+  NET_LOG("[lobby] waiting room: starting with %d peer(s)\n",
+          (int)peers.size());
+  GLGame *game = new GLGame(peers, (SDL_GameController *)0);
+  game->net_set_worker_session(used_worker_);
+  game->net_lan_beacon_name_ = lan_beacon_name_;
+  if (signal_) {
+    game->net_adopt_signal(signal_, room_code_, ice_servers_, room_token_);
+    signal_ = nullptr;
+  }
+  handed_off_to_game_ = true;  // credential lifetime moves to the game
+  request_state_change(game);
+}
+
 void NetLobby::pump_signal(int delta) {
   if (!signal_) return;
 
@@ -965,6 +1147,22 @@ void NetLobby::pump_signal(int delta) {
     signal_->send_offer(transport_->local_description());
     offer_sent_ = true;
     NET_LOG("[lobby] offer sent to room %s\n", room_code_.c_str());
+  }
+
+  // Waiting room (B4b): each pending joiner's offer goes out ADDRESSED the
+  // moment its own gathering yields it (PB-D5 {t:"offer", to}) — the
+  // worker stores it per-jid and never routes it to anyone else.
+  if (waiting_room() && !room_code_.empty()) {
+    for (std::map<std::string, PendingJoiner>::iterator it = pending_.begin();
+         it != pending_.end(); ++it) {
+      PendingJoiner &pj = it->second;
+      if (!pj.lan && !pj.offer_sent && pj.transport &&
+          pj.transport->local_description_ready()) {
+        signal_->send_offer(pj.transport->local_description(), it->first);
+        pj.offer_sent = true;
+        NET_LOG("[lobby] offer sent to joiner %s\n", it->first.c_str());
+      }
+    }
   }
 
   // Joiner: answer ready -> push it and start waiting on the transport.
@@ -988,8 +1186,24 @@ void NetLobby::pump_signal(int delta) {
       case NetSignal::Event::Cand: {
         // Trickle ICE: feed the peer's candidate into whichever transport
         // is live (the lobby's own, or the session's after hand-off).
-        NetTransport *t =
-            transport_ ? transport_ : (session_ ? session_->transport() : nullptr);
+        // Waiting room: the frame's `from` stamp picks the joiner's own
+        // pending transport/session (a seated one still trickles too).
+        NetTransport *t = nullptr;
+        if (waiting_room() && !ev.peer.empty()) {
+          std::map<std::string, PendingJoiner>::iterator pit =
+              pending_.find(ev.peer);
+          if (pit != pending_.end())
+            t = pit->second.transport
+                    ? pit->second.transport
+                    : (pit->second.session ? pit->second.session->transport()
+                                           : nullptr);
+          if (!t)
+            for (SeatedPeer &sp : seated_)
+              if (sp.jid == ev.peer) t = sp.session->transport();
+        }
+        if (!t)
+          t = transport_ ? transport_
+                         : (session_ ? session_->transport() : nullptr);
         NET_LOG("[lobby] cand in (%s): %s\n", t ? "applied" : "DROPPED",
                ev.text.substr(0, 40).c_str());
         if (t) t->add_remote_candidate(ev.text2, ev.text);
@@ -1019,7 +1233,17 @@ void NetLobby::pump_signal(int delta) {
         Invites::set_joinable(room_code_);
         NET_LOG("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
                (int)ice_servers_.size());
-        if (transport_) {
+        if (waiting_room()) {
+          // Per-jid offers only (PB-D5): a legacy unaddressed offer would
+          // pair whichever joiner the worker considers oldest, so the
+          // waiting room mints one transport per PeerJoin instead. The
+          // availability-probe transport from confirm() is surplus here.
+          if (transport_) {
+            transport_->close();
+            delete transport_;
+            transport_ = nullptr;
+          }
+        } else if (transport_) {
           transport_->set_ice_servers(ice_servers_);
           transport_->start_host();  // deferred from confirm()
         }
@@ -1057,6 +1281,44 @@ void NetLobby::pump_signal(int delta) {
         }
         break;
       case NetSignal::Event::PeerJoin:
+        if (waiting_room() && !ev.peer.empty()) {
+          // One transport per joiner, offer addressed to its jid (an SDP
+          // is single-use). No free seat = no offer: the worker admits
+          // them and they wait for one to open (worker.js PB-D5 note).
+          bool known = pending_.count(ev.peer) > 0;
+          for (SeatedPeer &sp : seated_)
+            if (sp.jid == ev.peer) known = true;
+          if (!known && next_free_seat() != 0) {
+            PendingJoiner pj;
+            pj.transport = NetTransport::create();
+            if (pj.transport) {
+              pj.transport->set_trickle(true);
+              pj.transport->set_ice_servers(ice_servers_);
+              pj.transport->start_host();
+              pending_[ev.peer] = pj;
+              NET_LOG("[lobby] waiting room: gathering an offer for %s\n",
+                      ev.peer.c_str());
+            }
+          } else if (!known) {
+            NET_LOG("[lobby] waiting room: joiner %s waits (room full)\n",
+                    ev.peer.c_str());
+          }
+          set_status("A PLAYER IS CONNECTING");
+          break;
+        }
+        if (waiting_room()) {
+          // Pre-multi-join worker: frames carry no jid to key on, so the
+          // waiting room can't fan out — run the classic single pair
+          // (the Answer case's legacy branch adopts it, capping at 2P).
+          if (!transport_ && !offer_sent_) {
+            transport_ = NetTransport::create();
+            if (transport_) {
+              transport_->set_trickle(true);
+              transport_->set_ice_servers(ice_servers_);
+              transport_->start_host();
+            }
+          }
+        }
         set_status("PLAYER 2 IS CONNECTING");
         break;
       case NetSignal::Event::PeerLeave:
@@ -1074,6 +1336,10 @@ void NetLobby::pump_signal(int delta) {
         } else {
           jid_attested_.erase(ev.peer);
           if (ev.peer == paired_jid_) attested_peer_ = NetIdentity();
+          // Waiting room: a leaver mid-pairing frees its transport/seat.
+          // A SEATED leaver is governed by its p2p link, not the signal
+          // socket (waiting_room_update watches transport liveness).
+          drop_pending(ev.peer, "joiner left the room");
         }
         // The room drops its stored offer with the joiner; put ours back
         // so the next joiner gets it replayed.
@@ -1105,6 +1371,36 @@ void NetLobby::pump_signal(int delta) {
         }
         break;
       case NetSignal::Event::Answer:
+        if (waiting_room() && !ev.peer.empty()) {
+          std::map<std::string, PendingJoiner>::iterator pit =
+              pending_.find(ev.peer);
+          if (pit == pending_.end() || !pit->second.transport ||
+              pit->second.session)
+            break;  // no offer out to them, or already answered
+          // Version gate (see the Offer case): their answer is unusable
+          // and their next join attempt re-mints a fresh pending entry.
+          if (ev.text2 != std::to_string((int)Net::PROTO_VERSION)) {
+            NET_LOG("[lobby] answer pv '%s' != ours %d - joiner %s dropped\n",
+                    ev.text2.c_str(), (int)Net::PROTO_VERSION,
+                    ev.peer.c_str());
+            set_status("A PLAYER HAS A DIFFERENT VERSION");
+            drop_pending(ev.peer, "version mismatch");
+            break;
+          }
+          int seat = next_free_seat();
+          if (seat == 0) {  // filled while their answer was in flight
+            drop_pending(ev.peer, "room filled first");
+            break;
+          }
+          pit->second.transport->set_remote_answer(ev.text);
+          pit->second.session = new NetSession(
+              pit->second.transport, NetSession::HostRole, seat);
+          pit->second.transport = nullptr;  // owned by the session now
+          pit->second.seat = seat;
+          NET_LOG("[lobby] waiting room: joiner %s handshaking for seat %d\n",
+                  ev.peer.c_str(), seat);
+          break;
+        }
         if (hosting_ && transport_) {
           // Version gate (see the Offer case): discard a mismatched
           // answer and keep the room open — the outdated joiner fails
@@ -1254,6 +1550,11 @@ void NetLobby::tick(int delta) {
   if (hosting_) lan_host_update(delta);
   else lan_join_update(delta);
 
+  // B4b waiting room: pump pending handshakes + seated liveness. Beside
+  // the LAN door, not in pump_signal — a LAN-only room has no signal_.
+  waiting_room_update(delta);
+  if (handed_off_to_game_) return;  // started this frame; swap next tick
+
   // Trickle ICE (M3-2b): relay candidates our transport gathers to the
   // peer as they appear ("mid\ncand" strings from the backend). Only after
   // our SDP has gone out: a candidate sent BEFORE its offer is buffered by
@@ -1268,6 +1569,29 @@ void NetLobby::tick(int delta) {
       if (nl != std::string::npos) {
         NET_LOG("[lobby] cand out: %s\n", c.substr(nl + 1, 40).c_str());
         signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
+      }
+    }
+  }
+  // Waiting room: each pending joiner's candidates go out ADDRESSED, and
+  // only after ITS offer (same fresh-offer wipe rule as above). Seated
+  // peers are connected; their gathering is done.
+  if (signal_ && waiting_room()) {
+    for (std::map<std::string, PendingJoiner>::iterator it = pending_.begin();
+         it != pending_.end(); ++it) {
+      if (it->second.lan || !it->second.offer_sent) continue;
+      NetTransport *t = it->second.transport
+                            ? it->second.transport
+                            : (it->second.session
+                                   ? it->second.session->transport()
+                                   : nullptr);
+      std::string c;
+      while (t && t->poll_local_candidate(c)) {
+        size_t nl = c.find('\n');
+        if (nl != std::string::npos) {
+          NET_LOG("[lobby] cand out to %s: %s\n", it->first.c_str(),
+                  c.substr(nl + 1, 40).c_str());
+          signal_->send_cand(c.substr(0, nl), c.substr(nl + 1), it->first);
+        }
       }
     }
   }
@@ -1707,8 +2031,19 @@ void NetLobby::draw() {
         }
         if (lan_announce_.running() && lan_announce_.peer_engaged())
           Typer::draw_centered(0, -180, "A LAN PLAYER IS CONNECTING", 12);
-        if (blink)
-          Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
+        if (blink) {
+          if (waiting_room()) {
+            // Touch waiting room (post-B7 only; unreachable until the cap
+            // flips there): count line only — the tap-to-start band lands
+            // with the B7 touch pass.
+            char buf[40];
+            snprintf(buf, sizeof(buf), "WAITING FOR PLAYERS %d/%d",
+                     (int)seated_.size() + 1, net_seat_cap());
+            Typer::draw_centered(0, -220, buf, sz);
+          } else {
+            Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
+          }
+        }
       } else {
         lines.push_back("ROOM CODE");
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
@@ -1717,7 +2052,38 @@ void NetLobby::draw() {
         lines.push_back("");
         // Pushed on the off-phase too (as a blank) — a conditional push
         // here makes every line below it jump each blink.
-        lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
+        if (waiting_room()) {
+          // PB-D6 roster: the count line, one row per seated peer (its
+          // attested name, else the role label), and the START hint once
+          // anyone is in. Rows are pushed unconditionally so the blink
+          // phase can't make them jump.
+          char buf[48];
+          snprintf(buf, sizeof(buf), "WAITING FOR PLAYERS %d/%d",
+                   (int)seated_.size() + 1, net_seat_cap());
+          lines.push_back(blink ? buf : "");
+          for (const SeatedPeer &sp : seated_) {
+            std::string name;
+            if (!sp.jid.empty()) {
+              std::map<std::string, NetIdentity>::const_iterator it =
+                  jid_attested_.find(sp.jid);
+              if (it != jid_attested_.end()) name = it->second.name;
+            }
+            if (name.empty()) {
+              snprintf(buf, sizeof(buf), "PLAYER %d - READY", sp.seat);
+              lines.push_back(buf);
+            } else {
+              snprintf(buf, sizeof(buf), "PLAYER %d - %s", sp.seat,
+                       name.c_str());
+              lines.push_back(buf);
+            }
+          }
+          if (!seated_.empty()) {
+            lines.push_back("");
+            lines.push_back("ENTER - START GAME");
+          }
+        } else {
+          lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
+        }
         if (lan_announce_.running() && lan_announce_.peer_engaged())
           lines.push_back("A LAN PLAYER IS CONNECTING");
       }
