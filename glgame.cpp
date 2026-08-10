@@ -1387,6 +1387,10 @@ void GLGame::add_remote_player() {
   // which spawns an exact clone instantly instead of waiting for the next
   // 10 Hz snapshot rebuild.
   p1_ship->net_report_shots = true;
+  // PB-D2: any join forces a GLOBAL keyframe slot — the newcomer has no
+  // delta baseline, and per-peer baselines are a non-starter (the replay
+  // recorder tees the one shared build).
+  net_force_keyframe_ = true;
   update_presence();  // rich presence: now a co-op game
 }
 
@@ -1808,9 +1812,12 @@ void net_decay_render_offset(Object &o, int delta,
 }
 }  // namespace
 
-void GLGame::net_host_poll() {
-  NetTransport *t = net_session()->transport();
-  Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
+// B4: one peer's full drain — INPUT decode, claims, effects — against its
+// own transport, budgets, and seat's ship. net_host_poll() below loops it.
+void GLGame::net_host_poll_peer(NetPeer &peer) {
+  NetTransport *t = peer.session->transport();
+  GLShip *remote_gs = player_by_seat(peer.seat);
+  Ship *remote = remote_gs ? remote_gs->ship : NULL;
   // PROTO 25: a peer's effect messages (SHOT/LANCE/SHOCK) name the firing
   // seat in the header. Resolve it — bounded to REMOTE seats only (2..),
   // so a bad byte can never point a peer's effects at the host's own ship.
@@ -1825,25 +1832,25 @@ void GLGame::net_host_poll() {
   // Mid-gap marker (host side): fires once when INPUT silence crosses
   // 300 ms, with our send-buffer depth at that instant — pairs with the
   // client's "rx quiet" line to show whether both senders were blocked.
-  if (Net::net_debug_enabled() && running && net_peer_make().have_input) {
-    int quiet = current_time - net_peer_make().last_input_time;
-    if (quiet > 300 && !net_peer_make().quiet_logged) {
-      net_peer_make().quiet_logged = true;
+  if (Net::net_debug_enabled() && running && peer.have_input) {
+    int quiet = current_time - peer.last_input_time;
+    if (quiet > 300 && !peer.quiet_logged) {
+      peer.quiet_logged = true;
       NET_LOG("net: input quiet 300 ms, tx buffered %d bytes\n",
               t->buffered_amount());
     } else if (quiet <= 300) {
-      net_peer_make().quiet_logged = false;
+      peer.quiet_logged = false;
     }
   }
 
   // Close an input-gap observation window (opened below) and report what
   // the gap turned out to be — see glgame.h net_gap_* for how to read it.
-  if (net_peer_make().gap_deadline && current_time >= net_peer_make().gap_deadline) {
+  if (peer.gap_deadline && current_time >= peer.gap_deadline) {
     NET_LOG("net: post-gap 1.5 s: %d inputs accepted (~185 normal), "
             "%d stale rx, max seq leap %u (skipped at gap end: %u)\n",
-            net_peer_make().gap_accepts, net_peer_make().gap_stragglers, net_peer_make().gap_max_leap,
-            net_peer_make().gap_skipped);
-    net_peer_make().gap_deadline = 0;
+            peer.gap_accepts, peer.gap_stragglers, peer.gap_max_leap,
+            peer.gap_skipped);
+    peer.gap_deadline = 0;
   }
 
   // Flood guard (safety, not anti-cheat): a peer that spams the spawn/claim
@@ -1868,6 +1875,15 @@ void GLGame::net_host_poll() {
   net_event_effect_budget_ = NET_EVENT_EFFECTS_PER_POLL;
 
   std::vector<unsigned char> msg;
+  // PB-D4: a peer's accepted effect frames (SHOT/LANCE/SHOCK) are relayed
+  // verbatim to every OTHER live peer -- the PROTO 25 header already names
+  // the firing seat, so receivers resolve the firer with no re-stamp.
+  // No-op at one peer.
+  auto relay_others = [this, &peer, &msg]() {
+    for (NetPeer *op : net_peers_)
+      if (op != &peer && op->session && !op->lost)
+        op->session->transport()->send_reliable(&msg[0], msg.size());
+  };
   while (t->poll(msg)) {
     if (++net_msgs_seen > NET_MAX_MSGS_PER_POLL) {
       NET_LOG("net: poll message storm - %d msgs, deferring rest\n",
@@ -1916,6 +1932,7 @@ void GLGame::net_host_poll() {
         firer->net_spawn_reported_bullet(id, Point(sx, sy), Point(svx, svy),
                                          (flags & 1) != 0, (flags & 2) != 0,
                                          (flags & 4) != 0);  // PROTO 18 pierce
+        relay_others();  // PB-D4
         // Replay tee: the remote gun's sound cue — its bullets ride the
         // snapshots, but the pew never would (the outbox tee is suppressed
         // with the rest of the remote gun sim).
@@ -1939,6 +1956,7 @@ void GLGame::net_host_poll() {
                                firer->lance_pulses.back().points);
         resolve_lance_ship_hits(firer, firer->lance_pulses.back().points);
         net_resolve_polyline_block(firer->lance_pulses.back().points);
+        relay_others();  // PB-D4
       }
       continue;
     }
@@ -2005,6 +2023,7 @@ void GLGame::net_host_poll() {
             shock_bolt_reaches(pts, partner->position, partner->radius))
           firer->shock_hit_ship(partner);
       }
+      relay_others();  // PB-D4
       continue;
     }
     if (h.msg_type == Net::MSG_HIT_SHIP) {
@@ -2173,16 +2192,16 @@ void GLGame::net_host_poll() {
     if (!Net::decode_input(r, in)) continue;
     // Unreliable channel: drop stale/reordered packets (signed distance
     // handles seq wrap).
-    if (net_peer_make().have_input && (int32_t)(in.seq - net_peer_make().last_input_seq) <= 0) {
-      net_peer_make().input_stale_drops++;
-      if (net_peer_make().gap_deadline) net_peer_make().gap_stragglers++;
+    if (peer.have_input && (int32_t)(in.seq - peer.last_input_seq) <= 0) {
+      peer.input_stale_drops++;
+      if (peer.gap_deadline) peer.gap_stragglers++;
       continue;
     }
-    uint32_t seq_leap = net_peer_make().have_input ? in.seq - net_peer_make().last_input_seq : 1;
-    net_peer_make().last_input_seq = in.seq;
-    if (net_peer_make().gap_deadline) {
-      net_peer_make().gap_accepts++;
-      if (seq_leap > net_peer_make().gap_max_leap) net_peer_make().gap_max_leap = seq_leap;
+    uint32_t seq_leap = peer.have_input ? in.seq - peer.last_input_seq : 1;
+    peer.last_input_seq = in.seq;
+    if (peer.gap_deadline) {
+      peer.gap_accepts++;
+      if (seq_leap > peer.gap_max_leap) peer.gap_max_leap = seq_leap;
     }
     // An INPUT blackout (unreliable channel dying under relay congestion)
     // is what big local-ship corrections on the CLIENT look like from
@@ -2191,33 +2210,33 @@ void GLGame::net_host_poll() {
     // The client mints a seq every 8 ms step, so "skipped" = it kept
     // sending into the void; zero skipped = it stopped stepping (or an
     // ordered backlog is about to replay — the window tells them apart).
-    if (net_peer_make().have_input && current_time - net_peer_make().last_input_time > 300) {
+    if (peer.have_input && current_time - peer.last_input_time > 300) {
       NET_LOG("net: input gap %d ms ended (seq %u, %u seqs skipped, "
               "%d stale rx during gap)\n",
-              current_time - net_peer_make().last_input_time, in.seq, seq_leap - 1,
-              net_peer_make().input_stale_drops);
-      net_peer_make().gap_deadline = current_time + 1500;
-      net_peer_make().gap_skipped = seq_leap - 1;
-      net_peer_make().gap_stragglers = 0;
-      net_peer_make().gap_accepts = 0;
-      net_peer_make().gap_max_leap = 0;
+              current_time - peer.last_input_time, in.seq, seq_leap - 1,
+              peer.input_stale_drops);
+      peer.gap_deadline = current_time + 1500;
+      peer.gap_skipped = seq_leap - 1;
+      peer.gap_stragglers = 0;
+      peer.gap_accepts = 0;
+      peer.gap_max_leap = 0;
     }
-    net_peer_make().last_input_time = current_time;
-    net_peer_make().input_stale_drops = 0;
-    net_peer_make().input_zeroed = false;
+    peer.last_input_time = current_time;
+    peer.input_stale_drops = 0;
+    peer.input_zeroed = false;
     if (!remote) continue;
 
-    if (!net_peer_make().have_input) {
+    if (!peer.have_input) {
       // First INPUT: baseline the one-shot counters instead of firing
       // whatever the client accumulated before we were listening.
-      net_peer_make().have_input = true;
-      net_peer_make().prev_boost = in.boost_count;
-      net_peer_make().prev_next_weapon = in.next_weapon_count;
-      net_peer_make().prev_next_secondary = in.next_secondary_count;
-      net_peer_make().prev_teleport = in.teleport_count;
-      net_peer_make().prev_respawn = in.respawn_count;
-      net_peer_make().prev_shoot_press = in.shoot_press_count;
-      net_peer_make().prev_secondary_press = in.secondary_press_count;
+      peer.have_input = true;
+      peer.prev_boost = in.boost_count;
+      peer.prev_next_weapon = in.next_weapon_count;
+      peer.prev_next_secondary = in.next_secondary_count;
+      peer.prev_teleport = in.teleport_count;
+      peer.prev_respawn = in.respawn_count;
+      peer.prev_shoot_press = in.shoot_press_count;
+      peer.prev_secondary_press = in.secondary_press_count;
       // The first INPUT proves the client's game is up: if we are
       // paused (auto-paused on its disconnect, or by hand), share the
       // pause state now — an event sent while it was still in the lobby
@@ -2233,29 +2252,29 @@ void GLGame::net_host_poll() {
     }
 
     // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
-    uint8_t boosts = (uint8_t)(in.boost_count - net_peer_make().prev_boost);
-    uint8_t weapons = (uint8_t)(in.next_weapon_count - net_peer_make().prev_next_weapon);
+    uint8_t boosts = (uint8_t)(in.boost_count - peer.prev_boost);
+    uint8_t weapons = (uint8_t)(in.next_weapon_count - peer.prev_next_weapon);
     uint8_t secondaries =
-        (uint8_t)(in.next_secondary_count - net_peer_make().prev_next_secondary);
-    uint8_t teleports = (uint8_t)(in.teleport_count - net_peer_make().prev_teleport);
-    uint8_t respawns = (uint8_t)(in.respawn_count - net_peer_make().prev_respawn);
-    uint8_t shot_presses = (uint8_t)(in.shoot_press_count - net_peer_make().prev_shoot_press);
+        (uint8_t)(in.next_secondary_count - peer.prev_next_secondary);
+    uint8_t teleports = (uint8_t)(in.teleport_count - peer.prev_teleport);
+    uint8_t respawns = (uint8_t)(in.respawn_count - peer.prev_respawn);
+    uint8_t shot_presses = (uint8_t)(in.shoot_press_count - peer.prev_shoot_press);
     uint8_t sec_presses =
-        (uint8_t)(in.secondary_press_count - net_peer_make().prev_secondary_press);
-    net_peer_make().prev_shoot_press = in.shoot_press_count;
-    net_peer_make().prev_secondary_press = in.secondary_press_count;
-    net_peer_make().prev_boost = in.boost_count;
-    net_peer_make().prev_next_weapon = in.next_weapon_count;
-    net_peer_make().prev_next_secondary = in.next_secondary_count;
-    net_peer_make().prev_teleport = in.teleport_count;
-    net_peer_make().prev_respawn = in.respawn_count;
+        (uint8_t)(in.secondary_press_count - peer.prev_secondary_press);
+    peer.prev_shoot_press = in.shoot_press_count;
+    peer.prev_secondary_press = in.secondary_press_count;
+    peer.prev_boost = in.boost_count;
+    peer.prev_next_weapon = in.next_weapon_count;
+    peer.prev_next_secondary = in.next_secondary_count;
+    peer.prev_teleport = in.teleport_count;
+    peer.prev_respawn = in.respawn_count;
 
     if (!remote->is_alive()) {
       // Dead ships take no control input, same as the local player. Keys
       // still held at death stay suppressed through the respawn until the
       // player releases and re-presses them — respawn's reset() gives the
       // local player exactly that restriction.
-      net_peer_make().held_suppress = 0xffff;
+      peer.held_suppress = 0xffff;
       // Mirror the local respawn-tap rule (GLShip::input): a shoot tap
       // while dead, after a short grace period, skips the countdown.
       if (respawns && remote->lives > 0 &&
@@ -2268,8 +2287,8 @@ void GLGame::net_host_poll() {
     // continuously held and expires the first time the client reports it
     // released — the remote player re-presses each key exactly like the
     // local player does after respawn's reset().
-    net_peer_make().held_suppress &= in.held;
-    uint16_t held = in.held & (uint16_t)~net_peer_make().held_suppress;
+    peer.held_suppress &= in.held;
+    uint16_t held = in.held & (uint16_t)~peer.held_suppress;
 
     remote->rotation_scale = in.analog_rotation;
     remote->thrust_analog = in.analog_thrust;
@@ -2366,9 +2385,9 @@ void GLGame::net_host_poll() {
 
   // Dead-man switch: no INPUT for 1 s (loss burst, hung tab) — release the
   // remote ship's held actions instead of letting it fly into a wall.
-  if (remote && net_peer_make().have_input && !net_peer_make().input_zeroed &&
-      current_time - net_peer_make().last_input_time > 1000) {
-    net_peer_make().input_zeroed = true;
+  if (remote && peer.have_input && !peer.input_zeroed &&
+      current_time - peer.last_input_time > 1000) {
+    peer.input_zeroed = true;
     remote->rotate_left(false);
     remote->rotate_right(false);
     remote->thrust(false);
@@ -2376,6 +2395,11 @@ void GLGame::net_host_poll() {
     remote->shoot(false);
     remote->fire_secondary(false);
   }
+}
+
+void GLGame::net_host_poll() {
+  for (NetPeer *p : net_peers_)
+    if (p->session) net_host_poll_peer(*p);
 }
 
 void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
@@ -8205,10 +8229,14 @@ void GLGame::tick(int delta) {
     // fires its own weapon locally, and the host simulates the client's
     // shots too — neither is relayed. (Never recorded — the tee skips
     // EV_WORLD_SHOT; FX_SHOT from the replay_pews outbox is its twin.)
-    Ship *p1 = players->empty() ? NULL : players->front()->ship;
-    Ship *p2 = players->size() >= 2 ? players->back()->ship : NULL;
+    // B4: "a world actor" = not ANY player's ship (was a front/back pair test).
+    auto is_player_ship = [this](const Ship *s) {
+      for (auto *gs : *players)
+        if (gs->ship == s) return true;
+      return false;
+    };
     for (const Ship *shooter : Ship::net_shots) {
-      if (shooter != p1 && shooter != p2)
+      if (!is_player_ship(shooter))
         net_send_event(Net::EV_WORLD_SHOT,
                        Net::pack_pos(shooter->position.x(),
                                      shooter->position.y(),
@@ -8217,7 +8245,7 @@ void GLGame::tick(int delta) {
     // Deaths: player explosions already reach the client through the
     // snapshot extras; world actors' need the event.
     for (const Ship *boom : Ship::net_booms)
-      if (boom != p1 && boom != p2)
+      if (!is_player_ship(boom))
         net_send_event(Net::EV_WORLD_BOOM,
                        Net::pack_pos(boom->position.x(), boom->position.y(), world.x(), world.y()));
   }
