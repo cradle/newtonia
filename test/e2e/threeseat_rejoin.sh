@@ -62,9 +62,17 @@ alive $PA host; alive $PB joiner1
 echo "seat 3 lost, play continued"
 
 # Relaunch seat 3's player: a rejoin is a plain JOIN with the same code.
+# The new window is found by BEFORE/AFTER diff — a plain exclusion list
+# breaks both ways (the SIGKILLed window can linger, or X can recycle
+# its id for the new client).
+BEFORE=$(newtonia_windows)
 PD=$(launch joiner3)
 sleep 4
-WD=$(newtonia_windows | grep -v "^$WA$" | grep -v "^$WB$" | head -1)
+WD=
+for w in $(newtonia_windows); do
+  echo "$BEFORE" | grep -q "^$w$" || WD=$w
+done
+[ -n "$WD" ] || { echo "NO REJOINER WINDOW"; kill $PA $PB $PD; exit 1; }
 nav_join "$WD" "$CODE"
 REJOINED=
 for i in $(seq 1 45); do

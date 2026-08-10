@@ -544,9 +544,11 @@ GLGame::~GLGame() {
   if (net_mode_ == NetClient || net_mode_ == NetReplay)
     Ship::net_quiet_respawn = false;
   if (net_mode_ == NetHost) Ship::net_report_bounces = false;
-  // Leaving an online game: tell the peer (best effort — a hard close is
-  // also detected via the channel-close path).
-  if (net_session() && !net_any_peer_lost())
+  // Leaving an online game: tell the peers (best effort — a hard close is
+  // also detected via the channel-close path). B5: one lost seat must not
+  // deny the healthy peers their goodbye — net_send_event skips
+  // session-less peers itself.
+  if (net_session() && !net_all_peers_lost())
     net_send_event(Net::EV_BYE);
   for (NetPeer *p : net_peers_) {
     delete p->session;  // closes + deletes the transport
@@ -1163,9 +1165,11 @@ void GLGame::toggle_pause(bool broadcast) {
   // Replay checkpoint (REPLAY.md): pause is a lifecycle flush point — the
   // record chunk since the last level boundary hits the disk here.
   if (!running && replay_) replay_->flush();
-  // Online, pausing is shared state: tell the peer (unless this call IS
-  // the peer's event being applied).
-  if (broadcast && net_mode_ != NetOff && net_session() && !net_any_peer_lost())
+  // Online, pausing is shared state: tell the peers (unless this call IS
+  // a peer's event being applied). B5: keep telling the LIVE peers while
+  // one seat is out — the shared-pause contract must not break for them.
+  if (broadcast && net_mode_ != NetOff && net_session() &&
+      !net_all_peers_lost())
     net_send_event(running ? Net::EV_RESUME : Net::EV_PAUSE);
   // Pausing stops keyboard()/controller() forwarding to the ships, so any
   // release that happens while paused is lost — drop everything now, or a
@@ -2793,16 +2797,26 @@ void GLGame::net_host_rejoin_poll(int delta) {
           new NetSession(net_rehost_, NetSession::HostRole, dp->seat);
       net_rehost_ = nullptr;
       // The answering joiner is the peer this session binds to (B3 `from`
-      // stamp; empty against an old worker) — scope in-game Identity
-      // events to it. A rejoiner gets a FRESH jid, so this updates on
-      // every adoption. The front mirror keeps the legacy single-peer
-      // consumers working.
+      // stamp; empty against an old worker) — the Identity fold matches
+      // over the roster's jids, so a rejoiner's fresh jid must land on
+      // its peer. net_peer_jid_ is the lobby-era mirror, kept in step
+      // for the front peer only.
       dp->jid = ev.peer;
-      net_peer_jid_ = ev.peer;
+      if (dp == net_peer()) net_peer_jid_ = ev.peer;
+      // B5, N>1: the LAN beacon still open is serving THIS seat's blob —
+      // a different seat's rejoiner completing it now would be adopted
+      // onto the wrong slot. The relay won this seat; close the LAN door
+      // and let it re-arm fresh for the next parked seat (at one peer
+      // the doors race for the same human, master behaviour — keep it).
+      if (net_peers_.size() > 1) net_lan_rejoin_reset();
     } else if (ev.kind == NetSignal::Event::Cand) {
       // Re-resolved live (not the pre-loop `hs`): the Answer branch above
       // may have JUST created the door session in this same poll batch.
+      // Stamped frames must match the adoption's jid — a SECOND
+      // rejoiner's candidates belong to a future offer, not this
+      // transport (ICE would discard them, but why feed it noise).
       NetPeer *hs2 = net_handshaking_lost_peer();
+      if (hs2 && !ev.peer.empty() && hs2->jid != ev.peer) continue;
       NetTransport *t =
           net_rehost_ ? net_rehost_
                       : (hs2 ? hs2->session->transport() : nullptr);
@@ -7149,6 +7163,14 @@ void GLGame::tick(int delta) {
     }
     if (net_signal_ && !net_any_peer_lost()) net_host_signal_maintain(delta);
     if (net_any_peer_lost()) {
+      // No door can open (worker-less session, LAN hidden/unavailable)
+      // and nobody is left: terminal, exactly as before B5 — no park, no
+      // pause, no misleading "awaiting rejoin" log; the draw shows the
+      // CONNECTION LOST card over the frozen world.
+      bool lan_possible = net_mode_ == NetHost && NetLan::available() &&
+                          g_prefs.lan_visible;
+      if (!net_signal_ && !lan_possible && net_all_peers_lost())
+        return;
       // Park every newly lost seat before the doors look at the roster
       // (park drops the dead session, which is what the door-arm keys
       // on). Pause only happens inside when the LAST live peer went.
@@ -7210,7 +7232,10 @@ void GLGame::tick(int delta) {
     // pause kills a healthy session (seen as a spurious loss/rejoin cycle
     // the moment a resumed host unpaused). Mirrors the client's paused
     // net_last_rx_time_ refresh.
-    if (net_mode_ == NetHost) net_peer_make().last_input_time = current_time;
+    // B5: EVERY peer's baseline — the watchdog runs per seat now, so a
+    // front-only refresh would kill seats 3+ on the first unpause tick.
+    if (net_mode_ == NetHost)
+      for (NetPeer *pw : net_peers_) pw->last_input_time = current_time;
     return;
   }
 
@@ -7380,9 +7405,10 @@ void GLGame::tick(int delta) {
       if (net_mode_ == NetHost) {
         net_set_generation_banner(generation);
         // Same restriction as the local player: respawn's reset() cleared
-        // the remote ship's controls; don't let the still-held INPUT bits
-        // re-arm them 8 ms later — each key must be released and re-pressed.
-        net_peer_make().held_suppress = 0xffff;
+        // the remote ships' controls; don't let the still-held INPUT bits
+        // re-arm them 8 ms later — each key must be released and
+        // re-pressed. B5: every seat, not just the front peer.
+        for (NetPeer *pw : net_peers_) pw->held_suppress = 0xffff;
       }
       if (is_finished()) {
         // Handing off to an intro: freeze here and give back the delta so no
@@ -8323,17 +8349,24 @@ void GLGame::tick(int delta) {
   // ship is usually a world away on someone else's screen, so the short
   // full-volume hum at every remote respawn just sounds random. Mute it.
   if (net_mode_ == NetHost && players->size() >= 2) {
-    Ship *remote = players->back()->ship;
-    remote->set_shield_hum(false);
-    // (The sim would play the remote player's own sounds like a split-screen
-    // partner's — full volume. update_player_sound_volumes, in the step loop
-    // above, attenuates them by distance to the local camera instead.)
-    // While parked for rejoin, re-assert the shield every tick: level
-    // rebuilds respawn all players with the normal 1.5 s window, which
-    // would otherwise expire and leave the pilotless hull killable.
-    if (net_any_peer_lost() && net_signal_ && remote->is_alive()) {
-      remote->invincible = true;
-      remote->time_left_invincible = 1 << 29;
+    // (The sim would play the remote players' own sounds like a
+    // split-screen partner's — full volume. update_player_sound_volumes,
+    // in the step loop above, attenuates them by distance instead.)
+    // B5: per SEAT — the hum mute covers every remote hull, and the
+    // parked-shield re-assert follows the PARKED peer's hull only. The
+    // old back() form set a 6-day invincibility on whichever ship
+    // happened to be last — under play-on that is a HEALTHY player.
+    for (NetPeer *pw : net_peers_) {
+      GLShip *gs = player_by_seat(pw->seat);
+      if (!gs) continue;
+      gs->ship->set_shield_hum(false);
+      // While parked for rejoin, re-assert the shield every tick: level
+      // rebuilds respawn all players with the normal 1.5 s window, which
+      // would otherwise expire and leave the pilotless hull killable.
+      if (pw->parked && net_signal_ && gs->ship->is_alive()) {
+        gs->ship->invincible = true;
+        gs->ship->time_left_invincible = 1 << 29;
+      }
     }
   }
 
@@ -8349,8 +8382,10 @@ void GLGame::tick(int delta) {
   // playback ghosts never run the collision sim that plays them live.)
   // The MSG echo loops below stay host-gated — raw transport writes, and
   // every one already has a recorded twin (outbox or receive tee).
+  // B5 play-on: one lost seat must not stop the cosmetic event flow to
+  // the peers still playing — only an empty roster does.
   bool host_online =
-      net_mode_ == NetHost && net_session() && !net_any_peer_lost();
+      net_mode_ == NetHost && net_session() && !net_all_peers_lost();
   if (host_online || replay_) {
     // Non-fatal ship-vs-asteroid bounces (debris + armour ting). Enemy
     // ships collide through the same code; only player ships are sent.
@@ -9539,7 +9574,9 @@ bool GLGame::exit_band_showing() const {
   const GLShip *local = local_player();
   bool local_over = net_active() && local && !local->ship->is_alive() &&
                     local->ship->lives <= 0;
-  return all_over || !running || local_over || net_any_peer_lost();
+  // B5: only an EMPTY roster shows the band mid-play — one lost seat
+  // under play-on is not an exit moment for a touch host.
+  return all_over || !running || local_over || net_all_peers_lost();
 }
 
 void GLGame::touch_tap(float nx, float ny) {
@@ -9907,6 +9944,18 @@ GLShip *GLGame::spectate_target() const {
   GLShip *fallback = nullptr;
   for (GLShip *gs : *players) {
     if (gs == local) continue;
+    // A parked seat's hull is stale-alive (frozen, shielded, pilotless) —
+    // never a camera subject WHEN there could be a live alternative
+    // (N>1). At one peer the parked hull is all there is, and the 2P
+    // spectate-through-disconnect flow (spectate_disconnect.sh) keeps
+    // its master behaviour. Host-side knowledge only: a client has no
+    // roster entry for other seats and keeps the list-order pick (its
+    // snapshots stop updating a parked hull, so the view is merely
+    // static, not wrong — PB-D7 note for B6).
+    if (net_peers_.size() > 1) {
+      NetPeer *pw = net_peer_by_seat(gs->ship->net_seat);
+      if (pw && (pw->lost || pw->parked)) continue;
+    }
     if (gs->ship->is_alive()) return gs;
     if (!fallback && gs->ship->lives > 0) fallback = gs;
   }

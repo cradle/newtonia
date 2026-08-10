@@ -480,9 +480,18 @@ Sequential master-based PRs, inert until the B7 flip:
   ALL peers are gone. "player N lost/rejoined" log strings keep the 2P
   grep contract at seat 2. Verified by `test/e2e/threeseat_rejoin.sh`
   (SIGKILL seat 3 mid-game → play-on unpaused → relaunch rejoins seat 3)
-  plus the unchanged 2P suite. Still open for B6/B7: a rejoiner is
-  seated by lowest-parked-seat, not identity — two simultaneous drops
-  can swap hulls if they rejoin in the other order.
+  plus the unchanged 2P suite. Post-review hardening: paused-tick
+  watchdog baselines, the parked-shield re-assert, held-input suppress
+  and the pause/BYE/cosmetic-event/touch-exit gates all generalized off
+  the front peer (play-on must keep serving the healthy seats); the
+  spectate camera skips parked hulls at N>1; a relay adoption at N>1
+  closes the still-beaconing LAN door (its blob was minted for that
+  seat). Still open for B6/B7: a rejoiner is seated by
+  lowest-parked-seat, not identity — two simultaneous drops can swap
+  hulls if they rejoin in the other order; and at N>1 a rejoiner whose
+  adoption transport flaps waits out the full ICE timeout before the
+  door re-arms (the fast PeerJoin re-offer is N=1-only — a fresh jid
+  cannot name a seat).
 - **B6 — Multi-instance e2e**: extend test/e2e's lib to N joiner
   instances; 3-and-4-seat connect/play/drop/rejoin/game-over suites; a
   soak. CI stays 2-instance (runner cost); the N-instance suite runs
