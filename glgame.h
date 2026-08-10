@@ -614,8 +614,12 @@ private:
   // Phase 8 polish (see NETPLAY.md)
   static void net_clear_event_outboxes();  // reset the static host outboxes
   void net_send_event(uint8_t code, uint32_t arg = 0);
-  // B4 targeted form: one peer only, no replay tee (see the definition).
-  void net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg = 0);
+  // B4 targeted form: one peer only. Tees to the replay like the broadcast
+  // form (N=1 byte-identity); a fan-out that already teed the event on its
+  // first send passes tee=false on the rest (the EV_PICKUP loop) so one
+  // collection is one record, not one per peer.
+  void net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg = 0,
+                         bool tee = true);
   void net_host_poll_peer(NetPeer &peer);  // one peer's drain (B4)
   void net_handle_event(uint8_t code, uint32_t arg);
   void net_spark_asteroid_at(float x, float y);

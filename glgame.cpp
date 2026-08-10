@@ -2718,7 +2718,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // stamp; empty against an old worker) — scope in-game Identity
       // events to it. A rejoiner gets a FRESH jid, so this updates on
       // every adoption.
-      net_peer_jid_ = ev.peer;
+      net_set_peer_jid(ev.peer);
     } else if (ev.kind == NetSignal::Event::Cand) {
       NetTransport *t =
           net_rehost_ ? net_rehost_
@@ -3066,7 +3066,9 @@ void GLGame::net_host_send_snapshot(int delta) {
   // every slot since its keyframe or gets forced a fresh global keyframe
   // (join/rejoin set net_force_keyframe_). can_send = some peer can take
   // it; the per-peer liveness picks receivers at the write below.
-  bool can_send = net_session() && !net_any_peer_lost();
+  bool can_send = false;
+  for (NetPeer *p : net_peers_)
+    if (p->session && !p->lost) { can_send = true; break; }
   if (!can_send && !replay_) return;  // mid-rejoin, nothing recording
   net_snapshot_timer_ += delta;
   if (net_snapshot_timer_ < 100) return;
@@ -4165,10 +4167,12 @@ void GLGame::net_send_event(uint8_t code, uint32_t arg) {
 // B4 (PB-D4): the targeted form — session-scoped state that belongs to ONE
 // peer (its pickup latch, its achievement relay, its first-INPUT resync)
 // must not re-sync every other client. Same replay tee and skip list as
-// the broadcast form: these events were recorded before the split, and a
-// tee per CALL keeps the N=1 replay bytes identical.
-void GLGame::net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg) {
-  if (replay_ && code != Net::EV_PAUSE && code != Net::EV_RESUME &&
+// the broadcast form — but the tee is per EVENT, not per peer: a fan-out
+// that sends one collection to N peers tees on the first call and passes
+// tee=false on the rest, or the replay would hold N records per pickup.
+void GLGame::net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg,
+                               bool tee) {
+  if (tee && replay_ && code != Net::EV_PAUSE && code != Net::EV_RESUME &&
       code != Net::EV_BYE && code != Net::EV_ACHIEVEMENT &&
       code != Net::EV_WORLD_SHOT)
     replay_->record_event(code, arg);
@@ -4409,6 +4413,7 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_mode_ = NetClient;
   Net::set_net_log_role(false);  // lobby set it too; belt & braces
   net_peer_make().session = session;
+  net_peer_make().seat = (uint8_t)session->peer_seat();  // the host: seat 1
   net_peer_make().identity = session->peer_identity();
   // The joiner's complement of the host's "<NAME> JOINED" greeting: name
   // whose game this is ("JOINED GLENN SERVER"; the host is player 1, so a
@@ -8080,7 +8085,8 @@ void GLGame::tick(int delta) {
             net_send_event_to(*collector, Net::EV_PICKUP, pk);
             for (NetPeer *pr : net_peers_)
               if (pr != collector)
-                net_send_event_to(*pr, Net::EV_PICKUP, NET_PRIM_NONE);
+                net_send_event_to(*pr, Net::EV_PICKUP, NET_PRIM_NONE,
+                                  /*tee=*/false);
           } else {
             net_send_event(Net::EV_PICKUP, NET_PRIM_NONE);
           }
