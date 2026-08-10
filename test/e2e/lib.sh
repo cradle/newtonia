@@ -39,8 +39,14 @@ relay_check() {
   }
 }
 
-# launch NAME -> pid; log at $OUT/NAME.log
-launch() { "$ROOT/newtonia" > "$OUT/$1.log" 2>&1 & echo $!; }
+# launch NAME [VAR=VAL ...] -> pid; log at $OUT/NAME.log. Extra args are
+# per-instance env assignments (room_setup uses this to give ONLY the host
+# a test hook — exporting the hook before launch would arm every joiner,
+# and a client-side kill hook fights the snapshot restore).
+launch() {
+  local name=$1; shift
+  env "$@" "$ROOT/newtonia" > "$OUT/$name.log" 2>&1 & echo $!
+}
 
 # alive PID NAME: exit the driver if the process died (139 = SIGSEGV)
 alive() { kill -0 "$1" 2>/dev/null || { echo "DEAD: $2"; exit 1; }; }
@@ -108,6 +114,122 @@ host_room_code() {
     [ -n "$code" ] && break
   done
   echo "$code"
+}
+
+# ---- N-seat room helpers (FOURPLAYER.md B6) ----
+# A "room" is one host + (N-1) relay joiners assembled through the B4b
+# waiting room. Callers export NEWTONIA_NET_TEST_SEATS=N before the first
+# launch. State lives in three globals: ROOM_CODE, and ROOM_PIDS/ROOM_WINS
+# indexed 0..N-1 — index 0 is the host (log host.log), index i>=1 is
+# joiner$i (log joiner$i.log), seated at i+1 in join order. A driver that
+# kills an instance clears its slot so room_alive/room_kill_all skip it.
+
+# room_name I: display/log name for roster index I
+room_name() { [ "$1" = 0 ] && echo host || echo "joiner$1"; }
+
+# new_window_since "BEFORE": the window id not in the BEFORE list. The
+# BEFORE/AFTER diff, not an exclusion list — a killed window can linger,
+# or X can recycle its id for the new client (see threeseat_rejoin, B5).
+new_window_since() {
+  local w new=
+  for w in $(newtonia_windows); do
+    echo "$1" | grep -q "^$w$" || new=$w
+  done
+  echo "$new"
+}
+
+# room_fail MSG [LOG]: dump context, tear the room down, exit
+room_fail() {
+  echo "$1"
+  [ -n "${2:-}" ] && tail -20 "$OUT/$2.log"
+  room_kill_all
+  exit 1
+}
+
+# room_setup N [HOSTVAR=VAL ...]: assemble the room and wait until it is
+# PLAYING — every seat filled, auto-started on full, every joiner
+# bootstrapped. Extra args become host-only env (test hooks).
+room_setup() {
+  local n=$1 i seat before ok
+  shift
+  ROOM_PIDS=(); ROOM_WINS=(); ROOM_CODE=
+  ROOM_PIDS[0]=$(launch host "$@")
+  sleep 2
+  ROOM_WINS[0]=$(newtonia_windows | head -1)
+  [ -n "${ROOM_WINS[0]}" ] || room_fail "NO HOST WINDOW" host
+  nav_host "${ROOM_WINS[0]}"
+  ROOM_CODE=$(host_room_code host)
+  [ -n "$ROOM_CODE" ] || room_fail "NO ROOM CODE" host
+  echo "room code: $ROOM_CODE"
+  for i in $(seq 1 $((n - 1))); do
+    before=$(newtonia_windows)
+    ROOM_PIDS[$i]=$(launch "joiner$i")
+    sleep 4
+    ROOM_WINS[$i]=$(new_window_since "$before")
+    [ -n "${ROOM_WINS[$i]}" ] || room_fail "NO WINDOW FOR joiner$i" "joiner$i"
+    nav_join "${ROOM_WINS[$i]}" "$ROOM_CODE"
+    seat=$((i + 1)); ok=
+    for _ in $(seq 1 40); do
+      grep -aq "seat $seat filled" "$OUT/host.log" && { ok=1; break; }
+      sleep 1
+    done
+    [ -n "$ok" ] || room_fail "SEAT $seat NEVER FILLED" host
+    echo "seat $seat filled"
+  done
+  ok=
+  for _ in $(seq 1 40); do
+    grep -aq "starting with $((n - 1)) peer" "$OUT/host.log" && { ok=1; break; }
+    sleep 1
+  done
+  [ -n "$ok" ] || room_fail "NO AUTO-START" host
+  for i in $(seq 1 $((n - 1))); do
+    ok=
+    for _ in $(seq 1 30); do
+      grep -aq "bootstrap adopted" "$OUT/joiner$i.log" && { ok=1; break; }
+      sleep 1
+    done
+    [ -n "$ok" ] || room_fail "JOINER$i NO BOOTSTRAP" "joiner$i"
+  done
+  echo "$n-seat room up (host + $((n - 1)) peers)"
+}
+
+# room_alive: every still-tracked instance must be running. Unlike bare
+# alive(), a death tears the whole room down (room_fail) instead of
+# leaving N-1 instances to die of X-server loss with the driver.
+room_alive() {
+  local i
+  for i in "${!ROOM_PIDS[@]}"; do
+    [ -n "${ROOM_PIDS[$i]}" ] || continue
+    kill -0 "${ROOM_PIDS[$i]}" 2>/dev/null ||
+      room_fail "DEAD: $(room_name "$i")" "$(room_name "$i")"
+  done
+  return 0
+}
+
+# room_kill_all: clean-quit every still-tracked instance (kill_pair's
+# SIGTERM + SIGKILL fallback)
+room_kill_all() {
+  local pids="" i
+  for i in "${!ROOM_PIDS[@]}"; do
+    [ -n "${ROOM_PIDS[$i]}" ] && pids="$pids ${ROOM_PIDS[$i]}"
+  done
+  [ -n "$pids" ] && kill_pair $pids
+  return 0
+}
+
+# fly_all SECS: everyone holds thrust + fire for SECS, then releases
+fly_all() {
+  local secs=$1 w
+  for w in "${ROOM_WINS[@]}"; do
+    [ -n "$w" ] && { xdotool keydown --window "$w" space
+                     xdotool keydown --window "$w" w; }
+  done
+  sleep "$secs"
+  for w in "${ROOM_WINS[@]}"; do
+    [ -n "$w" ] && { xdotool keyup --window "$w" space
+                     xdotool keyup --window "$w" w; }
+  done
+  return 0
 }
 
 # assert_clean LOG...: fail if any crash/corruption marker appears
