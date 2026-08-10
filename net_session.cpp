@@ -1,6 +1,9 @@
 #include "net_session.h"
 
+#include <SDL.h>
+
 #include <cmath>
+#include <cstdlib>
 #include <vector>
 
 #include "net_policy.h"
@@ -238,6 +241,19 @@ bool net_coord_sane(float v) {
 
 bool net_vel_sane(float v) {
   return std::isfinite(v) && v > -NET_VEL_LIMIT && v < NET_VEL_LIMIT;
+}
+
+int net_seat_cap() {
+  static int cap = 0;
+  if (cap == 0) {
+    cap = NET_PLAYER_CAP;
+    const char *env = SDL_getenv("NEWTONIA_NET_TEST_SEATS");
+    if (env) {
+      int n = atoi(env);
+      if (n >= 2 && n <= MAX_PLAYERS) cap = n;
+    }
+  }
+  return cap;
 }
 
 bool net_state_sane(const Save::GameState &s) {

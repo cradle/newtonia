@@ -136,6 +136,41 @@ private:
   bool picker_on_bottom_row() const;
   int lan_rows_shown() const;
   void lan_rejoin_restart(const char *why);
+
+  // ---- B4b waiting room (PB-D6) ----------------------------------------
+  // Active only while HOSTING with net_seat_cap() > 2 (the e2e seat hook
+  // until the B7 flip): joiners pair one transport/session per worker jid
+  // and Ready sessions sit in seated_ until START GAME (Enter/pad-A on the
+  // room screen) or until the room fills, which starts automatically. At
+  // cap 2 every waiting-room path is cold and the classic pair-then-enter
+  // flow runs byte-for-byte unchanged.
+  bool waiting_room() const;
+  // One joiner mid-pairing. The transport is owned here until its answer
+  // arrives and a session takes it; the session is owned until seated.
+  struct PendingJoiner {
+    NetTransport *transport = nullptr;
+    NetSession *session = nullptr;
+    bool offer_sent = false;
+    int seat = 0;      // reserved when the session forms (WELCOME is fixed)
+    bool lan = false;  // came through the LAN door (synthetic key, no jid)
+  };
+  std::map<std::string, PendingJoiner> pending_;  // keyed by jid / "lan#N"
+  struct SeatedPeer {
+    NetSession *session;
+    std::string jid;  // "" for LAN-door peers
+    int seat;
+    // Captured from jid_attested_ at seating time: a seated peer whose
+    // SIGNAL socket later drops keeps its badge (the p2p link is what
+    // seats it; PeerLeave erases the jid_attested_ entry).
+    NetIdentity attested;
+  };
+  std::vector<SeatedPeer> seated_;
+  int lan_door_serial_ = 0;  // mints the synthetic "lan#N" pending keys
+  int next_free_seat() const;         // lowest free 2..cap; 0 = room full
+  void waiting_room_update(int delta);  // pump handshakes + seated liveness
+  void waiting_room_start();          // hand every seated session to GLGame
+  void drop_pending(const std::string &key, const char *why);
+  void teardown_waiting_room();       // delete everything not handed off
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);

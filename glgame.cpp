@@ -408,12 +408,31 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
 }
 
 GLGame::GLGame(NetSession *session, SDL_GameController *controller)
+  : GLGame(std::vector<NetSeated>(1, NetSeated{session, std::string(),
+                                               NetIdentity()}),
+           controller) {}
+
+// B4b (PB-D6): the real host ctor — every seated waiting-room session
+// becomes a NetPeer + a remote hull on its WELCOME seat. The 2P flow
+// arrives here through the single-session delegator above with one entry
+// and an empty jid/attestation (the lobby's post-construction
+// net_set_peer_jid / net_apply_peer_attestation hand-over fills them),
+// so at N=1 this is the old body with the peer adoption in a loop.
+GLGame::GLGame(const std::vector<NetSeated> &seated,
+               SDL_GameController *controller)
   : GLGame(controller, /*allow_dev_players=*/false) {
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
-  net_peer_make().session = session;
-  net_peer_make().seat = (uint8_t)session->peer_seat();
-  net_peer_make().identity = session->peer_identity();
+  for (const NetSeated &s : seated) {
+    NetPeer &p = net_peer_add();
+    p.session = s.session;
+    p.seat = (uint8_t)s.session->peer_seat();
+    p.identity = s.session->peer_identity();
+    p.jid = s.jid;
+    p.attested = s.attested;
+    net_apply_attested(p.identity, s.attested);
+  }
+  if (!seated.empty()) net_peer_jid_ = seated.front().jid;
   // Greet the friend who just connected the moment the hosted game starts
   // ("GLENN JOINED"), at the attention-drawing banner spot above centre.
   // Composed again by the lobby's post-construction attestation/context
@@ -429,9 +448,11 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   // extras kill it again, and the joiner watches player 1 "die" at start.
   players->front()->ship->respawn(grid, false);
   players->front()->ship->bullets.clear();  // no lethal spawn-flash debris
-  add_remote_player();
-  NET_LOG("net: ice path %s\n",
-         net_session()->transport()->connection_info().c_str());
+  for (NetPeer *p : net_peers_) {
+    add_remote_player(p->seat);
+    NET_LOG("net: ice path seat %d %s\n", (int)p->seat,
+            p->session->transport()->connection_info().c_str());
+  }
   // Co-op scoring parity: the initial hull costs a life, so each co-op
   // player fields the same total ship count as a solo run — otherwise a
   // pair banks two free hulls and the high scores aren't comparable.
@@ -1350,10 +1371,10 @@ void GLGame::update_presence() const {
 
 // Player 2 for online play: same wiring as add_local_player but with no local
 // controller or key bindings — the peer drives it via INPUT messages.
-void GLGame::add_remote_player() {
-  if((int)players->size() >= NET_PLAYER_CAP) return;
+void GLGame::add_remote_player(uint8_t seat) {
+  if((int)players->size() >= net_seat_cap()) return;
   GLShip* object = new GLCar(grid, true);
-  object->ship->net_seat = (uint8_t)(players->size() + 1);
+  object->ship->net_seat = seat ? seat : (uint8_t)(players->size() + 1);
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
@@ -2718,7 +2739,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // stamp; empty against an old worker) — scope in-game Identity
       // events to it. A rejoiner gets a FRESH jid, so this updates on
       // every adoption.
-      net_peer_jid_ = ev.peer;
+      net_set_peer_jid(ev.peer);
     } else if (ev.kind == NetSignal::Event::Cand) {
       NetTransport *t =
           net_rehost_ ? net_rehost_
@@ -2831,7 +2852,9 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // Re-sync the room rule — the rejoiner may be a fresh app launch
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
-      NET_LOG("net: ice path %s\n",
+      // Same "seat N" format as the ctor's adoption log — turnexpiry.sh
+      // greps both lines for the relay/relay path.
+      NET_LOG("net: ice path seat %d %s\n", (int)net_peer_make().seat,
              net_session()->transport()->connection_info().c_str());
       // Host paused (auto-paused on the disconnect, or by hand): the
       // paused tick never reaches the 10 Hz send, so push the keyframe
@@ -3066,7 +3089,9 @@ void GLGame::net_host_send_snapshot(int delta) {
   // every slot since its keyframe or gets forced a fresh global keyframe
   // (join/rejoin set net_force_keyframe_). can_send = some peer can take
   // it; the per-peer liveness picks receivers at the write below.
-  bool can_send = net_session() && !net_any_peer_lost();
+  bool can_send = false;
+  for (NetPeer *p : net_peers_)
+    if (p->session && !p->lost) { can_send = true; break; }
   if (!can_send && !replay_) return;  // mid-rejoin, nothing recording
   net_snapshot_timer_ += delta;
   if (net_snapshot_timer_ < 100) return;
@@ -4165,10 +4190,12 @@ void GLGame::net_send_event(uint8_t code, uint32_t arg) {
 // B4 (PB-D4): the targeted form — session-scoped state that belongs to ONE
 // peer (its pickup latch, its achievement relay, its first-INPUT resync)
 // must not re-sync every other client. Same replay tee and skip list as
-// the broadcast form: these events were recorded before the split, and a
-// tee per CALL keeps the N=1 replay bytes identical.
-void GLGame::net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg) {
-  if (replay_ && code != Net::EV_PAUSE && code != Net::EV_RESUME &&
+// the broadcast form — but the tee is per EVENT, not per peer: a fan-out
+// that sends one collection to N peers tees on the first call and passes
+// tee=false on the rest, or the replay would hold N records per pickup.
+void GLGame::net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg,
+                               bool tee) {
+  if (tee && replay_ && code != Net::EV_PAUSE && code != Net::EV_RESUME &&
       code != Net::EV_BYE && code != Net::EV_ACHIEVEMENT &&
       code != Net::EV_WORLD_SHOT)
     replay_->record_event(code, arg);
@@ -4409,6 +4436,7 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_mode_ = NetClient;
   Net::set_net_log_role(false);  // lobby set it too; belt & braces
   net_peer_make().session = session;
+  net_peer_make().seat = (uint8_t)session->peer_seat();  // the host: seat 1
   net_peer_make().identity = session->peer_identity();
   // The joiner's complement of the host's "<NAME> JOINED" greeting: name
   // whose game this is ("JOINED GLENN SERVER"; the host is player 1, so a
@@ -4417,6 +4445,19 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_banner_ms_ = 3000;
   net_refresh_join_banner();
   net_assembler_ = new Net::SnapshotAssembler();
+  // B4b: the host's snapshot lists every seat in seat order, so on a 3-4
+  // player roster OUR hull isn't necessarily last. The whole client keeps
+  // the "local = players->back()" convention (shot reporting, prediction,
+  // smoothing, force mirroring — dozens of sites), so rotate our WELCOME
+  // seat's ship to the back instead of re-keying every site. At 2P and on
+  // seatless pre-v19 rosters back() is already ours: a no-op.
+  {
+    GLShip *mine = player_by_seat(net_local_seat());
+    if (mine && mine != players->back()) {
+      players->remove(mine);
+      players->push_back(mine);
+    }
+  }
   // PROTO 14: the local ship reports every shot it fires (id, spawn,
   // exact velocity) so the host spawns clones instead of re-rolling.
   if (!players->empty()) {
@@ -4434,19 +4475,21 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   // the only hum authority on a client.
   Ship::net_quiet_respawn = true;
 
-  // The save-restore base constructor bound player-1 keys to the FIRST ship,
-  // but on the client the local player is the LAST one; the first is the
-  // remote host's ship. Strip the ghost's bindings and give the local ship
-  // this machine's player-1 controls.
+  // The save-restore base constructor bound player-1 keys to the FIRST ship
+  // and flagged EVERY saved ship as a local player, but on the client only
+  // the rotated-to-back ship is this machine's. Strip bindings and the
+  // local-player flag from every other hull (the host's AND, at 3-4P, the
+  // other clients' — achievements and lifetime stats must not attribute
+  // their actions to this machine) and give the local ship this machine's
+  // player-1 controls.
   if (players->size() >= 2) {
-    GLShip *remote = players->front();
-    // The save-restoring base ctor flags every saved ship as a local
-    // player; the first ship here is the HOST's — achievements and
-    // lifetime stats must not attribute its actions to this machine.
-    remote->ship->is_local_player = false;
-    remote->clear_keys();
-    remote->set_controller(NULL);
     GLShip *local = players->back();
+    for (GLShip *gs : *players) {
+      if (gs == local) continue;
+      gs->ship->is_local_player = false;
+      gs->clear_keys();
+      gs->set_controller(NULL);
+    }
     set_player_keys(local, 0);
     if (controller) local->set_controller(controller);
   }
@@ -8080,7 +8123,8 @@ void GLGame::tick(int delta) {
             net_send_event_to(*collector, Net::EV_PICKUP, pk);
             for (NetPeer *pr : net_peers_)
               if (pr != collector)
-                net_send_event_to(*pr, Net::EV_PICKUP, NET_PRIM_NONE);
+                net_send_event_to(*pr, Net::EV_PICKUP, NET_PRIM_NONE,
+                                  /*tee=*/false);
           } else {
             net_send_event(Net::EV_PICKUP, NET_PRIM_NONE);
           }

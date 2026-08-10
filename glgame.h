@@ -54,6 +54,18 @@ public:
   // Online host: adopts the Ready session from the lobby; the remote peer
   // drives player 2 via INPUT messages and receives 10 Hz snapshots.
   GLGame(NetSession *session, SDL_GameController *controller);
+  // B4b: one waiting-room joiner at hand-off — the session (Ready, its
+  // WELCOME seat fixed at construction), the worker joiner id its signal
+  // frames are stamped with ("" through the LAN/manual doors), and the
+  // worker's attestation of it (empty fields = claim-only).
+  struct NetSeated {
+    NetSession *session;
+    std::string jid;
+    NetIdentity attested;
+  };
+  // Online host, waiting-room form: adopts EVERY seated session; the
+  // single-session ctor above delegates here with one entry.
+  GLGame(const std::vector<NetSeated> &seated, SDL_GameController *controller);
   // Online client: bootstrapped by the lobby from the first complete
   // snapshot (the save-restore constructor rebuilds the world; the lobby
   // then feeds the snapshot's NetExtras through net_apply_extras). This
@@ -305,7 +317,11 @@ private:
   // ghost. It is a DISTINCT mode value on purpose — net_apply_state's
   // NetClient-gated achievement blocks must stay cold while watching.
   enum NetMode { NetOff, NetHost, NetClient, NetReplay };
-  void add_remote_player();       // player 2 without local input bindings
+  // A remote pilot's hull, without local input bindings. seat 0 = next
+  // positional seat (players->size()+1, the 2P-era callers); a waiting-room
+  // hand-off passes each peer's WELCOME seat, which can be non-contiguous
+  // when a seated joiner left before START freed a lower seat.
+  void add_remote_player(uint8_t seat = 0);
   void net_host_poll();           // apply queued INPUT messages
   // Elastic asteroid-asteroid physics, shared by the host sim
   // (announce=true: ting + EV_ROID_BOUNCE) and the net client's silent
@@ -423,6 +439,12 @@ private:
   NetPeer &net_peer_make() {
     if (net_peers_.empty()) net_peers_.push_back(new NetPeer());
     return *net_peers_.front();
+  }
+  // B4b: append a peer (the multi-session host ctor's per-joiner adoption;
+  // net_peer_make() only ever names the front slot).
+  NetPeer &net_peer_add() {
+    net_peers_.push_back(new NetPeer());
+    return *net_peers_.back();
   }
   NetSession *net_session() const {
     NetPeer *p = net_peer();
@@ -614,8 +636,12 @@ private:
   // Phase 8 polish (see NETPLAY.md)
   static void net_clear_event_outboxes();  // reset the static host outboxes
   void net_send_event(uint8_t code, uint32_t arg = 0);
-  // B4 targeted form: one peer only, no replay tee (see the definition).
-  void net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg = 0);
+  // B4 targeted form: one peer only. Tees to the replay like the broadcast
+  // form (N=1 byte-identity); a fan-out that already teed the event on its
+  // first send passes tee=false on the rest (the EV_PICKUP loop) so one
+  // collection is one record, not one per peer.
+  void net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg = 0,
+                         bool tee = true);
   void net_host_poll_peer(NetPeer &peer);  // one peer's drain (B4)
   void net_handle_event(uint8_t code, uint32_t arg);
   void net_spark_asteroid_at(float x, float y);
