@@ -1,0 +1,19 @@
+# Four-player split-screen (FOURPLAYER.md D4): the 2x2 grid with all four
+# seat tints on screen, each ship angled into its own quadrant, a spread of
+# rocks so every viewport has something to look at. Layout/QA reference and
+# store-shot candidate for the 4P release.
+size 1920x1080
+seed 41
+game 2
+clear
+players 4
+camera fixed
+ship 0 0 0
+ship2 250 120 90
+ship3 -250 -120 -90
+ship4 250 -120 180
+asteroid -350 250 normal
+asteroid 420 300 tough
+asteroid -560 -420 reflective
+asteroid 380 -280 normal r=60
+sim 400

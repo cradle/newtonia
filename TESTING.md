@@ -343,6 +343,7 @@ test/e2e/missile_net.sh # client-fired deploys (host launches with
                      # recovery; 12 of 18 were lost before the host queued
                      # secondary presses like it queues primary ones.
 test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
+test/e2e/fourplayer.sh # local 3-4P (FOURPLAYER.md): grid runs, Enter-join cap, 4P save/resume
                      # + the NEWTONIA_NET_TEST_REVIVE_MS payload hook -> the
                      # fallen joiner leaves spectate and respawns, no GAME OVER
 test/e2e/gensoak.sh  # late-gen soak: host skips online to gen 25 (black hole,
