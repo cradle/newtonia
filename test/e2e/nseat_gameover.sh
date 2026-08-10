@@ -28,10 +28,13 @@ for i in $(seq 1 40); do
 done
 [ -n "$KILLED" ] || room_fail "KILL HOOK NEVER FIRED" host
 
+# Observation can trail the hook by 20+ s: a seat that was mid-respawn
+# when its lives emptied only reads as out once its replicated wreck
+# state settles, and the spread across 3 clients is real. Wait wide.
 echo "== waiting for every client to observe the game over"
 for i in $(seq 1 $((SEATS - 1))); do
   OVER=
-  for j in $(seq 1 30); do
+  for j in $(seq 1 60); do
     grep -aq "game over (all players out)" "$OUT/joiner$i.log" && { OVER=1; break; }
     sleep 1
   done
@@ -46,14 +49,26 @@ for i in "${!ROOM_WINS[@]}"; do
   shot "${ROOM_WINS[$i]}" "nseatgo$SEATS-$(room_name "$i")"
 done
 
-# Host leaves first (clean quit = the deliberate teardown broadcast).
-# After a game over that is the EXPECTED way out — every client must stay
-# on the card, not treat it as a loss to recover from (no auto-rejoin, no
-# crash, no REJOINING spinner over the ending).
-echo "== host leaves after game over"
-kill "${ROOM_PIDS[0]}" 2>/dev/null; wait "${ROOM_PIDS[0]}" 2>/dev/null
-ROOM_PIDS[0]=; ROOM_WINS[0]=
-sleep 4
+# Host leaves first — to the MENU (a keypress on the card after its 3 s
+# grace): the ~GLGame teardown broadcasts the deliberate EV_BYE with the
+# process still alive to flush it. (A SIGTERM'd host exits before
+# libdatachannel flushes, so the BYE never arrives — measured at 2P and
+# 4P alike; that path is loss-detection weather, not the goodbye.) After
+# a game over the departure is the EXPECTED way out — every client must
+# log the goodbye ("host bye - no rejoin"), stay on the card, and never
+# treat it as a loss to recover from (no auto-rejoin, no crash).
+echo "== host leaves to the menu after game over"
+key "${ROOM_WINS[0]}" Escape
+for i in $(seq 1 $((SEATS - 1))); do
+  BYE=
+  for j in $(seq 1 15); do
+    grep -aq "host bye - no rejoin" "$OUT/joiner$i.log" && { BYE=1; break; }
+    sleep 1
+  done
+  [ -n "$BYE" ] || room_fail "JOINER$i NEVER SAW THE HOST'S BYE" "joiner$i"
+  echo "joiner$i saw the goodbye"
+done
+sleep 3
 room_alive
 for i in $(seq 1 $((SEATS - 1))); do
   grep -aq "auto-rejoining room" "$OUT/joiner$i.log" &&

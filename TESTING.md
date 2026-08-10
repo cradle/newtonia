@@ -356,13 +356,16 @@ test/e2e/nseat.sh    # B6 N-seat connect/play smoke (SEATS=3|4, default 4):
                      # relay); CI stays 2-instance (runner cost).
 test/e2e/nseat_rejoin.sh # B6 drop+rejoin at N seats: seat 3's client is
                      # SIGKILLed (a MIDDLE seat at 4 — non-contiguous roster),
-                     # host must play on UNPAUSED (PB-D7), park one hull, and
-                     # rejoin a relaunched client back onto seat 3
+                     # host must detect the loss, play on UNPAUSED (PB-D7),
+                     # and rejoin a relaunched client back onto seat 3
 test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # (host-only env) empties every seat; each CLIENT must
                      # observe "game over (all players out)" via replication,
                      # hold the card, and shrug off the host's post-game-over
-                     # departure (no auto-rejoin, no crash)
+                     # menu exit — the BYE receipt is asserted positively
+                     # ("host bye - no rejoin"), then no auto-rejoin, no crash.
+                     # Menu exit, not SIGTERM: a SIGTERM'd process exits before
+                     # libdatachannel flushes the BYE (measured at 2P and 4P)
 test/e2e/nseat_soak.sh # B6 N-seat generation soak (SOAK_GENS, default 15):
                      # per-gen liveness on every instance, all-hands bursts
                      # every 5th gen, telemetry-advance + no-drop asserts

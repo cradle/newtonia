@@ -156,6 +156,7 @@ room_setup() {
   ROOM_PIDS[0]=$(launch host "$@")
   sleep 2
   ROOM_WINS[0]=$(newtonia_windows | head -1)
+  [ -n "${ROOM_WINS[0]}" ] || room_fail "NO HOST WINDOW" host
   nav_host "${ROOM_WINS[0]}"
   ROOM_CODE=$(host_room_code host)
   [ -n "$ROOM_CODE" ] || room_fail "NO ROOM CODE" host
@@ -192,12 +193,17 @@ room_setup() {
   echo "$n-seat room up (host + $((n - 1)) peers)"
 }
 
-# room_alive: every still-tracked instance must be running
+# room_alive: every still-tracked instance must be running. Unlike bare
+# alive(), a death tears the whole room down (room_fail) instead of
+# leaving N-1 instances to die of X-server loss with the driver.
 room_alive() {
   local i
   for i in "${!ROOM_PIDS[@]}"; do
-    [ -n "${ROOM_PIDS[$i]}" ] && alive "${ROOM_PIDS[$i]}" "$(room_name "$i")"
+    [ -n "${ROOM_PIDS[$i]}" ] || continue
+    kill -0 "${ROOM_PIDS[$i]}" 2>/dev/null ||
+      room_fail "DEAD: $(room_name "$i")" "$(room_name "$i")"
   done
+  return 0
 }
 
 # room_kill_all: clean-quit every still-tracked instance (kill_pair's
