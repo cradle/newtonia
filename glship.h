@@ -18,7 +18,10 @@ class GLTrail;
 
 class GLShip {
 public:
-  GLShip(const Grid &grid, bool has_friction);
+  // tint: optional seat colour (FOURPLAYER.md D7) applied BEFORE the body
+  // meshes bake; NULL keeps the classic P1 blue. The minimap dot and lives
+  // icons read `color` live, so they follow automatically.
+  GLShip(const Grid &grid, bool has_friction, const float *tint = NULL);
   virtual ~GLShip();
   void step(int delta, const Grid &grid);
   virtual void input(unsigned char key, bool pressed = true);

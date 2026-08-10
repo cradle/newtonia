@@ -25,7 +25,8 @@
 
 using namespace std;
 
-GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false), last_input_was_controller(false) {
+GLShip::GLShip(const Grid &grid, bool has_friction, const float *tint)
+    : show_help(false), last_input_was_controller(false) {
   //TODO: load config from file (colours too)
   ship = new Ship(grid, has_friction);
   ship->player_ship = true;
@@ -43,6 +44,11 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false), last_inp
   color[0] = 72/255.0;
   color[1] = 118/255.0;
   color[2] = 255/255.0;
+  if (tint != NULL) {
+    color[0] = tint[0];
+    color[1] = tint[1];
+    color[2] = tint[2];
+  }
 
   {
     MeshBuilder mb;

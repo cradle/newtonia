@@ -114,7 +114,9 @@ allocates the `GLCar`, wires missiles/shock/black-holes/friendly-fire, keys by
 the new player's index, pushes, `update_presence()`. All three join paths call
 it; the black-holes omission is fixed as a side effect.
 
-**D7 — Per-player visual identity.** P2–P4 are all `GLCar` today. Minimum
+**D7 — Per-player visual identity** *(amended post-flip: P3 flies the P1
+hull, so shapes alternate around the grid — see `make_seat_ship`)*. P2–P4
+were all `GLCar` before Phase A. Minimum
 viable: a per-index tint applied in `GLCar::draw_ship` (and the same tint on
 that player's HUD lives/score block and minimap dot) so four identical cars
 are tellable apart. No new models.
