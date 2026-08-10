@@ -439,7 +439,7 @@ private:
   // Out-of-line: NetSession is forward-declared here, and deleting an
   // incomplete type would skip its destructor (transport never closed).
   void net_drop_session();
-  // Display context for net_peer_identity_ (net_identity.h): a room-code
+  // Display context for the peer identity (net_identity.h): a room-code
   // session ran through the signaling worker, so it is ONLINE-strict — a
   // stranger is possible, only ATTESTED fields render. The manual clipboard
   // / LAN fallback is worker-less (OFFLINE) and renders the peer's claimed
@@ -467,7 +467,7 @@ private:
     return net_mode_ == NetClient ? "PLAYER 2" : "PLAYER 1";
   }
   // Called by the lobby (a friend) right after construction: fold the
-  // worker's peer attestation into net_peer_identity_ and record whether a
+  // worker's peer attestation into the peer's identity and record whether a
   // worker was in the session (see net_worker_session_). Both run AFTER the
   // net constructor composed the JOINED greeting — with the strict default
   // context and a claimed-only identity, so the name could never render —
