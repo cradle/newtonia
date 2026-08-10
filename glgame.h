@@ -348,22 +348,98 @@ private:
   friend class NetLobby;
 
   NetMode net_mode_ = NetOff;
-  NetSession *net_session_ = nullptr;  // owned when net_mode_ != NetOff
-  // The peer's badge identity (name + platform, net_identity.h), copied from
-  // the session at adoption and REFRESHED on every rejoin handshake — kept
-  // here rather than read through net_session_ so the badge survives the
-  // sessionless window while a dropped peer rejoins. Default (unknown) for
-  // a legacy peer: the overlay then renders exactly the identity-less UI.
-  NetIdentity net_peer_identity_;
-  // The worker's attestation of the peer, kept SEPARATELY from the folded
-  // identity above: the rejoin-Ready refresh replaces net_peer_identity_
-  // wholesale with the CLAIMED wire parse, which would demote an attested
-  // badge to the role label — so the refresh re-folds this copy on top.
-  // Cleared once per loss (net_host_rejoin_park_remote): the slot may be
-  // refilled by a DIFFERENT friend, whose own announce re-attests through
-  // the worker (Event::Identity below restores it).
-  NetIdentity net_peer_attested_;
-  // Display context for net_peer_identity_ (net_identity.h): a room-code
+  // ---- One remote peer (Phase B1, FOURPLAYER.md PB-D1) ----
+  // The host will hold up to NET_PLAYER_CAP-1 of these (B4); a client holds
+  // exactly one — its link to the host. The peer object OUTLIVES its
+  // session: a dropped session is deleted while the peer (identity, loss
+  // state) survives the rejoin window.
+  struct NetPeer {
+    NetSession *session = nullptr;  // owned (the session owns its transport)
+    // The peer's badge identity (name + platform, net_identity.h), copied
+    // from the session at adoption and REFRESHED on every rejoin handshake
+    // — kept here rather than read through the session so the badge
+    // survives the sessionless window while a dropped peer rejoins.
+    // Default (unknown) for a legacy peer: the overlay then renders
+    // exactly the identity-less UI.
+    NetIdentity identity;
+    // The worker's attestation, kept SEPARATELY from the folded identity
+    // above: the rejoin-Ready refresh replaces `identity` wholesale with
+    // the CLAIMED wire parse, which would demote an attested badge to the
+    // role label — so the refresh re-folds this copy on top. Cleared once
+    // per loss (net_host_rejoin_park_remote): the slot may be refilled by
+    // a DIFFERENT friend, whose own announce re-attests through the
+    // worker (Event::Identity restores it).
+    NetIdentity attested;
+    // Transport dead / dead-man tripped. Room-level questions go through
+    // the any/all predicates below, which diverge at B4.
+    bool lost = false;
+    // ---- Host input pipeline for this peer's INPUT stream ----
+    uint32_t last_input_seq = 0;
+    bool have_input = false;  // first INPUT initialises the counters
+    uint8_t prev_boost = 0, prev_next_weapon = 0, prev_next_secondary = 0,
+            prev_teleport = 0, prev_respawn = 0, prev_shoot_press = 0,
+            prev_secondary_press = 0;
+    // Held INPUT bits ignored until this peer releases the key once
+    // (all-ones at each level transition, like the local respawn reset).
+    uint16_t held_suppress = 0;
+    int last_input_time = 0;   // host: dead-man switch (1 s)
+    bool input_zeroed = false;
+    // Input-gap telemetry (log-only): distinguish freeze vs loss vs
+    // backlog replay from the seq pattern inside a 300 ms window.
+    int input_stale_drops = 0;  // seq<=last arrivals since last accept
+    int gap_deadline = 0;       // current_time when the window closes
+    uint32_t gap_skipped = 0;   // seqs missing when the gap ended
+    int gap_stragglers = 0;     // stale-seq arrivals inside the window
+    int gap_accepts = 0;        // accepted INPUTs inside the window
+    uint32_t gap_max_leap = 0;  // biggest forward seq jump in the window
+    // Mid-gap marker: fires ONCE when inbound silence crosses 300 ms.
+    bool quiet_logged = false;
+    // RTT probe (MSG_PING/PONG, 1 Hz each way): smoothed round-trip in
+    // ms, -1 until the first PONG. Ring keeps the last 8 raw samples;
+    // net_lead_ms() uses their MINIMUM — a spike is relay queueing, not
+    // path length, and must never inflate the lead.
+    float rtt_ms = -1.0f;
+    int ping_timer = 0;
+    float rtt_ring[8];
+    int rtt_ring_n = 0, rtt_ring_i = 0;
+  };
+  std::vector<NetPeer *> net_peers_;
+  NetPeer *net_peer() const {
+    return net_peers_.empty() ? nullptr : net_peers_.front();
+  }
+  NetPeer &net_peer_make() {
+    if (net_peers_.empty()) net_peers_.push_back(new NetPeer());
+    return *net_peers_.front();
+  }
+  NetSession *net_session() const {
+    NetPeer *p = net_peer();
+    return p ? p->session : nullptr;
+  }
+  float net_rtt_ms() const {  // smoothed peer RTT, -1 until the first PONG
+    NetPeer *p = net_peer();
+    return p ? p->rtt_ms : -1.0f;
+  }
+  const NetIdentity &net_peer_identity() const {
+    static const NetIdentity kNone;
+    NetPeer *p = net_peer();
+    return p ? p->identity : kNone;
+  }
+  // Room-level loss predicates. Identical with one peer; at B4 `any` means
+  // "a seat is open" (re-host door, invite re-advertise) and `all` means
+  // "the room is effectively dead" (terminal card, stop sending).
+  bool net_any_peer_lost() const {
+    NetPeer *p = net_peer();
+    return p && p->lost;
+  }
+  bool net_all_peers_lost() const {
+    NetPeer *p = net_peer();
+    return p && p->lost;
+  }
+  // Delete the peer's dead session, keeping the peer (rejoin window).
+  // Out-of-line: NetSession is forward-declared here, and deleting an
+  // incomplete type would skip its destructor (transport never closed).
+  void net_drop_session();
+  // Display context for the peer identity (net_identity.h): a room-code
   // session ran through the signaling worker, so it is ONLINE-strict — a
   // stranger is possible, only ATTESTED fields render. The manual clipboard
   // / LAN fallback is worker-less (OFFLINE) and renders the peer's claimed
@@ -391,7 +467,7 @@ private:
     return net_mode_ == NetClient ? "PLAYER 2" : "PLAYER 1";
   }
   // Called by the lobby (a friend) right after construction: fold the
-  // worker's peer attestation into net_peer_identity_ and record whether a
+  // worker's peer attestation into the peer's identity and record whether a
   // worker was in the session (see net_worker_session_). Both run AFTER the
   // net constructor composed the JOINED greeting — with the strict default
   // context and a claimed-only identity, so the name could never render —
@@ -401,8 +477,9 @@ private:
     net_refresh_join_banner();
   }
   void net_apply_peer_attestation(const NetIdentity &attested) {
-    net_peer_attested_ = attested;
-    net_apply_attested(net_peer_identity_, attested);
+    NetPeer &p = net_peer_make();
+    p.attested = attested;
+    net_apply_attested(p.identity, attested);
     net_refresh_join_banner();
   }
   // Recompose the initial JOINED greeting from the current identity and
@@ -414,12 +491,6 @@ private:
   std::string net_join_banner_text_;  // what the greeting last composed
   int net_snapshot_timer_ = 0;
   uint32_t net_snapshot_id_ = 0;
-  uint32_t net_last_input_seq_ = 0;
-  bool net_have_input_ = false;   // first INPUT initialises the counters
-  uint8_t net_prev_boost_ = 0, net_prev_next_weapon_ = 0,
-          net_prev_next_secondary_ = 0, net_prev_teleport_ = 0,
-          net_prev_respawn_ = 0, net_prev_shoot_press_ = 0,
-          net_prev_secondary_press_ = 0;
   uint32_t net_input_seq_ = 0;    // client: outgoing INPUT sequence
   // Client: INPUT mirroring onto the RELIABLE channel — on any held-bit /
   // one-shot change, plus a ~10 Hz refresh. An unreliable-channel blackout
@@ -438,7 +509,6 @@ private:
   // Set to all-ones at each level transition so the remote player starts
   // the new level with controls cleared — exactly like the local player,
   // whose respawn reset() also drops held keys until re-pressed.
-  uint16_t net_held_suppress_ = 0;
   Net::SnapshotAssembler *net_assembler_ = nullptr;  // client chunk reassembly
   bool net_ids_adopted_ = false;  // client: bootstrap id adoption ran
   // Client: last applied MSG_DELTA snap id. The rel channel is ordered so
@@ -491,17 +561,10 @@ private:
   // the log alone says whether the client stopped sending (no seqs
   // skipped, normal-rate accepts), packets were lost (seqs skipped, no
   // stragglers), or a queued backlog replayed (accept burst + stale rx).
-  int net_input_stale_drops_ = 0;  // seq<=last arrivals since last accept
-  int net_gap_deadline_ = 0;       // current_time when the window closes
-  uint32_t net_gap_skipped_ = 0;   // seqs missing when the gap ended
-  int net_gap_stragglers_ = 0;     // stale-seq arrivals inside the window
-  int net_gap_accepts_ = 0;        // accepted INPUTs inside the window
-  uint32_t net_gap_max_leap_ = 0;  // biggest forward seq jump in the window
   int net_last_send_time_ = 0;     // client: INPUT send cadence (stall log)
   // Mid-gap markers: fire ONCE when inbound silence crosses 300 ms, with
   // the transport's tx-buffered depth at that instant — the 1 Hz sample
   // can miss a sub-second gap entirely, this cannot. Both roles.
-  bool net_quiet_logged_ = false;
   // Hitch breakdown: SDL_GetTicks at tick_net_client entry, so the
   // "slow tick" line can split poll (applies) from step-loop time.
   uint32_t net_tick_t0_ = 0;
@@ -527,7 +590,6 @@ private:
   void net_handle_event(uint8_t code, uint32_t arg);
   void net_spark_asteroid_at(float x, float y);
   void net_set_generation_banner(int gen);
-  bool net_connection_lost_ = false;
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
   // True while the connection-lost card owns input: every lost link EXCEPT
   // the host-with-an-open-door notice, where the game plays on. While this
@@ -540,7 +602,7 @@ private:
   // predicate for the input handlers and the overlay — net_overlays keys
   // its host-notice branch off it too — like pause_menu_active itself.
   bool net_card_owns_input() const {
-    return net_connection_lost_ &&
+    return net_all_peers_lost() &&
            !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()));
   }
   // Nav keys pressed (key-DOWN) while the card owns input: keyboard_up
@@ -561,17 +623,6 @@ private:
   // there would stomp the "JOINED <NAME> SERVER" greeting and announce a
   // "change" the joiner never saw. Later events are real toggles.
   bool net_ff_synced_ = false;
-  int net_last_input_time_ = 0;     // host: dead-man switch (1 s)
-  bool net_input_zeroed_ = false;
-  // RTT probe (MSG_PING/PONG, 1 Hz each way): smoothed round-trip in ms,
-  // -1 until the first PONG. Shown on the debug overlay; the client's
-  // local-ship blend latency-compensates with it.
-  float net_rtt_ms_ = -1.0f;
-  int net_ping_timer_ = 0;
-  // Last 8 raw RTT samples; net_lead_ms() uses their MINIMUM — a spike is
-  // relay queueing, not path length, and must never inflate the lead.
-  float net_rtt_ring_[8];
-  int net_rtt_ring_n_ = 0, net_rtt_ring_i_ = 0;
   void net_ping_tick(int delta);
   // Answers PING / consumes PONG; true when the message was one of them.
   bool net_handle_ping_pong(uint8_t msg_type, Net::Reader &r);

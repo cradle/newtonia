@@ -29,14 +29,14 @@ std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
-std::vector<std::vector<Point>> Ship::net_lance_reports;
+std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::net_lance_reports;
 std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_lance_flashes;
 std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_shock_flashes;
 std::vector<Ship::ReplayRing> Ship::replay_rings;
 std::vector<Point> Ship::replay_pews;
 std::vector<Point> Ship::replay_beam_pews;
 std::vector<Ship::ReplayShot> Ship::replay_shots;
-std::vector<std::vector<Point>> Ship::net_shock_reports;
+std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::net_shock_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
 std::vector<std::pair<const Ship*, uint8_t>> Ship::net_ach_relays;
@@ -1913,7 +1913,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   // Report the traced polyline to the peer for its flash + sound
   // (net_report_shots covers exactly the two reporters: the client's own
   // ship and, since PROTO 17, the host's player ship).
-  if(net_report_shots) net_lance_reports.push_back(pulse.points);
+  if(net_report_shots) net_lance_reports.push_back({this, pulse.points});
   // Replay recorder: every fired pulse, unconditionally (REPLAY.md R2).
   replay_lance_flashes.push_back({this, pulse.points});
 
@@ -2801,7 +2801,7 @@ void Ship::step(float delta, const Grid &grid) {
     // (net_display) are never re-reported.
     if(net_report_shots && !shocks[i].net_display && !shocks[i].net_reported &&
        !shocks[i].growing && shocks[i].points.size() >= 2) {
-      net_shock_reports.push_back(shocks[i].points);
+      net_shock_reports.push_back({this, shocks[i].points});
       shocks[i].net_reported = true;
     }
     // Replay recorder twin: same once-per-bolt rule, no net_report_shots

@@ -339,13 +339,18 @@ class Ship : public CompositeObject {
     // PROTO 18: fired lance pulses (the traced polyline) to report to the
     // peer for its flash + sound. Pushed by fire_lance_pulse on reporting
     // ships (net_report_shots); drained into MSG_LANCE by both roles.
-    static std::vector<std::vector<Point>> net_lance_reports;
+    // Ship* attribution (like replay_lance_flashes): unused on today's
+    // 2P wire, but B2's seat-led records need to say whose pulse it was.
+    static std::vector<std::pair<const Ship *, std::vector<Point>>>
+        net_lance_reports;
 
     // PROTO 22: completed shock-bolt polylines to report to the peer. A bolt
     // grows with random per-segment jitter, so the receiver must show the
     // firer's EXACT segments, not re-seek its own — pushed once, when the bolt
     // finishes growing, by reporting ships (net_report_shots) in step().
-    static std::vector<std::vector<Point>> net_shock_reports;
+    // Ship* attribution for B2's seat-led records, as net_lance_reports.
+    static std::vector<std::pair<const Ship *, std::vector<Point>>>
+        net_shock_reports;
     // Build a display-only replica bolt from a received polyline (already
     // grown, just fades; never seeks or kills). Used by the MSG_SHOCK handler.
     void net_receive_shock(const std::vector<Point> &pts);
