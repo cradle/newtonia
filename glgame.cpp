@@ -119,6 +119,15 @@ static const float *seat_tint(int player_index) {
   return kSeatTints[player_index];
 }
 
+// Seat -> hull + tint (D7, amended): the two hull shapes alternate around
+// the grid — P1 blue ship, P2 orange car, P3 green ship, P4 violet car —
+// so diagonal partners never share both shape and colour.
+static GLShip *make_seat_ship(const Grid &grid, int seat) {
+  if (seat == 0) return new GLShip(grid, true);
+  if (seat == 2) return new GLShip(grid, true, seat_tint(seat));
+  return new GLCar(grid, true, seat_tint(seat));
+}
+
 // with_bindings=false applies only the seat's scalars (sensitivity, camera
 // smoothing, rotate/fixed pref) — the pad-join path, where the pad is the
 // controls but the seat's Options settings must still take effect.
@@ -690,11 +699,10 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     hazards->push_back(Hazard::from_state(sh, world));
   }
 
-  // Restore players — player 1 is GLShip, player 2+ is GLCar (matches add_local_player)
+  // Restore players — each seat gets its hull/tint (make_seat_ship)
   for (const auto &sp : save.players) {
     bool is_p1 = players->empty();
-    GLShip *gs = is_p1 ? new GLShip(grid, true)
-                       : new GLCar(grid, true, seat_tint((int)players->size()));
+    GLShip *gs = make_seat_ship(grid, (int)players->size());
     set_player_keys(gs, (int)players->size());
     // Set before restore_state() so restored weapons attribute correctly.
     gs->ship->is_local_player = true;
@@ -1298,7 +1306,7 @@ void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
   if((int)players->size() >= MAX_PLAYERS) return;
   Ship* p1 = players->front()->ship;
   if(!p1->is_alive() && !p1->lives) return;
-  GLShip* object = new GLCar(grid, true, seat_tint((int)players->size()));
+  GLShip* object = make_seat_ship(grid, (int)players->size());
   set_player_keys(object, (int)players->size(), /*with_bindings=*/with_keys);
   if(ctrl != NULL) object->set_controller(ctrl);
   object->ship->is_local_player = true;
@@ -5964,7 +5972,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   if (net_mode_ == NetReplay) {
     while (players->size() < s.players.size() &&
            (int)players->size() < MAX_PLAYERS) {
-      GLShip *ghost = new GLCar(grid, true, seat_tint((int)players->size()));
+      GLShip *ghost = make_seat_ship(grid, (int)players->size());
       ghost->ship->set_missile_asteroids((std::list<Object *> *)objects);
       ship_objects->push_back(ghost->ship);
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
