@@ -1,8 +1,12 @@
 # Newtonia signaling worker
 
 Cloudflare Worker + Durable Objects that mints 4-letter room codes and
-relays the WebRTC offer/answer between host and joiner. Protocol and
-milestone context: `../NETPLAY.md` (Milestone 2).
+relays the WebRTC offer/answer between a host and up to three joiners
+(FOURPLAYER.md PB-D5: joiners are tagged with per-room monotonic ids;
+host frames may address a joiner with `to`, joiner frames reach the host
+stamped `from`; an unaddressed offer keeps the legacy single-pair
+semantics). Protocol and milestone context: `../NETPLAY.md` (Milestone 2)
+and `../FOURPLAYER.md` §4.
 
 ## Local development / e2e
 
@@ -275,3 +279,13 @@ which revokes every outstanding credential instantly.
   mocked Google (token exchange + `players/me`).
 - `node test/identity_test.js` — identity attest/broadcast/replay protocol
   test (needs `wrangler dev` on :8787 with `--var FAKE_VERIFY:1`).
+- The PB-D5 multi-join families (all need `wrangler dev` on :8787; the
+  identity ones need `FAKE_VERIFY`; the full suite in one window needs the
+  `--var RATE_HOST_LIMIT:200 --var RATE_JOIN_LIMIT:500` limiter headroom —
+  see deploy-signal.yml): `capacity_test.mjs` (cap at 3 + slot reopen +
+  never-reused ids), `relay_isolation_test.mjs` (addressed offers/cands,
+  `from` stamps), `jid_buffer_test.mjs` (legacy one-shot replay consumed,
+  dropped-jid buffers die), `identity_fanout_test.mjs` (fan-out + per-jid
+  late-verify), `grace_broadcast_test.mjs` (host-lost/host-back to all),
+  `host_close_broadcast_test.mjs`, `offer_pv_test.mjs` (per-offer pv).
+  Shared harness: `test/ws_harness.mjs`.

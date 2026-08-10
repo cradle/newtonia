@@ -74,10 +74,16 @@ jobs:
       # checkout has none.
       - name: Protocol tests (wrangler dev --local)
         run: |
-          # FAKE_VERIFY lets identity_test.js exercise attestation without a
-          # platform backend; it's inert for the other protocol tests (they
-          # never send an identity frame).
-          npx wrangler@4 dev --local --port 8787 --var FAKE_VERIFY:1 > wrangler-dev.log 2>&1 &
+          # FAKE_VERIFY lets the identity tests exercise attestation without
+          # a platform backend; it's inert for the other protocol tests
+          # (they never send an identity frame). The RATE_* overrides give
+          # the suite limiter headroom — ten test files against one dev
+          # server open more rooms/joins from one IP in a window than the
+          # production per-IP limits allow (a limiter refusal surfaces as
+          # {t:"err",reason:"rate-limited"} and reads as a protocol bug).
+          npx wrangler@4 dev --local --port 8787 --var FAKE_VERIFY:1 \
+              --var RATE_HOST_LIMIT:200 --var RATE_JOIN_LIMIT:500 \
+              > wrangler-dev.log 2>&1 &
           DEV_PID=$!
           for i in $(seq 1 60); do
             curl -s -o /dev/null http://127.0.0.1:8787/ && break
@@ -87,6 +93,14 @@ jobs:
           node test/reclaim_test.js
           node test/pv_replay_test.mjs
           node test/identity_test.js
+          # PB-D5 multi-join families (FOURPLAYER.md B3)
+          node test/capacity_test.mjs
+          node test/relay_isolation_test.mjs
+          node test/jid_buffer_test.mjs
+          node test/identity_fanout_test.mjs
+          node test/grace_broadcast_test.mjs
+          node test/host_close_broadcast_test.mjs
+          node test/offer_pv_test.mjs
           kill $DEV_PID
 
   deploy:

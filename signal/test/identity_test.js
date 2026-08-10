@@ -80,9 +80,11 @@ function check(name, cond) {
   const capped = await join._recvType("identity");
   check("over-long name capped to 24", !!capped && capped.name.length <= 24);
 
-  // 5. A joiner that leaves and is replaced does NOT leak the old identity:
-  //    a fresh joiner's replay carries only the host's identity, and until
-  //    the new joiner announces, the host has nothing stale about it.
+  // 5. A joiner that leaves and is replaced does NOT leak the old identity
+  //    ONTO the replacement: the fresh joiner replays the host's identity
+  //    first (any departed jid's badge replays under that jid's own id —
+  //    per-jid since PB-D5 — never as the newcomer's), and until the new
+  //    joiner announces, the host has nothing stale about IT.
   join.close();
   await host._recvType("peer");  // leave
   await t(200);
@@ -122,12 +124,13 @@ function check(name, cond) {
         !!claim && claim.role === "joiner" && claim.name === "EVE" &&
         claim.platform === 3 && claim.verified === false);
 
-  // 8. An OLDER departed occupant's slower verify must not overwrite the
-  //    newer late-stored badge (last-resolver-wins): A announces slow and
-  //    drops; B replaces it, announces faster, and also drops. B's verify
-  //    lands (sole departure since its announce); A's resolves later and
-  //    must be discarded — the host's next identity after B's is C's own,
-  //    never A's.
+  // 8. Two departed announcers' slow verifies resolving OUT OF ORDER —
+  //    the last-resolver-wins overwrite hazard this case used to guard
+  //    is structurally gone under per-jid identity (PB-D5): jids are
+  //    never reused, so each late verify lands under its OWN id and
+  //    neither can clobber the other. Assert exactly that: B's faster
+  //    verify lands first, A's slower one still lands later under a
+  //    DIFFERENT id, and a fresh claim afterwards is undisturbed.
   join3.close();
   await host._recvType("peer");  // leave
   await t(200);                  // let the drop settle before the next join
@@ -136,23 +139,26 @@ function check(name, cond) {
   joinA.send(JSON.stringify({ t: "identity", platform: 5, name: "OLDA",
                               cred: "SLOW:2500" }));
   await t(100); joinA.close();
-  await t(300);  // A's drop must process (epoch bump) before B takes the slot
+  await t(300);
   const joinB = await connect(`?role=join&code=${code}`);
   await joinB._recvType("joined");
   joinB.send(JSON.stringify({ t: "identity", platform: 5, name: "NEWB",
                               cred: "SLOW:300" }));
   await t(100); joinB.close();
   const lateB = await host._recvType("identity");
-  check("newest departed occupant's late verify lands",
+  check("newest departed announcer's late verify lands",
         !!lateB && lateB.role === "joiner" && lateB.name === "NEWB" &&
         lateB.verified === true);
-  await t(2600);  // let A's stale verify resolve (and be discarded)
+  const lateA = await host._recvType("identity", 20);  // resolves ~2.5 s in
+  check("older announcer's late verify lands under its OWN id",
+        !!lateA && lateA.role === "joiner" && lateA.name === "OLDA" &&
+        lateA.verified === true && lateA.from !== lateB.from);
   const joinC = await connect(`?role=join&code=${code}`);
   await joinC._recvType("joined");
   await joinC._recvType("identity");  // the host's identity, replayed
   joinC.send(JSON.stringify({ t: "identity", platform: 1, name: "CARL" }));
   const afterStale = await host._recvType("identity");
-  check("stale verify from an older occupant never overwrites",
+  check("a fresh claim lands undisturbed after the late verifies",
         !!afterStale && afterStale.role === "joiner" &&
         afterStale.name === "CARL");
 

@@ -47,6 +47,10 @@ public:
     std::string text2;   // secondary field (Room: the reclaim token)
     uint8_t platform = 0;  // Identity: NetPlatform tag the worker attested
     bool verified = false; // Identity: true = worker-attested, false = claim
+    // PB-D5 (multi-join worker): the joiner id this event concerns, from
+    // the frame's "from" stamp — Answer/Cand/PeerJoin/PeerLeave/Identity
+    // on the host side. Empty for host-role events and legacy frames.
+    std::string peer;
   };
 
   virtual ~NetSignal() {}
@@ -61,10 +65,16 @@ public:
   virtual void connect_join(const std::string &url,
                             const std::string &code) = 0;
 
-  virtual void send_offer(const std::string &sdp) = 0;
+  // Host side, `to` (PB-D5) addresses a specific joiner id (an Event.peer
+  // value); "" keeps the legacy unaddressed single-pair semantics — the
+  // worker routes it to the oldest connected joiner. Joiners always pass "".
+  virtual void send_offer(const std::string &sdp,
+                          const std::string &to = "") = 0;
   virtual void send_answer(const std::string &sdp) = 0;
   // Trickle ICE (M3-2b): one gathered candidate, relayed to the peer.
-  virtual void send_cand(const std::string &mid, const std::string &cand) = 0;
+  // `to` as send_offer.
+  virtual void send_cand(const std::string &mid, const std::string &cand,
+                         const std::string &to = "") = 0;
   // Announce this side's identity to the worker (NETPLAY.md V0/V1): the
   // claimed platform tag + display name, plus an optional verification
   // credential (Steam Web-API ticket hex, "" when none) for the worker to
@@ -117,8 +127,11 @@ std::string json_escape(const std::string &s);
 // covers old builds whose connection recipe differs (the transports
 // never connect, so the session-level HELLO check can't run). Old
 // builds don't send the field; its absence identifies them.
-std::string offer_frame(const std::string &sdp);
+std::string offer_frame(const std::string &sdp, const std::string &to = "");
 std::string answer_frame(const std::string &sdp);
+// Trickle candidate frame; `to` addresses a joiner (host side, PB-D5).
+std::string cand_frame(const std::string &mid, const std::string &cand,
+                       const std::string &to = "");
 // The client->worker identity announcement (NETPLAY.md V0/V1): platform tag,
 // display name, and an optional verification credential (Steam Web-API ticket
 // hex; omitted when empty). The worker stamps the role and verifies.
