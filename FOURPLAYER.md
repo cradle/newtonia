@@ -519,11 +519,30 @@ Sequential master-based PRs, inert until the B7 flip:
   seat count), and the touch waiting room gains its deferred
   tap-to-start band (`kStartBand`, the touch twin of the desktop
   "ENTER - START GAME" row — drawn steady, tappable only once a peer is
-  seated, sitting clear of the share band's padded box). SHIPPING GATE
-  (unchanged): the production signal worker must carry the B3 multi-join
-  protocol — deployed by a release tag — before any B7 client build
-  reaches players; a pre-multi-join worker degrades every room to the
-  classic single pair (safe, but 2P).
+  seated, sitting clear of the share band's padded box). The flip's
+  adversarial review caught pairwise residue the cap made live, all
+  fixed with it: the seven GLGame-resolved achievement relays
+  (station/mini-station/shield_ram) were still `remote_player()`-keyed —
+  a non-back seat's earn was dropped and the broadcast reply unlocked on
+  every bystander client — now targeted via `net_peer_for_ship` +
+  `net_send_event_to` (PB-D4), with the lance thud dedup relaying to
+  the non-firing peers; the host's adopt-smoothing drain looped over
+  every peer hull (back()-only left a non-back seat's post-blackout
+  catch-up undrained forever); the LAN door closes on any live classic
+  `session_` (the `!waiting_room()` guard went dead at cap 4, letting a
+  LAN exchange overwrite a degraded-flow session mid-ICE); the touch
+  start band's hit-test is touch-gated (desktop clicks on the room code
+  must not start the game); joiner-side seat labels ("YOU ARE PLAYER
+  N", the local badge fallback) read the WELCOME seat; the lobby's
+  signal-level PeerLeave flash is branch-scoped. Known limits: the
+  in-game badge/score rows and the DISCONNECTED notice still render the
+  FRONT peer only (`net_peer_identity()`/`net_peer_fallback` are
+  single-peer seams — seats 3-4 get no identity row), and the host has
+  no per-seat kick/manage UI. SHIPPING GATE (unchanged): the production
+  signal worker must carry the B3 multi-join protocol — deployed by a
+  release tag — before any B7 client build reaches players; a
+  pre-multi-join worker degrades every room to the classic single pair
+  (2P, with the LAN-door overwrite above now guarded).
 
 Cost check against the 3–5× Phase A estimate: B1 and B2 are each roughly
 an A3-sized PR; B3 is a worker-only project with its own test rig; B4 is

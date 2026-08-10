@@ -529,9 +529,12 @@ private:
     return net_mode_ == NetClient ? "PLAYER 1" : "PLAYER 2";
   }
   // The LOCAL player's own role label (the badge row above the peer's,
-  // Overlay::net_badges): the host is player 1, the client player 2.
+  // Overlay::net_badges): the host is player 1, a client its wire seat
+  // (B7: a seat-3 client without a platform identity wore "PLAYER 2").
   std::string net_local_fallback() const {
-    return net_mode_ == NetClient ? "PLAYER 2" : "PLAYER 1";
+    if (net_mode_ == NetClient)
+      return "PLAYER " + std::to_string(net_local_seat());
+    return "PLAYER 1";
   }
   // Called by the lobby (a friend) right after construction: fold the
   // worker's peer attestation into the peer's identity and record whether a
@@ -671,6 +674,20 @@ private:
   // collection is one record, not one per peer.
   void net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg = 0,
                          bool tee = true);
+  // B7: the peer whose pilot is `s`, or null (an enemy, the host's own
+  // ship, offline). The seat-keyed twin of the old `s ==
+  // remote_player()->ship` test, which only ever matched the BACK peer —
+  // at 3-4P that dropped a non-back seat's earn and, worse, the
+  // broadcast reply unlocked on every bystander client (the receive case
+  // attributes EV_ACHIEVEMENT to the local ship unconditionally).
+  NetPeer *net_peer_for_ship(const Ship *s) const {
+    if (net_mode_ != NetHost) return nullptr;
+    for (NetPeer *p : net_peers_) {
+      GLShip *gs = player_by_seat((int)p->seat);
+      if (gs && gs->ship == s) return p;
+    }
+    return nullptr;
+  }
   void net_host_poll_peer(NetPeer &peer);  // one peer's drain (B4)
   // `from` names the peer whose transport delivered the event (host-side
   // drain); null on the client/replay paths, where the sender is the host.
