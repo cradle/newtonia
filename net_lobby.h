@@ -138,8 +138,8 @@ private:
   void lan_rejoin_restart(const char *why);
 
   // ---- B4b waiting room (PB-D6) ----------------------------------------
-  // Active only while HOSTING with net_seat_cap() > 2 (the e2e seat hook
-  // until the B7 flip): joiners pair one transport/session per worker jid
+  // Active only while HOSTING with net_seat_cap() > 2 (every shipping
+  // build since the B7 flip): joiners pair one transport/session per worker jid
   // and Ready sessions sit in seated_ until START GAME (Enter/pad-A on the
   // room screen) or until the room fills, which starts automatically. At
   // cap 2 every waiting-room path is cold and the classic pair-then-enter

@@ -487,7 +487,7 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
     // going to be rejected anyway.
     //
     // Players: MAX_PLAYERS, matching net_state_sane()'s cap since PROTO 25
-    // (the wire itself stays 2-player until the B7 NET_PLAYER_CAP flip).
+    // (a 2-player wire in practice until the B7 NET_PLAYER_CAP flip).
     // An OLDER build reading a 3-4 player save fails this bound and
     // ignores the file (treated as no save) — the standard downgrade
     // outcome, same as any unknown-format file.

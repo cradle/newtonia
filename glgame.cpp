@@ -7509,9 +7509,17 @@ void GLGame::tick(int delta) {
       (*o)->step(step_size, grid);
     }
     // v12 adopt smoothing: a post-blackout pose catch-up banked by
-    // net_host_poll glides in instead of hopping on this screen.
-    if (net_mode_ == NetHost && players->size() >= 2)
-      net_smooth_step(*players->back()->ship, step_size);
+    // net_host_poll glides in instead of hopping on this screen. Every
+    // remote hull, by seat (B7): the back()-only form drained one peer,
+    // and a catch-up banked on a non-back seat sat undrained forever —
+    // each INPUT recomputed err against the stale pose, landed back in
+    // the 40-600 band, and REPLACED the debt, so the hull rode hundreds
+    // of units from its pilot in the host sim and every snapshot.
+    if (net_mode_ == NetHost)
+      for (NetPeer *pr : net_peers_) {
+        GLShip *gs = player_by_seat((int)pr->seat);
+        if (gs) net_smooth_step(*gs->ship, step_size);
+      }
 
     // Apply black-hole gravity to ships.
     // Ships in god mode or using the shield receive reduced gravity so they can escape.
@@ -7798,9 +7806,9 @@ void GLGame::tick(int delta) {
             s->bullets.pop_back();
             if (!station->is_alive()) {
               if (s->is_local_player) Achievements::unlock("station_destroyed");
-              else if (net_mode_ == NetHost && remote_player() &&
-                       s == remote_player()->ship)
-                net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_STATION_DESTROYED);
+              else if (NetPeer *pr = net_peer_for_ship(s))
+                net_send_event_to(*pr, Net::EV_ACHIEVEMENT,
+                                  Net::ACH_STATION_DESTROYED);
               break;
             }
           } else {
@@ -7998,11 +8006,11 @@ void GLGame::tick(int delta) {
             Achievements::unlock("mini_station_kill");
             Achievements::progress("score_3m", s->score / 30000);
             if (s->shield_active()) Achievements::unlock("shield_ram");
-          } else if (net_mode_ == NetHost && remote_player() &&
-                     s == remote_player()->ship) {
-            net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+          } else if (NetPeer *pr = net_peer_for_ship(s)) {
+            net_send_event_to(*pr, Net::EV_ACHIEVEMENT,
+                              Net::ACH_MINI_STATION_KILL);
             if (s->shield_active())
-              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_SHIELD_RAM);
+              net_send_event_to(*pr, Net::EV_ACHIEVEMENT, Net::ACH_SHIELD_RAM);
           }
           break;
         }
@@ -8016,9 +8024,9 @@ void GLGame::tick(int delta) {
             if (s->is_local_player) {
               Achievements::unlock("mini_station_kill");
               Achievements::progress("score_3m", s->score / 30000);
-            } else if (net_mode_ == NetHost && remote_player() &&
-                       s == remote_player()->ship) {
-              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+            } else if (NetPeer *pr = net_peer_for_ship(s)) {
+              net_send_event_to(*pr, Net::EV_ACHIEVEMENT,
+                                Net::ACH_MINI_STATION_KILL);
             }
             break;
           } else {
@@ -8038,9 +8046,9 @@ void GLGame::tick(int delta) {
             if (s->is_local_player) {
               Achievements::unlock("mini_station_kill");
               Achievements::progress("score_3m", s->score / 30000);
-            } else if (net_mode_ == NetHost && remote_player() &&
-                       s == remote_player()->ship) {
-              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+            } else if (NetPeer *pr = net_peer_for_ship(s)) {
+              net_send_event_to(*pr, Net::EV_ACHIEVEMENT,
+                                Net::ACH_MINI_STATION_KILL);
             }
             break;
           } else {
@@ -9789,9 +9797,8 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
     if (firer->is_local_player) {
       Achievements::unlock("mini_station_kill");
       Achievements::progress("score_3m", firer->score / 30000);
-    } else if (net_mode_ == NetHost && remote_player() &&
-               firer == remote_player()->ship) {
-      net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+    } else if (NetPeer *pr = net_peer_for_ship(firer)) {
+      net_send_event_to(*pr, Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
     }
     play_priority_chunk(station_explode_sound,
                         world_volume(mini_station->position));
@@ -9813,18 +9820,29 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
       station->hit();
     if (!station->is_alive()) {
       if (firer->is_local_player) Achievements::unlock("station_destroyed");
-      else if (net_mode_ == NetHost && remote_player() &&
-               firer == remote_player()->ship)
-        net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_STATION_DESTROYED);
+      else if (NetPeer *pr = net_peer_for_ship(firer))
+        net_send_event_to(*pr, Net::EV_ACHIEVEMENT,
+                          Net::ACH_STATION_DESTROYED);
     }
     WorldSound::play(Asteroid::thud_sound, where);
     // A client firer already played its own splash + thud at contact
-    // (the PROTO 20 pass in tick_net_client) — relaying would double it.
-    bool remote_firer = net_mode_ == NetHost && remote_player() != NULL &&
-                        firer == remote_player()->ship;
-    if (!remote_firer)
+    // (the PROTO 20 pass in tick_net_client) — relaying to THEM would
+    // double it, but the other peers still need the cue. Local firer:
+    // the plain broadcast (with its replay tee). Remote firer: targeted
+    // sends skipping the firer, no tee — the host's replay keeps its
+    // pre-B7 stream (the firing client's file tees at its own site).
+    NetPeer *thud_firer = net_peer_for_ship(firer);
+    if (!thud_firer) {
       net_send_event(Net::EV_ROID_THUD,
                      Net::pack_pos(where.x(), where.y(), world.x(), world.y()));
+    } else {
+      for (NetPeer *op : net_peers_)
+        if (op != thud_firer)
+          net_send_event_to(*op, Net::EV_ROID_THUD,
+                            Net::pack_pos(where.x(), where.y(), world.x(),
+                                          world.y()),
+                            /*tee=*/false);
+    }
   }
 }
 

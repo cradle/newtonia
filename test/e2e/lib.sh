@@ -17,6 +17,13 @@ export XDG_DATA_HOME="$OUT/xdg"
 export SDL_AUDIODRIVER=dummy          # no sound device in CI/containers
 export NEWTONIA_NET_DEBUG=1           # the assertions grep NET_LOG output
 export NEWTONIA_SIGNAL_URL="${NEWTONIA_SIGNAL_URL:-ws://127.0.0.1:8787/ws}"
+# Since the B7 cap flip the DEFAULT seat cap is 4, which routes every host
+# through the B4b waiting room (a pair no longer auto-starts — the host
+# presses START). The classic 2P drivers predate that flow and assemble
+# bespoke pairs, so pin them to the pairwise flow unless a driver already
+# chose its own seat count (the N-seat drivers export 3/4 before launch;
+# pairstart.sh unsets this to cover the shipping default-cap pair flow).
+export NEWTONIA_NET_TEST_SEATS="${NEWTONIA_NET_TEST_SEATS:-2}"
 
 [ -x "$ROOT/newtonia" ] || {
   echo "FATAL: $ROOT/newtonia missing - build first: make -j NETPLAY=1"

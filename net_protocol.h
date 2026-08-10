@@ -174,8 +174,8 @@ namespace Net {
 //     still advances step_size per step), so the whole session slows in
 //     lockstep and the collector's rotation comp is re-asserted from the
 //     owner index on each apply.
-// 25: The 4-player seat flag day (FOURPLAYER.md PB-D3) — still a 2-player
-//     wire in practice (NET_PLAYER_CAP), but every seat-shaped byte becomes
+// 25: The 4-player seat flag day (FOURPLAYER.md PB-D3) — a 2-player wire
+//     in practice until B7's cap flip, but every seat-shaped byte becomes
 //     meaningful so B4's fan-out is additive: WELCOME's assigned-id byte is
 //     STORED by the client (NetSession::player_id() returns it) instead of
 //     validated-and-discarded; snapshot ship records (GameState players via

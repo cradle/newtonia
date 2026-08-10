@@ -81,6 +81,13 @@ static bool s_join_force_relay = false;
 const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
 // RoomHost: the "TAP TO SHARE" line, padded to finger height.
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
+// RoomHost waiting room (B7 touch pass): TAP TO START, between the room
+// code (anchor 220, 48-size glyphs reach ~124) and the share band's
+// padded top (-38; this band's padded box stops at -36 — they must not
+// overlap or a start tap could share instead). Only drawn — and only
+// tappable — once a peer is seated, the touch twin of the desktop
+// "ENTER - START GAME" row.
+const TapBand kStartBand(0.5f, 40, 22, 32.0f);
 // CodeEntry LAN host bands (touch): above the soft keyboard (max 3).
 // Filled BOTTOM-UP — one host uses only the lowest band, sitting in
 // the free space just above the keyboard, well clear of the code
@@ -671,7 +678,16 @@ void NetLobby::lan_teardown() {
 // closes (its room is killed so the code dies with it).
 void NetLobby::lan_host_update(int delta) {
   if (!lan_announce_.running()) return;
-  if (!waiting_room() && session_) {  // the relay door won while beaconing
+  // A live session_ means the PAIRWISE path won while beaconing — the
+  // classic relay pair, or the degraded flows (manual fallback, a
+  // pre-multi-join worker's un-jid'd answer). Close the door regardless
+  // of waiting_room(): post-B7 that predicate is true for every shipping
+  // host, so the old `!waiting_room() &&` guard went dead and a LAN
+  // joiner completing its exchange mid-ICE could reach the classic
+  // adoption below and overwrite the live session_ (leak + a stranded
+  // joiner). Waiting-room LAN adoptions never set session_ (they seat
+  // through pending_), so this cannot fire on the multi-join path.
+  if (session_) {
     lan_teardown();
     return;
   }
@@ -1339,7 +1355,17 @@ void NetLobby::pump_signal(int delta) {
         set_status("PLAYER 2 IS CONNECTING");
         break;
       case NetSignal::Event::PeerLeave:
-        set_status("PLAYER 2 LEFT THE ROOM");
+        // Status is branch-scoped (B7): in the live waiting room only a
+        // joiner actually mid-pairing warrants a flash — a SEATED peer's
+        // signal socket dropping is not a departure (its p2p link
+        // governs; the roster still shows them seated), and
+        // waiting_room_update owns the seat-accurate "PLAYER %d LEFT"
+        // for real link loss. The classic pairwise flash stays for the
+        // no-jid degraded pair and for a pinned/classic 2P room.
+        if (ev.peer.empty() || !waiting_room())
+          set_status("PLAYER 2 LEFT THE ROOM");
+        else if (pending_.count(ev.peer))
+          set_status("A PLAYER LEFT THE ROOM");
         // The departed joiner's attestation leaves with them: a DIFFERENT
         // player can take the slot, and if their own verify fails or their
         // platform has no verifier, a kept attested_peer_ would be folded
@@ -2050,9 +2076,8 @@ void NetLobby::draw() {
           Typer::draw_centered(0, -180, "A LAN PLAYER IS CONNECTING", 12);
         if (blink) {
           if (waiting_room()) {
-            // Touch waiting room (post-B7 only; unreachable until the cap
-            // flips there): count line only — the tap-to-start band lands
-            // with the B7 touch pass.
+            // Touch waiting room: the count line (the per-seat name roster
+            // stays a desktop nicety — vertical space is scarce here).
             char buf[40];
             snprintf(buf, sizeof(buf), "WAITING FOR PLAYERS %d/%d",
                      (int)seated_.size() + 1, net_seat_cap());
@@ -2061,6 +2086,9 @@ void NetLobby::draw() {
             Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
           }
         }
+        // Steady, not on the blink phase — a vanishing tap target reads
+        // as a dead button mid-blink (the share band is steady too).
+        if (waiting_room() && !seated_.empty()) kStartBand.draw("TAP TO START");
       } else {
         lines.push_back("ROOM CODE");
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
@@ -2363,10 +2391,19 @@ void NetLobby::draw() {
       }
       break;
     case Connected: {
-      // Only the joiner sees this screen, and only for the moment between
-      // the handshake and the first world snapshot arriving.
+      // Only the joiner sees this screen — a moment on the classic pair
+      // (handshake to first snapshot), the whole waiting-room period on a
+      // multi-seat room, so the seat is the WELCOME-assigned one, not a
+      // hardcoded 2 (a seat-3 joiner stared at "YOU ARE PLAYER 2" for
+      // minutes otherwise). A legacy/pre-handshake blank falls back to 2.
       lines.push_back("CONNECTED!");
-      lines.push_back("YOU ARE PLAYER 2");
+      {
+        int seat = session_ ? session_->player_id() : 0;
+        if (seat < 2) seat = 2;
+        char seat_buf[24];
+        snprintf(seat_buf, sizeof(seat_buf), "YOU ARE PLAYER %d", seat);
+        lines.push_back(seat_buf);
+      }
       // The host's identity badge from the WELCOME append ("HOSTED BY
       // GLENN - STEAM"; a nameless host is player 1, "HOSTED BY
       // PLAYER 1 - DESKTOP"); a legacy host draws exactly the old screen.
@@ -2877,6 +2914,19 @@ void NetLobby::touch_tap(float nx, float ny) {
         if (floating_kb_up_) floating_kb_available_ = true;
       break;
     case RoomHost:
+      // The waiting room's start band outranks the share band below it —
+      // waiting_room_start() guards itself (no-op when nobody is seated
+      // or the hand-off already happened), so a stale tap is safe.
+      // Touch-gated like the draw (the TapBand rule: drawn == tappable):
+      // desktop forwards every mouse click and Deck tap here too, and the
+      // undrawn band overlaps the desktop layout's room code — an idle
+      // click on the code must not start the game (desktop starts on
+      // Enter, the drawn "ENTER - START GAME" row).
+      if (is_touch_mode() && waiting_room() && !seated_.empty() &&
+          kStartBand.contains(nx, ny)) {
+        waiting_room_start();
+        break;
+      }
       if (kShareBand.contains(nx, ny) && !room_code_.empty() &&
           net_share_available())
         // Share ONE universal link, regardless of the host's platform: the
