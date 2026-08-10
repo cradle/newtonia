@@ -1,8 +1,8 @@
 # 4-Player Mode — Implementation Plan
 
-Status: **Phase A in progress** — A0–A4 merged; A5 (save read-cap) and
-A6 (tests/shots/docs) in review. Remaining: the one-line
-LOCAL_PLAYER_CAP flip PR once everything is verified.
+Status: **Phase A COMPLETE** — A0–A6 merged and the LOCAL_PLAYER_CAP
+flip landed: up to 4 local players are live (P3/P4 join by controller).
+Phase B (online 4P) remains outlined below and unscheduled.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.

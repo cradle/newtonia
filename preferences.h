@@ -15,12 +15,11 @@
 // sizes off the preference slots.
 const int MAX_PLAYERS = 4;
 
-// Dark-launch gate (FOURPLAYER.md §3 landing strategy): the JOIN paths
-// refuse seats beyond this even though everything is sized for MAX_PLAYERS,
-// so master never ships a partially-implemented 4P state. Flipped to
-// MAX_PLAYERS by the final Phase A PR once the renderer and save paths are
-// all in. The NEWTONIA_START_PLAYERS test hook bypasses it (beta builds).
-const int LOCAL_PLAYER_CAP = 2;
+// The live local seat cap. Held at 2 through the Phase A dark launch
+// (FOURPLAYER.md §3) and flipped to MAX_PLAYERS once every piece —
+// renderer, joins, saves, pads, tests — had landed and been verified.
+// Netplay seats are still capped at 2 independently (Phase B).
+const int LOCAL_PLAYER_CAP = MAX_PLAYERS;
 
 // One game action's keyboard binding: up to two key aliases (slot 0 is the
 // primary shown on the keymap, slot 1 an alternate; 0 = empty slot).
