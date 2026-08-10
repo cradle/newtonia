@@ -348,21 +348,64 @@ private:
   friend class NetLobby;
 
   NetMode net_mode_ = NetOff;
-  NetSession *net_session_ = nullptr;  // owned when net_mode_ != NetOff
-  // The peer's badge identity (name + platform, net_identity.h), copied from
-  // the session at adoption and REFRESHED on every rejoin handshake — kept
-  // here rather than read through net_session_ so the badge survives the
-  // sessionless window while a dropped peer rejoins. Default (unknown) for
-  // a legacy peer: the overlay then renders exactly the identity-less UI.
-  NetIdentity net_peer_identity_;
-  // The worker's attestation of the peer, kept SEPARATELY from the folded
-  // identity above: the rejoin-Ready refresh replaces net_peer_identity_
-  // wholesale with the CLAIMED wire parse, which would demote an attested
-  // badge to the role label — so the refresh re-folds this copy on top.
-  // Cleared once per loss (net_host_rejoin_park_remote): the slot may be
-  // refilled by a DIFFERENT friend, whose own announce re-attests through
-  // the worker (Event::Identity below restores it).
-  NetIdentity net_peer_attested_;
+  // ---- One remote peer (Phase B1, FOURPLAYER.md PB-D1) ----
+  // The host will hold up to NET_PLAYER_CAP-1 of these (B4); a client holds
+  // exactly one — its link to the host. The peer object OUTLIVES its
+  // session: a dropped session is deleted while the peer (identity, loss
+  // state) survives the rejoin window.
+  struct NetPeer {
+    NetSession *session = nullptr;  // owned (the session owns its transport)
+    // The peer's badge identity (name + platform, net_identity.h), copied
+    // from the session at adoption and REFRESHED on every rejoin handshake
+    // — kept here rather than read through the session so the badge
+    // survives the sessionless window while a dropped peer rejoins.
+    // Default (unknown) for a legacy peer: the overlay then renders
+    // exactly the identity-less UI.
+    NetIdentity identity;
+    // The worker's attestation, kept SEPARATELY from the folded identity
+    // above: the rejoin-Ready refresh replaces `identity` wholesale with
+    // the CLAIMED wire parse, which would demote an attested badge to the
+    // role label — so the refresh re-folds this copy on top. Cleared once
+    // per loss (net_host_rejoin_park_remote): the slot may be refilled by
+    // a DIFFERENT friend, whose own announce re-attests through the
+    // worker (Event::Identity restores it).
+    NetIdentity attested;
+    // Transport dead / dead-man tripped. Room-level questions go through
+    // the any/all predicates below, which diverge at B4.
+    bool lost = false;
+  };
+  std::vector<NetPeer *> net_peers_;
+  NetPeer *net_peer() const {
+    return net_peers_.empty() ? nullptr : net_peers_.front();
+  }
+  NetPeer &net_peer_make() {
+    if (net_peers_.empty()) net_peers_.push_back(new NetPeer());
+    return *net_peers_.front();
+  }
+  NetSession *net_session() const {
+    NetPeer *p = net_peer();
+    return p ? p->session : nullptr;
+  }
+  const NetIdentity &net_peer_identity() const {
+    static const NetIdentity kNone;
+    NetPeer *p = net_peer();
+    return p ? p->identity : kNone;
+  }
+  // Room-level loss predicates. Identical with one peer; at B4 `any` means
+  // "a seat is open" (re-host door, invite re-advertise) and `all` means
+  // "the room is effectively dead" (terminal card, stop sending).
+  bool net_any_peer_lost() const {
+    NetPeer *p = net_peer();
+    return p && p->lost;
+  }
+  bool net_all_peers_lost() const {
+    NetPeer *p = net_peer();
+    return p && p->lost;
+  }
+  // Delete the peer's dead session, keeping the peer (rejoin window).
+  // Out-of-line: NetSession is forward-declared here, and deleting an
+  // incomplete type would skip its destructor (transport never closed).
+  void net_drop_session();
   // Display context for net_peer_identity_ (net_identity.h): a room-code
   // session ran through the signaling worker, so it is ONLINE-strict — a
   // stranger is possible, only ATTESTED fields render. The manual clipboard
@@ -401,8 +444,9 @@ private:
     net_refresh_join_banner();
   }
   void net_apply_peer_attestation(const NetIdentity &attested) {
-    net_peer_attested_ = attested;
-    net_apply_attested(net_peer_identity_, attested);
+    NetPeer &p = net_peer_make();
+    p.attested = attested;
+    net_apply_attested(p.identity, attested);
     net_refresh_join_banner();
   }
   // Recompose the initial JOINED greeting from the current identity and
@@ -527,7 +571,6 @@ private:
   void net_handle_event(uint8_t code, uint32_t arg);
   void net_spark_asteroid_at(float x, float y);
   void net_set_generation_banner(int gen);
-  bool net_connection_lost_ = false;
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
   // True while the connection-lost card owns input: every lost link EXCEPT
   // the host-with-an-open-door notice, where the game plays on. While this
@@ -540,7 +583,7 @@ private:
   // predicate for the input handlers and the overlay — net_overlays keys
   // its host-notice branch off it too — like pause_menu_active itself.
   bool net_card_owns_input() const {
-    return net_connection_lost_ &&
+    return net_all_peers_lost() &&
            !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()));
   }
   // Nav keys pressed (key-DOWN) while the card owns input: keyboard_up

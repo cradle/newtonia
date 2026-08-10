@@ -405,8 +405,8 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   : GLGame(controller, /*allow_dev_players=*/false) {
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
-  net_session_ = session;
-  net_peer_identity_ = session->peer_identity();
+  net_peer_make().session = session;
+  net_peer_make().identity = session->peer_identity();
   // Greet the friend who just connected the moment the hosted game starts
   // ("GLENN JOINED"), at the attention-drawing banner spot above centre.
   // Composed again by the lobby's post-construction attestation/context
@@ -424,7 +424,7 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   players->front()->ship->bullets.clear();  // no lethal spawn-flash debris
   add_remote_player();
   NET_LOG("net: ice path %s\n",
-         net_session_->transport()->connection_info().c_str());
+         net_session()->transport()->connection_info().c_str());
   // Co-op scoring parity: the initial hull costs a life, so each co-op
   // player fields the same total ship count as a solo run — otherwise a
   // pair banks two free hulls and the high scores aren't comparable.
@@ -463,7 +463,7 @@ GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
     remote->ship->net_remote_gun = true;
     players->front()->ship->net_report_shots = true;
   }
-  net_connection_lost_ = true;
+  net_peer_make().lost = true;
   net_signal_ = NetSignal::create();
   // Arm the shared reclaim countdown rather than connecting here: the
   // first tick runs net_host_signal_reclaim_tick, which clears the ICE
@@ -513,9 +513,13 @@ GLGame::~GLGame() {
   if (net_mode_ == NetHost) Ship::net_report_bounces = false;
   // Leaving an online game: tell the peer (best effort — a hard close is
   // also detected via the channel-close path).
-  if (net_session_ && !net_connection_lost_)
+  if (net_session() && !net_any_peer_lost())
     net_send_event(Net::EV_BYE);
-  delete net_session_;  // closes + deletes the transport
+  for (NetPeer *p : net_peers_) {
+    delete p->session;  // closes + deletes the transport
+    delete p;
+  }
+  net_peers_.clear();
   delete net_assembler_;
   // Deliberate host teardown (quit to menu, game over): tell the relay to
   // kill the room NOW. A bare socket close would start the 2-minute
@@ -1123,7 +1127,7 @@ void GLGame::toggle_pause(bool broadcast) {
   if (!running && replay_) replay_->flush();
   // Online, pausing is shared state: tell the peer (unless this call IS
   // the peer's event being applied).
-  if (broadcast && net_mode_ != NetOff && net_session_ && !net_connection_lost_)
+  if (broadcast && net_mode_ != NetOff && net_session() && !net_any_peer_lost())
     net_send_event(running ? Net::EV_RESUME : Net::EV_PAUSE);
   // Pausing stops keyboard()/controller() forwarding to the ships, so any
   // release that happens while paused is lost — drop everything now, or a
@@ -1566,13 +1570,13 @@ void GLGame::net_ping_tick(int delta) {
   // is blocked — the smoking gun that an outage is the path/relay eating
   // the flow (peer stopped acking) rather than in-flight delay.
   if (Net::net_debug_enabled()) {
-    int buffered = net_session_->transport()->buffered_amount();
+    int buffered = net_session()->transport()->buffered_amount();
     if (buffered > 0) NET_LOG("net: tx buffered %d bytes\n", buffered);
   }
   std::vector<uint8_t> p;
   Net::put_header(p, Net::MSG_PING, net_mode_ == NetHost ? 1 : 2);
   Net::put_u32(p, (uint32_t)SDL_GetTicks());
-  net_session_->transport()->send_unreliable(&p[0], p.size());
+  net_session()->transport()->send_unreliable(&p[0], p.size());
 }
 
 bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
@@ -1582,7 +1586,7 @@ bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
     std::vector<uint8_t> p;
     Net::put_header(p, Net::MSG_PONG, net_mode_ == NetHost ? 1 : 2);
     Net::put_u32(p, t);
-    net_session_->transport()->send_unreliable(&p[0], p.size());
+    net_session()->transport()->send_unreliable(&p[0], p.size());
     return true;
   }
   if (msg_type == Net::MSG_PONG) {
@@ -1786,7 +1790,7 @@ void net_decay_render_offset(Object &o, int delta,
 }  // namespace
 
 void GLGame::net_host_poll() {
-  NetTransport *t = net_session_->transport();
+  NetTransport *t = net_session()->transport();
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
 
   // Mid-gap marker (host side): fires once when INPUT silence crosses
@@ -2364,6 +2368,14 @@ void GLGame::net_send_local_identity() {
 // greeting is still the banner on screen — net_join_banner_text_ remembers
 // what this function last composed, and any other banner (LEVEL,
 // RECONNECTED, ...) or an expired timer closes the window.
+void GLGame::net_drop_session() {
+  NetPeer *p = net_peer();
+  if (p) {
+    delete p->session;  // closes + deletes the transport
+    p->session = nullptr;
+  }
+}
+
 void GLGame::net_refresh_join_banner() {
   if (!net_join_banner_text_.empty() &&
       (net_banner_ms_ <= 0 || net_banner_text_ != net_join_banner_text_))
@@ -2371,12 +2383,12 @@ void GLGame::net_refresh_join_banner() {
   std::string prev = net_banner_text_;
   if (net_mode_ == NetHost)
     net_banner_text_ =
-        net_identity_name_or(net_peer_identity_, net_peer_fallback().c_str(),
+        net_identity_name_or(net_peer_make().identity, net_peer_fallback().c_str(),
                              net_id_ctx()) +
         " JOINED";
   else if (net_mode_ == NetClient)
     net_banner_text_ = "JOINED " +
-        net_identity_name_or(net_peer_identity_, net_peer_fallback().c_str(),
+        net_identity_name_or(net_peer_make().identity, net_peer_fallback().c_str(),
                              net_id_ctx()) +
         " SERVER";
   else
@@ -2425,10 +2437,10 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         att.name_trust =
             att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
         // Keep the raw attestation too: the rejoin-Ready refresh replaces
-        // net_peer_identity_ with the claim-only wire parse and re-folds
+        // net_peer_make().identity with the claim-only wire parse and re-folds
         // this copy so the badge survives the handshake.
-        net_peer_attested_ = att;
-        net_apply_attested(net_peer_identity_, att);
+        net_peer_make().attested = att;
+        net_apply_attested(net_peer_make().identity, att);
         // Fast-ICE ordering: the hand-off can beat the verify round-trip,
         // in which case the JOINED greeting composed with the role label is
         // still on screen — rename it now that the attested name is known
@@ -2514,9 +2526,8 @@ void GLGame::net_host_signal_maintain(int delta) {
         // The client re-entered the room: its transport is dead even if
         // ours has not noticed yet. Enter the rejoin flow immediately.
         NET_LOG("net: peer rejoined the room - fast loss detect\n");
-        delete net_session_;
-        net_session_ = nullptr;
-        net_connection_lost_ = true;
+        net_drop_session();
+        net_peer_make().lost = true;
         return;  // net_host_rejoin_poll owns the signal from here
       default:
         break;
@@ -2541,9 +2552,9 @@ void GLGame::net_host_rejoin_park_remote() {
   // The departed peer's worker attestation dies with them: whoever fills
   // the slot re-attests through their own announce (Event::Identity), and
   // without this a DIFFERENT friend whose verify failed would inherit the
-  // old friend's attested name. net_peer_identity_ itself survives — the
+  // old friend's attested name. net_peer_make().identity itself survives — the
   // DISCONNECTED banner still names who dropped.
-  net_peer_attested_ = NetIdentity();
+  net_peer_make().attested = NetIdentity();
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
   if (remote) {
     if (remote->is_alive()) {
@@ -2560,8 +2571,7 @@ void GLGame::net_host_rejoin_park_remote() {
       remote->time_until_respawn = 1 << 29;
     }
   }
-  delete net_session_;
-  net_session_ = nullptr;
+  net_drop_session();
   if (running) {
     toggle_pause(false);
     NET_LOG("net: paused awaiting rejoin\n");
@@ -2578,7 +2588,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
   // session other than the dead one (a fresh session created from a
   // rejoin answer is Handshaking on a HEALTHY transport — leave it be).
   if (!net_rehost_ &&
-      (!net_session_ || net_session_->transport()->failed())) {
+      (!net_session() || net_session()->transport()->failed())) {
     net_host_rejoin_park_remote();
     net_rehost_ = NetTransport::create();
     net_rehost_offer_sent_ = false;
@@ -2606,10 +2616,10 @@ void GLGame::net_host_rejoin_poll(int delta) {
   // rejoining client through the room — only once the offer is out (a
   // candidate arriving before it gets wiped with the relay's stale-cand
   // buffer when the offer lands).
-  if (net_signal_retry_ms_ <= 0 && (net_rehost_offer_sent_ || net_session_)) {
+  if (net_signal_retry_ms_ <= 0 && (net_rehost_offer_sent_ || net_session())) {
     NetTransport *t =
         net_rehost_ ? net_rehost_
-                    : (net_session_ ? net_session_->transport() : nullptr);
+                    : (net_session() ? net_session()->transport() : nullptr);
     std::string c;
     while (t && t->poll_local_candidate(c)) {
       size_t nl = c.find('\n');
@@ -2632,12 +2642,12 @@ void GLGame::net_host_rejoin_poll(int delta) {
         continue;
       }
       net_rehost_->set_remote_answer(ev.text);
-      net_session_ = new NetSession(net_rehost_, NetSession::HostRole);
+      net_peer_make().session = new NetSession(net_rehost_, NetSession::HostRole);
       net_rehost_ = nullptr;
     } else if (ev.kind == NetSignal::Event::Cand) {
       NetTransport *t =
           net_rehost_ ? net_rehost_
-                      : (net_session_ ? net_session_->transport() : nullptr);
+                      : (net_session() ? net_session()->transport() : nullptr);
       if (t) t->add_remote_candidate(ev.text2, ev.text);
     } else if (ev.kind == NetSignal::Event::Room) {
       // Reclaimed mid-rejoin: the room's stored offer died with the old
@@ -2645,11 +2655,11 @@ void GLGame::net_host_rejoin_poll(int delta) {
       NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
       net_rehost_offer_sent_ = false;
       net_send_local_identity();  // re-attest for the (re)joiner
-    } else if (ev.kind == NetSignal::Event::PeerJoin && net_session_) {
+    } else if (ev.kind == NetSignal::Event::PeerJoin && net_session()) {
       // A rejoiner re-entered the room while we ALREADY have a handshaking
       // session with them. The relay sends the host a PeerJoin the instant a
       // joiner arrives, BEFORE its answer — so the normal single rejoin's
-      // PeerJoin lands while net_session_ is still null (offer out, awaiting
+      // PeerJoin lands while net_session() is still null (offer out, awaiting
       // the answer) and must be left alone. Tearing that offer down restarted
       // ICE on every join event and looped forever over a real TURN path
       // (Glenn: "AGES to reconnect", re-offering ~0.7 s after the answer while
@@ -2662,9 +2672,8 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // The abandoned attempt's attestation goes with its session (same
       // reasoning as the Failed/Rejected branch): the re-entering joiner
       // re-announces on its fresh socket and re-attests through the worker.
-      net_peer_attested_ = NetIdentity();
-      delete net_session_;
-      net_session_ = nullptr;
+      net_peer_make().attested = NetIdentity();
+      net_drop_session();
       net_rehost_offer_sent_ = false;
       return;  // top-of-poll re-offer owns the signal from here
     }
@@ -2682,10 +2691,10 @@ void GLGame::net_host_rejoin_poll(int delta) {
 // its lobby stops retrying.
 void GLGame::net_host_rejoin_session_update(int delta) {
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
-  if (net_session_) {
-    net_session_->update(delta);
-    if (net_session_->phase() == NetSession::Ready) {
-      net_connection_lost_ = false;
+  if (net_session()) {
+    net_session()->update(delta);
+    if (net_session()->phase() == NetSession::Ready) {
+      net_peer_make().lost = false;
       net_rejoin_parked_ = false;  // the next loss parks/pauses afresh
       // Both doors are satisfied: a stale relay offer transport (the LAN
       // door won) and the LAN door itself close down. The relay ROOM
@@ -2706,8 +2715,8 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // cleared at park time, so a stale attestation can't label a
       // different friend; a verify that lands after Ready folds live via
       // net_host_signal_common_event as before.
-      net_peer_identity_ = net_session_->peer_identity();
-      net_apply_attested(net_peer_identity_, net_peer_attested_);
+      net_peer_make().identity = net_session()->peer_identity();
+      net_apply_attested(net_peer_make().identity, net_peer_make().attested);
       net_have_input_ = false;      // re-baseline the one-shot counters
       net_input_zeroed_ = false;
       net_rtt_ms_ = -1.0f;          // fresh transport, fresh RTT baseline
@@ -2738,7 +2747,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // Name the rejoiner when their identity is known ("GLENN
       // RECONNECTED"); a legacy peer keeps the plain text.
       net_banner_text_ =
-          net_identity_name_or(net_peer_identity_, net_peer_fallback().c_str(),
+          net_identity_name_or(net_peer_make().identity, net_peer_fallback().c_str(),
                                net_id_ctx()) +
           " RECONNECTED";
       net_banner_ms_ = 3000;      // the JOINED/LEFT notices' duration
@@ -2748,7 +2757,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
       NET_LOG("net: ice path %s\n",
-             net_session_->transport()->connection_info().c_str());
+             net_session()->transport()->connection_info().c_str());
       // Host paused (auto-paused on the disconnect, or by hand): the
       // paused tick never reaches the 10 Hz send, so push the keyframe
       // NOW — the rejoiner's lobby is waiting on it to bootstrap the
@@ -2760,8 +2769,8 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       }
       NET_LOG("net: player 2 rejoined\n");
       net_host_resume_persist();  // client-join checkpoint (see NETPLAY.md)
-    } else if (net_session_->phase() == NetSession::Failed ||
-               net_session_->phase() == NetSession::Rejected) {
+    } else if (net_session()->phase() == NetSession::Failed ||
+               net_session()->phase() == NetSession::Rejected) {
       // Bad handshake (wrong build?): drop it and re-open the doors for
       // another try — the relay re-offer only where a signal exists, and
       // the LAN door reset so its poll re-arms a fresh beacon next tick.
@@ -2770,9 +2779,8 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // candidate whose handshake then failed would leave their attested
       // name to be folded onto whoever completes the NEXT attempt (an
       // unverified or legacy joiner would wear it at the Ready re-fold).
-      net_peer_attested_ = NetIdentity();
-      delete net_session_;
-      net_session_ = nullptr;
+      net_peer_make().attested = NetIdentity();
+      net_drop_session();
       if (net_signal_) {
         net_rehost_ = NetTransport::create();
         if (net_rehost_) net_rehost_->set_trickle(true);
@@ -2802,7 +2810,7 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
   // is already handshaking (re-beaconing then would let a second
   // completion stomp it; mirror of the relay arm's condition).
   if (!net_lan_rehost_ && !net_lan_announce_.running() &&
-      (!net_session_ || net_session_->transport()->failed())) {
+      (!net_session() || net_session()->transport()->failed())) {
     net_host_rejoin_park_remote();
     // Re-beacon the session's frozen name (set at the lobby hand-off) so
     // the dropped client's rediscover-by-name matches; never re-read
@@ -2839,11 +2847,10 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
         delete net_rehost_;
         net_rehost_ = nullptr;
       }
-      delete net_session_;
-      net_session_ = nullptr;
+      net_drop_session();
       net_lan_announce_.stop();
       net_lan_rehost_->set_remote_answer(sdp);
-      net_session_ = new NetSession(net_lan_rehost_, NetSession::HostRole);
+      net_peer_make().session = new NetSession(net_lan_rehost_, NetSession::HostRole);
       net_lan_rehost_ = nullptr;  // owned by the session now
     }
   }
@@ -2975,7 +2982,7 @@ void GLGame::net_host_send_snapshot(int delta) {
   // must an online recording: keep the cadence and the builders running so
   // the file has no hole, just skip the sends. The rejoined client restarts
   // from the forced keyframe anyway, which rebuilds its baseline.
-  bool can_send = net_session_ && !net_connection_lost_;
+  bool can_send = net_session() && !net_any_peer_lost();
   if (!can_send && !replay_) return;  // mid-rejoin, nothing recording
   net_snapshot_timer_ += delta;
   if (net_snapshot_timer_ < 100) return;
@@ -2994,7 +3001,7 @@ void GLGame::net_host_send_snapshot(int delta) {
   if (replay_) replay_->record_keyframe(payload.data());
 
   if (can_send) {
-    Net::send_snapshot(net_session_->transport(), ++net_snapshot_id_,
+    Net::send_snapshot(net_session()->transport(), ++net_snapshot_id_,
                        payload.data(), 1);
 
     // Bandwidth telemetry (M2-6): a line every 10 s of play at 10 Hz.
@@ -3156,7 +3163,7 @@ bool GLGame::net_send_delta(bool can_send) {
   Net::put_header(msg, Net::MSG_DELTA, 1);
   Net::put_u32(msg, ++net_snapshot_id_);
   Net::put_bytes(msg, &payload.data()[0], payload.data().size());
-  net_session_->transport()->send_reliable(&msg[0], msg.size());
+  net_session()->transport()->send_reliable(&msg[0], msg.size());
 
   net_bytes_sent_ += msg.size();
   if (net_slot_ % 100 == 0) {
@@ -4052,12 +4059,12 @@ void GLGame::net_send_event(uint8_t code, uint32_t arg) {
     replay_->record_event(code, arg);
   // While the joiner is disconnected (rejoinable loss) the host plays on
   // with no session at all — level completion and pause still fire events.
-  if (!net_session_) return;
+  if (!net_session()) return;
   std::vector<uint8_t> msg;
   Net::put_header(msg, Net::MSG_EVENT, net_mode_ == NetHost ? 1 : 2);
   Net::put_u8(msg, code);
   Net::put_u32(msg, arg);
-  net_session_->transport()->send_reliable(&msg[0], msg.size());
+  net_session()->transport()->send_reliable(&msg[0], msg.size());
 }
 
 void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
@@ -4074,7 +4081,7 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       net_set_generation_banner((int)arg);
       break;
     case Net::EV_BYE:
-      net_connection_lost_ = true;
+      net_peer_make().lost = true;
       // A BYE is a DELIBERATE goodbye, not a dropped link. The client must
       // not auto-rejoin a room whose host said it isn't coming back (the
       // relay may still hold it in reclaim grace if the host's signal
@@ -4298,8 +4305,8 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   : GLGame(snapshot, (SDL_GameController *)NULL) {
   net_mode_ = NetClient;
   Net::set_net_log_role(false);  // lobby set it too; belt & braces
-  net_session_ = session;
-  net_peer_identity_ = session->peer_identity();
+  net_peer_make().session = session;
+  net_peer_make().identity = session->peer_identity();
   // The joiner's complement of the host's "<NAME> JOINED" greeting: name
   // whose game this is ("JOINED GLENN SERVER"; the host is player 1, so a
   // nameless/legacy host reads "JOINED PLAYER 1 SERVER"). Composed again by
@@ -4318,7 +4325,7 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
             (void *)players->back()->ship);
   }
   NET_LOG("net: ice path %s\n",
-         net_session_->transport()->connection_info().c_str());
+         net_session()->transport()->connection_info().c_str());
   // Snapshot restores call Ship::respawn 10x/s; without this its hum
   // start-then-halt leaks random audible blips. The snapshot extras are
   // the only hum authority on a client.
@@ -4647,7 +4654,7 @@ void GLGame::tick_net_client(int delta) {
   if (net_mode_ == NetReplay) {
     // The file is the transport: apply whatever has come due.
     tick_replay_poll(delta);
-  } else if (!net_connection_lost_) {
+  } else if (!net_any_peer_lost()) {
     net_client_poll();
     net_ping_tick(delta);
     // Mid-gap marker: the 1 Hz buffered sample can miss a sub-second
@@ -4659,7 +4666,7 @@ void GLGame::tick_net_client(int delta) {
       if (quiet > 300 && !net_quiet_logged_) {
         net_quiet_logged_ = true;
         NET_LOG("net: rx quiet 300 ms, tx buffered %d bytes\n",
-                net_session_->transport()->buffered_amount());
+                net_session()->transport()->buffered_amount());
       } else if (quiet <= 300) {
         net_quiet_logged_ = false;
       }
@@ -4667,12 +4674,12 @@ void GLGame::tick_net_client(int delta) {
     if (running && net_last_rx_time_ &&
         current_time - net_last_rx_time_ > 10000) {
       NET_LOG("net: RX watchdog - 10 s of silence, connection lost\n");
-      net_session_->transport()->close();  // unblock the peer's side too
-      net_connection_lost_ = true;
+      net_session()->transport()->close();  // unblock the peer's side too
+      net_peer_make().lost = true;
     }
   }
-  if (net_mode_ == NetClient && net_session_->transport()->failed())
-    net_connection_lost_ = true;
+  if (net_mode_ == NetClient && net_session()->transport()->failed())
+    net_peer_make().lost = true;
   // Game over is observed here, not simulated: alive/lives replicate, so
   // when the last life goes this side sees it too. The host's tick never
   // runs on a client, so without this the 3 s accidental-exit guard and
@@ -4711,7 +4718,7 @@ void GLGame::tick_net_client(int delta) {
   // host still in it -> after kSpectateDelayMs the camera follows the host.
   update_spectate();
 
-  if (net_connection_lost_) {
+  if (net_all_peers_lost()) {
     // Host gone: snapshots stop, so any snapshot-driven continuous loop
     // (shield hum from spawn invincibility, god-mode music) would be left
     // playing forever. Silence them now — a rejoin restores them from the
@@ -5265,7 +5272,7 @@ void GLGame::tick_net_client(int delta) {
     Net::put_f32(msg, r.vy);
     Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0) |
                        (r.piercing ? 4 : 0));
-    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    net_session()->transport()->send_reliable(&msg[0], msg.size());
     // 1 Hz send-side twin of the host's "reported shots/s spawned" —
     // a rate mismatch between the two lines localizes a report leak.
     if (Net::net_debug_enabled()) {
@@ -5293,7 +5300,7 @@ void GLGame::tick_net_client(int delta) {
       Net::put_f32(msg, p.x());
       Net::put_f32(msg, p.y());
     }
-    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    net_session()->transport()->send_reliable(&msg[0], msg.size());
   }
   Ship::net_lance_reports.clear();
 
@@ -5309,7 +5316,7 @@ void GLGame::tick_net_client(int delta) {
       Net::put_f32(msg, p.x());
       Net::put_f32(msg, p.y());
     }
-    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    net_session()->transport()->send_reliable(&msg[0], msg.size());
   }
   Ship::net_shock_reports.clear();
 
@@ -5323,7 +5330,7 @@ void GLGame::tick_net_client(int delta) {
     Net::put_u32(msg, c.target_id);
     Net::put_f32(msg, c.x);
     Net::put_f32(msg, c.y);
-    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    net_session()->transport()->send_reliable(&msg[0], msg.size());
     // The enemy died locally the moment the bullet connected — keep the
     // restores from resurrecting it while the claim is in flight.
     if (c.kind == 0 && c.target_id != 0)
@@ -5344,7 +5351,7 @@ void GLGame::tick_net_client(int delta) {
       Net::put_header(msg, Net::MSG_HIT, 2);
       Net::put_u32(msg, c.ast_id);
       Net::put_u32(msg, c.bullet_id);
-      net_session_->transport()->send_reliable(&msg[0], msg.size());
+      net_session()->transport()->send_reliable(&msg[0], msg.size());
       // Keyframes cut before the host processes the claim still list
       // this id — suppress re-creation until the removal propagates.
       net_predicted_kills_[c.ast_id] = current_time + 3000;
@@ -5437,7 +5444,7 @@ void GLGame::net_client_send_input() {
 
   std::vector<uint8_t> msg;
   Net::encode_input(msg, in, 2);
-  net_session_->transport()->send_unreliable(&msg[0], msg.size());
+  net_session()->transport()->send_unreliable(&msg[0], msg.size());
 
   // Reliable mirror (see net_mirror_* in glgame.h): every input CHANGE
   // rides the ordered channel too, so a lost release can be late but
@@ -5449,7 +5456,7 @@ void GLGame::net_client_send_input() {
                              in.secondary_press_count);
   bool changed = in.held != net_mirror_held_ || counts != net_mirror_counts_;
   if (changed || ++net_mirror_steps_ >= 12) {
-    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    net_session()->transport()->send_reliable(&msg[0], msg.size());
     net_mirror_steps_ = 0;
     net_mirror_held_ = in.held;
     net_mirror_counts_ = counts;
@@ -5457,7 +5464,7 @@ void GLGame::net_client_send_input() {
 }
 
 void GLGame::net_client_poll() {
-  NetTransport *t = net_session_->transport();
+  NetTransport *t = net_session()->transport();
   // Flood guard, symmetric with net_host_poll: the host is an untrusted peer
   // too, and its SHOT/LANCE/SHOCK echoes each allocate (bullets/lance_pulses/
   // shocks) on our side. Same two budgets — a read-loop cap so a message storm
@@ -6572,7 +6579,7 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
 void GLGame::focus_gained() {
   // M3-1: returning to a disconnected client (mobile resume) rejoins at
   // once instead of waiting out the countdown.
-  if (net_mode_ == NetClient && net_connection_lost_ &&
+  if (net_mode_ == NetClient && net_any_peer_lost() &&
       net_client_rejoin_ms_ > 300)
     net_client_rejoin_ms_ = 300;
   Mix_ResumeMusic();
@@ -6822,12 +6829,12 @@ void GLGame::tick(int delta) {
       const char *e = getenv("NEWTONIA_NET_TEST_DROP_SIGNAL_MS");
       test_drop_signal = e ? atoi(e) : -1;
     }
-    if (test_drop_transport > 0 && net_session_) {
+    if (test_drop_transport > 0 && net_session()) {
       test_drop_transport -= delta;
       if (test_drop_transport <= 0) {
         test_drop_transport = -1;
         NET_LOG("net: TEST dropping transport\n");
-        net_session_->transport()->close();
+        net_session()->transport()->close();
       }
     }
     if (test_drop_signal > 0 && net_signal_) {
@@ -6840,7 +6847,7 @@ void GLGame::tick(int delta) {
       }
     }
 
-    if (!net_connection_lost_) {
+    if (!net_any_peer_lost()) {
       net_host_poll();
       net_ping_tick(delta);
       // RX watchdog, host side: a client whose game runs sends INPUT at
@@ -6854,14 +6861,14 @@ void GLGame::tick(int delta) {
         // frozen) with OUR transport still nominally alive — the close
         // is what makes the peer's side fail fast and auto-rejoin
         // instead of playing into the void.
-        net_session_->transport()->close();
-        net_connection_lost_ = true;
+        net_session()->transport()->close();
+        net_peer_make().lost = true;
       }
     }
-    if (net_session_ && net_session_->transport()->failed())
-      net_connection_lost_ = true;
-    if (net_signal_ && !net_connection_lost_) net_host_signal_maintain(delta);
-    if (net_connection_lost_) {
+    if (net_session() && net_session()->transport()->failed())
+      net_peer_make().lost = true;
+    if (net_signal_ && !net_any_peer_lost()) net_host_signal_maintain(delta);
+    if (net_any_peer_lost()) {
       // Both rejoin doors, mirroring the lobby: the relay room (when the
       // session came through one) and the LAN beacon (wherever LAN
       // discovery exists — including sessions that STARTED on the LAN
@@ -6880,9 +6887,9 @@ void GLGame::tick(int delta) {
     // the dropped peer — can drop into the empty co-op slot via a platform
     // Join. Edge-detected so the "connect" key is written only on the
     // transitions, not every frame; cleared again the moment the slot fills
-    // (net_connection_lost_ back to false) or the room is truly lost.
+    // (net_any_peer_lost() back to false) or the room is truly lost.
     bool joinable_now =
-        net_connection_lost_ && net_signal_ != NULL && !net_room_code_.empty();
+        net_any_peer_lost() && net_signal_ != NULL && !net_room_code_.empty();
     if (joinable_now && !net_invite_advertised_) {
       Invites::set_joinable(net_room_code_);
       net_invite_advertised_ = true;
@@ -8022,7 +8029,7 @@ void GLGame::tick(int delta) {
     // While parked for rejoin, re-assert the shield every tick: level
     // rebuilds respawn all players with the normal 1.5 s window, which
     // would otherwise expire and leave the pilotless hull killable.
-    if (net_connection_lost_ && net_signal_ && remote->is_alive()) {
+    if (net_any_peer_lost() && net_signal_ && remote->is_alive()) {
       remote->invincible = true;
       remote->time_left_invincible = 1 << 29;
     }
@@ -8041,7 +8048,7 @@ void GLGame::tick(int delta) {
   // The MSG echo loops below stay host-gated — raw transport writes, and
   // every one already has a recorded twin (outbox or receive tee).
   bool host_online =
-      net_mode_ == NetHost && net_session_ && !net_connection_lost_;
+      net_mode_ == NetHost && net_session() && !net_any_peer_lost();
   if (host_online || replay_) {
     // Non-fatal ship-vs-asteroid bounces (debris + armour ting). Enemy
     // ships collide through the same code; only player ships are sent.
@@ -8091,7 +8098,7 @@ void GLGame::tick(int delta) {
       Net::put_f32(msg, r.vy);
       Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0) |
                        (r.piercing ? 4 : 0));
-      net_session_->transport()->send_reliable(&msg[0], msg.size());
+      net_session()->transport()->send_reliable(&msg[0], msg.size());
     }
     // PROTO 18: the host player's lance pulses, echoed for the client's
     // flash + sound (the kills replicate as ordinary removal records).
@@ -8104,7 +8111,7 @@ void GLGame::tick(int delta) {
         Net::put_f32(msg, p.x());
         Net::put_f32(msg, p.y());
       }
-      net_session_->transport()->send_reliable(&msg[0], msg.size());
+      net_session()->transport()->send_reliable(&msg[0], msg.size());
     }
     // PROTO 22: the host player's shock bolts, echoed for the client's
     // flash + sound (kills replicate as ordinary removal / score records).
@@ -8117,7 +8124,7 @@ void GLGame::tick(int delta) {
         Net::put_f32(msg, p.x());
         Net::put_f32(msg, p.y());
       }
-      net_session_->transport()->send_reliable(&msg[0], msg.size());
+      net_session()->transport()->send_reliable(&msg[0], msg.size());
     }
     // PROTO 19: authoritative ricochets — the sim's real bounce of any
     // id-carrying bullet overrides the client's local approximation, so
@@ -8131,7 +8138,7 @@ void GLGame::tick(int delta) {
       Net::put_f32(msg, r.vx);
       Net::put_f32(msg, r.vy);
       Net::put_u8(msg, r.flags);
-      net_session_->transport()->send_reliable(&msg[0], msg.size());
+      net_session()->transport()->send_reliable(&msg[0], msg.size());
     }
   }
   Ship::net_ship_impacts.clear();
@@ -8154,7 +8161,7 @@ void GLGame::tick(int delta) {
   // remote replica's need the wire (the client skips its own-ship bullet
   // echo); the host's own replicate through the ordinary echo.
   for (const Ship *rb : Ship::net_ram_blasts)
-    if (net_mode_ == NetHost && net_session_ && !net_connection_lost_ &&
+    if (net_mode_ == NetHost && net_session() && !net_any_peer_lost() &&
         remote_player() && rb == remote_player()->ship)
       net_send_event(Net::EV_RAM_BLAST);
   Ship::net_ram_blasts.clear();
@@ -9196,7 +9203,7 @@ bool GLGame::exit_band_showing() const {
   const GLShip *local = local_player();
   bool local_over = net_active() && local && !local->ship->is_alive() &&
                     local->ship->lives <= 0;
-  return all_over || !running || local_over || net_connection_lost_;
+  return all_over || !running || local_over || net_any_peer_lost();
 }
 
 void GLGame::touch_tap(float nx, float ny) {

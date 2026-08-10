@@ -181,7 +181,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
   bool all_game_over = glgame->all_players_out();
 
   if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
-      !glgame->net_connection_lost_)
+      !glgame->net_any_peer_lost())
     return;
 
   glViewport(0, 0, glgame->window.x(), glgame->window.y());
@@ -224,7 +224,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
   // re-derive the condition here, or the two copies drift and the overlay
   // draws a card whose input the handlers aren't answering (the pause-row
   // lesson, overlay.cpp paused()).
-  if (glgame->net_connection_lost_ && !glgame->net_card_owns_input()) {
+  if (glgame->net_all_peers_lost() && !glgame->net_card_owns_input()) {
     // Rejoinable loss: the game continues — a quiet notice, not a card.
     // A "P2 DISCONNECTED" header over the room code (steady, no blink): the
     // host may be reading the code out to the other player, and it explains
@@ -233,7 +233,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // A LAN-door session has no code — the reopened beacon is the way
     // back, so say that instead.
     std::string who =
-        net_identity_name_or(glgame->net_peer_identity_,
+        net_identity_name_or(glgame->net_peer_identity(),
                              glgame->net_peer_fallback().c_str(),
                              glgame->net_id_ctx());
     Typer::draw_centered(0, vh * 0.80f, (who + " DISCONNECTED").c_str(), 20);
@@ -244,7 +244,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
     if (glgame->net_lan_door_open())
       Typer::draw_centered(0, vh * (glgame->net_signal_ ? 0.57f : 0.67f),
                            "VISIBLE ON THIS NETWORK", 14);
-  } else if (glgame->net_connection_lost_ &&
+  } else if (glgame->net_all_peers_lost() &&
              glgame->net_mode_ == GLGame::NetClient &&
              (!glgame->net_room_code_.empty() ||
               !glgame->net_lan_host_name_.empty())) {
@@ -261,7 +261,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // cursor and has the exit band instead.
     if (!is_touch_mode())
       MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
-  } else if (glgame->net_connection_lost_) {
+  } else if (glgame->net_all_peers_lost()) {
     if (glgame->net_peer_bye_) {
       // Named like DISCONNECTED/RECONNECTED but near the middle, at the
       // banner spot ("GLENN LEFT THE GAME"; the host is player 1, so a
@@ -269,7 +269,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
       // pause overlay's "Paused" at y=30 — both show when the host
       // leaves a paused game.
       std::string who =
-          net_identity_name_or(glgame->net_peer_identity_,
+          net_identity_name_or(glgame->net_peer_identity(),
                                glgame->net_peer_fallback().c_str(),
                                glgame->net_id_ctx());
       Typer::draw_centered(0, vh * 0.55f, (who + " LEFT THE GAME").c_str(),
@@ -606,7 +606,7 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   // the field (Android/Steam pairing, 2026-08-07). Live play only, like
   // the local row — a replay's ghosts get no fallback row.
   std::string badge = net_identity_badge_or(
-      glgame->net_peer_identity_, glgame->net_peer_fallback().c_str(),
+      glgame->net_peer_identity(), glgame->net_peer_fallback().c_str(),
       glgame->net_id_ctx());
   if (badge.empty()) {
     if (glgame->net_mode_ != GLGame::NetHost &&
@@ -625,7 +625,7 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   // is a claim and draws bare (net_identity_verified owns that rule).
   Typer::draw_centered_verified(
       0, y, badge.c_str(), 11,
-      net_identity_verified(glgame->net_peer_identity_, glgame->net_id_ctx()),
+      net_identity_verified(glgame->net_peer_identity(), glgame->net_id_ctx()),
       0, peer_suffix);
 }
 
@@ -1025,9 +1025,9 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
   // see whether a session is burning relay bandwidth — plus the smoothed
   // MSG_PING round trip once the first PONG lands.
   char net_buf[80] = "";
-  if (glgame->net_active() && glgame->net_session_ &&
-      glgame->net_session_->transport()) {
-    std::string ci = glgame->net_session_->transport()->connection_info();
+  if (glgame->net_active() && glgame->net_session() &&
+      glgame->net_session()->transport()) {
+    std::string ci = glgame->net_session()->transport()->connection_info();
     if (!ci.empty()) {
       if (glgame->net_rtt_ms_ >= 0.0f)
         snprintf(net_buf, sizeof(net_buf), "net: %s %dms", ci.c_str(),
