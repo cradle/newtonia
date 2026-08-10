@@ -412,6 +412,7 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
   net_peer_make().session = session;
+  net_peer_make().seat = (uint8_t)session->peer_seat();
   net_peer_make().identity = session->peer_identity();
   // Greet the friend who just connected the moment the hosted game starts
   // ("GLENN JOINED"), at the attention-drawing banner spot above centre.
@@ -2224,8 +2225,11 @@ void GLGame::net_host_poll() {
       // same delivery problem (the ctor/rejoin announcements land while
       // the client is still bootstrapping and vanish — its HUD showed
       // OFF with the rule enabled), so re-announce it here too.
-      if (!running) net_send_event(Net::EV_PAUSE);
-      net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
+      // Targeted (B4): only the peer whose first INPUT just landed needs
+      // the resync — re-syncing the others would blip their HUDs.
+      if (!running) net_send_event_to(net_peer_make(), Net::EV_PAUSE);
+      net_send_event_to(net_peer_make(), Net::EV_FRIENDLY_FIRE,
+                        friendly_fire ? 1u : 0u);
     }
 
     // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
@@ -3034,6 +3038,10 @@ void GLGame::net_host_send_snapshot(int delta) {
   // must an online recording: keep the cadence and the builders running so
   // the file has no hole, just skip the sends. The rejoined client restarts
   // from the forced keyframe anyway, which rebuilds its baseline.
+  // PB-D2: ONE build, byte-identical broadcast — a peer either receives
+  // every slot since its keyframe or gets forced a fresh global keyframe
+  // (join/rejoin set net_force_keyframe_). can_send = some peer can take
+  // it; the per-peer liveness picks receivers at the write below.
   bool can_send = net_session() && !net_any_peer_lost();
   if (!can_send && !replay_) return;  // mid-rejoin, nothing recording
   net_snapshot_timer_ += delta;
@@ -3053,8 +3061,11 @@ void GLGame::net_host_send_snapshot(int delta) {
   if (replay_) replay_->record_keyframe(payload.data());
 
   if (can_send) {
-    Net::send_snapshot(net_session()->transport(), ++net_snapshot_id_,
-                       payload.data(), 1);
+    ++net_snapshot_id_;  // one room-level id per slot, shared by all peers
+    for (NetPeer *p : net_peers_)
+      if (p->session && !p->lost)
+        Net::send_snapshot(p->session->transport(), net_snapshot_id_,
+                           payload.data(), 1);
 
     // Bandwidth telemetry (M2-6): a line every 10 s of play at 10 Hz.
     net_bytes_sent_ += payload.data().size();
@@ -3210,12 +3221,15 @@ bool GLGame::net_send_delta(bool can_send) {
   if (replay_) replay_->record_delta(payload.data());
   if (!can_send) return true;
 
+  // PB-D2: one encode, byte-identical to every live peer (one id per slot).
   std::vector<uint8_t> msg;
   msg.reserve(Net::HEADER_SIZE + 4 + payload.data().size());
   Net::put_header(msg, Net::MSG_DELTA, 1);
   Net::put_u32(msg, ++net_snapshot_id_);
   Net::put_bytes(msg, &payload.data()[0], payload.data().size());
-  net_session()->transport()->send_reliable(&msg[0], msg.size());
+  for (NetPeer *p : net_peers_)
+    if (p->session && !p->lost)
+      p->session->transport()->send_reliable(&msg[0], msg.size());
 
   net_bytes_sent_ += msg.size();
   if (net_slot_ % 100 == 0) {
@@ -4111,12 +4125,35 @@ void GLGame::net_send_event(uint8_t code, uint32_t arg) {
     replay_->record_event(code, arg);
   // While the joiner is disconnected (rejoinable loss) the host plays on
   // with no session at all — level completion and pause still fire events.
-  if (!net_session()) return;
+  // B4: one encode, broadcast to every peer WITH a session — not gated on
+  // `lost` (matching the old single-session guard: a dead transport eats
+  // the bytes, and the rejoin resync ordering relies on sending the
+  // moment a fresh session exists).
   std::vector<uint8_t> msg;
   Net::put_header(msg, Net::MSG_EVENT, (uint8_t)net_local_seat());
   Net::put_u8(msg, code);
   Net::put_u32(msg, arg);
-  net_session()->transport()->send_reliable(&msg[0], msg.size());
+  for (NetPeer *p : net_peers_)
+    if (p->session)
+      p->session->transport()->send_reliable(&msg[0], msg.size());
+}
+
+// B4 (PB-D4): the targeted form — session-scoped state that belongs to ONE
+// peer (its pickup latch, its achievement relay, its first-INPUT resync)
+// must not re-sync every other client. Same replay tee and skip list as
+// the broadcast form: these events were recorded before the split, and a
+// tee per CALL keeps the N=1 replay bytes identical.
+void GLGame::net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg) {
+  if (replay_ && code != Net::EV_PAUSE && code != Net::EV_RESUME &&
+      code != Net::EV_BYE && code != Net::EV_ACHIEVEMENT &&
+      code != Net::EV_WORLD_SHOT)
+    replay_->record_event(code, arg);
+  if (!peer.session) return;
+  std::vector<uint8_t> msg;
+  Net::put_header(msg, Net::MSG_EVENT, (uint8_t)net_local_seat());
+  Net::put_u8(msg, code);
+  Net::put_u32(msg, arg);
+  peer.session->transport()->send_reliable(&msg[0], msg.size());
 }
 
 void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
@@ -8000,15 +8037,29 @@ void GLGame::tick(int delta) {
           // client arms exactly that weapon's anti-flicker latch — 0 for the
           // host's own pickups and for types that touch no primary ammo (see
           // net_pickup_latch_ in glgame.h for why kind-blind arming misfired).
-          uint32_t pk = NET_PRIM_NONE;
-          if (net_mode_ == NetHost && remote_player() &&
-              (*o) == remote_player()) {
+          // B4: the latch kind goes ONLY to the collecting peer — arming
+          // another client's latch would pin its real pickup gains low.
+          // Everyone else still hears the collection cue (arg 0). At one
+          // peer this is byte- and tee-identical to the old broadcast.
+          NetPeer *collector = NULL;
+          if (net_mode_ == NetHost)
+            for (NetPeer *pr : net_peers_) {
+              GLShip *gs = player_by_seat(pr->seat);
+              if (gs && gs == (*o)) { collector = pr; break; }
+            }
+          if (collector) {
+            uint32_t pk = NET_PRIM_NONE;
             if (dynamic_cast<BeamPickup*>(*pi))         pk = NET_PRIM_BEAM;
             else if (dynamic_cast<LancePickup*>(*pi))   pk = NET_PRIM_LANCE;
             else if (dynamic_cast<ShockPickup*>(*pi))   pk = NET_PRIM_SHOCK;
             else if (dynamic_cast<GodModePickup*>(*pi)) pk = NET_PRIM_GOD;
+            net_send_event_to(*collector, Net::EV_PICKUP, pk);
+            for (NetPeer *pr : net_peers_)
+              if (pr != collector)
+                net_send_event_to(*pr, Net::EV_PICKUP, NET_PRIM_NONE);
+          } else {
+            net_send_event(Net::EV_PICKUP, NET_PRIM_NONE);
           }
-          net_send_event(Net::EV_PICKUP, pk);
         }
       }
     }
@@ -8171,6 +8222,12 @@ void GLGame::tick(int delta) {
                        Net::pack_pos(boom->position.x(), boom->position.y(), world.x(), world.y()));
   }
   if (host_online) {
+    // B4: every echo below is a byte-identical broadcast to the live peers.
+    auto send_all = [this](const std::vector<uint8_t> &m) {
+      for (NetPeer *p : net_peers_)
+        if (p->session && !p->lost)
+          p->session->transport()->send_reliable(&m[0], m.size());
+    };
     // PROTO 17: echo the host player's shots as MSG_SHOT (the mirror of
     // the client's PROTO 14 reports; p1 is the only reporter on a host).
     // The client spawns exact clones instantly — without this a host
@@ -8190,7 +8247,7 @@ void GLGame::tick(int delta) {
       Net::put_f32(msg, r.vy);
       Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0) |
                        (r.piercing ? 4 : 0));
-      net_session()->transport()->send_reliable(&msg[0], msg.size());
+      send_all(msg);
     }
     // PROTO 18: the host player's lance pulses, echoed for the client's
     // flash + sound (the kills replicate as ordinary removal records).
@@ -8206,7 +8263,7 @@ void GLGame::tick(int delta) {
         Net::put_f32(msg, p.x());
         Net::put_f32(msg, p.y());
       }
-      net_session()->transport()->send_reliable(&msg[0], msg.size());
+      send_all(msg);
     }
     // PROTO 22: the host player's shock bolts, echoed for the client's
     // flash + sound (kills replicate as ordinary removal / score records).
@@ -8222,7 +8279,7 @@ void GLGame::tick(int delta) {
         Net::put_f32(msg, p.x());
         Net::put_f32(msg, p.y());
       }
-      net_session()->transport()->send_reliable(&msg[0], msg.size());
+      send_all(msg);
     }
     // PROTO 19: authoritative ricochets — the sim's real bounce of any
     // id-carrying bullet overrides the client's local approximation, so
@@ -8238,7 +8295,7 @@ void GLGame::tick(int delta) {
       Net::put_f32(msg, r.vx);
       Net::put_f32(msg, r.vy);
       Net::put_u8(msg, r.flags);
-      net_session()->transport()->send_reliable(&msg[0], msg.size());
+      send_all(msg);
     }
   }
   Ship::net_ship_impacts.clear();
@@ -8250,20 +8307,32 @@ void GLGame::tick(int delta) {
   Ship::net_lance_reports.clear();
   Ship::net_shock_reports.clear();
   Ship::net_bounce_reports.clear();
-  // Achievement relays: unlocks the sim attributed to the remote replica
-  // (ram kills resolve inside Ship code). Anything not the replica's —
-  // an enemy, or offline residue — is dropped.
+  // Achievement relays: unlocks the sim attributed to a remote replica
+  // (ram kills resolve inside Ship code). Targeted (B4) to the peer whose
+  // ship earned it; anything not a peer's — an enemy, or offline residue —
+  // is dropped.
   for (const auto &ar : Ship::net_ach_relays)
-    if (remote_player() && ar.first == remote_player()->ship)
-      net_send_event(Net::EV_ACHIEVEMENT, ar.second);
+    for (NetPeer *pr : net_peers_) {
+      GLShip *gs = player_by_seat(pr->seat);
+      if (gs && ar.first == gs->ship) {
+        net_send_event_to(*pr, Net::EV_ACHIEVEMENT, ar.second);
+        break;
+      }
+    }
   Ship::net_ach_relays.clear();
-  // Shield-ram bursts the sim minted into a player's bullets: only the
+  // Shield-ram bursts the sim minted into a player's bullets: only a
   // remote replica's need the wire (the client skips its own-ship bullet
-  // echo); the host's own replicate through the ordinary echo.
+  // echo); the host's own replicate through the ordinary echo. Targeted
+  // to the ramming peer; the loss guard keeps the old call's tee gating.
   for (const Ship *rb : Ship::net_ram_blasts)
-    if (net_mode_ == NetHost && net_session() && !net_any_peer_lost() &&
-        remote_player() && rb == remote_player()->ship)
-      net_send_event(Net::EV_RAM_BLAST);
+    if (net_mode_ == NetHost)
+      for (NetPeer *pr : net_peers_) {
+        GLShip *gs = player_by_seat(pr->seat);
+        if (gs && rb == gs->ship) {
+          if (!pr->lost) net_send_event_to(*pr, Net::EV_RAM_BLAST);
+          break;
+        }
+      }
   Ship::net_ram_blasts.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped —

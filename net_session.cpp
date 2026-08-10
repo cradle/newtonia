@@ -444,10 +444,10 @@ void send_hello(NetTransport *t) {
   t->send_reliable(&msg[0], msg.size());
 }
 
-void send_welcome(NetTransport *t) {
+void send_welcome(NetTransport *t, uint8_t seat) {
   std::vector<uint8_t> msg;
   Net::put_header(msg, Net::MSG_WELCOME, 1);
-  Net::put_u8(msg, 2);     // assigned seat (always 2 until B4's fan-out)
+  Net::put_u8(msg, seat);  // assigned seat (2 until the B4 lobby hands out 3..4)
   Net::put_u16(msg, 8);    // step_size (ms) — informational for now
   Net::put_u16(msg, 100);  // snapshot period (ms)
   append_identity(msg);
@@ -463,13 +463,18 @@ void send_reject(NetTransport *t, uint8_t reason) {
 
 }  // namespace
 
-NetSession::NetSession(NetTransport *transport, Role role)
+NetSession::NetSession(NetTransport *transport, Role role, int assign_seat)
     : transport_(transport),
       role_(role),
       phase_(Connecting),
       reject_reason_(0),
       hello_sent_(false),
-      handshake_ms_(0) {}
+      handshake_ms_(0) {
+  // Host: the seat our WELCOME assigns (clamped defensively). Client: a
+  // provisional 2 until WELCOME arrives (see the MSG_WELCOME handler).
+  if (role_ == HostRole && assign_seat >= 2 && assign_seat <= MAX_PLAYERS)
+    assigned_seat_ = (uint8_t)assign_seat;
+}
 
 NetSession::~NetSession() {
   if (transport_) {
@@ -533,7 +538,7 @@ void NetSession::update(int delta_ms) {
         phase_ = Rejected;
         return;
       }
-      send_welcome(transport_);
+      send_welcome(transport_, assigned_seat_);
       phase_ = Ready;
       return;
     }

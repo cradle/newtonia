@@ -361,6 +361,13 @@ private:
   // state) survives the rejoin window.
   struct NetPeer {
     NetSession *session = nullptr;  // owned (the session owns its transport)
+    // B4: the wire seat this peer's pilot occupies (2..MAX_PLAYERS —
+    // WELCOME assigns it, Ship::net_seat mirrors it on the hull) and the
+    // signaling worker's joiner id its frames are stamped with (empty on
+    // a pre-multi-join worker or the manual/LAN flows). Defaults match
+    // the single-peer era: every existing adoption site is seat 2.
+    uint8_t seat = 2;
+    std::string jid;
     // The peer's badge identity (name + platform, net_identity.h), copied
     // from the session at adoption and REFRESHED on every rejoin handshake
     // — kept here rather than read through the session so the badge
@@ -434,12 +441,15 @@ private:
   // "a seat is open" (re-host door, invite re-advertise) and `all` means
   // "the room is effectively dead" (terminal card, stop sending).
   bool net_any_peer_lost() const {
-    NetPeer *p = net_peer();
-    return p && p->lost;
+    for (NetPeer *p : net_peers_)
+      if (p->lost) return true;
+    return false;
   }
   bool net_all_peers_lost() const {
-    NetPeer *p = net_peer();
-    return p && p->lost;
+    if (net_peers_.empty()) return false;
+    for (NetPeer *p : net_peers_)
+      if (!p->lost) return false;
+    return true;
   }
   // Delete the peer's dead session, keeping the peer (rejoin window).
   // Out-of-line: NetSession is forward-declared here, and deleting an
@@ -489,7 +499,10 @@ private:
   // room now admitting extra joiners, an unmatched announce is a THIRD
   // party whose badge must not overwrite the paired peer's.
   std::string net_peer_jid_;
-  void net_set_peer_jid(const std::string &jid) { net_peer_jid_ = jid; }
+  void net_set_peer_jid(const std::string &jid) {
+    net_peer_jid_ = jid;
+    if (!net_peers_.empty()) net_peers_.front()->jid = jid;
+  }
   void net_apply_peer_attestation(const NetIdentity &attested) {
     NetPeer &p = net_peer_make();
     p.attested = attested;
@@ -601,6 +614,8 @@ private:
   // Phase 8 polish (see NETPLAY.md)
   static void net_clear_event_outboxes();  // reset the static host outboxes
   void net_send_event(uint8_t code, uint32_t arg = 0);
+  // B4 targeted form: one peer only, no replay tee (see the definition).
+  void net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg = 0);
   void net_handle_event(uint8_t code, uint32_t arg);
   void net_spark_asteroid_at(float x, float y);
   void net_set_generation_banner(int gen);

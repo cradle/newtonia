@@ -186,8 +186,11 @@ public:
     RejectNotAllowed = 2,
   };
 
-  // Takes ownership of the transport (must be non-null).
-  NetSession(NetTransport *transport, Role role);
+  // Takes ownership of the transport (must be non-null). assign_seat (B4,
+  // host role only) is the seat WELCOME hands this peer — 2 everywhere
+  // until the lobby's waiting room allocates 3..4. Must be fixed at
+  // construction: the handshake can complete on the first update().
+  NetSession(NetTransport *transport, Role role, int assign_seat = 2);
   ~NetSession();
 
   void update(int delta_ms);
@@ -200,6 +203,11 @@ public:
   // value is stable from construction either way).
   int player_id() const {
     return role_ == HostRole ? 1 : (int)assigned_seat_;
+  }
+  // The PEER's seat across this session: the seat a host assigned (B4),
+  // or — for a client — the host's fixed seat 1.
+  int peer_seat() const {
+    return role_ == HostRole ? (int)assigned_seat_ : 1;
   }
   uint8_t reject_reason() const { return reject_reason_; }
 
@@ -221,7 +229,9 @@ private:
   bool hello_sent_;
   int handshake_ms_;  // time spent in Handshaking, for the timeout
   NetIdentity peer_identity_;
-  uint8_t assigned_seat_ = 2;  // client role: seat from WELCOME (2..MAX_PLAYERS)
+  // Client role: the seat WELCOME assigned us. Host role: the seat our
+  // WELCOME assigns the peer (the ctor's assign_seat).
+  uint8_t assigned_seat_ = 2;
 };
 
 #endif /* NET_SESSION_H */
