@@ -1,8 +1,8 @@
 # 4-Player Mode — Implementation Plan
 
-Status: **Phase A COMPLETE** — A0–A6 merged and the LOCAL_PLAYER_CAP
-flip landed: up to 4 local players are live (P3/P4 join by controller).
-Phase B (online 4P) remains outlined below and unscheduled.
+Status: **Phase A COMPLETE** (up to 4 local players live; P3/P4 join by
+controller). **Phase B (online 4P) planned and starting** — see §4 for
+the expanded, research-backed plan; netplay stays 2-player until B7.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -317,42 +317,144 @@ The core of the phase.
 
 ---
 
-## 4. Phase B outline (online 4-player) — not scheduled
+## 4. Phase B plan (online 4-player)
 
-Phase A deliberately leaves online at 2. What B entails, so nothing in A
-forecloses it:
+Expanded 2026-08-10 from three research inventories (per-peer state, wire
+identity, signalling/lobby) — the coarse outline this replaced lives in git
+history. Model: still host-authoritative, a star of up to 3 clients (mesh is
+a non-starter — the sim is host-only `rand()`). Same landing strategy as
+Phase A: every PR bases on master, merges sequentially, and stays inert
+behind a new `NET_PLAYER_CAP` (= 2 until the final flip), with an e2e hook
+(`NEWTONIA_NET_TEST_SEATS`) bypassing the gate for multi-instance tests.
 
-1. **Topology**: stay host-authoritative, star of up to 3 clients (mesh is a
-   non-starter — the sim is host-only `rand()`). Host holds
-   `vector<NetSession*>`; every `net_session_->…` site becomes a fan-out, and
-   the per-peer state currently living as scalars on GLGame (input baselines,
-   RTT ring, dead-man timers, and critically the `net_known_` delta baseline
-   map, glgame.h:673) moves into a per-peer struct.
-2. **Identity on the wire**: WELCOME assigns player id 2..4 (net_session.cpp:429
-   sends a literal 2 today; the client rejects ≠2 at :524). The protocol
-   header already carries a `player_id` byte that *nothing reads*
-   (net_protocol.h:340) — routing keys off it instead of attributing every
-   message to `players->back()` (glgame.cpp:1654). Snapshot ship records gain
-   a player id (the way enemies got `net_ship_id` in PROTO 16) replacing
-   positional matching (`is_local = (*it == players->back())`,
-   glgame.cpp:5805). `EV_SHIP_IMPACT`'s 1=host/2=client arg widens.
-   `Ship`'s static claim outboxes (ship.h:293 …) must become per-ship or carry
-   the owner id. All of this is one PROTO bump (flag day, as 21/23 were) plus
-   raising `net_state_sane` to MAX_PLAYERS.
-3. **Signalling**: the worker's room becomes host + N joiners — joiner
-   WebSocket collection, per-joiner offer/answer relay and ICE buffers,
-   identity map instead of the `host_identity`/`joiner_identity` scalars,
-   `room-full` at 4 (signal/src/worker.js). LAN door likewise multi-joiner.
-   Beta worker + protocol tests first, per the deploy-signal pipeline.
-4. **Lobby**: player roster UI ("WAITING FOR PLAYERS 2/4"), per-peer
-   attestation badges, the "PLAYER 2 …" strings generalised.
-5. **Spectate/resume**: spectate cycles living peers; host reclaim and client
-   rejoin need per-peer grace bookkeeping — scope carefully, this is where the
-   2P resume machinery was hardest.
+### Phase B design decisions
 
-Rough cost: 3–5× Phase A. Recommend milestoning like NETPLAY.md (M1 host
-fan-out over LAN with 2 clients → M2 signalling multi-join → M3
-spectate/resume → M4 polish).
+**PB-D1 — One `NetPeer` struct; the room/peer split.** Everything the
+research classified per-peer moves off GLGame's scalars into a `NetPeer`
+owned by a host-side vector: the session (which owns its transport), peer
+identity/attestation, the whole input pipeline (`net_last_input_seq_`,
+`net_have_input_`, the 7 one-shot counter baselines, `net_held_suppress_`,
+dead-man/gap state), the RTT ring, per-peer connected/handshaking/lost
+state, and the rejoin-door bookkeeping. Room-scoped and staying on GLGame:
+room code/token/signal socket, the snapshot clock (`net_snapshot_timer_`,
+`net_slot_`), banners, and the resume ticket. `net_connection_lost_`
+splits: per-peer loss state plus room-derived predicates (any-seat-open →
+advertise invite; all-peers-lost → the terminal card). The per-tick
+`net_event_effect_budget_` becomes per-poll-invocation.
+
+**PB-D2 — Snapshot baseline stays ROOM-level (overrides the old outline).**
+The delta baseline `net_known_` is valid for a receiver iff it received
+every delta since the keyframe that seeded it. Per-peer baselines would
+force N builds per slot and break the replay recorder's shared-builder
+invariant (the recorder tees the same bytes). Instead: ONE baseline and
+byte-identical broadcast, with the rule that any join/rejoin forces a
+GLOBAL keyframe slot (everyone gets the keyframe — a join is rare, the
+cost is fine). Rejoin already keyframes today, so this is the current
+invariant made explicit.
+
+**PB-D3 — One wire flag-day (PROTO 24→25 + savegame v19), the 21/23
+shape.** Everything wire-breaking lands in one bump:
+- WELCOME's assigned-id byte carries the seat (2..4); the client STORES it
+  (today it validates `!= 2` and discards) and `NetSession::player_id()`
+  returns it.
+- Snapshot ship records lead with a `u8` seat id (the PROTO-16
+  `net_ship_id` enemy pattern), replacing all three positional zips: the
+  client state apply, the extras walk (`i + 1 == nplayers` local-detect),
+  and the host process-death resume ctor.
+- `Save::Player` gains the seat id (savegame v19 append) — fixes
+  host-resume seat surgery and gives replays identity in one move.
+- The header `player_id` byte becomes meaningful: each side stamps its
+  seat (the host currently stamps literal 2 on its own echoes — proof
+  nothing reads it), and relayed SHOT/LANCE/SHOCK carry firer attribution
+  so a client can no longer assume "the host fired it".
+- MSG_BOUNCE / bullet id spaces: partition the per-ship `net_shot_seq`
+  mint by seat (top bits) so cross-ship scans stay unambiguous.
+- `EV_SHIP_IMPACT` arg widens to seat 1..4 (bits 0-7 already fit; `0x100`
+  ting flag unmoved). `EV_REMOTE_SHOT` (superseded since PROTO 17) is
+  retired at the same flag day.
+- `net_state_sane`'s player cap rises to MAX_PLAYERS.
+Old/new builds reject each other through the existing HELLO version gate
+("PLAYER N HAS A DIFFERENT VERSION"), as 21/23 did.
+
+**PB-D4 — Host relays client effects.** Today a client's shot/lance/shock
+visuals are consumed by the host alone (the only other screen). With N
+clients the host re-broadcasts peer A's effects to B and C, excluding A.
+The owner-less Ship static outboxes (`net_shot_reports`,
+`net_lance_reports`, `net_shock_reports`) gain owner attribution (the
+`replay_lance_flashes` pattern — they already carry `const Ship*`);
+peer-directed events (EV_PICKUP, EV_ACHIEVEMENT, EV_RAM_BLAST, the
+first-INPUT pause/FF resyncs) become targeted sends to the owning peer's
+session.
+
+**PB-D5 — Signalling: joiner collection keyed in the WebSocket tags.**
+Tags are the only state surviving DO hibernation, so the joiner id lives
+in the tag (`["joiner", "j:<n>"]` from a monotonic counter). Per-jid offer
+map (`offers[jid] = {sdp, pv, cands[]}`), addressed frames (`{t:"offer",
+to}` / `{t:"answer"|"cand", from}`), identity map + per-jid verify
+throttles/epochs (the vacant-slot late-verify race gets SIMPLER per-jid),
+identity fan-out (a joiner receives host + all sitting joiners; their
+attestation reaches everyone), room-full at 4, grace events broadcast to
+all joiners. `NetSignal::Event` gains a peer-id field; `send_offer`/
+`send_cand` gain a target on the host side; the rtc/web backends are dumb
+pipes and recompile untouched. Deploys beta-worker-first (the existing
+pipeline); the pv fail-fast covers the host-side frame change, and the
+joiner-side frames stay back-compatible.
+
+**PB-D6 — Lobby: waiting room. Manual clipboard stays 2P-only.** RoomHost
+accumulates per-joiner pending peers (own transport/offer/handshake each),
+shows the roster ("WAITING FOR PLAYERS 2/4", per-peer attestation badges)
+and gains a START GAME action — its first-ever confirm input. The joiner
+flow is untouched (a joiner is inherently 1:1 with the host; its
+Connected screen already waits indefinitely for snapshot #1). The LAN
+door mints a fresh offer per accepted TCP connection (an SDP is
+single-use) instead of the one-blob slot. The manual clipboard fallback
+is structurally pairwise and stays the 2-player rescue path: when the
+worker is unreachable, the room caps at host+1.
+
+**PB-D7 — Per-seat resume; play-on policy.** "Host keeps the room,
+clients rejoin individually" IS the current model — room code/token/
+grace/ticket never referenced the peer, and each client already
+auto-rejoins alone. What generalises: per-open-slot rehost doors (relay +
+LAN, currently one offer slot each), per-seat park/unpark, and the Ready
+reset scoping to its own peer's state. Policy change: a dropped peer
+parks their seat and play CONTINUES while other remote peers remain
+(pausing three players for one drop is wrong); the 2P behavior — pause
+and wait — is kept when the dropped peer was the only one. Spectate
+cycles living peers (`remote_player()` becomes an iterator;
+`camera_target()` picks the next living ship).
+
+### Phase B work plan
+
+Sequential master-based PRs, inert until the B7 flip:
+
+- **B1 — NetPeer refactor at N=1** (internal only, no wire change): the
+  PB-D1 struct with a vector of exactly one; per-peer loss + room
+  predicates; outbox owner attribution; the pause-policy seam. The whole
+  netplay e2e suite must pass unchanged — this PR is pure motion.
+- **B2 — The flag day** (PROTO 25 + savegame v19): everything in PB-D3.
+  Still 2 players; behavior identical, bytes different. Gated by the
+  loopback selftest + full netplay e2e on both roles.
+- **B3 — Worker multi-join** (deployable independently): PB-D5 on the
+  worker + signal seam, with the seven new protocol-test families
+  (capacity/slot-reopen, per-jid relay isolation, per-jid buffers,
+  identity fan-out + per-jid epochs, grace with N, host-close broadcast,
+  per-offer pv). Beta worker soak before production. Game still caps 2.
+- **B4 — Host fan-out + lobby waiting room**: sessions vector goes real
+  (WELCOME assigns 2..4), global-keyframe-on-join rule, host relay of
+  client effects (PB-D4), roster + START, LAN multi-offer. Behind
+  `NET_PLAYER_CAP = 2`; `NEWTONIA_NET_TEST_SEATS` bypasses for e2e.
+- **B5 — Per-seat resume/rejoin + spectate cycling** (PB-D7).
+- **B6 — Multi-instance e2e**: extend test/e2e's lib to N joiner
+  instances; 3-and-4-seat connect/play/drop/rejoin/game-over suites; a
+  soak. CI stays 2-instance (runner cost); the N-instance suite runs
+  locally/on-demand like gensoak.
+- **B7 — Flip `NET_PLAYER_CAP` to MAX_PLAYERS** once B1–B6 are verified;
+  production worker deploy (tag) precedes shipping any B7 client build.
+
+Cost check against the 3–5× Phase A estimate: B1 and B2 are each roughly
+an A3-sized PR; B3 is a worker-only project with its own test rig; B4 is
+the big one; B5–B6 are bounded by decisions already made. The estimate
+stands.
 
 ## 5. Open questions
 
