@@ -349,6 +349,29 @@ test/e2e/fourplayer.sh # local 3-4P (FOURPLAYER.md): grid runs, Enter-join cap, 
 test/e2e/gensoak.sh  # late-gen soak: host skips online to gen 25 (black hole,
                      # mini-station, gen-20 station/enemies, world growth) with
                      # per-gen liveness + no-drop + clean-log asserts
+test/e2e/nseat.sh    # B6 N-seat connect/play smoke (SEATS=3|4, default 4):
+                     # waiting-room assembly via lib.sh's room_setup — every
+                     # seat fills, auto-start on full, every joiner bootstraps,
+                     # all-hands flight. Local/on-demand (needs a wrangler-dev
+                     # relay); CI stays 2-instance (runner cost).
+test/e2e/nseat_rejoin.sh # B6 drop+rejoin at N seats: seat 3's client is
+                     # SIGKILLed (a MIDDLE seat at 4 — non-contiguous roster),
+                     # host must play on UNPAUSED (PB-D7), park one hull, and
+                     # rejoin a relaunched client back onto seat 3
+test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
+                     # (host-only env) empties every seat; each CLIENT must
+                     # observe "game over (all players out)" via replication,
+                     # hold the card, and shrug off the host's post-game-over
+                     # departure (no auto-rejoin, no crash)
+test/e2e/nseat_soak.sh # B6 N-seat generation soak (SOAK_GENS, default 15):
+                     # per-gen liveness on every instance, all-hands bursts
+                     # every 5th gen, telemetry-advance + no-drop asserts
+test/e2e/fourseat.sh # B6 suite runner: nseat + nseat_rejoin + nseat_gameover
+                     # at SEATS=4 (SOAK=1 appends nseat_soak)
+test/e2e/threeseat.sh # B4b smoke, now a SEATS=3 nseat.sh run (wrapper keeps
+                     # the THREESEAT-SMOKE-OK contract)
+test/e2e/threeseat_rejoin.sh # B5 smoke, now a SEATS=3 nseat_rejoin.sh run
+                     # (wrapper keeps the THREESEAT-REJOIN-OK contract)
 test/e2e/shock_net.sh # PROTO 22: Shock chain-lightning both ways. Both sides
                      # launch with NEWTONIA_ALL_WEAPONS=1, fire held, and must
                      # log "shock bolt received" (MSG_SHOCK) both directions with

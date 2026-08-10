@@ -492,10 +492,24 @@ Sequential master-based PRs, inert until the B7 flip:
   adoption transport flaps waits out the full ICE timeout before the
   door re-arms (the fast PeerJoin re-offer is N=1-only — a fresh jid
   cannot name a seat).
-- **B6 — Multi-instance e2e**: extend test/e2e's lib to N joiner
-  instances; 3-and-4-seat connect/play/drop/rejoin/game-over suites; a
-  soak. CI stays 2-instance (runner cost); the N-instance suite runs
-  locally/on-demand like gensoak.
+- **B6 — Multi-instance e2e**. LANDED: lib.sh gains the N-seat room
+  helpers (`room_setup N [host-env…]` assembles host + N-1 relay joiners
+  through the waiting room and waits for seats/auto-start/bootstraps;
+  `room_alive`/`room_kill_all`/`fly_all`/`new_window_since`; `launch`
+  takes per-instance env so a test hook can arm ONLY the host). Four
+  SEATS-parameterized drivers (3|4, default 4): `nseat.sh` connect/play,
+  `nseat_rejoin.sh` (seat 3 SIGKILLed — a middle seat at 4, so the
+  roster goes non-contiguous — play-on unpaused, rejoin back onto seat
+  3), `nseat_gameover.sh` (the "all" kill hook empties every seat;
+  every client must OBSERVE the game over via replicated lives, hold
+  the card, and shrug off the host's post-game-over departure), and
+  `nseat_soak.sh` (per-gen liveness on every instance through the
+  hazard/mini-station/black-hole generations, no-drop asserts).
+  `fourseat.sh` runs the functional three at SEATS=4 (SOAK=1 appends
+  the soak); `threeseat.sh`/`threeseat_rejoin.sh` are now SEATS=3
+  wrappers keeping their OK-line contracts. CI stays 2-instance
+  (runner cost); the N-instance suite runs locally/on-demand like
+  gensoak. All verified at 3 and 4 seats against a wrangler-dev relay.
 - **B7 — Flip `NET_PLAYER_CAP` to MAX_PLAYERS** once B1–B6 are verified;
   production worker deploy (tag) precedes shipping any B7 client build.
 
