@@ -373,6 +373,35 @@ private:
     // Transport dead / dead-man tripped. Room-level questions go through
     // the any/all predicates below, which diverge at B4.
     bool lost = false;
+    // ---- Host input pipeline for this peer's INPUT stream ----
+    uint32_t last_input_seq = 0;
+    bool have_input = false;  // first INPUT initialises the counters
+    uint8_t prev_boost = 0, prev_next_weapon = 0, prev_next_secondary = 0,
+            prev_teleport = 0, prev_respawn = 0, prev_shoot_press = 0,
+            prev_secondary_press = 0;
+    // Held INPUT bits ignored until this peer releases the key once
+    // (all-ones at each level transition, like the local respawn reset).
+    uint16_t held_suppress = 0;
+    int last_input_time = 0;   // host: dead-man switch (1 s)
+    bool input_zeroed = false;
+    // Input-gap telemetry (log-only): distinguish freeze vs loss vs
+    // backlog replay from the seq pattern inside a 300 ms window.
+    int input_stale_drops = 0;  // seq<=last arrivals since last accept
+    int gap_deadline = 0;       // current_time when the window closes
+    uint32_t gap_skipped = 0;   // seqs missing when the gap ended
+    int gap_stragglers = 0;     // stale-seq arrivals inside the window
+    int gap_accepts = 0;        // accepted INPUTs inside the window
+    uint32_t gap_max_leap = 0;  // biggest forward seq jump in the window
+    // Mid-gap marker: fires ONCE when inbound silence crosses 300 ms.
+    bool quiet_logged = false;
+    // RTT probe (MSG_PING/PONG, 1 Hz each way): smoothed round-trip in
+    // ms, -1 until the first PONG. Ring keeps the last 8 raw samples;
+    // net_lead_ms() uses their MINIMUM — a spike is relay queueing, not
+    // path length, and must never inflate the lead.
+    float rtt_ms = -1.0f;
+    int ping_timer = 0;
+    float rtt_ring[8];
+    int rtt_ring_n = 0, rtt_ring_i = 0;
   };
   std::vector<NetPeer *> net_peers_;
   NetPeer *net_peer() const {
@@ -385,6 +414,10 @@ private:
   NetSession *net_session() const {
     NetPeer *p = net_peer();
     return p ? p->session : nullptr;
+  }
+  float net_rtt_ms() const {  // smoothed peer RTT, -1 until the first PONG
+    NetPeer *p = net_peer();
+    return p ? p->rtt_ms : -1.0f;
   }
   const NetIdentity &net_peer_identity() const {
     static const NetIdentity kNone;
@@ -458,12 +491,6 @@ private:
   std::string net_join_banner_text_;  // what the greeting last composed
   int net_snapshot_timer_ = 0;
   uint32_t net_snapshot_id_ = 0;
-  uint32_t net_last_input_seq_ = 0;
-  bool net_have_input_ = false;   // first INPUT initialises the counters
-  uint8_t net_prev_boost_ = 0, net_prev_next_weapon_ = 0,
-          net_prev_next_secondary_ = 0, net_prev_teleport_ = 0,
-          net_prev_respawn_ = 0, net_prev_shoot_press_ = 0,
-          net_prev_secondary_press_ = 0;
   uint32_t net_input_seq_ = 0;    // client: outgoing INPUT sequence
   // Client: INPUT mirroring onto the RELIABLE channel — on any held-bit /
   // one-shot change, plus a ~10 Hz refresh. An unreliable-channel blackout
@@ -482,7 +509,6 @@ private:
   // Set to all-ones at each level transition so the remote player starts
   // the new level with controls cleared — exactly like the local player,
   // whose respawn reset() also drops held keys until re-pressed.
-  uint16_t net_held_suppress_ = 0;
   Net::SnapshotAssembler *net_assembler_ = nullptr;  // client chunk reassembly
   bool net_ids_adopted_ = false;  // client: bootstrap id adoption ran
   // Client: last applied MSG_DELTA snap id. The rel channel is ordered so
@@ -535,17 +561,10 @@ private:
   // the log alone says whether the client stopped sending (no seqs
   // skipped, normal-rate accepts), packets were lost (seqs skipped, no
   // stragglers), or a queued backlog replayed (accept burst + stale rx).
-  int net_input_stale_drops_ = 0;  // seq<=last arrivals since last accept
-  int net_gap_deadline_ = 0;       // current_time when the window closes
-  uint32_t net_gap_skipped_ = 0;   // seqs missing when the gap ended
-  int net_gap_stragglers_ = 0;     // stale-seq arrivals inside the window
-  int net_gap_accepts_ = 0;        // accepted INPUTs inside the window
-  uint32_t net_gap_max_leap_ = 0;  // biggest forward seq jump in the window
   int net_last_send_time_ = 0;     // client: INPUT send cadence (stall log)
   // Mid-gap markers: fire ONCE when inbound silence crosses 300 ms, with
   // the transport's tx-buffered depth at that instant — the 1 Hz sample
   // can miss a sub-second gap entirely, this cannot. Both roles.
-  bool net_quiet_logged_ = false;
   // Hitch breakdown: SDL_GetTicks at tick_net_client entry, so the
   // "slow tick" line can split poll (applies) from step-loop time.
   uint32_t net_tick_t0_ = 0;
@@ -604,17 +623,6 @@ private:
   // there would stomp the "JOINED <NAME> SERVER" greeting and announce a
   // "change" the joiner never saw. Later events are real toggles.
   bool net_ff_synced_ = false;
-  int net_last_input_time_ = 0;     // host: dead-man switch (1 s)
-  bool net_input_zeroed_ = false;
-  // RTT probe (MSG_PING/PONG, 1 Hz each way): smoothed round-trip in ms,
-  // -1 until the first PONG. Shown on the debug overlay; the client's
-  // local-ship blend latency-compensates with it.
-  float net_rtt_ms_ = -1.0f;
-  int net_ping_timer_ = 0;
-  // Last 8 raw RTT samples; net_lead_ms() uses their MINIMUM — a spike is
-  // relay queueing, not path length, and must never inflate the lead.
-  float net_rtt_ring_[8];
-  int net_rtt_ring_n_ = 0, net_rtt_ring_i_ = 0;
   void net_ping_tick(int delta);
   // Answers PING / consumes PONG; true when the message was one of them.
   bool net_handle_ping_pong(uint8_t msg_type, Net::Reader &r);

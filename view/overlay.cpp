@@ -1029,9 +1029,9 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
       glgame->net_session()->transport()) {
     std::string ci = glgame->net_session()->transport()->connection_info();
     if (!ci.empty()) {
-      if (glgame->net_rtt_ms_ >= 0.0f)
+      if (glgame->net_rtt_ms() >= 0.0f)
         snprintf(net_buf, sizeof(net_buf), "net: %s %dms", ci.c_str(),
-                 (int)(glgame->net_rtt_ms_ + 0.5f));
+                 (int)(glgame->net_rtt_ms() + 0.5f));
       else
         snprintf(net_buf, sizeof(net_buf), "net: %s", ci.c_str());
     }

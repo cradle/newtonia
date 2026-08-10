@@ -1334,7 +1334,7 @@ void GLGame::update_presence() const {
 // Player 2 for online play: same wiring as add_local_player but with no local
 // controller or key bindings — the peer drives it via INPUT messages.
 void GLGame::add_remote_player() {
-  if(players->size() >= 2) return;
+  if((int)players->size() >= NET_PLAYER_CAP) return;
   GLShip* object = new GLCar(grid, true);
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -1562,9 +1562,9 @@ void GLGame::update_quantum_observation() {
 // no cross-machine clock comparison. A lost probe just skips a sample.
 
 void GLGame::net_ping_tick(int delta) {
-  net_ping_timer_ += delta;
-  if (net_ping_timer_ < 1000) return;
-  net_ping_timer_ = 0;
+  net_peer_make().ping_timer += delta;
+  if (net_peer_make().ping_timer < 1000) return;
+  net_peer_make().ping_timer = 0;
   // Piggybacked 1 Hz sample: at these traffic rates the transport send
   // buffer drains in microseconds, so ANY nonzero here means our sender
   // is blocked — the smoking gun that an outage is the path/relay eating
@@ -1596,12 +1596,12 @@ bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
     // is a thawed process or a stalled relay, not a latency reading.
     float sample = (float)(uint32_t)((uint32_t)SDL_GetTicks() - t);
     if (sample < 10000.0f) {
-      if (net_rtt_ms_ < 0.0f) NET_LOG("net: rtt %.0f ms (first pong)\n", sample);
-      net_rtt_ms_ = net_rtt_ms_ < 0.0f ? sample
-                                       : net_rtt_ms_ * 0.8f + sample * 0.2f;
-      net_rtt_ring_[net_rtt_ring_i_] = sample;
-      net_rtt_ring_i_ = (net_rtt_ring_i_ + 1) % 8;
-      if (net_rtt_ring_n_ < 8) net_rtt_ring_n_++;
+      if (net_peer_make().rtt_ms < 0.0f) NET_LOG("net: rtt %.0f ms (first pong)\n", sample);
+      net_peer_make().rtt_ms = net_peer_make().rtt_ms < 0.0f ? sample
+                                       : net_peer_make().rtt_ms * 0.8f + sample * 0.2f;
+      net_peer_make().rtt_ring[net_peer_make().rtt_ring_i] = sample;
+      net_peer_make().rtt_ring_i = (net_peer_make().rtt_ring_i + 1) % 8;
+      if (net_peer_make().rtt_ring_n < 8) net_peer_make().rtt_ring_n++;
     }
     return true;
   }
@@ -1612,10 +1612,11 @@ float GLGame::net_lead_ms() const {
   // Minimum of the recent samples, not the smoothed average: a spike is
   // relay queueing, not path length, and the smoothed value stays wrong
   // for ~10 s after one while every extrapolation target overshoots.
-  if (net_rtt_ring_n_ == 0) return 0.0f;
-  float rtt = net_rtt_ring_[0];
-  for (int i = 1; i < net_rtt_ring_n_; i++)
-    if (net_rtt_ring_[i] < rtt) rtt = net_rtt_ring_[i];
+  NetPeer *p = net_peer();
+  if (!p || p->rtt_ring_n == 0) return 0.0f;
+  float rtt = p->rtt_ring[0];
+  for (int i = 1; i < p->rtt_ring_n; i++)
+    if (p->rtt_ring[i] < rtt) rtt = p->rtt_ring[i];
   float lead = rtt * 0.5f;
   return lead > 250.0f ? 250.0f : lead;
 }
@@ -1796,25 +1797,25 @@ void GLGame::net_host_poll() {
   // Mid-gap marker (host side): fires once when INPUT silence crosses
   // 300 ms, with our send-buffer depth at that instant — pairs with the
   // client's "rx quiet" line to show whether both senders were blocked.
-  if (Net::net_debug_enabled() && running && net_have_input_) {
-    int quiet = current_time - net_last_input_time_;
-    if (quiet > 300 && !net_quiet_logged_) {
-      net_quiet_logged_ = true;
+  if (Net::net_debug_enabled() && running && net_peer_make().have_input) {
+    int quiet = current_time - net_peer_make().last_input_time;
+    if (quiet > 300 && !net_peer_make().quiet_logged) {
+      net_peer_make().quiet_logged = true;
       NET_LOG("net: input quiet 300 ms, tx buffered %d bytes\n",
               t->buffered_amount());
     } else if (quiet <= 300) {
-      net_quiet_logged_ = false;
+      net_peer_make().quiet_logged = false;
     }
   }
 
   // Close an input-gap observation window (opened below) and report what
   // the gap turned out to be — see glgame.h net_gap_* for how to read it.
-  if (net_gap_deadline_ && current_time >= net_gap_deadline_) {
+  if (net_peer_make().gap_deadline && current_time >= net_peer_make().gap_deadline) {
     NET_LOG("net: post-gap 1.5 s: %d inputs accepted (~185 normal), "
             "%d stale rx, max seq leap %u (skipped at gap end: %u)\n",
-            net_gap_accepts_, net_gap_stragglers_, net_gap_max_leap_,
-            net_gap_skipped_);
-    net_gap_deadline_ = 0;
+            net_peer_make().gap_accepts, net_peer_make().gap_stragglers, net_peer_make().gap_max_leap,
+            net_peer_make().gap_skipped);
+    net_peer_make().gap_deadline = 0;
   }
 
   // Flood guard (safety, not anti-cheat): a peer that spams the spawn/claim
@@ -2135,16 +2136,16 @@ void GLGame::net_host_poll() {
     if (!Net::decode_input(r, in)) continue;
     // Unreliable channel: drop stale/reordered packets (signed distance
     // handles seq wrap).
-    if (net_have_input_ && (int32_t)(in.seq - net_last_input_seq_) <= 0) {
-      net_input_stale_drops_++;
-      if (net_gap_deadline_) net_gap_stragglers_++;
+    if (net_peer_make().have_input && (int32_t)(in.seq - net_peer_make().last_input_seq) <= 0) {
+      net_peer_make().input_stale_drops++;
+      if (net_peer_make().gap_deadline) net_peer_make().gap_stragglers++;
       continue;
     }
-    uint32_t seq_leap = net_have_input_ ? in.seq - net_last_input_seq_ : 1;
-    net_last_input_seq_ = in.seq;
-    if (net_gap_deadline_) {
-      net_gap_accepts_++;
-      if (seq_leap > net_gap_max_leap_) net_gap_max_leap_ = seq_leap;
+    uint32_t seq_leap = net_peer_make().have_input ? in.seq - net_peer_make().last_input_seq : 1;
+    net_peer_make().last_input_seq = in.seq;
+    if (net_peer_make().gap_deadline) {
+      net_peer_make().gap_accepts++;
+      if (seq_leap > net_peer_make().gap_max_leap) net_peer_make().gap_max_leap = seq_leap;
     }
     // An INPUT blackout (unreliable channel dying under relay congestion)
     // is what big local-ship corrections on the CLIENT look like from
@@ -2153,33 +2154,33 @@ void GLGame::net_host_poll() {
     // The client mints a seq every 8 ms step, so "skipped" = it kept
     // sending into the void; zero skipped = it stopped stepping (or an
     // ordered backlog is about to replay — the window tells them apart).
-    if (net_have_input_ && current_time - net_last_input_time_ > 300) {
+    if (net_peer_make().have_input && current_time - net_peer_make().last_input_time > 300) {
       NET_LOG("net: input gap %d ms ended (seq %u, %u seqs skipped, "
               "%d stale rx during gap)\n",
-              current_time - net_last_input_time_, in.seq, seq_leap - 1,
-              net_input_stale_drops_);
-      net_gap_deadline_ = current_time + 1500;
-      net_gap_skipped_ = seq_leap - 1;
-      net_gap_stragglers_ = 0;
-      net_gap_accepts_ = 0;
-      net_gap_max_leap_ = 0;
+              current_time - net_peer_make().last_input_time, in.seq, seq_leap - 1,
+              net_peer_make().input_stale_drops);
+      net_peer_make().gap_deadline = current_time + 1500;
+      net_peer_make().gap_skipped = seq_leap - 1;
+      net_peer_make().gap_stragglers = 0;
+      net_peer_make().gap_accepts = 0;
+      net_peer_make().gap_max_leap = 0;
     }
-    net_last_input_time_ = current_time;
-    net_input_stale_drops_ = 0;
-    net_input_zeroed_ = false;
+    net_peer_make().last_input_time = current_time;
+    net_peer_make().input_stale_drops = 0;
+    net_peer_make().input_zeroed = false;
     if (!remote) continue;
 
-    if (!net_have_input_) {
+    if (!net_peer_make().have_input) {
       // First INPUT: baseline the one-shot counters instead of firing
       // whatever the client accumulated before we were listening.
-      net_have_input_ = true;
-      net_prev_boost_ = in.boost_count;
-      net_prev_next_weapon_ = in.next_weapon_count;
-      net_prev_next_secondary_ = in.next_secondary_count;
-      net_prev_teleport_ = in.teleport_count;
-      net_prev_respawn_ = in.respawn_count;
-      net_prev_shoot_press_ = in.shoot_press_count;
-      net_prev_secondary_press_ = in.secondary_press_count;
+      net_peer_make().have_input = true;
+      net_peer_make().prev_boost = in.boost_count;
+      net_peer_make().prev_next_weapon = in.next_weapon_count;
+      net_peer_make().prev_next_secondary = in.next_secondary_count;
+      net_peer_make().prev_teleport = in.teleport_count;
+      net_peer_make().prev_respawn = in.respawn_count;
+      net_peer_make().prev_shoot_press = in.shoot_press_count;
+      net_peer_make().prev_secondary_press = in.secondary_press_count;
       // The first INPUT proves the client's game is up: if we are
       // paused (auto-paused on its disconnect, or by hand), share the
       // pause state now — an event sent while it was still in the lobby
@@ -2192,29 +2193,29 @@ void GLGame::net_host_poll() {
     }
 
     // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
-    uint8_t boosts = (uint8_t)(in.boost_count - net_prev_boost_);
-    uint8_t weapons = (uint8_t)(in.next_weapon_count - net_prev_next_weapon_);
+    uint8_t boosts = (uint8_t)(in.boost_count - net_peer_make().prev_boost);
+    uint8_t weapons = (uint8_t)(in.next_weapon_count - net_peer_make().prev_next_weapon);
     uint8_t secondaries =
-        (uint8_t)(in.next_secondary_count - net_prev_next_secondary_);
-    uint8_t teleports = (uint8_t)(in.teleport_count - net_prev_teleport_);
-    uint8_t respawns = (uint8_t)(in.respawn_count - net_prev_respawn_);
-    uint8_t shot_presses = (uint8_t)(in.shoot_press_count - net_prev_shoot_press_);
+        (uint8_t)(in.next_secondary_count - net_peer_make().prev_next_secondary);
+    uint8_t teleports = (uint8_t)(in.teleport_count - net_peer_make().prev_teleport);
+    uint8_t respawns = (uint8_t)(in.respawn_count - net_peer_make().prev_respawn);
+    uint8_t shot_presses = (uint8_t)(in.shoot_press_count - net_peer_make().prev_shoot_press);
     uint8_t sec_presses =
-        (uint8_t)(in.secondary_press_count - net_prev_secondary_press_);
-    net_prev_shoot_press_ = in.shoot_press_count;
-    net_prev_secondary_press_ = in.secondary_press_count;
-    net_prev_boost_ = in.boost_count;
-    net_prev_next_weapon_ = in.next_weapon_count;
-    net_prev_next_secondary_ = in.next_secondary_count;
-    net_prev_teleport_ = in.teleport_count;
-    net_prev_respawn_ = in.respawn_count;
+        (uint8_t)(in.secondary_press_count - net_peer_make().prev_secondary_press);
+    net_peer_make().prev_shoot_press = in.shoot_press_count;
+    net_peer_make().prev_secondary_press = in.secondary_press_count;
+    net_peer_make().prev_boost = in.boost_count;
+    net_peer_make().prev_next_weapon = in.next_weapon_count;
+    net_peer_make().prev_next_secondary = in.next_secondary_count;
+    net_peer_make().prev_teleport = in.teleport_count;
+    net_peer_make().prev_respawn = in.respawn_count;
 
     if (!remote->is_alive()) {
       // Dead ships take no control input, same as the local player. Keys
       // still held at death stay suppressed through the respawn until the
       // player releases and re-presses them — respawn's reset() gives the
       // local player exactly that restriction.
-      net_held_suppress_ = 0xffff;
+      net_peer_make().held_suppress = 0xffff;
       // Mirror the local respawn-tap rule (GLShip::input): a shoot tap
       // while dead, after a short grace period, skips the countdown.
       if (respawns && remote->lives > 0 &&
@@ -2227,8 +2228,8 @@ void GLGame::net_host_poll() {
     // continuously held and expires the first time the client reports it
     // released — the remote player re-presses each key exactly like the
     // local player does after respawn's reset().
-    net_held_suppress_ &= in.held;
-    uint16_t held = in.held & (uint16_t)~net_held_suppress_;
+    net_peer_make().held_suppress &= in.held;
+    uint16_t held = in.held & (uint16_t)~net_peer_make().held_suppress;
 
     remote->rotation_scale = in.analog_rotation;
     remote->thrust_analog = in.analog_thrust;
@@ -2325,9 +2326,9 @@ void GLGame::net_host_poll() {
 
   // Dead-man switch: no INPUT for 1 s (loss burst, hung tab) — release the
   // remote ship's held actions instead of letting it fly into a wall.
-  if (remote && net_have_input_ && !net_input_zeroed_ &&
-      current_time - net_last_input_time_ > 1000) {
-    net_input_zeroed_ = true;
+  if (remote && net_peer_make().have_input && !net_peer_make().input_zeroed &&
+      current_time - net_peer_make().last_input_time > 1000) {
+    net_peer_make().input_zeroed = true;
     remote->rotate_left(false);
     remote->rotate_right(false);
     remote->thrust(false);
@@ -2717,15 +2718,15 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // net_host_signal_common_event as before.
       net_peer_make().identity = net_session()->peer_identity();
       net_apply_attested(net_peer_make().identity, net_peer_make().attested);
-      net_have_input_ = false;      // re-baseline the one-shot counters
-      net_input_zeroed_ = false;
-      net_rtt_ms_ = -1.0f;          // fresh transport, fresh RTT baseline
-      net_ping_timer_ = 0;
-      net_rtt_ring_n_ = 0;
-      net_rtt_ring_i_ = 0;
-      net_held_suppress_ = 0xffff;  // fresh presses required, like a spawn
+      net_peer_make().have_input = false;      // re-baseline the one-shot counters
+      net_peer_make().input_zeroed = false;
+      net_peer_make().rtt_ms = -1.0f;          // fresh transport, fresh RTT baseline
+      net_peer_make().ping_timer = 0;
+      net_peer_make().rtt_ring_n = 0;
+      net_peer_make().rtt_ring_i = 0;
+      net_peer_make().held_suppress = 0xffff;  // fresh presses required, like a spawn
       net_force_keyframe_ = true;   // rejoined client starts from a keyframe
-      net_last_input_time_ = current_time;
+      net_peer_make().last_input_time = current_time;
       if (remote) {
         if (remote->is_alive()) {
           // Shield-parked hull: drop the parked shield to the normal
@@ -4663,12 +4664,12 @@ void GLGame::tick_net_client(int delta) {
     // sender is blocked too, i.e. the stall is bidirectional).
     if (Net::net_debug_enabled() && running && net_last_rx_time_) {
       int quiet = current_time - net_last_rx_time_;
-      if (quiet > 300 && !net_quiet_logged_) {
-        net_quiet_logged_ = true;
+      if (quiet > 300 && !net_peer_make().quiet_logged) {
+        net_peer_make().quiet_logged = true;
         NET_LOG("net: rx quiet 300 ms, tx buffered %d bytes\n",
                 net_session()->transport()->buffered_amount());
       } else if (quiet <= 300) {
-        net_quiet_logged_ = false;
+        net_peer_make().quiet_logged = false;
       }
     }
     if (running && net_last_rx_time_ &&
@@ -5291,7 +5292,8 @@ void GLGame::tick_net_client(int delta) {
 
   // PROTO 18: fired lance pulses — the traced polyline for the host's
   // flash + sound (the kills ride the MSG_HIT claims below).
-  for (const std::vector<Point> &pts : Ship::net_lance_reports) {
+  for (const auto &rep : Ship::net_lance_reports) {
+    const std::vector<Point> &pts = rep.second;
     if (pts.size() < 2 || pts.size() > 17) continue;
     std::vector<uint8_t> msg;
     Net::put_header(msg, Net::MSG_LANCE, 2);
@@ -5307,7 +5309,8 @@ void GLGame::tick_net_client(int delta) {
   // PROTO 22: completed shock bolts — the peer shows the firer's EXACT
   // segments (a re-seek would diverge). Kills ride the MSG_HIT/MSG_HIT_SHIP
   // claims; station/mini hull damage is applied from this polyline.
-  for (const std::vector<Point> &pts : Ship::net_shock_reports) {
+  for (const auto &rep : Ship::net_shock_reports) {
+    const std::vector<Point> &pts = rep.second;
     if (pts.size() < 2 || pts.size() > 15) continue;
     std::vector<uint8_t> msg;
     Net::put_header(msg, Net::MSG_SHOCK, 2);
@@ -6854,8 +6857,8 @@ void GLGame::tick(int delta) {
       // 125 Hz (+ the reliable mirror); 10 s of silence while WE are
       // running is a dead path, not a quiet player. Paused games pause
       // both sides, and the pause gate below stops this tick anyway.
-      if (running && net_have_input_ &&
-          current_time - net_last_input_time_ > 10000) {
+      if (running && net_peer_make().have_input &&
+          current_time - net_peer_make().last_input_time > 10000) {
         NET_LOG("net: RX watchdog - 10 s without INPUT, client lost\n");
         // Close actively: the path may be one-way dead (or the peer
         // frozen) with OUR transport still nominally alive — the close
@@ -6923,7 +6926,7 @@ void GLGame::tick(int delta) {
     // pause kills a healthy session (seen as a spurious loss/rejoin cycle
     // the moment a resumed host unpaused). Mirrors the client's paused
     // net_last_rx_time_ refresh.
-    if (net_mode_ == NetHost) net_last_input_time_ = current_time;
+    if (net_mode_ == NetHost) net_peer_make().last_input_time = current_time;
     return;
   }
 
@@ -7095,7 +7098,7 @@ void GLGame::tick(int delta) {
         // Same restriction as the local player: respawn's reset() cleared
         // the remote ship's controls; don't let the still-held INPUT bits
         // re-arm them 8 ms later — each key must be released and re-pressed.
-        net_held_suppress_ = 0xffff;
+        net_peer_make().held_suppress = 0xffff;
       }
       if (is_finished()) {
         // Handing off to an intro: freeze here and give back the delta so no
@@ -8102,7 +8105,8 @@ void GLGame::tick(int delta) {
     }
     // PROTO 18: the host player's lance pulses, echoed for the client's
     // flash + sound (the kills replicate as ordinary removal records).
-    for (const std::vector<Point> &pts : Ship::net_lance_reports) {
+    for (const auto &rep : Ship::net_lance_reports) {
+      const std::vector<Point> &pts = rep.second;
       if (pts.size() < 2 || pts.size() > 17) continue;
       std::vector<uint8_t> msg;
       Net::put_header(msg, Net::MSG_LANCE, 2);
@@ -8115,7 +8119,8 @@ void GLGame::tick(int delta) {
     }
     // PROTO 22: the host player's shock bolts, echoed for the client's
     // flash + sound (kills replicate as ordinary removal / score records).
-    for (const std::vector<Point> &pts : Ship::net_shock_reports) {
+    for (const auto &rep : Ship::net_shock_reports) {
+      const std::vector<Point> &pts = rep.second;
       if (pts.size() < 2 || pts.size() > 15) continue;
       std::vector<uint8_t> msg;
       Net::put_header(msg, Net::MSG_SHOCK, 2);

@@ -21,6 +21,13 @@ const int MAX_PLAYERS = 4;
 // Netplay seats are still capped at 2 independently (Phase B).
 const int LOCAL_PLAYER_CAP = MAX_PLAYERS;
 
+// The live ONLINE seat cap — the Phase B dark-launch gate (FOURPLAYER.md
+// §4), the netplay twin of LOCAL_PLAYER_CAP above. Held at 2 while the
+// B1–B6 plumbing (NetPeer fan-out, PROTO 25, worker multi-join, lobby
+// waiting room, per-seat resume, e2e) lands inert on the 2P wire;
+// flipped to MAX_PLAYERS at B7 once the whole chain is verified.
+const int NET_PLAYER_CAP = 2;
+
 // One game action's keyboard binding: up to two key aliases (slot 0 is the
 // primary shown on the keymap, slot 1 an alternate; 0 = empty slot).
 //
