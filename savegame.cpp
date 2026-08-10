@@ -1,5 +1,6 @@
 #include "web_fs.h"
 #include "savegame.h"
+#include "preferences.h"  // MAX_PLAYERS bounds the save's player count
 #include <SDL.h>
 #include <cstdio>
 #include <cstring>
@@ -479,7 +480,14 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
     // and terminate first. The caps match net_state_sane()'s limits (a
     // legitimate save never approaches them), so a count past them was
     // going to be rejected anyway.
-    ok = ok && read_count(f, cnt, 2);
+    //
+    // Players: MAX_PLAYERS, not net_state_sane()'s 2 — offline saves carry
+    // up to four players (FOURPLAYER.md A5) while online snapshots stay
+    // 2-player until Phase B; net_state_sane still rejects >2 after the
+    // parse. An OLDER build reading a 3-4 player save fails this bound and
+    // ignores the file (treated as no save) — the standard downgrade
+    // outcome, same as any unknown-format file.
+    ok = ok && read_count(f, cnt, MAX_PLAYERS);
     if (!ok) return false;
     s.players.resize(cnt);
     for (auto &p : s.players) ok = ok && read_player(f, p);
