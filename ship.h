@@ -604,7 +604,14 @@ class Ship : public CompositeObject {
     Mix_Chunk *missile_fly_sound = NULL;  // loop for replicated missiles (net client)
     Mix_Chunk *shoot_sound = NULL;
     Mix_Chunk *god_mode_music_sound = NULL, *god_mode_music_warn_sound = NULL;
-    int shield_hum_channel = -1;
+    // The shield hum is ONE shared refcounted loop, not a channel per ship:
+    // every local seat spawns invincible at once in split-screen, and N
+    // stacked copies of the same full-volume loop were "way too loud" (4P
+    // field bug). First own-cues ship to hum starts the channel, the last
+    // to stop halts it; overlapping windows hold it at one hum's loudness.
+    bool shield_humming = false;         // this ship's contribution
+    static int shield_hum_refs;          // ships currently humming
+    static int shield_hum_shared_channel;
     int boost_channel = -1;
     int god_mode_music_channel = -1;
     int god_mode_music_phase = 0;  // 0=off, 1=main, 2=warn
