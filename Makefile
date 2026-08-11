@@ -428,6 +428,18 @@ ios-clean:
 # achievement/overlay testing only (never ship steam_appid.txt).
 STEAM_APPID ?= 4536720
 STEAM_SDK ?= sdk
+# Missing-SDK guard, at PARSE time like the netplay one above. It used to be
+# a `check-steam-sdk` prerequisite of the steam target, which `make steam -j8`
+# defeated: prerequisites run in PARALLEL, so the compile reached
+# steam_build.h's #include <steam/steam_api.h> and died on the raw header
+# error before the friendly message ever printed (field, 2026-08-11).
+ifneq ($(filter steam newtonia-steam,$(MAKECMDGOALS)),)
+  ifeq ($(wildcard $(STEAM_SDK)/public/steam/steam_api.h),)
+    $(error Steamworks SDK not found at ./$(STEAM_SDK)/ — download it from \
+partner.steamgames.com (Downloads -> Steamworks SDK) and unzip it in the repo \
+root, which creates ./sdk/, or point STEAM_SDK at an existing unzip)
+  endif
+endif
 STEAM_CFLAGS = $(CFLAGS) -DSTEAM_BUILD -I$(STEAM_SDK)/public
 STEAM_OBJFILES := $(patsubst %.cpp,%.steam.o,$(ALL_SRCS))
 ifeq ($(UNAME), Darwin)
@@ -452,9 +464,9 @@ else
 endif
 STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 
-.PHONY: steam steam-clean check-steam-sdk
+.PHONY: steam steam-clean
 
-steam: check-steam-sdk newtonia-steam steam_appid.txt
+steam: newtonia-steam steam_appid.txt
 ifeq ($(UNAME), Darwin)
 	# Also wrap the Steam binary in Newtonia.app so macOS treats it as a real
 	# app: window activation/focus, Game Mode, and App Nap suppression all key
@@ -478,12 +490,6 @@ ifeq ($(UNAME), Darwin)
 	sed 's/$${EXECUTABLE_NAME}/Newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
 	@echo "Bundled Newtonia.app (Steam build) - launch via Steam for overlay/presence."
 endif
-
-check-steam-sdk:
-	@test -f $(STEAM_SDK)/public/steam/steam_api.h || { \
-	  echo "Steamworks SDK not found at ./$(STEAM_SDK)/."; \
-	  echo "Unzip steamworks_sdk.zip in the repo root (creates ./sdk/) and retry."; \
-	  exit 1; }
 
 $(STEAM_RUNTIME): $(STEAM_SDK_LIB)
 	cp $< $@

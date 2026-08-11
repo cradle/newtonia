@@ -54,9 +54,11 @@ version.stamp
 xbox/build-*/
 ## Steam local build (make steam)
 /newtonia-steam
+/newtonia-steam.exe
 /sdk/
 /steam_appid.txt
 /libsteam_api.*
+/steam_api64.dll
 /steamworks_sdk.zip
 ## Netplay prebuilt libs (libdatachannel/WebRTC)
 /netplay-libs/
