@@ -2284,6 +2284,10 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
       if (!running) net_send_event_to(peer, Net::EV_PAUSE);
       net_send_event_to(peer, Net::EV_FRIENDLY_FIRE,
                         friendly_fire ? 1u : 0u);
+      // Seat identities are the exception to the targeted rule: the
+      // newcomer needs the whole roster AND the veterans need the
+      // newcomer, and the store is idempotent — nothing blips.
+      net_broadcast_seat_identities();
     }
 
     // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
@@ -2572,6 +2576,9 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
           NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
                   att.name.c_str(), net_platform_label(ev.platform),
                   (unsigned)ev.platform);
+          // The other clients' HUD rows show this name too (4P) — re-relay
+          // the roster now that a seat's badge changed.
+          net_broadcast_seat_identities();
         }
       }
       return NetSigHandled;
@@ -4303,6 +4310,43 @@ void GLGame::net_send_event_to(NetPeer &peer, uint8_t code, uint32_t arg,
   peer.session->transport()->send_reliable(&msg[0], msg.size());
 }
 
+// Seat-identity relay (MSG_PEER_IDENT, net_protocol.h): every remote
+// seat's folded badge identity to one client, one message per seat. The
+// receiver's own seat rides along (it ignores it) so one loop serves any
+// target. Legacy/unknown identities are sent as-is — all-zero fields are
+// exactly the no-badge state the receiver's store defaults to.
+void GLGame::net_send_seat_identities_to(NetPeer &peer) {
+  if (net_mode_ != NetHost || !peer.session) return;
+  for (NetPeer *src : net_peers_) {
+    if (src->seat < 2 || (int)src->seat > MAX_PLAYERS) continue;
+    std::string name = src->identity.name;
+    if ((int)name.size() > NET_IDENTITY_NAME_MAX)
+      name.resize(NET_IDENTITY_NAME_MAX);
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_PEER_IDENT, (uint8_t)net_local_seat());
+    Net::put_u8(msg, src->seat);
+    Net::put_u8(msg, src->identity.platform);
+    Net::put_u8(msg, src->identity.platform_trust);
+    Net::put_u8(msg, src->identity.name_trust);
+    Net::put_u8(msg, (uint8_t)name.size());
+    if (!name.empty())
+      Net::put_bytes(msg, (const uint8_t *)name.data(), name.size());
+    peer.session->transport()->send_reliable(&msg[0], msg.size());
+  }
+}
+
+// Roster-wide re-send: cheap (a few bytes per seat) and idempotent on the
+// receiver, so identity changes just re-broadcast rather than tracking
+// per-client deltas. Lost peers are skipped like net_send_event's guard
+// isn't — a dead transport eats bytes harmlessly, but a LOST peer's fresh
+// rejoin session must not see a stale roster mid-handshake, and its own
+// first INPUT re-sends everything anyway.
+void GLGame::net_broadcast_seat_identities() {
+  if (net_mode_ != NetHost) return;
+  for (NetPeer *p : net_peers_)
+    if (p->session && !p->lost) net_send_seat_identities_to(*p);
+}
+
 void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
   switch (code) {
     case Net::EV_PAUSE:
@@ -5753,8 +5797,13 @@ void GLGame::net_client_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
+    // MSG_PEER_IDENT joins the exemption list for EVENT's exact reason:
+    // reliable + consumed-once with NO periodic re-send (it re-fires only
+    // on a first INPUT or an attestation change), so a post-stall drain
+    // eating the burst would leave role labels on seats 3-4 indefinitely.
+    // Bounded like EVENT is: ~4 tiny messages per roster change.
     if (h.msg_type != Net::MSG_DELTA && h.msg_type != Net::MSG_SNAPSHOT_CHUNK &&
-        h.msg_type != Net::MSG_EVENT &&
+        h.msg_type != Net::MSG_EVENT && h.msg_type != Net::MSG_PEER_IDENT &&
         ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
       if (!net_action_cap_logged) {
         NET_LOG("net: rx action budget %d/poll hit - dropping flood\n",
@@ -5863,6 +5912,45 @@ void GLGame::net_client_poll() {
           break;
         }
       }
+      continue;
+    }
+    if (h.msg_type == Net::MSG_PEER_IDENT) {
+      // Seat identity relay (net_protocol.h): the host names the OTHER
+      // clients' seats for the HUD rows. Our own seat and the host's are
+      // skipped — this machine knows itself, and the host's identity came
+      // through the WELCOME handshake + worker attestation. The name is
+      // re-sanitized and the host's trust assertion clamped: an unknown
+      // trust value from a newer build demotes to CLAIMED, so the strict
+      // online context can only under-render it.
+      uint8_t seat = r.u8();
+      uint8_t platform = r.u8();
+      uint8_t plat_trust = r.u8();
+      uint8_t name_trust = r.u8();
+      uint8_t name_len = r.u8();
+      std::string raw_name;
+      if (r.ok && name_len) {
+        size_t n = name_len;
+        if (n > r.remaining()) n = r.remaining();
+        if (n > (size_t)NET_IDENTITY_NAME_MAX) n = NET_IDENTITY_NAME_MAX;
+        const uint8_t *bytes = r.bytes(n);
+        if (bytes) raw_name.assign((const char *)bytes, n);
+      }
+      if (!r.ok) continue;
+      if (seat < 2 || seat > MAX_PLAYERS || (int)seat == net_local_seat())
+        continue;
+      NetIdentity id;
+      id.platform = platform;
+      id.platform_trust =
+          plat_trust == NET_TRUST_ATTESTED ? NET_TRUST_ATTESTED
+          : plat_trust ? NET_TRUST_CLAIMED : NET_TRUST_ABSENT;
+      id.name = net_sanitize_name(raw_name);
+      id.name_trust =
+          id.name.empty() ? NET_TRUST_ABSENT
+          : name_trust == NET_TRUST_ATTESTED ? NET_TRUST_ATTESTED
+          : name_trust ? NET_TRUST_CLAIMED : NET_TRUST_ABSENT;
+      net_seat_identities_[seat] = id;
+      NET_LOG("net: seat %u identity relay name='%s' platform=%u\n",
+              (unsigned)seat, id.name.c_str(), (unsigned)platform);
       continue;
     }
     if (h.msg_type == Net::MSG_DELTA) {
@@ -9931,11 +10019,19 @@ GLShip *GLGame::player_by_seat(int seat) const {
 
 // The seat THIS machine's pilot sits in: the host is always 1, a client
 // the seat WELCOME assigned (2 until B4 hands out 3..4). Meaningful in
-// any mode — offline and replay both report 1 (P1's machine).
+// any mode — offline and replay both report 1 (P1's machine). The last
+// live answer is CACHED: a client's session is deleted the moment the
+// host is lost, and the provisional 2 mislabeled a seat-3/4 pilot's own
+// HUD row (their badge on seat 2's score) for the whole rejoin window.
+// A fresh session's WELCOME refreshes the cache through the live read.
 int GLGame::net_local_seat() const {
   if (net_mode_ == NetClient) {
     NetSession *s = net_session();
-    return s ? s->player_id() : 2;
+    if (s) {
+      net_local_seat_cache_ = s->player_id();
+      return net_local_seat_cache_;
+    }
+    return net_local_seat_cache_ ? net_local_seat_cache_ : 2;
   }
   return 1;
 }

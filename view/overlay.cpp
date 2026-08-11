@@ -232,11 +232,24 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // known ("GLENN DISCONNECTED"); a legacy peer keeps the plain text.
     // A LAN-door session has no code — the reopened beacon is the way
     // back, so say that instead.
-    std::string who =
-        net_identity_name_or(glgame->net_peer_identity(),
-                             glgame->net_peer_fallback().c_str(),
-                             glgame->net_id_ctx());
-    Typer::draw_centered(0, vh * 0.80f, (who + " DISCONNECTED").c_str(), 20);
+    // Post-B7 a room can lose more than one seat: count them, name the
+    // single-loss case as before (the 2P wording, byte-identical), and
+    // say the count when several are out at once.
+    int lost = 0;
+    for (const GLGame::NetPeer *p : glgame->net_peers_)
+      if (p->lost) lost++;
+    std::string head;
+    if (lost > 1) {
+      char buf[40];
+      snprintf(buf, sizeof buf, "%d PLAYERS DISCONNECTED", lost);
+      head = buf;
+    } else {
+      head = net_identity_name_or(glgame->net_peer_identity(),
+                                  glgame->net_peer_fallback().c_str(),
+                                  glgame->net_id_ctx()) +
+             " DISCONNECTED";
+    }
+    Typer::draw_centered(0, vh * 0.80f, head.c_str(), 20);
     if (glgame->net_signal_) {
       std::string room = "ROOM " + glgame->net_room_code_;
       Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
@@ -300,6 +313,46 @@ void Overlay::net_overlays(const GLGame *glgame) {
       Typer::draw_centered(0, vh * 0.80f, glgame->net_banner_text_.c_str(), 20);
     else
       Typer::draw_centered(0, vh * 0.55f, glgame->net_banner_text_.c_str(), 22);
+  } else if (glgame->net_any_peer_lost() &&
+             glgame->net_mode_ == GLGame::NetHost) {
+    // Play-on partial loss (post-B7, PB-D7): a seat dropped but the game
+    // keeps running for the healthy ones — the quiet header treatment,
+    // never a card. Name the LOWEST lost seat (the one the rejoin door is
+    // serving first) and put the room code back on screen, like the
+    // all-lost notice: the host may be reading it out to the friend
+    // relaunching. A second simultaneous loss rides the count. NOT at
+    // the all-lost spot (vh*0.80): that precedent only ever showed over
+    // an effectively-paused game, while this one sits over LIVE play —
+    // vh*0.80/0.67 ink lands exactly on the god-mode (y 443..463) and
+    // time-slow (y 368..388) indicators, both plausibly running in the
+    // "keep playing" state. vh*0.55 is the banner spot, proven for live
+    // gameplay text, and the rows below it stay clear of both.
+    int lost = 0, low_seat = 0;
+    for (const GLGame::NetPeer *p : glgame->net_peers_)
+      if (p->lost) {
+        lost++;
+        if (!low_seat || (int)p->seat < low_seat) low_seat = (int)p->seat;
+      }
+    std::string head;
+    if (lost > 1) {
+      char buf[40];
+      snprintf(buf, sizeof buf, "%d PLAYERS DISCONNECTED", lost);
+      head = buf;
+    } else {
+      char role[16];
+      snprintf(role, sizeof role, "PLAYER %d", low_seat);
+      head = net_identity_name_or(glgame->net_identity_for_seat(low_seat),
+                                  role, glgame->net_id_ctx()) +
+             " DISCONNECTED";
+    }
+    Typer::draw_centered(0, vh * 0.55f, head.c_str(), 20);
+    if (glgame->net_signal_) {
+      std::string room = "ROOM " + glgame->net_room_code_;
+      Typer::draw_centered(0, vh * 0.44f, room.c_str(), 18);
+    }
+    if (glgame->net_lan_door_open())
+      Typer::draw_centered(0, vh * (glgame->net_signal_ ? 0.36f : 0.44f),
+                           "VISIBLE ON THIS NETWORK", 14);
   }
 }
 
@@ -574,59 +627,88 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
   bool hoist = glgame->is_spectating() || glgame->exit_band_showing();
   float y = hoist ? vhb + 255.0f : vhb + 130.0f;
-  // The LOCAL player's own badge, one row above the peer's (glyphs descend
-  // ~2x size below their y, so +38 clears the size-11 row below with a
-  // visible gap — +30 read as almost touching in the field).
-  // Live play only — net_active() is also true in a NetReplay, where the
-  // ghosts may be anyone's (a downloaded run), so "you" has no row. No
-  // verified tick here: the tick vouches to YOU about the PEER (the worker
-  // attests each side to the OTHER, never back to its claimant), and your
-  // own machine needs no vouching about itself.
-  // Each row carries its pilot's live score (": 4200") — both scores are
-  // already on this machine with no wire changes: the host sims and credits
-  // both ships authoritatively, and the client's 10 Hz snapshot restores
+  // NetReplay: net_active() is true but the ghosts may be anyone's (a
+  // downloaded run) — keep the old single badge row when an identity is
+  // known, and no fallback rows.
+  if (glgame->net_mode_ != GLGame::NetHost &&
+      glgame->net_mode_ != GLGame::NetClient) {
+    std::string badge = net_identity_badge_or(
+        glgame->net_peer_identity(), glgame->net_peer_fallback().c_str(),
+        glgame->net_id_ctx());
+    if (badge.empty()) return;
+    const GLShip *peer = glgame->remote_player();
+    char peer_score[16];
+    const char *peer_suffix = nullptr;
+    if (peer) {
+      snprintf(peer_score, sizeof peer_score, ": %d", peer->ship->score);
+      peer_suffix = peer_score;
+    }
+    Typer::draw_centered_verified(
+        0, y, badge.c_str(), 11,
+        net_identity_verified(glgame->net_peer_identity(),
+                              glgame->net_id_ctx()),
+        0, peer_suffix);
+    return;
+  }
+  // Live play: one row per occupied seat, P1 on top — the SAME order on
+  // every machine (the pre-4P layout put "you" on top, which reads fine
+  // at two rows but scrambles at four when each machine reshuffles).
+  // Each row carries its pilot's live score (": 4200") — every score is
+  // already on this machine with no wire cost: the host sims and credits
+  // all ships authoritatively, and the client's 10 Hz snapshot restores
   // every player's score (net_apply_state). The score rides as
   // draw_centered_verified's SUFFIX so the verified tick stays beside the
   // identity it vouches for, never after the score.
-  if (glgame->net_mode_ == GLGame::NetHost ||
-      glgame->net_mode_ == GLGame::NetClient) {
-    std::string self =
-        net_local_identity_badge(glgame->net_local_fallback().c_str());
-    char self_score[16];
-    snprintf(self_score, sizeof self_score, ": %d",
-             glgame->local_player()->ship->score);
-    Typer::draw_centered_verified(0, y + 38.0f, self.c_str(), 11, false, 0,
-                                  self_score);
+  // Remote-row identity: net_identity_for_seat (the host's roster / the
+  // client's MSG_PEER_IDENT store; the client's seat-1 row is the
+  // handshake identity). A row with nothing renderable — a legacy peer,
+  // or an online peer whose attestation never arrived — falls back to the
+  // bare role label rather than vanishing: the score is always known
+  // locally, and a scoreless blank row read as a bug in the field
+  // (Android/Steam pairing, 2026-08-07).
+  // The local row draws no verified tick: the tick vouches to YOU about a
+  // PEER (the worker attests each side to the OTHER, never back to its
+  // claimant), and your own machine needs no vouching about itself.
+  // Rows stack upward from y in 38-unit steps (glyphs descend ~2x size
+  // below their y, so 38 clears a size-11 row with a visible gap — 30
+  // read as almost touching in the field); at two players this is the
+  // exact pre-4P geometry.
+  int local_seat = glgame->net_local_seat();
+  int rows = 0;
+  for (int seat = 1; seat <= MAX_PLAYERS; seat++)
+    if (glgame->player_by_seat(seat)) rows++;
+  float row_y = y + 38.0f * (float)(rows - 1);
+  for (int seat = 1; seat <= MAX_PLAYERS; seat++) {
+    const GLShip *gs = glgame->player_by_seat(seat);
+    if (!gs) continue;
+    char score[16];
+    snprintf(score, sizeof score, ": %d", gs->ship->score);
+    if (seat == local_seat) {
+      std::string self =
+          net_local_identity_badge(glgame->net_local_fallback().c_str());
+      Typer::draw_centered_verified(0, row_y, self.c_str(), 11, false, 0,
+                                    score);
+    } else {
+      // Seat 1 on a client keeps the LAN device-name nicety
+      // (net_peer_fallback); other seats get their role label.
+      // A client's seats-2..4 tick (and the ATTESTED trust that lets the
+      // name render at all) is the HOST's assertion relayed via
+      // MSG_PEER_IDENT — a weaker vouch than seat 1's direct worker
+      // attestation. Accepted deliberately (net_protocol.h): the host is
+      // sim-authoritative for far more than a name, and the receiver
+      // clamps unknown trust values down, never up.
+      std::string fallback = seat == 1 ? glgame->net_peer_fallback()
+                                       : "PLAYER " + std::to_string(seat);
+      const NetIdentity &id = glgame->net_identity_for_seat(seat);
+      std::string badge =
+          net_identity_badge_or(id, fallback.c_str(), glgame->net_id_ctx());
+      if (badge.empty()) badge = fallback;
+      Typer::draw_centered_verified(
+          0, row_y, badge.c_str(), 11,
+          net_identity_verified(id, glgame->net_id_ctx()), 0, score);
+    }
+    row_y -= 38.0f;
   }
-  // The peer badge names the REMOTE player: the client looks at the host
-  // (player 1), the host at the client (player 2). When nothing renders —
-  // a legacy peer, or an online peer whose attestation never arrived — the
-  // row falls back to the bare role label rather than vanishing: the score
-  // is always known locally, and a scoreless blank row read as a bug in
-  // the field (Android/Steam pairing, 2026-08-07). Live play only, like
-  // the local row — a replay's ghosts get no fallback row.
-  std::string badge = net_identity_badge_or(
-      glgame->net_peer_identity(), glgame->net_peer_fallback().c_str(),
-      glgame->net_id_ctx());
-  if (badge.empty()) {
-    if (glgame->net_mode_ != GLGame::NetHost &&
-        glgame->net_mode_ != GLGame::NetClient)
-      return;
-    badge = glgame->net_peer_fallback();
-  }
-  const GLShip *peer = glgame->remote_player();
-  char peer_score[16];
-  const char *peer_suffix = nullptr;
-  if (peer) {
-    snprintf(peer_score, sizeof peer_score, ": %d", peer->ship->score);
-    peer_suffix = peer_score;
-  }
-  // A worker-attested peer earns the verified tick; a LAN/manual peer's badge
-  // is a claim and draws bare (net_identity_verified owns that rule).
-  Typer::draw_centered_verified(
-      0, y, badge.c_str(), 11,
-      net_identity_verified(glgame->net_peer_identity(), glgame->net_id_ctx()),
-      0, peer_suffix);
 }
 
 // Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
