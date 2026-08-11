@@ -430,6 +430,12 @@ GLGame::GLGame(const std::vector<NetSeated> &seated,
     p.identity = s.session->peer_identity();
     p.jid = s.jid;
     p.attested = s.attested;
+    // A jid-less entry in a MULTI-seat roster came through the LAN door
+    // (waiting-room `lan#N` adoptions carry no worker jid) — the offline
+    // display carve-out applies to that peer alone. The single-entry
+    // delegator also passes an empty jid for worker sessions (the lobby
+    // fills it post-construction), so 2P keeps the global-context rule.
+    p.offline_paired = seated.size() > 1 && s.jid.empty();
     net_apply_attested(p.identity, s.attested);
   }
   if (!seated.empty()) net_peer_jid_ = seated.front().jid;
@@ -1373,12 +1379,17 @@ void GLGame::update_presence() const {
   Presence::set_level(generation + 1, (int)players->size());
 }
 
-// Player 2 for online play: same wiring as add_local_player but with no local
-// controller or key bindings — the peer drives it via INPUT messages.
+// A remote pilot's hull, host side: same wiring as add_local_player but
+// with no local controller or key bindings — the peer drives it via INPUT
+// messages. Hull/tint by seat (make_seat_ship, the D7 rule) so a 4P
+// host's screen matches every client's: the hardcoded plain GLCar here
+// dressed seats 3-4 as a second and third P2 (the client and replay
+// paths already seated hulls correctly — the host was the odd one out).
+// At 2P this is byte-identical: seat 2's tint IS the GLCar default.
 void GLGame::add_remote_player(uint8_t seat) {
   if((int)players->size() >= net_seat_cap()) return;
-  GLShip* object = new GLCar(grid, true);
-  object->ship->net_seat = seat ? seat : (uint8_t)(players->size() + 1);
+  int wire_seat = seat ? (int)seat : (int)players->size() + 1;
+  GLShip* object = make_seat_ship(grid, wire_seat - 1);
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
@@ -2802,6 +2813,15 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_rehost_->set_remote_answer(ev.text);
       dp->session =
           new NetSession(net_rehost_, NetSession::HostRole, dp->seat);
+      // Rejoin-by-identity: let the handshake re-map the WELCOME to the
+      // parked seat whose remembered pilot the HELLO claim matches — the
+      // Ready handler adopts onto the seat actually assigned.
+      dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
+        return net_rejoin_seat_for_identity(claimed);
+      });
+      // A relay rejoin re-pairs through the worker: a formerly LAN-paired
+      // seat loses its offline display carve-out (attestation governs).
+      dp->offline_paired = false;
       net_rehost_ = nullptr;
       // The answering joiner is the peer this session binds to (B3 `from`
       // stamp; empty against an old worker) — the Identity fold matches
@@ -2859,6 +2879,30 @@ void GLGame::net_host_rejoin_poll(int delta) {
     }
   }
 
+  // Eaten-offer watchdog (N>1): the door's unaddressed offer is handed to
+  // whichever joiner socket is oldest AT DELIVERY time and consumed on
+  // delivery (worker.js) — and right after an N>1 rejoin completes, that
+  // can be the JUST-SEATED client's socket still draining toward close,
+  // which eats the re-armed door's offer: the next rejoiner then joins an
+  // empty slot and waits forever. 2P never re-arms into that window (its
+  // one seat is refilled). An offer nobody answers within the window is
+  // an offer nobody HOLDS — re-push the same still-unanswered SDP and
+  // the worker hands it to the rejoiner actually waiting (or stores it
+  // for the next arrival). Never fires mid-handshake: an answered offer
+  // has a session (net_handshaking_lost_peer), so this cannot double-
+  // offer a client whose exchange is merely slow — the failure mode a
+  // re-offer-on-PeerJoin variant of this fix actually hit (the second
+  // offer tore down the client's in-flight answer).
+  if (net_rehost_ && net_rehost_offer_sent_ && !net_handshaking_lost_peer()) {
+    net_rehost_offer_age_ms_ += delta;
+    if (net_rehost_offer_age_ms_ > 6000) {
+      NET_LOG("net: rejoin offer unanswered - re-pushing\n");
+      net_signal_->send_offer(net_rehost_->local_description());
+      net_rehost_offer_age_ms_ = 0;
+    }
+  } else {
+    net_rehost_offer_age_ms_ = 0;
+  }
 }
 
 // Fresh session handshaking (HELLO/WELCOME) over whichever door's
@@ -2869,16 +2913,86 @@ void GLGame::net_host_rejoin_poll(int delta) {
 // Failed/Rejected branch below, which re-offers so the room stays open
 // for an allowed rejoiner; the refused peer got an honest MSG_REJECT and
 // its lobby stops retrying.
+// Rejoin-by-identity (FOURPLAYER.md, closing a B5 known limit): the doors
+// serve the LOWEST parked seat, so two simultaneous drops rejoining in the
+// other order swapped hulls — scores, lives, tint, the lot. The HELLO
+// claim names the pilot: when it matches exactly ONE parked peer's
+// remembered identity (name AND platform, both sanitized on their
+// respective receives), the WELCOME seats the rejoiner THERE instead.
+// Claim-level deliberately: the room code already gates entry, the choice
+// is only ever among PARKED seats, and the alternative was order-of-return
+// seating — no less spoofable, just less correct. No renderable name, no
+// match, or an ambiguous match (two parked seats remembering the same
+// name) keeps the door's pick, the old behaviour.
+int GLGame::net_rejoin_seat_for_identity(const NetIdentity &claimed) const {
+  if (claimed.name.empty()) return 0;
+  int match = 0;
+  for (NetPeer *p : net_peers_) {
+    if (!p->lost || !p->parked) continue;
+    if (p->identity.name.empty()) continue;
+    if (p->identity.name != claimed.name) continue;
+    if (p->identity.platform != claimed.platform) continue;
+    if (match) return 0;  // ambiguous — keep the door's seat
+    match = (int)p->seat;
+  }
+  return match;
+}
+
 void GLGame::net_host_rejoin_session_update(int delta) {
   // B5: the adoption in flight is the LOST peer holding a fresh session —
   // never a healthy peer's (their sessions aren't touched by the doors).
   NetPeer *dp = net_handshaking_lost_peer();
   if (dp) {
-    NetPeer &pr = *dp;
-    GLShip *gs = player_by_seat(pr.seat);
-    Ship *remote = gs ? gs->ship : NULL;
-    pr.session->update(delta);
-    if (pr.session->phase() == NetSession::Ready) {
+    dp->session->update(delta);
+    if (dp->session->phase() == NetSession::Ready) {
+      // Rejoin-by-identity: the WELCOME may have promised a DIFFERENT
+      // parked seat than the door pre-picked (peer_seat() is what the
+      // resolver made it). Move the whole adoption — session, answering
+      // jid, any early attestation — onto that peer before completing;
+      // the door peer stays parked and the top-of-poll arm re-opens the
+      // doors for it next tick.
+      int rs = dp->session->peer_seat();
+      if (rs != (int)dp->seat) {
+        NetPeer *rp = net_peer_by_seat(rs);
+        if (rp && rp != dp && rp->lost && !rp->session) {
+          NET_LOG("net: rejoin identity-matched seat %d (door was %d)\n",
+                  rs, (int)dp->seat);
+          rp->session = dp->session;
+          dp->session = nullptr;
+          rp->jid = dp->jid;
+          dp->jid.clear();
+          rp->attested = dp->attested;
+          dp->attested = NetIdentity();
+          rp->offline_paired = dp->offline_paired;
+          dp->offline_paired = false;
+          if (rp == net_peer()) net_peer_jid_ = rp->jid;
+          else if (dp == net_peer()) net_peer_jid_.clear();
+          dp = rp;
+        } else {
+          // The promised seat closed between HELLO and Ready (its own
+          // rejoin raced this one home). The client was already TOLD
+          // that seat — adopting it onto the door seat would desync its
+          // whole seat-keyed state — so drop and re-offer, the
+          // Failed-branch treatment.
+          NET_LOG("net: rejoin resolved seat %d no longer open - drop\n", rs);
+          dp->attested = NetIdentity();
+          net_drop_session(*dp);
+          if (net_signal_) {
+            net_rehost_ = NetTransport::create();
+            if (net_rehost_) {
+              net_rehost_->set_trickle(true);
+              net_rehost_->set_ice_servers(net_ice_);
+              net_rehost_->start_host();
+            }
+            net_rehost_offer_sent_ = false;
+          }
+          net_lan_rejoin_reset();
+          return;
+        }
+      }
+      NetPeer &pr = *dp;
+      GLShip *gs = player_by_seat(pr.seat);
+      Ship *remote = gs ? gs->ship : NULL;
       pr.lost = false;
       pr.parked = false;
       net_rejoin_parked_ = false;  // the next full loss pauses afresh
@@ -2937,7 +3051,8 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       char role[16];
       snprintf(role, sizeof(role), "PLAYER %d", (int)pr.seat);
       net_banner_text_ =
-          net_identity_name_or(pr.identity, role, net_id_ctx()) +
+          net_identity_name_or(pr.identity, role,
+                               net_id_ctx_for_seat((int)pr.seat)) +
           " RECONNECTED";
       net_banner_ms_ = 3000;      // the JOINED/LEFT notices' duration
       NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
@@ -2960,8 +3075,8 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       }
       NET_LOG("net: player %d rejoined\n", (int)pr.seat);
       net_host_resume_persist();  // client-join checkpoint (see NETPLAY.md)
-    } else if (pr.session->phase() == NetSession::Failed ||
-               pr.session->phase() == NetSession::Rejected) {
+    } else if (dp->session->phase() == NetSession::Failed ||
+               dp->session->phase() == NetSession::Rejected) {
       // Bad handshake (wrong build?): drop it and re-open the doors for
       // another try — the relay re-offer only where a signal exists, and
       // the LAN door reset so its poll re-arms a fresh beacon next tick.
@@ -2970,8 +3085,8 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // candidate whose handshake then failed would leave their attested
       // name to be folded onto whoever completes the NEXT attempt (an
       // unverified or legacy joiner would wear it at the Ready re-fold).
-      pr.attested = NetIdentity();
-      net_drop_session(pr);
+      dp->attested = NetIdentity();
+      net_drop_session(*dp);
       if (net_signal_) {
         net_rehost_ = NetTransport::create();
         if (net_rehost_) net_rehost_->set_trickle(true);
@@ -3050,6 +3165,12 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
         net_lan_rehost_->set_remote_answer(sdp);
         dp->session =
             new NetSession(net_lan_rehost_, NetSession::HostRole, dp->seat);
+        // Same rejoin-by-identity resolver as the relay door.
+        dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
+          return net_rejoin_seat_for_identity(claimed);
+        });
+        // Paired through the local beacon: per-peer offline carve-out.
+        dp->offline_paired = true;
         dp->jid.clear();        // LAN door: no worker jid for this pairing
         net_lan_rehost_ = nullptr;  // owned by the session now
       }
@@ -4328,6 +4449,7 @@ void GLGame::net_send_seat_identities_to(NetPeer &peer) {
     Net::put_u8(msg, src->identity.platform);
     Net::put_u8(msg, src->identity.platform_trust);
     Net::put_u8(msg, src->identity.name_trust);
+    Net::put_u8(msg, src->offline_paired ? 1 : 0);  // flags: bit0 LAN-paired
     Net::put_u8(msg, (uint8_t)name.size());
     if (!name.empty())
       Net::put_bytes(msg, (const uint8_t *)name.data(), name.size());
@@ -5926,6 +6048,7 @@ void GLGame::net_client_poll() {
       uint8_t platform = r.u8();
       uint8_t plat_trust = r.u8();
       uint8_t name_trust = r.u8();
+      uint8_t flags = r.u8();
       uint8_t name_len = r.u8();
       std::string raw_name;
       if (r.ok && name_len) {
@@ -5949,6 +6072,7 @@ void GLGame::net_client_poll() {
           : name_trust == NET_TRUST_ATTESTED ? NET_TRUST_ATTESTED
           : name_trust ? NET_TRUST_CLAIMED : NET_TRUST_ABSENT;
       net_seat_identities_[seat] = id;
+      net_seat_offline_paired_[seat] = (flags & 1) != 0;
       NET_LOG("net: seat %u identity relay name='%s' platform=%u\n",
               (unsigned)seat, id.name.c_str(), (unsigned)platform);
       continue;

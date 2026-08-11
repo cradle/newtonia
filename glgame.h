@@ -402,6 +402,13 @@ private:
     // a DIFFERENT friend, whose own announce re-attests through the
     // worker (Event::Identity restores it).
     NetIdentity attested;
+    // This peer paired through a LOCAL door (LAN beacon) rather than the
+    // signaling worker: the offline display carve-out applies PER PEER in
+    // a mixed room (net_id_ctx_for_seat) — its claimed name renders, like
+    // the classic worker-less flows, while relay-paired peers stay
+    // ONLINE-strict. A relay REJOIN re-pairs through the worker and
+    // clears it.
+    bool offline_paired = false;
     // Transport dead / dead-man tripped. Room-level questions go through
     // the any/all predicates below, which diverge at B4.
     bool lost = false;
@@ -538,6 +545,25 @@ private:
   // (0 and 1 unused — the host's identity comes from the handshake). Filled
   // by the MSG_PEER_IDENT relay; empty = role label, exactly the legacy UI.
   NetIdentity net_seat_identities_[MAX_PLAYERS + 1];
+  // The relay's offline-paired flag per seat (client mirror of
+  // NetPeer::offline_paired): that seat paired through the host's LAN
+  // door, so its CLAIMED name renders (see net_id_ctx_for_seat).
+  bool net_seat_offline_paired_[MAX_PLAYERS + 1] = {};
+  // Display context PER SEAT: the session-global rule (net_id_ctx), except
+  // a LAN-door-paired peer gets the offline carve-out individually — a
+  // mixed relay+LAN room used to render the LAN friend as a bare role
+  // label because one worker anywhere made the whole session ONLINE-strict.
+  NetIdentityCtx net_id_ctx_for_seat(int seat) const {
+    if (net_id_ctx() == NET_ID_OFFLINE) return NET_ID_OFFLINE;
+    if (net_mode_ == NetHost) {
+      NetPeer *p = net_peer_by_seat(seat);
+      if (p && p->offline_paired) return NET_ID_OFFLINE;
+    } else if (net_mode_ == NetClient && seat >= 2 && seat <= MAX_PLAYERS &&
+               net_seat_offline_paired_[seat]) {
+      return NET_ID_OFFLINE;
+    }
+    return net_id_ctx();
+  }
   // Last WELCOME-assigned seat a live session reported (see
   // net_local_seat): survives the sessionless rejoin window. 0 = never
   // had a session (pre-handshake), which reads as the pre-B4 default 2.
@@ -546,6 +572,12 @@ private:
   // one message per remote seat, to one peer or to every live session.
   void net_send_seat_identities_to(NetPeer &peer);
   void net_broadcast_seat_identities();
+  // Rejoin-by-identity (NetSession::set_seat_resolver): the parked seat
+  // whose remembered pilot the claimed HELLO identity matches, or 0.
+  int net_rejoin_seat_for_identity(const NetIdentity &claimed) const;
+  // Eaten-offer watchdog (see net_host_rejoin_poll): ms the door's offer
+  // has sat unanswered with no handshake in flight.
+  int net_rehost_offer_age_ms_ = 0;
   // Fallback label when the peer's claim carries no renderable name
   // (badge-only identity — e.g. an iOS host with no Game Center
   // sign-in). The client of a LAN-door session knows the host's

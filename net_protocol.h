@@ -263,6 +263,8 @@ enum MsgType {
   MSG_SHOCK = 15,
   // Seat identity relay (post-B7 4P HUD), H->C rel: u8 seat (2..MAX_PLAYERS),
   // u8 platform (NetPlatform), u8 platform_trust, u8 name_trust (NetTrust),
+  // u8 flags (bit0 = the seat paired through the host's LAN door, so the
+  // per-peer offline display carve-out applies — net_id_ctx_for_seat),
   // u8 name_len, name_len bytes UTF-8. The host shares each remote seat's
   // badge identity with every client, so a client's HUD can name the OTHER
   // clients (its own handshake only ever carried the host's). Display

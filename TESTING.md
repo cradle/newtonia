@@ -377,6 +377,13 @@ test/e2e/threeseat.sh # B4b smoke, now a SEATS=3 nseat.sh run (wrapper keeps
                      # the THREESEAT-SMOKE-OK contract)
 test/e2e/threeseat_rejoin.sh # B5 smoke, now a SEATS=3 nseat_rejoin.sh run
                      # (wrapper keeps the THREESEAT-REJOIN-OK contract)
+test/e2e/nseat_swap.sh # Rejoin-by-identity: 4 seats with NAMED pilots
+                     # (room_joiner_env), seats 3+4 SIGKILLed TOGETHER, players
+                     # return in the OTHER order — the door serves seat 3 but
+                     # the HELLO claim re-maps the WELCOME ("rejoin
+                     # identity-matched seat 4"), no hull swap; also exercises
+                     # the eaten-offer watchdog (the second rejoin stalls
+                     # forever without it)
 test/e2e/pairstart.sh # B7 shipping pair flow at the DEFAULT cap (the one
                      # driver with NO NEWTONIA_NET_TEST_SEATS pin): a host +
                      # one joiner lands in the waiting room at 2/4, must NOT

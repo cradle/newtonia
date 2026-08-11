@@ -462,7 +462,12 @@ Sequential master-based PRs, inert until the B7 flip:
   get the roster count line but no tap-to-start band (B7's touch pass);
   a pre-multi-join worker degrades the waiting room to the classic
   single pair (no jids to key on); seats 3+ render the P2 hull model
-  (cosmetic); and IN-GAME loss handling is still front-peer-only —
+  (cosmetic; closed post-B7 — `add_remote_player` routes through
+  `make_seat_ship`, so a host's remote hulls carry their seat's
+  shape/tint like the client and replay paths always did, and a mixed
+  LAN+relay room renders the LAN peer's claimed name via the per-peer
+  offline carve-out, `net_id_ctx_for_seat`); and IN-GAME loss handling
+  is still front-peer-only —
   EV_BYE and the transport-failure watch see only the front peer and
   the rejoin door re-welcomes onto seat 2, so a non-front peer's
   mid-game drop degrades (wrong-peer pause/rejoin, no crash) until
@@ -489,12 +494,26 @@ Sequential master-based PRs, inert until the B7 flip:
   the front peer (play-on must keep serving the healthy seats); the
   spectate camera skips parked hulls at N>1; a relay adoption at N>1
   closes the still-beaconing LAN door (its blob was minted for that
-  seat). Still open for B6/B7: a rejoiner is seated by
-  lowest-parked-seat, not identity — two simultaneous drops can swap
-  hulls if they rejoin in the other order; and at N>1 a rejoiner whose
-  adoption transport flaps waits out the full ICE timeout before the
-  door re-arms (the fast PeerJoin re-offer is N=1-only — a fresh jid
-  cannot name a seat).
+  seat). Post-B7 follow-ups closed two of the limits left open here:
+  **rejoin is by identity now** — the door still pre-picks the lowest
+  parked seat, but a seat resolver installed on the adoption session
+  (`NetSession::set_seat_resolver`) matches the rejoiner's HELLO claim
+  (name AND platform) against the parked peers' remembered identities
+  between the HELLO parse and the WELCOME, so each pilot lands back on
+  their OWN hull whatever order they return in (ambiguous/nameless
+  claims keep the door's pick; the Ready handler moves the whole
+  adoption onto the resolved peer, or drops-and-reoffers if that seat
+  closed mid-handshake); and the **eaten-offer watchdog** — the door's
+  unaddressed offer is consumed on delivery by whichever joiner socket
+  is oldest at that instant, which right after an N>1 rejoin completes
+  can be the just-seated client's socket draining toward close (2P
+  never re-arms into that window); an offer unanswered for 6 s with no
+  handshake in flight is re-pushed, un-wedging the next rejoiner.
+  Verified by `test/e2e/nseat_swap.sh` (seats 3+4 SIGKILLed together,
+  pilots return in the OTHER order, each lands on their own hull).
+  Still open: a rejoiner whose adoption transport flaps waits out the
+  full ICE timeout before the door re-arms (the fast PeerJoin re-offer
+  is N=1-only — a fresh jid cannot name a seat).
 - **B6 — Multi-instance e2e**. LANDED: lib.sh gains the N-seat room
   helpers (`room_setup N [host-env…]` assembles host + N-1 relay joiners
   through the waiting room and waits for seats/auto-start/bootstraps;

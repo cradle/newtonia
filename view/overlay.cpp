@@ -342,7 +342,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
       char role[16];
       snprintf(role, sizeof role, "PLAYER %d", low_seat);
       head = net_identity_name_or(glgame->net_identity_for_seat(low_seat),
-                                  role, glgame->net_id_ctx()) +
+                                  role, glgame->net_id_ctx_for_seat(low_seat)) +
              " DISCONNECTED";
     }
     Typer::draw_centered(0, vh * 0.55f, head.c_str(), 20);
@@ -699,13 +699,14 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
       // clamps unknown trust values down, never up.
       std::string fallback = seat == 1 ? glgame->net_peer_fallback()
                                        : "PLAYER " + std::to_string(seat);
+      // Per-seat context: a LAN-door peer's claimed name renders even in
+      // a room that also holds relay peers (net_id_ctx_for_seat).
+      NetIdentityCtx ctx = glgame->net_id_ctx_for_seat(seat);
       const NetIdentity &id = glgame->net_identity_for_seat(seat);
-      std::string badge =
-          net_identity_badge_or(id, fallback.c_str(), glgame->net_id_ctx());
+      std::string badge = net_identity_badge_or(id, fallback.c_str(), ctx);
       if (badge.empty()) badge = fallback;
-      Typer::draw_centered_verified(
-          0, row_y, badge.c_str(), 11,
-          net_identity_verified(id, glgame->net_id_ctx()), 0, score);
+      Typer::draw_centered_verified(0, row_y, badge.c_str(), 11,
+                                    net_identity_verified(id, ctx), 0, score);
     }
     row_y -= 38.0f;
   }

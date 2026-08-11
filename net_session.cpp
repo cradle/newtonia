@@ -554,6 +554,14 @@ void NetSession::update(int delta_ms) {
         phase_ = Rejected;
         return;
       }
+      // Rejoin-by-identity: the installed resolver may re-map this
+      // WELCOME to the parked seat whose remembered pilot the HELLO
+      // claim matches (see set_seat_resolver). Out-of-range/0 answers
+      // keep the ctor seat.
+      if (seat_resolver_) {
+        int rs = seat_resolver_(peer_identity_);
+        if (rs >= 2 && rs <= MAX_PLAYERS) assigned_seat_ = (uint8_t)rs;
+      }
       send_welcome(transport_, assigned_seat_);
       phase_ = Ready;
       return;
