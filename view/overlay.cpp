@@ -849,6 +849,17 @@ void Overlay::board_prompt(const GLGame *glgame) {
     MenuSelect::draw_row(-60, "RETURN TO MENU", 16, true);
 }
 
+// Human-readable name of a bound key for HUD hints (F-keys arrive as
+// 128 + GLUT function-key code; everything else is the character itself).
+static void key_hint(int key, char *out, size_t n, const char *verb) {
+  if (key > 128 && key <= 128 + 12)
+    snprintf(out, n, "%s controls with F%d", verb, key - 128);
+  else if (key >= 33 && key <= 126)
+    snprintf(out, n, "%s controls with %c", verb, (char)key);
+  else
+    snprintf(out, n, "%s controls with F1", verb);
+}
+
 void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
   if(glship->show_help) {
     // Dim THIS viewport under the card (the pause dim's per-viewport twin;
@@ -878,20 +889,24 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
     float fit = avail / 500.0f;
     if (fit > 1.0f) fit = 1.0f;
     glship->draw_keymap(fit);
+    // The way OUT stays full-brightness: title_text draws only the "show"
+    // variant (it runs before the dim), the "hide" hint is drawn here on
+    // top of it, at the same spot title_text would have used.
+    if(!glship->last_input_was_controller && !is_touch_mode() &&
+       glship->help_key.primary() != 0) {
+      char hint[48];
+      key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
+      if((int)glgame->players->size() < LOCAL_PLAYER_CAP) {
+        float top_y = Typer::scaled_window_height - 40 - safe_inset_top_v();
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
+      } else {
+        float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
+        Typer::draw_centered(0, vhb+85, hint, 8);
+      }
+    }
   }
 }
 
-
-// Human-readable name of a bound key for HUD hints (F-keys arrive as
-// 128 + GLUT function-key code; everything else is the character itself).
-static void key_hint(int key, char *out, size_t n, const char *verb) {
-  if (key > 128 && key <= 128 + 12)
-    snprintf(out, n, "%s controls with F%d", verb, key - 128);
-  else if (key >= 33 && key <= 126)
-    snprintf(out, n, "%s controls with %c", verb, (char)key);
-  else
-    snprintf(out, n, "%s controls with F1", verb);
-}
 
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   Ship* p1 = glgame->players->front()->ship;
@@ -934,17 +949,14 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     }
     // No hint for a seat with no keyboard help binding (pad-joined P3/P4):
     // key_hint's fallback would name P1's F1, which does nothing for this
-    // seat — their card is on R3, and the card itself says so.
+    // seat — their card is on R3, and the card itself says so. The "hide"
+    // variant is drawn by keymap() so it sits above the card's dim.
     if(!glship->last_input_was_controller && !is_touch_mode() &&
-       glship->help_key.primary() != 0) {
+       glship->help_key.primary() != 0 && !glship->show_help &&
+       (glgame->current_time)/12000 % 2) {
       char hint[48];
-      if(glship->show_help) {
-        key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
-      } else if ((glgame->current_time)/12000 % 2) {
-        key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
-      }
+      key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
+      Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
     }
   } else {
     float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
@@ -964,17 +976,14 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     // local ship is player 2 in the list but plays with player-1 keys.
     // A seat with NO help binding (pad-joined P3/P4) gets no hint at all:
     // key_hint's fallback would name P1's F1, which does nothing for this
-    // seat — their card is on R3, and the card itself says so.
+    // seat — their card is on R3, and the card itself says so. The "hide"
+    // variant is drawn by keymap() so it sits above the card's dim.
     if(!glship->last_input_was_controller && !is_touch_mode() &&
-       glship->help_key.primary() != 0) {
+       glship->help_key.primary() != 0 && !glship->show_help &&
+       (glgame->current_time)/12000 % 2) {
       char hint[48];
-      if(glship->show_help) {
-        key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
-        Typer::draw_centered(0, vhb+85, hint, 8);
-      } else if ((glgame->current_time)/12000 % 2) {
-        key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
-        Typer::draw_centered(0, vhb+85, hint, 8);
-      }
+      key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
+      Typer::draw_centered(0, vhb+85, hint, 8);
     }
   }
   if(!glgame->running && glship->show_help) {
