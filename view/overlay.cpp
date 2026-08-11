@@ -367,7 +367,6 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   god_mode(glgame, glship);
   time_slow(glgame, glship);
   score(glgame, glship);
-  if (!replaying) keymap(glgame, glship);
   level_cleared(glgame, glship);
   lives(glgame, glship);
   weapons(glgame, glship);
@@ -377,6 +376,10 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   net_badges(glgame, glship);
   if (!replaying) touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
+  // Last on purpose: keymap dims this whole viewport under the card, so
+  // everything above (HUD rows, edge indicators, the world) recedes and
+  // the card reads clean — the pause-menu dim's per-viewport twin.
+  if (!replaying) keymap(glgame, glship);
   if (glgame->debug_grid) debug_info(glgame, glship);
 }
 
@@ -848,6 +851,24 @@ void Overlay::board_prompt(const GLGame *glgame) {
 
 void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
   if(glship->show_help) {
+    // Dim THIS viewport under the card (the pause dim's per-viewport twin;
+    // field: "too many menu elements" behind the card). The quad is
+    // deliberately oversized — the viewport transform clips it to exactly
+    // this player's screen, so no per-layout extents are needed, and other
+    // players' viewports stay bright.
+    {
+      static MeshBuilder mb;
+      static Mesh mesh;
+      const float E = 100000.0f;
+      mb.clear();
+      mb.begin(GL_TRIANGLES);
+      mb.color(0.0f, 0.0f, 0.0f, 0.6f);
+      mb.vertex(-E, -E); mb.vertex(E, -E); mb.vertex(E, E);
+      mb.vertex(-E, -E); mb.vertex(E, E);  mb.vertex(-E, E);
+      mb.end();
+      mesh.upload(mb, GL_DYNAMIC_DRAW);
+      mesh.draw();
+    }
     // The card is laid out for a full-height viewport: it reaches ~485
     // virtual units above centre, while a 2x2 grid cell only has
     // scaled_window_height / ny (300 at ny=2) — the top half clipped off

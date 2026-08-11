@@ -140,7 +140,20 @@ void set_cursor_hidden(bool hide) {
   }
 }
 
+// GLUT delivers the ASCII char with modifiers applied, so Caps Lock (or a
+// held Shift) turns every letter binding into its uppercase twin and the
+// whole keyboard goes dead except Space (field: "keys stopped working
+// except space/shoot" — caps lock). Fold case at the entry point so every
+// consumer (ship bindings, general keys, menu nav) sees lowercase; a live
+// text field keeps real case for typing.
+static unsigned char fold_case(unsigned char key) {
+  if (key >= 'A' && key <= 'Z' && !game->text_entry_active())
+    return key + ('a' - 'A');
+  return key;
+}
+
 void keyboard(unsigned char key, int x, int y) {
+  key = fold_case(key);
   // The bare F toggle yields while a text field is consuming keystrokes
   // (the lobby's room-code entry): the Deck's floating keyboard typing F
   // flickered fullscreen. Alt+Enter still works — no keyboard types it.
@@ -192,6 +205,7 @@ void special(int key, int x, int y) {
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
+  key = fold_case(key);
   bool is_fullscreen_key =
       (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen &&
        !game->text_entry_active())
