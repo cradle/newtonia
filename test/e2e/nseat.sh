@@ -20,6 +20,18 @@ echo "== everyone flies + fires for 8s"
 fly_all 8
 sleep 2
 room_alive
+
+# Seat-identity relay (MSG_PEER_IDENT): once every client has sent INPUT,
+# each one must have been told about every OTHER client's seat — joiner1
+# sits on seat 2, so its log must name seats 3..SEATS (its own seat is
+# deliberately never stored). The relay fires on each peer's first INPUT,
+# which the flight above guarantees has happened.
+for s in $(seq 3 "$SEATS"); do
+  grep -aq "net: seat $s identity relay" "$OUT/joiner1.log" || {
+    echo "JOINER1 NEVER LEARNED SEAT $s IDENTITY"; room_kill_all; exit 1; }
+done
+grep -aq "net: seat 2 identity relay" "$OUT/joiner2.log" || {
+  echo "JOINER2 NEVER LEARNED SEAT 2 IDENTITY"; room_kill_all; exit 1; }
 for i in "${!ROOM_WINS[@]}"; do
   shot "${ROOM_WINS[$i]}" "nseat$SEATS-$(room_name "$i")"
 done

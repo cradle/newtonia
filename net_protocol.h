@@ -261,6 +261,22 @@ enum MsgType {
   // bullet_id 0) or the host firer's own resolution, and station/mini hull
   // damage from a client bolt is applied host-side from this polyline.
   MSG_SHOCK = 15,
+  // Seat identity relay (post-B7 4P HUD), H->C rel: u8 seat (2..MAX_PLAYERS),
+  // u8 platform (NetPlatform), u8 platform_trust, u8 name_trust (NetTrust),
+  // u8 name_len, name_len bytes UTF-8. The host shares each remote seat's
+  // badge identity with every client, so a client's HUD can name the OTHER
+  // clients (its own handshake only ever carried the host's). Display
+  // metadata only, like the HELLO/WELCOME identity append — and like that
+  // append it is deliberately NOT a PROTO bump: an older receiver ignores
+  // the unknown message type and renders role labels, which is exactly the
+  // legacy-peer fallback. Trust levels are the host's assertion; the host
+  // already holds the worker attestations (and is sim-authoritative for far
+  // more than a name), and the receiver re-sanitizes the name bytes and
+  // clamps unknown trust values down to CLAIMED so a lying host can at
+  // worst under-render on this axis. Sent to each client at its first
+  // INPUT (the per-peer resync point) and re-broadcast whenever a seat's
+  // identity changes (attestation lands, rejoin refresh).
+  MSG_PEER_IDENT = 16,
 };
 
 enum EventCode {

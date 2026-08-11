@@ -534,11 +534,18 @@ Sequential master-based PRs, inert until the B7 flip:
   start band's hit-test is touch-gated (desktop clicks on the room code
   must not start the game); joiner-side seat labels ("YOU ARE PLAYER
   N", the local badge fallback) read the WELCOME seat; the lobby's
-  signal-level PeerLeave flash is branch-scoped. Known limits: the
-  in-game badge/score rows and the DISCONNECTED notice still render the
-  FRONT peer only (`net_peer_identity()`/`net_peer_fallback` are
-  single-peer seams — seats 3-4 get no identity row), and the host has
-  no per-seat kick/manage UI. SHIPPING GATE (unchanged): the production
+  signal-level PeerLeave flash is branch-scoped. Known limits: the host has no
+  per-seat kick/manage UI. (The single-peer badge/score-row and
+  DISCONNECTED-notice seams flagged here at landing were closed in the
+  follow-up seat-HUD PR: `Overlay::net_badges` draws one row per
+  occupied seat in seat order with every pilot's live score, the
+  loss notices count/name lost seats — including a play-on partial-loss
+  header with the room code, which the all-lost path had and play-on
+  lacked — and a new `MSG_PEER_IDENT` relay lets a client's HUD name
+  the OTHER clients: the host shares each seat's badge identity at each
+  peer's first INPUT and on attestation changes, deliberately not a
+  PROTO bump — an older receiver ignores it and keeps role labels,
+  the identity-append precedent.) SHIPPING GATE (unchanged): the production
   signal worker must carry the B3 multi-join protocol — deployed by a
   release tag — before any B7 client build reaches players; a
   pre-multi-join worker degrades every room to the classic single pair

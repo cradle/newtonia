@@ -352,7 +352,9 @@ test/e2e/gensoak.sh  # late-gen soak: host skips online to gen 25 (black hole,
 test/e2e/nseat.sh    # B6 N-seat connect/play smoke (SEATS=3|4, default 4):
                      # waiting-room assembly via lib.sh's room_setup — every
                      # seat fills, auto-start on full, every joiner bootstraps,
-                     # all-hands flight. Local/on-demand (needs a wrangler-dev
+                     # all-hands flight, and every client logs the seat-identity
+                     # relay for each OTHER client (MSG_PEER_IDENT — the 4P HUD
+                     # rows' name source). Local/on-demand (needs a wrangler-dev
                      # relay); CI stays 2-instance (runner cost).
 test/e2e/nseat_rejoin.sh # B6 drop+rejoin at N seats: seat 3's client is
                      # SIGKILLed (a MIDDLE seat at 4 — non-contiguous roster),

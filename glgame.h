@@ -516,6 +516,32 @@ private:
   NetIdentityCtx net_id_ctx() const {
     return net_worker_session_ ? NET_ID_ONLINE : NET_ID_OFFLINE;
   }
+  // Per-seat badge identity, both roles (post-B7 4P HUD): the host answers
+  // from its roster (each NetPeer carries its folded identity); a client
+  // answers seat 1 from the handshake identity and other seats from the
+  // MSG_PEER_IDENT relay store below. Unknown/own/absent seats return the
+  // empty identity, which every renderer already treats as the legacy
+  // no-badge case (role-label fallback).
+  const NetIdentity &net_identity_for_seat(int seat) const {
+    static const NetIdentity kNone;
+    if (net_mode_ == NetHost) {
+      NetPeer *p = net_peer_by_seat(seat);
+      return p ? p->identity : kNone;
+    }
+    if (net_mode_ == NetClient) {
+      if (seat == 1) return net_peer_identity();
+      if (seat >= 2 && seat <= MAX_PLAYERS) return net_seat_identities_[seat];
+    }
+    return kNone;
+  }
+  // A client's store of the OTHER clients' identities, indexed by wire seat
+  // (0 and 1 unused — the host's identity comes from the handshake). Filled
+  // by the MSG_PEER_IDENT relay; empty = role label, exactly the legacy UI.
+  NetIdentity net_seat_identities_[MAX_PLAYERS + 1];
+  // Host->client seat-identity relay (see net_protocol.h MSG_PEER_IDENT):
+  // one message per remote seat, to one peer or to every live session.
+  void net_send_seat_identities_to(NetPeer &peer);
+  void net_broadcast_seat_identities();
   // Fallback label when the peer's claim carries no renderable name
   // (badge-only identity — e.g. an iOS host with no Game Center
   // sign-in). The client of a LAN-door session knows the host's
