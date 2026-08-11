@@ -2091,8 +2091,15 @@ void NetLobby::draw() {
         if (waiting_room() && !seated_.empty()) kStartBand.draw("TAP TO START");
       } else {
         lines.push_back("ROOM CODE");
-        Typer::draw_centered(0, 20, room_code_.c_str(), 48);
-        y = -100;
+        // The waiting room grows a roster under this block (a count line, a
+        // row per seated peer, the START row), so lift the code and the
+        // list into the dead band under the ONLINE CO-OP header at 320 —
+        // the code's glyphs reach ~86 above its anchor, so 140 still clears
+        // it. That space is what keeps the roster near full size instead of
+        // compressing to fit; the classic pair keeps its exact old layout.
+        bool room_list = waiting_room();
+        Typer::draw_centered(0, room_list ? 140 : 20, room_code_.c_str(), 48);
+        y = room_list ? 20 : -100;
         lines.push_back("COPIED TO CLIPBOARD");
         lines.push_back("");
         // Pushed on the off-phase too (as a blank) — a conditional push
@@ -2450,7 +2457,8 @@ void NetLobby::draw() {
   // keep their exact layout.
   int line_h = line, line_sz = sz;
   int rows = (int)lines.size() - 1;
-  const int kListBottom = -330;  // last anchor stays clear of the band
+  // Leaves room for the status line BELOW the list and the band below that.
+  const int kListBottom = -300;
   if (rows > 0 && y - rows * line_h < kListBottom) {
     float fit = (float)(y - kListBottom) / (float)(rows * line_h);
     line_h = (int)(line_h * fit);
@@ -2481,9 +2489,20 @@ void NetLobby::draw() {
     // code slots (glyphs to 24) and the button-hint line at -48 — low in
     // that gap, since at size 15 it descends to ~-26 and y 20 grazed the
     // code glyphs (Glenn, Deck).
-    int sy = (screen_ == CodeEntry && (is_touch_mode() || controller_seen_))
-                 ? 4
-                 : -320;
+    // Everywhere else it hangs one step BELOW the list rather than at a
+    // fixed -320: the waiting room's roster reaches further down as the
+    // room fills, and "A PLAYER IS CONNECTING" — which fires exactly when
+    // a joiner arrives — landed straight on "ENTER - START GAME" (field).
+    // Clamped so it never rises above its classic spot on a short screen,
+    // and never drops into the BACK TO MENU band.
+    int sy;
+    if (screen_ == CodeEntry && (is_touch_mode() || controller_seen_)) {
+      sy = 4;
+    } else {
+      sy = (lines.empty() ? y : y - rows * line_h) - line_h;
+      if (sy > -320) sy = -320;
+      if (sy < -360) sy = -360;
+    }
     Typer::draw_centered(0, sy, status_.c_str(), 15);
   }
 
