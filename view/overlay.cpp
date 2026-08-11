@@ -848,7 +848,15 @@ void Overlay::board_prompt(const GLGame *glgame) {
 
 void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
   if(glship->show_help) {
-    glship->draw_keymap();
+    // The card is laid out for a full-height viewport: it reaches ~485
+    // virtual units above centre, while a 2x2 grid cell only has
+    // scaled_window_height / ny (300 at ny=2) — the top half clipped off
+    // the quarter screens (4P field bug). Scale it to what the viewport
+    // can actually show; full-height viewports keep the classic size.
+    float avail = Typer::scaled_window_height / glgame->num_y_viewports();
+    float fit = avail / 500.0f;
+    if (fit > 1.0f) fit = 1.0f;
+    glship->draw_keymap(fit);
   }
 }
 
@@ -903,7 +911,11 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       if (glgame->board_phase_ == GLGame::BoardOff)
         MenuSelect::draw_row(-100, "RETURN TO MENU", 16, true);
     }
-    if(!glship->last_input_was_controller && !is_touch_mode()) {
+    // No hint for a seat with no keyboard help binding (pad-joined P3/P4):
+    // key_hint's fallback would name P1's F1, which does nothing for this
+    // seat — their card is on R3, and the card itself says so.
+    if(!glship->last_input_was_controller && !is_touch_mode() &&
+       glship->help_key.primary() != 0) {
       char hint[48];
       if(glship->show_help) {
         key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
@@ -929,7 +941,11 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     }
     // Label the key this ship actually has bound — online the client's
     // local ship is player 2 in the list but plays with player-1 keys.
-    if(!glship->last_input_was_controller && !is_touch_mode()) {
+    // A seat with NO help binding (pad-joined P3/P4) gets no hint at all:
+    // key_hint's fallback would name P1's F1, which does nothing for this
+    // seat — their card is on R3, and the card itself says so.
+    if(!glship->last_input_was_controller && !is_touch_mode() &&
+       glship->help_key.primary() != 0) {
       char hint[48];
       if(glship->show_help) {
         key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");

@@ -57,7 +57,9 @@ public:
   void genGodShield();
   void draw(bool minimap = false);
   void draw_body() const;
-  void draw_keymap() const;
+  // fit uniformly scales the card; Overlay::keymap passes viewport-height /
+  // card-span so the card fits a 2x2 grid cell instead of clipping its top.
+  void draw_keymap(float fit = 1.0f) const;
   void draw_temperature() const;
   void draw_respawn_timer() const;
   void draw_temperature_status() const;

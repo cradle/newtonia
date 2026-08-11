@@ -739,17 +739,21 @@ static std::string binding_label(const KeyBinding &b) {
   return s;
 }
 
-void GLShip::draw_keymap() const {
-  int size = 10;
+void GLShip::draw_keymap(float fit) const {
+  // fit scales the whole card uniformly (Overlay::keymap computes it from
+  // the viewport height): laid out for a full-height viewport, the card
+  // spans ~+485..-250 virtual units and clipped its top half off a 2x2
+  // grid cell (4P field bug — the quarter showed the list from MINE down).
+  float size = 10 * fit;
   int num_controls  = 10;
   if(last_input_was_controller) {
     num_controls++;
   }
-  int padding = 2.0f;
-  int char_height = 5.0f;
-  float y_offset = last_input_was_controller ? 110.0f : 140.0f; // above minimap
+  float padding = 2.0f * fit;
+  float char_height = 5.0f;
+  float y_offset = (last_input_was_controller ? 110.0f : 140.0f) * fit;
   Typer::draw_centered(0, (num_controls+1.5)/2.0f * (size + padding) * char_height + y_offset, "- PLAYER -", size+2);
-  float offset = -160.0f;
+  float offset = -160.0f * fit;
   int control_index = 0;
 
   // Draw a controller button: circled glyph for single-char buttons (A/B/X/Y/…),
