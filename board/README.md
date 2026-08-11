@@ -147,8 +147,17 @@ is about which WORKERS pick the binding up first:
    PEER, so the JOINER's log/lobby is where the host's attestation
    shows; a solo host sees nothing) and a board submit places (not
    `unverified`). ✅ Steam attestation field-verified via the beta store
-   read 2026-07-31; the board-submit check waits on the board-beta
-   deploy (step 2).
+   read 2026-07-31; ✅ board submit field-verified 2026-08-11 (Windows
+   `make steam` build, local co-op run, prompt → placed). Two things
+   that look like failures and are not: only a run that PROMOTES the
+   best slot prompts (a lower score than the stored `best_coop.nrp` of
+   the same season is silently no-op — `LEADERBOARD → CO-OP → UPLOAD
+   BEST RUN` is the second chance), and a locally built binary stamps
+   `git describe`, so its rows land in their own non-canonical season
+   bucket. Beta admits those; production's whitelist refuses them —
+   which also means `make steam NEWTONIA_VERSION=$(cat SEASON)` puts a
+   dev build on the REAL `s1` board, so keep such a binary pointed at
+   beta.
 4. Only then let the next release tag roll the binding to production.
 
 **Signal-worker migration**: once the store is bound and deployed, delete
