@@ -35,6 +35,10 @@ public:
   // watermark (+ speed when not 1x), elapsed/total timeline, the flashing
   // exit hint once the recording ends short of a game over.
   static void replay_hud(const GLGame *glgame);
+  // Pause title + RESUME/RETURN TO MENU menu. One full-window pass like
+  // net_overlays — one pause state, one cursor, one menu on screen, not a
+  // copy per split-screen cell. Called from GLGame::draw, not draw().
+  static void paused(const GLGame *glgame);
   // Touch OSD (joystick, fire/mine, pause) — public so the intro screen can
   // draw it too; no-op off Android/iOS. Needs a full-window ortho of
   // ±window extents to be current.
@@ -58,7 +62,6 @@ private:
   static void net_badges(const GLGame *glgame, const GLShip *glship);
   static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame, const GLShip *glship);
-  static void paused(const GLGame *glgame, const GLShip *glship);
   static void level(const GLGame *glgame, const GLShip *glship);
   static void god_mode(const GLGame *glgame, const GLShip *glship);
   static void time_slow(const GLGame *glgame, const GLShip *glship);

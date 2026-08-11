@@ -24,6 +24,8 @@
 static const int NOVA_MAX_AMMO = 10;
 
 bool Ship::net_quiet_respawn = false;
+int Ship::shield_hum_refs = 0;
+int Ship::shield_hum_shared_channel = -1;
 std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
 std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
@@ -210,9 +212,7 @@ Ship::~Ship() {
   if(missile_explode_sound != NULL) {
     Mix_FreeChunk(missile_explode_sound);
   }
-  if(shield_hum_channel >= 0) {
-    Mix_HaltChannel(shield_hum_channel);
-  }
+  set_shield_hum(false);  // release this ship's ref on the shared hum loop
   if(shield_hum_sound != NULL) {
     Mix_FreeChunk(shield_hum_sound);
   }
@@ -2348,11 +2348,35 @@ void Ship::set_shield_hum(bool on) {
     // stuck on". sound_own_cues can't flip mid-life the way the distance
     // test it replaced could, so that trap is gone as well as guarded.
     if(shield_hum_sound == NULL || !sound_own_cues) return;
-    if(shield_hum_channel >= 0) return; // already playing, don't leak a new channel
-    shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
-  } else if(shield_hum_channel >= 0) {
-    Mix_HaltChannel(shield_hum_channel);
-    shield_hum_channel = -1;
+    if(shield_humming) return; // already counted, don't leak a ref
+    shield_humming = true;
+    // One shared loop for however many ships hum at once (see ship.h). It
+    // plays a process-lifetime chunk of its own, NOT this ship's wrapper —
+    // a ship deleted mid-hum frees its wrapper in the dtor while the
+    // channel (kept alive by the other ships' refs) is still reading it.
+    if(++shield_hum_refs == 1 && shield_hum_shared_channel < 0) {
+      static Mix_Chunk *shared_chunk = load_wav_cached("audio/shield_hum.wav");
+      if(shared_chunk != NULL)
+        shield_hum_shared_channel = Mix_PlayChannel(-1, shared_chunk, -1);
+    }
+  } else if(shield_humming) {
+    shield_humming = false;
+    if(--shield_hum_refs == 0 && shield_hum_shared_channel >= 0) {
+      Mix_HaltChannel(shield_hum_shared_channel);
+      shield_hum_shared_channel = -1;
+    }
+  }
+}
+
+void Ship::flush_respawn_tic(bool &tic_played, bool &low_played) {
+  int pending = respawn_tic_pending;
+  respawn_tic_pending = 0;
+  if(pending == 1 && !tic_played && tic_sound != NULL) {
+    Mix_PlayChannel(-1, tic_sound, 0);
+    tic_played = true;
+  } else if(pending == 2 && !low_played && tic_low_sound != NULL) {
+    Mix_PlayChannel(-1, tic_low_sound, 0);
+    low_played = true;
   }
 }
 
@@ -2678,15 +2702,8 @@ void Ship::step(float delta, const Grid &grid) {
   } else if (lives > 0) {
     if(sound_own_cues) {
       if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
-        if(time_until_respawn > 1000) {
-          if(tic_sound != NULL) {
-            Mix_PlayChannel(-1, tic_sound, 0);
-          }
-        } else {
-          if(tic_low_sound != NULL) {
-            Mix_PlayChannel(-1, tic_low_sound, 0);
-          }
-        }
+        // Deferred to GLGame's per-step drain — see respawn_tic_pending.
+        respawn_tic_pending = (time_until_respawn > 1000) ? 1 : 2;
       }
     }
     time_until_respawn -= delta;

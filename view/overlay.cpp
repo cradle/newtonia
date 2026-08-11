@@ -70,6 +70,21 @@ static float top_hud_y(const GLGame *glgame) {
   return vh - 20 - Overlay::CORNER_INSET - safe_inset_top_v();
 }
 
+// True in the 3-4 player 2x2 grid, where a viewport is a quarter of the
+// window: both viewport counts are >= 2 only there (1P is 1x1, and either
+// 2P split keeps one axis at 1).
+static bool viewport_is_grid_cell(const GLGame *glgame) {
+  return glgame->num_x_viewports() >= 2 && glgame->num_y_viewports() >= 2;
+}
+
+// A grid cell carries the same HUD as a full window in a quarter of the
+// room, so the full-size rows and centre banners crowd each other (field:
+// CLEARED overprinted the weapons list). Shrink the HUD text there; 1P and
+// both 2P splits are untouched.
+static float hud_fit(const GLGame *glgame) {
+  return viewport_is_grid_cell(glgame) ? 0.75f : 1.0f;
+}
+
 // Full-screen text layered over the online game view (one full-screen
 // pass, not per-viewport): the 2 s generation banner (replaces the offline
 // Intro state) and the CONNECTION LOST / rejoin card. Overlay is a friend
@@ -367,7 +382,6 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   god_mode(glgame, glship);
   time_slow(glgame, glship);
   score(glgame, glship);
-  if (!replaying) keymap(glgame, glship);
   level_cleared(glgame, glship);
   lives(glgame, glship);
   weapons(glgame, glship);
@@ -375,9 +389,12 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   respawn_timer(glgame, glship);
   spectate(glgame, glship);
   net_badges(glgame, glship);
-  paused(glgame, glship);
   if (!replaying) touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
+  // Last on purpose: keymap dims this whole viewport under the card, so
+  // everything above (HUD rows, edge indicators, the world) recedes and
+  // the card reads clean — the pause-menu dim's per-viewport twin.
+  if (!replaying) keymap(glgame, glship);
   if (glgame->debug_grid) debug_info(glgame, glship);
 }
 
@@ -469,7 +486,12 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   mesh.draw();
 }
 
-void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
+// ONE full-window pass, not per-viewport: there is one pause state and one
+// shared cursor, so drawing the menu in every split-screen cell put four
+// identical menus on screen, each answering the same keys (4P field bug).
+// Called from GLGame::draw after the viewport passes, with the same
+// full-window viewport/ortho recipe as net_overlays.
+void Overlay::paused(const GLGame *glgame) {
   // Once the game is over, the game-over messaging (the shared GAME OVER
   // card online / in replays, the per-ship indicator offline) owns the
   // centre of the screen — never stack "Paused" under it. toggle_pause
@@ -477,48 +499,75 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   // while already paused (e.g. the host leaving a paused game is terminal
   // for a spectating client).
   if (glgame->all_players_out()) return;
-  if(!glgame->running && !glship->show_help) {
-    Typer::draw_centered(0, 30, "Paused", 25);
-    if(is_touch_mode()) {
-      // Touch has no cursor on any screen: the pause button resumes and the
-      // RETURN TO MENU band below leaves.
-      Typer::draw_centered(0, -40, "press play to resume", 8);
-      return;
-    }
-    // Selectable rows carrying the shared menu cursor, sized so the stack
-    // (size 13 rows at -42 and -80) bottoms out around -106, clear of the
-    // disconnect card's row at y=-130. The two no longer show at once —
-    // pause_menu_active() refuses while that card owns input — but the
-    // positions stay put so neither screen shifts.
-    //
-    // Ask the game whether the menu is LIVE rather than re-deriving it. The
-    // conditions had already drifted apart: this function tests the help
-    // card on the viewport's own ship, while pause_menu_active() refuses
-    // when ANY player has help open — so in split-screen, with P2's help
-    // card up and the game paused, P1's viewport drew a highlighted RESUME
-    // over a RETURN TO MENU that answered nothing. Same shape as the three
-    // replay ones. One predicate, both sides.
-    if (!glgame->pause_menu_active()) return;
-    MenuSelect::draw_row(PAUSE_ROW_Y0, "RESUME", PAUSE_ROW_SZ,
-                         glgame->pause_selection_ == GLGame::PAUSE_RESUME);
-    MenuSelect::draw_row(PAUSE_ROW_Y1, "RETURN TO MENU", PAUSE_ROW_SZ,
-                         glgame->pause_selection_ == GLGame::PAUSE_EXIT);
+  if (glgame->running) return;
+  // A help card is the thing that paused the game and already fills its
+  // owner's viewport; drawing "Paused" across the window would stack over
+  // it. pause_menu_active() refuses while ANY player's help is open (one
+  // predicate, both sides — the old per-viewport form tested only the
+  // viewport's own ship and drew a RESUME cursor that answered nothing);
+  // the title follows the same any-player rule.
+  for (const GLShip *gs : *glgame->players)
+    if (gs->show_help) return;
+
+  glViewport(0, 0, glgame->window.x(), glgame->window.y());
+  float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = glgame->window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
+  // Dim the whole frame while the cursor menu is live: in a 4P split the
+  // menu sat over four viewports of HUD text and starfield and was hard to
+  // pick out (field feedback). Exactly the menu case — the touch pause
+  // screen keeps its play button bright (it IS the resume control), and a
+  // replay's plain "Paused" title leaves the timeline chrome undimmed.
+  bool menu_live = glgame->pause_menu_active();
+  if (menu_live) {
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(0.0f, 0.0f, 0.0f, 0.6f);
+    mb.vertex(-hw, -hh); mb.vertex(hw, -hh); mb.vertex(hw, hh);
+    mb.vertex(-hw, -hh); mb.vertex(hw, hh); mb.vertex(-hw, hh);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
   }
+
+  Typer::draw_centered(0, 30, "Paused", 25);
+  if(is_touch_mode()) {
+    // Touch has no cursor on any screen: the pause button resumes and the
+    // RETURN TO MENU band below leaves.
+    Typer::draw_centered(0, -40, "press play to resume", 8);
+    return;
+  }
+  // Selectable rows carrying the shared menu cursor, sized so the stack
+  // (size 13 rows at -42 and -80) bottoms out around -106, clear of the
+  // disconnect card's row at y=-130. The two no longer show at once —
+  // pause_menu_active() refuses while that card owns input — but the
+  // positions stay put so neither screen shifts.
+  if (!menu_live) return;
+  MenuSelect::draw_row(PAUSE_ROW_Y0, "RESUME", PAUSE_ROW_SZ,
+                       glgame->pause_selection_ == GLGame::PAUSE_RESUME);
+  MenuSelect::draw_row(PAUSE_ROW_Y1, "RETURN TO MENU", PAUSE_ROW_SZ,
+                       glgame->pause_selection_ == GLGame::PAUSE_EXIT);
 }
 
 
 void Overlay::level(const GLGame *glgame, const GLShip *glship) {
   char buf[20];
   snprintf(buf, sizeof(buf), "LEVEL %d", glgame->generation + 1);
-  Typer::draw_centered(0, top_hud_y(glgame), buf, 12);
+  Typer::draw_centered(0, top_hud_y(glgame), buf, 12 * hud_fit(glgame));
 }
 
 void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
   int remaining = glship->ship->god_mode_time_remaining();
   if(remaining <= 0) return;
+  float f = hud_fit(glgame);
   float base_y = top_hud_y(glgame);
-  Typer::draw_centered(0, base_y - 62, "God mode", 10);
-  Typer::draw_centered(0, base_y - 100, remaining / 1000, 10);
+  Typer::draw_centered(0, base_y - 62 * f, "God mode", 10 * f);
+  Typer::draw_centered(0, base_y - 100 * f, remaining / 1000, 10 * f);
 }
 
 // The time-slow pickup's countdown, in WALL seconds (the number the player
@@ -528,20 +577,22 @@ void Overlay::time_slow(const GLGame *glgame, const GLShip *glship) {
   (void)glship;  // a world effect: every viewport shows the same countdown
   int remaining = glgame->time_slow_wall_ms_remaining();
   if(remaining <= 0) return;
+  float f = hud_fit(glgame);
   float base_y = top_hud_y(glgame);
-  Typer::draw_centered(0, base_y - 137, "Time slow", 10);
-  Typer::draw_centered(0, base_y - 175, (remaining + 999) / 1000, 10);
+  Typer::draw_centered(0, base_y - 137 * f, "Time slow", 10 * f);
+  Typer::draw_centered(0, base_y - 175 * f, (remaining + 999) / 1000, 10 * f);
 }
 
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
+  float f = hud_fit(glgame);
   float vw = Typer::scaled_window_width / glgame->num_x_viewports();
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   float top_y = top_hud_y(glgame);
   float drop = (vh - 20 - CORNER_INSET) - top_y;  // cutout shift, 0 without one
-  Typer::draw(vw - 40 - CORNER_INSET, top_y, glship->ship->score, 20);
+  Typer::draw(vw - 40 * f - CORNER_INSET, top_y, glship->ship->score, 20 * f);
   if(glship->ship->multiplier() > 1) {
-    Typer::draw(vw - 35 - CORNER_INSET, vh - 92 - CORNER_INSET - drop, "x", 15);
-    Typer::draw(vw - 65 - CORNER_INSET, vh - 80 - CORNER_INSET - drop, glship->ship->multiplier(), 20);
+    Typer::draw(vw - 35 * f - CORNER_INSET, vh - (92 * f) - CORNER_INSET - drop, "x", 15 * f);
+    Typer::draw(vw - 65 * f - CORNER_INSET, vh - (80 * f) - CORNER_INSET - drop, glship->ship->multiplier(), 20 * f);
   }
 }
 
@@ -552,8 +603,20 @@ void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
   // keeps it: that game (and its countdown) really is still running.
   if (glgame->net_card_owns_input()) return;
   if(glgame->running && glgame->level_cleared && (glship->ship->is_alive() || glship->ship->lives > 0)) {
-    Typer::draw_centered(0, 150, "CLEARED", 50);
-    Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000)+1, 20);
+    int countdown = (glgame->time_until_next_generation / 1000) + 1;
+    if (viewport_is_grid_cell(glgame)) {
+      // A quarter viewport has no free width beside the weapons list: at
+      // the classic anchor the banner ran straight through "MISSILES 994 /
+      // FIRE X NEXT C" (field bug). The list is at most four rows (the
+      // current primary + secondary), so dropping the banner just below it
+      // clears the column outright — better than shrinking the text until
+      // it fits between the columns, which took it near unreadable.
+      Typer::draw_centered(0, -35, "CLEARED", 50 * hud_fit(glgame));
+      Typer::draw_centered(0, -150, countdown, 20 * hud_fit(glgame));
+    } else {
+      Typer::draw_centered(0, 150, "CLEARED", 50);
+      Typer::draw_centered(0, -60, countdown, 20);
+    }
   }
 }
 
@@ -816,13 +879,6 @@ void Overlay::board_prompt(const GLGame *glgame) {
     MenuSelect::draw_row(-60, "RETURN TO MENU", 16, true);
 }
 
-void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
-  if(glship->show_help) {
-    glship->draw_keymap();
-  }
-}
-
-
 // Human-readable name of a bound key for HUD hints (F-keys arrive as
 // 128 + GLUT function-key code; everything else is the character itself).
 static void key_hint(int key, char *out, size_t n, const char *verb) {
@@ -833,6 +889,54 @@ static void key_hint(int key, char *out, size_t n, const char *verb) {
   else
     snprintf(out, n, "%s controls with F1", verb);
 }
+
+void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
+  if(glship->show_help) {
+    // Dim THIS viewport under the card (the pause dim's per-viewport twin;
+    // field: "too many menu elements" behind the card). The quad is
+    // deliberately oversized — the viewport transform clips it to exactly
+    // this player's screen, so no per-layout extents are needed, and other
+    // players' viewports stay bright.
+    {
+      static MeshBuilder mb;
+      static Mesh mesh;
+      const float E = 100000.0f;
+      mb.clear();
+      mb.begin(GL_TRIANGLES);
+      mb.color(0.0f, 0.0f, 0.0f, 0.6f);
+      mb.vertex(-E, -E); mb.vertex(E, -E); mb.vertex(E, E);
+      mb.vertex(-E, -E); mb.vertex(E, E);  mb.vertex(-E, E);
+      mb.end();
+      mesh.upload(mb, GL_DYNAMIC_DRAW);
+      mesh.draw();
+    }
+    // The card is laid out for a full-height viewport: it reaches ~485
+    // virtual units above centre, while a 2x2 grid cell only has
+    // scaled_window_height / ny (300 at ny=2) — the top half clipped off
+    // the quarter screens (4P field bug). Scale it to what the viewport
+    // can actually show; full-height viewports keep the classic size.
+    float avail = Typer::scaled_window_height / glgame->num_y_viewports();
+    float fit = avail / 500.0f;
+    if (fit > 1.0f) fit = 1.0f;
+    glship->draw_keymap(fit);
+    // The way OUT stays full-brightness: title_text draws only the "show"
+    // variant (it runs before the dim), the "hide" hint is drawn here on
+    // top of it, at the same spot title_text would have used.
+    if(!glship->last_input_was_controller && !is_touch_mode() &&
+       glship->help_key.primary() != 0) {
+      char hint[48];
+      key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
+      if((int)glgame->players->size() < LOCAL_PLAYER_CAP) {
+        float top_y = Typer::scaled_window_height - 40 - safe_inset_top_v();
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
+      } else {
+        float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
+        Typer::draw_centered(0, vhb+85, hint, 8);
+      }
+    }
+  }
+}
+
 
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   Ship* p1 = glgame->players->front()->ship;
@@ -873,15 +977,16 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       if (glgame->board_phase_ == GLGame::BoardOff)
         MenuSelect::draw_row(-100, "RETURN TO MENU", 16, true);
     }
-    if(!glship->last_input_was_controller && !is_touch_mode()) {
+    // No hint for a seat with no keyboard help binding (pad-joined P3/P4):
+    // key_hint's fallback would name P1's F1, which does nothing for this
+    // seat — their card is on R3, and the card itself says so. The "hide"
+    // variant is drawn by keymap() so it sits above the card's dim.
+    if(!glship->last_input_was_controller && !is_touch_mode() &&
+       glship->help_key.primary() != 0 && !glship->show_help &&
+       (glgame->current_time)/12000 % 2) {
       char hint[48];
-      if(glship->show_help) {
-        key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
-      } else if ((glgame->current_time)/12000 % 2) {
-        key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
-      }
+      key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
+      Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
     }
   } else {
     float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
@@ -899,15 +1004,16 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     }
     // Label the key this ship actually has bound — online the client's
     // local ship is player 2 in the list but plays with player-1 keys.
-    if(!glship->last_input_was_controller && !is_touch_mode()) {
+    // A seat with NO help binding (pad-joined P3/P4) gets no hint at all:
+    // key_hint's fallback would name P1's F1, which does nothing for this
+    // seat — their card is on R3, and the card itself says so. The "hide"
+    // variant is drawn by keymap() so it sits above the card's dim.
+    if(!glship->last_input_was_controller && !is_touch_mode() &&
+       glship->help_key.primary() != 0 && !glship->show_help &&
+       (glgame->current_time)/12000 % 2) {
       char hint[48];
-      if(glship->show_help) {
-        key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
-        Typer::draw_centered(0, vhb+85, hint, 8);
-      } else if ((glgame->current_time)/12000 % 2) {
-        key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
-        Typer::draw_centered(0, vhb+85, hint, 8);
-      }
+      key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
+      Typer::draw_centered(0, vhb+85, hint, 8);
     }
   }
   if(!glgame->running && glship->show_help) {

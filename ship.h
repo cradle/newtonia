@@ -118,6 +118,16 @@ class Ship : public CompositeObject {
     // online peer and the world actors false.
     bool sound_own_cues = true;
 
+    // Respawn-countdown tic, deferred: step() flags the second-boundary
+    // crossing here (1 = tic, 2 = final-second tic_low) instead of playing
+    // it, and GLGame drains the flags ONCE per step across all players —
+    // simultaneous joins/deaths sync the countdowns, and N in-phase copies
+    // of the same unattenuated cue sum into one very loud beep on the
+    // shared speakers (4P field bug #1). Same-step crossings collapse to a
+    // single audible tic per kind; staggered countdowns still tic apart.
+    int respawn_tic_pending = 0;
+    void flush_respawn_tic(bool &tic_played, bool &low_played);
+
     // Extrapolation damping for a ship whose rotation this machine is
     // GUESSING rather than driving: the client (and replay playback) turns
     // a replicated ship from the held-rotation flag in the 10 Hz snapshot,
@@ -594,7 +604,14 @@ class Ship : public CompositeObject {
     Mix_Chunk *missile_fly_sound = NULL;  // loop for replicated missiles (net client)
     Mix_Chunk *shoot_sound = NULL;
     Mix_Chunk *god_mode_music_sound = NULL, *god_mode_music_warn_sound = NULL;
-    int shield_hum_channel = -1;
+    // The shield hum is ONE shared refcounted loop, not a channel per ship:
+    // every local seat spawns invincible at once in split-screen, and N
+    // stacked copies of the same full-volume loop were "way too loud" (4P
+    // field bug). First own-cues ship to hum starts the channel, the last
+    // to stop halts it; overlapping windows hold it at one hum's loudness.
+    bool shield_humming = false;         // this ship's contribution
+    static int shield_hum_refs;          // ships currently humming
+    static int shield_hum_shared_channel;
     int boost_channel = -1;
     int god_mode_music_channel = -1;
     int god_mode_music_phase = 0;  // 0=off, 1=main, 2=warn
