@@ -375,7 +375,6 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   respawn_timer(glgame, glship);
   spectate(glgame, glship);
   net_badges(glgame, glship);
-  paused(glgame, glship);
   if (!replaying) touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
   if (glgame->debug_grid) debug_info(glgame, glship);
@@ -469,7 +468,12 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   mesh.draw();
 }
 
-void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
+// ONE full-window pass, not per-viewport: there is one pause state and one
+// shared cursor, so drawing the menu in every split-screen cell put four
+// identical menus on screen, each answering the same keys (4P field bug).
+// Called from GLGame::draw after the viewport passes, with the same
+// full-window viewport/ortho recipe as net_overlays.
+void Overlay::paused(const GLGame *glgame) {
   // Once the game is over, the game-over messaging (the shared GAME OVER
   // card online / in replays, the per-ship indicator offline) owns the
   // centre of the screen — never stack "Paused" under it. toggle_pause
@@ -477,33 +481,40 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   // while already paused (e.g. the host leaving a paused game is terminal
   // for a spectating client).
   if (glgame->all_players_out()) return;
-  if(!glgame->running && !glship->show_help) {
-    Typer::draw_centered(0, 30, "Paused", 25);
-    if(is_touch_mode()) {
-      // Touch has no cursor on any screen: the pause button resumes and the
-      // RETURN TO MENU band below leaves.
-      Typer::draw_centered(0, -40, "press play to resume", 8);
-      return;
-    }
-    // Selectable rows carrying the shared menu cursor, sized so the stack
-    // (size 13 rows at -42 and -80) bottoms out around -106, clear of the
-    // disconnect card's row at y=-130. The two no longer show at once —
-    // pause_menu_active() refuses while that card owns input — but the
-    // positions stay put so neither screen shifts.
-    //
-    // Ask the game whether the menu is LIVE rather than re-deriving it. The
-    // conditions had already drifted apart: this function tests the help
-    // card on the viewport's own ship, while pause_menu_active() refuses
-    // when ANY player has help open — so in split-screen, with P2's help
-    // card up and the game paused, P1's viewport drew a highlighted RESUME
-    // over a RETURN TO MENU that answered nothing. Same shape as the three
-    // replay ones. One predicate, both sides.
-    if (!glgame->pause_menu_active()) return;
-    MenuSelect::draw_row(PAUSE_ROW_Y0, "RESUME", PAUSE_ROW_SZ,
-                         glgame->pause_selection_ == GLGame::PAUSE_RESUME);
-    MenuSelect::draw_row(PAUSE_ROW_Y1, "RETURN TO MENU", PAUSE_ROW_SZ,
-                         glgame->pause_selection_ == GLGame::PAUSE_EXIT);
+  if (glgame->running) return;
+  // A help card is the thing that paused the game and already fills its
+  // owner's viewport; drawing "Paused" across the window would stack over
+  // it. pause_menu_active() refuses while ANY player's help is open (one
+  // predicate, both sides — the old per-viewport form tested only the
+  // viewport's own ship and drew a RESUME cursor that answered nothing);
+  // the title follows the same any-player rule.
+  for (const GLShip *gs : *glgame->players)
+    if (gs->show_help) return;
+
+  glViewport(0, 0, glgame->window.x(), glgame->window.y());
+  float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = glgame->window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
+  Typer::draw_centered(0, 30, "Paused", 25);
+  if(is_touch_mode()) {
+    // Touch has no cursor on any screen: the pause button resumes and the
+    // RETURN TO MENU band below leaves.
+    Typer::draw_centered(0, -40, "press play to resume", 8);
+    return;
   }
+  // Selectable rows carrying the shared menu cursor, sized so the stack
+  // (size 13 rows at -42 and -80) bottoms out around -106, clear of the
+  // disconnect card's row at y=-130. The two no longer show at once —
+  // pause_menu_active() refuses while that card owns input — but the
+  // positions stay put so neither screen shifts.
+  if (!glgame->pause_menu_active()) return;
+  MenuSelect::draw_row(PAUSE_ROW_Y0, "RESUME", PAUSE_ROW_SZ,
+                       glgame->pause_selection_ == GLGame::PAUSE_RESUME);
+  MenuSelect::draw_row(PAUSE_ROW_Y1, "RETURN TO MENU", PAUSE_ROW_SZ,
+                       glgame->pause_selection_ == GLGame::PAUSE_EXIT);
 }
 
 

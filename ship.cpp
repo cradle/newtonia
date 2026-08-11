@@ -2356,6 +2356,18 @@ void Ship::set_shield_hum(bool on) {
   }
 }
 
+void Ship::flush_respawn_tic(bool &tic_played, bool &low_played) {
+  int pending = respawn_tic_pending;
+  respawn_tic_pending = 0;
+  if(pending == 1 && !tic_played && tic_sound != NULL) {
+    Mix_PlayChannel(-1, tic_sound, 0);
+    tic_played = true;
+  } else if(pending == 2 && !low_played && tic_low_sound != NULL) {
+    Mix_PlayChannel(-1, tic_low_sound, 0);
+    low_played = true;
+  }
+}
+
 void Ship::stop_god_mode_music() {
   if(god_mode_music_channel >= 0) {
     Mix_HaltChannel(god_mode_music_channel);
@@ -2678,15 +2690,8 @@ void Ship::step(float delta, const Grid &grid) {
   } else if (lives > 0) {
     if(sound_own_cues) {
       if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
-        if(time_until_respawn > 1000) {
-          if(tic_sound != NULL) {
-            Mix_PlayChannel(-1, tic_sound, 0);
-          }
-        } else {
-          if(tic_low_sound != NULL) {
-            Mix_PlayChannel(-1, tic_low_sound, 0);
-          }
-        }
+        // Deferred to GLGame's per-step drain — see respawn_tic_pending.
+        respawn_tic_pending = (time_until_respawn > 1000) ? 1 : 2;
       }
     }
     time_until_respawn -= delta;

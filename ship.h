@@ -118,6 +118,16 @@ class Ship : public CompositeObject {
     // online peer and the world actors false.
     bool sound_own_cues = true;
 
+    // Respawn-countdown tic, deferred: step() flags the second-boundary
+    // crossing here (1 = tic, 2 = final-second tic_low) instead of playing
+    // it, and GLGame drains the flags ONCE per step across all players —
+    // simultaneous joins/deaths sync the countdowns, and N in-phase copies
+    // of the same unattenuated cue sum into one very loud beep on the
+    // shared speakers (4P field bug #1). Same-step crossings collapse to a
+    // single audible tic per kind; staggered countdowns still tic apart.
+    int respawn_tic_pending = 0;
+    void flush_respawn_tic(bool &tic_played, bool &low_played);
+
     // Extrapolation damping for a ship whose rotation this machine is
     // GUESSING rather than driving: the client (and replay playback) turns
     // a replicated ship from the held-rotation flag in the 10 Hz snapshot,

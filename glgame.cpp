@@ -5368,6 +5368,15 @@ void GLGame::tick_net_client(int delta) {
         shock_targets->push_back(gs->ship);
 
     for (auto *gs : *players) gs->step(step_size, grid);
+    {
+      // Same one-tic-per-step drain as the offline/host loop (see
+      // Ship::respawn_tic_pending) — only the local ship has own-cues
+      // here, but the flag must drain wherever players step or it plays
+      // nothing at all.
+      bool tic_played = false, low_played = false;
+      for (auto *gs : *players)
+        gs->ship->flush_respawn_tic(tic_played, low_played);
+    }
     // The remote (host) ship reconciles like the asteroids; the LOCAL
     // ship never banks an error (its pose is authoritative, v12), so
     // this is a no-op for it.
@@ -7786,6 +7795,13 @@ void GLGame::tick(int delta) {
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size, grid);
     }
+    {
+      // One audible respawn-countdown tic per step, however many ships are
+      // counting down in sync (see Ship::respawn_tic_pending).
+      bool tic_played = false, low_played = false;
+      for(o = players->begin(); o != players->end(); o++)
+        (*o)->ship->flush_respawn_tic(tic_played, low_played);
+    }
     // v12 adopt smoothing: a post-blackout pose catch-up banked by
     // net_host_poll glides in instead of hopping on this screen. Every
     // remote hull, by seat (B7): the back()-only form drained one peer,
@@ -8929,6 +8945,10 @@ void GLGame::draw(void) {
     //Draw map after - for partial translucency
     if (!shot_hide_hud_) draw_map();
   }
+  // Pause overlay — full-window, after every viewport pass, so split-screen
+  // shows ONE menu instead of a copy per cell (it answers one shared
+  // cursor). No-op while the game runs.
+  Overlay::paused(this);
   // Leaderboard prompt/upload/result — its own full-window overlay so the
   // OFFLINE game-over card gets it too (the primary solo case). No-op
   // unless a board flow is live (LEADERBOARD.md).
