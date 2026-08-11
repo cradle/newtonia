@@ -2439,10 +2439,28 @@ void NetLobby::draw() {
       break;
   }
 
+  // Fit the list above the BACK TO MENU band instead of walking into it.
+  // Every screen here used a fixed 52-unit spacing from a fixed origin,
+  // which was fine while the lists were a known handful of rows — but the
+  // waiting room's roster GROWS with the room (a count line, one row per
+  // seated peer, and the START row), so at 2/4 "ENTER - START GAME" landed
+  // on top of the band, and a full room would have run off the screen
+  // (field: "all the lobby text overlaps"). Shrink the step and the text
+  // together, only when the list is genuinely too long, so short screens
+  // keep their exact layout.
+  int line_h = line, line_sz = sz;
+  int rows = (int)lines.size() - 1;
+  const int kListBottom = -330;  // last anchor stays clear of the band
+  if (rows > 0 && y - rows * line_h < kListBottom) {
+    float fit = (float)(y - kListBottom) / (float)(rows * line_h);
+    line_h = (int)(line_h * fit);
+    line_sz = (int)(sz * fit);
+    if (line_sz < 10) line_sz = 10;  // never shrink past legibility
+  }
   for (size_t i = 0; i < lines.size(); i++) {
     if (!lines[i].empty())
-      Typer::draw_centered_verified(0, y - (int)i * line, lines[i].c_str(), sz,
-                                    (int)i == verified_line);
+      Typer::draw_centered_verified(0, y - (int)i * line_h, lines[i].c_str(),
+                                    line_sz, (int)i == verified_line);
   }
 
   // (The joiner waiting screens used to add a CANCEL band above the

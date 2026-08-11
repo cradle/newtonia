@@ -195,8 +195,18 @@ void Overlay::net_overlays(const GLGame *glgame) {
   // the reconnect notice, is the ending in that case.
   bool all_game_over = glgame->all_players_out();
 
+  // The room code stays up for the WHOLE session, not just after a drop
+  // (field request): the host reads it out to whoever is joining, a seat
+  // can open at any moment, and hunting for it meant making someone
+  // disconnect first. Drawn at the same spot the loss notice used to put
+  // it, so nothing moves when a player actually does leave — that branch
+  // no longer draws its own copy.
+  bool show_room = !all_game_over && !glgame->net_room_code_.empty() &&
+                   glgame->net_mode_ != GLGame::NetOff &&
+                   glgame->net_mode_ != GLGame::NetReplay;
+
   if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
-      !glgame->net_any_peer_lost())
+      !glgame->net_any_peer_lost() && !show_room)
     return;
 
   glViewport(0, 0, glgame->window.x(), glgame->window.y());
@@ -213,6 +223,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
   // vh is the virtual half-height (the top of the title-safe area).
   float vh = Typer::scaled_window_height;
   int now = glgame->current_time;
+
+  if (show_room) {
+    std::string room = "ROOM " + glgame->net_room_code_;
+    Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
+  }
 
   if (all_game_over) {
     // The offline hints live in the single-player title_text branch, so
@@ -265,10 +280,8 @@ void Overlay::net_overlays(const GLGame *glgame) {
              " DISCONNECTED";
     }
     Typer::draw_centered(0, vh * 0.80f, head.c_str(), 20);
-    if (glgame->net_signal_) {
-      std::string room = "ROOM " + glgame->net_room_code_;
-      Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
-    }
+    // The room line itself is the always-on one above — this branch used to
+    // draw its own copy, which is why the code only ever appeared here.
     if (glgame->net_lan_door_open())
       Typer::draw_centered(0, vh * (glgame->net_signal_ ? 0.57f : 0.67f),
                            "VISIBLE ON THIS NETWORK", 14);
