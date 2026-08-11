@@ -12,7 +12,9 @@ any B7 client build reaches players, and only the BETA worker has it
 pre-multi-join worker degrades every room to the classic single pair.
 The next `v*.*.*` release tag closes the gate by design (deploy-signal
 ships the production worker in minutes while the same tag's store
-builds take far longer to reach players).
+builds take far longer to reach players). Everything still open —
+the gate, portal text, known limits, deferred decisions — is
+inventoried with pickup instructions in **§5 Outstanding work**.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -582,15 +584,122 @@ an A3-sized PR; B3 is a worker-only project with its own test rig; B4 is
 the big one; B5–B6 are bounded by decisions already made. The estimate
 stands.
 
-## 5. Open questions
+## 5. Outstanding work
 
-- **Achievements**: `coop_clear` means "≥2 players", so 4P clears count —
-  but the portal text in all three stores reads "Clear a level in 2-player
-  mode" (ACHIEVEMENTS.md §5 and the App Store Connect table), now wrong for
-  3–4P clears. Outstanding: reword to "co-op mode" in App Store Connect /
-  Play Console / Steamworks and in ACHIEVEMENTS.md (portal edits are
-  human-only).
-- **Options layout**: flat 15-row list vs per-player sub-rows (D9 fallback) —
-  decide after seeing the shot.
-- **Performance budget**: 4× world draws + up to 4 WarpPass captures on
-  low-end desktop — measure before optimising.
+Everything left after B7 + follow-ups (#445–#448), written to be
+picked up cold. Ordered by urgency. Inventory taken 2026-08-11.
+
+### O1 — Ship it: cut the next release tag (maintainer; BLOCKS everything 4P-online)
+
+The production signal worker (`newtonia-signal`) still runs pre-B3 code:
+B3 (#440) merged 2026-08-10 and auto-deployed only the BETA worker
+(master-push → beta is the pipeline's rule); the newest tag v1.52.0 was
+cut 2026-08-08, before B3. Against a pre-multi-join worker every room
+degrades to the classic single pair — no jids means no waiting room —
+so a B7-flipped client must not reach players first.
+
+The next `v*.*.*` tag closes the gate by design: deploy-signal ships
+the production worker in minutes, while the same tag's store builds
+(Steam beta branch, TestFlight, Play) take far longer to reach anyone.
+If extra margin is wanted, manually dispatch deploy-signal with
+target=production ahead of the tag. Verify after: the tag's
+deploy-signal run deployed the top-level (non-beta) config, and a
+2-client smoke against production still pairs (the protocol is
+back-compatible for 2P; the seven B3 protocol-test families cover the
+worker itself).
+
+### O2 — `coop_clear` portal text says "2-player mode" (human-only portal edits)
+
+The achievement unlocks for any clear with ≥2 players (unchanged — 4P
+clears count), but the player-facing text in all three stores reads
+"Clear a level in 2-player mode" (entered 2026-07-26): App Store
+Connect, Play Console, and Steamworks, plus the master-list rows in
+ACHIEVEMENTS.md §5 and the ASC table copy (ACHIEVEMENTS.md:278, :554).
+Reword to "co-op mode" (or "with a co-pilot") in each portal; then
+update the two ACHIEVEMENTS.md tables to match what was entered. No
+code change — the symbolic id, gating, and point values stay put.
+
+### O3 — Host per-seat manage/kick UI (B7 known limit)
+
+The hosting waiting room shows the roster (per-seat badges, attestation
+state) but offers no way to remove a peer — not in the lobby, not
+mid-game. Consequences: a griefing or wedged joiner can squat a seat
+until they disconnect themselves, and the host's only recourse is
+abandoning the room. Sketch: a lobby-side selection over the seated
+rows (the `MenuSelect` primitives; the roster is already drawn
+per-seat) with a KICK action that closes that peer's session/transport,
+frees the seat (the existing park/unpark machinery — a kick is a forced
+park with no rejoin door), and re-advertises the invite. Mid-game kick
+is a separate decision (probably out of scope; pausing policy
+interactions). Needs an e2e in the nseat family: kick seat 3 in the
+lobby, verify a fresh joiner takes the freed seat.
+
+### O4 — N>1 rejoin ICE-flap wait (B5 known limit)
+
+A rejoiner whose reconnect attempt half-establishes and dies (network
+blip mid-ICE, app relaunched during the handshake) leaves the host
+holding a half-open adoption session. At N=1 a `PeerJoin` arriving
+while a session already exists proves the joiner re-entered, so the
+host drops the corpse and re-offers immediately (glgame.cpp:2891). At
+N>1 that inference is unsound — the relay mints a fresh jid per socket,
+so a `PeerJoin` could be a DIFFERENT player arriving for another parked
+seat, and tearing down an in-flight handshake on that guess would break
+a legitimately slow handshake (the exact failure mode the N=1 branch's
+comment documents). So at N>1 the corpse only dies at the transport's
+~30 s ICE timeout, and because rejoin doors serve one parked seat at a
+time (lowest first), rejoiners queued behind the flapped one wait too.
+Self-recovering, never a hang — just slow. Fix direction: attach the
+rejoiner's IDENTITY to the join event so the host can match it to the
+seat whose handshake is stale — the same name+platform matching #447's
+seat resolver does at WELCOME time, applied one step earlier. That
+means a worker change (carry a claimed identity on the join
+announcement, or a client "I am rejoining as X" pre-frame) — i.e. a
+signal-protocol addition with the usual beta-worker-first deploy, so
+it is NOT a quick client-only patch. E2e to prove it: nseat_rejoin
+variant that SIGKILLs the rejoiner mid-handshake (between answer and
+connected) and asserts the second attempt seats in well under 30 s.
+
+### O5 — Options layout verdict (D9, decide-by-looking)
+
+Phase A shipped the simple thing: the desktop options screen is a flat
+15-row list (P1–P4 × sensitivity/smoothing/camera, plus the shared
+rows), compressed automatically by `opt_row_center`. The D9 fallback —
+collapsing each player's three rows into one row cycling a sub-value —
+was never needed structurally, but nobody has signed off the 15-row
+legibility on a small window. Do: render the options screen through the
+shots harness at typical sizes (1280×720 and the Steam Deck's 1280×800
+at minimum), look, decide. If it's fine, delete this item and mark D9
+resolved; if it's cramped, implement the fallback (menu.cpp `opt_row`
+table + the seed/commit loops).
+
+### O6 — 4P performance budget (measure before optimising)
+
+A 4P grid draws the world four times per frame, and WarpPass (the
+invisible-asteroid lens) can capture the viewport up to four times per
+frame when lenses sit on multiple screens (glgame.cpp:8500 reads the
+live viewport rect, so it is grid-correct but not gated). Nobody has
+measured this on weak hardware. Do: run the headless driver's frame
+timing (the video-render path gives deterministic per-frame numbers) at
+1P vs 4P on generations ≥4 (invisible asteroids present), and on a
+low-end box or a capped-clock VM if available. If WarpPass dominates,
+the planned mitigation is round-robin capture gating — N captures per
+frame, `lens_on_screen` already skips off-screen lenses — sketched in
+A3. If the base 4× draw dominates, that's a bigger conversation
+(culling is already per-viewport; mesh uploads are shared).
+
+### Accepted as-is (documented so nobody re-opens them by accident)
+
+- **CI stays 2-instance.** The 3/4-seat e2e suites (`nseat.sh`,
+  `nseat_rejoin.sh`, `nseat_gameover.sh`, `nseat_soak.sh`,
+  `fourseat.sh`) run locally/on-demand against a wrangler-dev relay,
+  like gensoak — runner cost, deliberate.
+- **Manual clipboard netplay caps at host+1** (PB-D6): structurally
+  pairwise, kept as the 2-player rescue path when the worker is
+  unreachable.
+- **Touch platforms stay single-local-player**; they seat up to three
+  remote friends online.
+- **P3/P4 ship with no keyboard defaults** (D3): joinable by controller
+  only; `p3_*`/`p4_*` INI keys parse for hand-binders.
+- **An old build ignores 3+-player saves** (D8) and an old build
+  re-saving the INI drops `p3_*`/`p4_*` lines (A1) — standard downgrade
+  outcomes, documented in savegame.h.
