@@ -39,6 +39,8 @@ public:
   // net_overlays — one pause state, one cursor, one menu on screen, not a
   // copy per split-screen cell. Called from GLGame::draw, not draw().
   static void paused(const GLGame *glgame);
+  // Seat roster (offline), drawn over the pause menu it replaces.
+  static void seat_roster(const GLGame *glgame);
   // Touch OSD (joystick, fire/mine, pause) — public so the intro screen can
   // draw it too; no-op off Android/iOS. Needs a full-window ortho of
   // ±window extents to be current.

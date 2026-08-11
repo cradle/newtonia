@@ -236,6 +236,7 @@ void GLShip::clear_keys() {
   left_key = right_key = shoot_key = thrust_key = teleport_key = reverse_key =
   mine_key = next_weapon_key = boost_key = help_key = next_secondary_key =
   toggle_rotate_view_key = KeyBinding();
+  keymap_slot_ = -1;
 }
 
 void GLShip::set_controller(SDL_GameController *game_controller) {

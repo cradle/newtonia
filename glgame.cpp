@@ -141,7 +141,10 @@ static void set_player_keys(GLShip *gs, int player_index,
   if (player_index < 0) player_index = 0;
   if (player_index >= MAX_PLAYERS) player_index = MAX_PLAYERS - 1;
   PlayerKeys &k = g_prefs.player_keys[player_index];
-  if (with_bindings) gs->set_keys(k);
+  if (with_bindings) {
+    gs->set_keys(k);
+    gs->set_keymap_slot(player_index);
+  }
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
   gs->set_rotate_view_pref(&k.rotate_view);
@@ -1160,7 +1163,10 @@ void GLGame::toggle_pause(bool broadcast) {
   running = !running;
   // The pause menu always opens on RESUME: leaving the highlight where the
   // last pause left it would put RETURN TO MENU under a reflexive confirm.
+  // The roster closes with the pause screen for the same reason — every
+  // pause opens on the same screen, however the last one ended.
   if (!running) pause_selection_ = PAUSE_RESUME;
+  roster_active_ = false;
   // Pausing auto-saves (the long-documented behavior — it previously only
   // happened via the focus-loss path, so quitting in a way that skips the
   // exit hooks (force-kill, crash, a killed mobile-web tab) lost everything
@@ -1211,6 +1217,10 @@ bool GLGame::replay_exit_offered() const {
 
 bool GLGame::pause_menu_active() const {
   if (running) return false;
+  // The seat roster is drawn over the pause menu and owns input while it is
+  // up — one screen answering at a time, the same rule the disconnect card
+  // and help card follow.
+  if (roster_active_) return false;
   // Touch draws no selection cursor on any screen, and the pause screen
   // there already has both actions as touch targets.
   if (is_touch_mode()) return false;
@@ -1238,15 +1248,193 @@ bool GLGame::pause_menu_active() const {
 }
 
 void GLGame::pause_nav(unsigned char key) {
-  if (MenuSelect::move(key, pause_selection_, PAUSE_ROWS)) return;
+  if (MenuSelect::move(key, pause_selection_, pause_row_count())) return;
   if (!MenuSelect::is_confirm(key)) return;
-  if (pause_selection_ == PAUSE_RESUME) {
-    toggle_pause();
-  } else {
-    // Exactly what the menu key does — save first, then hand over.
-    save_progress();
-    request_state_change(new Menu());
+  switch (pause_row_at(pause_selection_)) {
+    case PAUSE_RESUME:
+      toggle_pause();
+      break;
+    case PAUSE_PLAYERS:
+      roster_active_ = true;
+      roster_selection_ = 0;
+      break;
+    default:
+      // Exactly what the menu key does — save first, then hand over.
+      save_progress();
+      request_state_change(new Menu());
+      break;
   }
+}
+
+// ---- Seat input roster ------------------------------------------------
+
+// The seat at list position i (players is a list, so no operator[]).
+static GLShip *seat_ship_at(std::list<GLShip*> *players, int i) {
+  if (i < 0 || i >= (int)players->size()) return NULL;
+  auto it = players->begin();
+  std::advance(it, i);
+  return *it;
+}
+
+// A keyboard cluster's label, read from the slot's own bindings so a
+// hand-edited p3_*/p4_* INI shows the truth rather than a hardcoded guess:
+// the four direction primaries, e.g. "WASD" for slot 0 and "IJKL" for 1.
+static std::string cluster_label(int slot) {
+  if (slot < 0 || slot >= MAX_PLAYERS) return std::string();
+  const PlayerKeys &k = g_prefs.player_keys[slot];
+  auto glyph = [](int key) -> char {
+    if (key >= 33 && key <= 126) return (char)toupper(key);
+    return '?';
+  };
+  if (k.thrust.primary() == 0) return std::string();  // slot binds nothing
+  char buf[5] = { glyph(k.thrust.primary()), glyph(k.left.primary()),
+                  glyph(k.reverse.primary()), glyph(k.right.primary()), 0 };
+  return std::string(buf);
+}
+
+// 1-based position among the connected game controllers — stable enough to
+// tell two pads apart on screen, and far shorter than SDL's product names.
+static int pad_number(SDL_JoystickID id) {
+  int n = SDL_NumJoysticks(), num = 0;
+  for (int i = 0; i < n; i++) {
+    if (!SDL_IsGameController(i)) continue;
+    num++;
+    if (SDL_JoystickGetDeviceInstanceID(i) == id) return num;
+  }
+  return 0;
+}
+
+bool GLGame::roster_available() const {
+  // Online seats belong to peers (kick/manage is a separate job) and touch
+  // has one local player by construction, so this is the offline screen.
+  return net_mode_ == NetOff && !is_touch_mode();
+}
+
+int GLGame::roster_row_count() const {
+  int seats = (int)players->size();
+  return seats < MAX_PLAYERS ? seats + 1 : seats;
+}
+
+GLGame::SeatInput GLGame::roster_seat_input(int seat) const {
+  SeatInput in;
+  GLShip *gs = seat_ship_at(players, seat);
+  if (!gs) return in;
+  if (gs->has_controller()) {
+    in.kind = SeatInput::Pad;
+    in.pad = gs->controller_id();
+  } else if (gs->has_keys()) {
+    in.kind = SeatInput::Keys;
+    in.slot = gs->keymap_slot();
+  }
+  return in;
+}
+
+std::string GLGame::roster_seat_label(int seat) const {
+  GLShip *gs = seat_ship_at(players, seat);
+  if (!gs) return "EMPTY";
+  std::string out;
+  if (gs->has_keys()) out = cluster_label(gs->keymap_slot());
+  if (gs->has_controller()) {
+    char buf[16];
+    snprintf(buf, sizeof buf, "PAD %d", pad_number(gs->controller_id()));
+    // A seat can legitimately hold both (a pad-started solo game keeps the
+    // keyboard too), so say so rather than hiding one of them.
+    out = out.empty() ? std::string(buf) : out + " + " + buf;
+  }
+  return out.empty() ? "NONE" : out;
+}
+
+// Every input this machine can offer a seat: nothing, each keyboard cluster
+// that actually binds keys, then each connected pad.
+std::vector<GLGame::SeatInput> GLGame::roster_input_options() const {
+  std::vector<SeatInput> out;
+  out.push_back(SeatInput());  // None
+  for (int s = 0; s < MAX_PLAYERS; s++) {
+    if (cluster_label(s).empty()) continue;
+    SeatInput in;
+    in.kind = SeatInput::Keys;
+    in.slot = s;
+    out.push_back(in);
+  }
+  int n = SDL_NumJoysticks();
+  for (int i = 0; i < n; i++) {
+    if (!SDL_IsGameController(i)) continue;
+    SeatInput in;
+    in.kind = SeatInput::Pad;
+    in.pad = SDL_JoystickGetDeviceInstanceID(i);
+    out.push_back(in);
+  }
+  return out;
+}
+
+// Move `in` onto `seat`, taking it off whatever seat held it. An input drives
+// exactly one ship: two seats sharing a cluster would answer the same keys,
+// which is the confusion this screen exists to end.
+void GLGame::roster_apply(int row, const SeatInput &in) {
+  if (row >= (int)players->size()) {
+    // The ADD row: an input lands a new seat. NONE would seat a ship nobody
+    // can fly, so it stays a no-op.
+    if (in.kind == SeatInput::None) return;
+    if ((int)players->size() >= MAX_PLAYERS) return;
+    add_local_player(NULL, /*with_keys=*/false);
+    if (row >= (int)players->size()) return;  // refused (e.g. p1 out)
+  }
+  GLShip *target = seat_ship_at(players, row);
+  if (!target) return;
+  for (auto *gs : *players) {
+    if (gs == target) continue;
+    if (in.kind == SeatInput::Keys && gs->keymap_slot() == in.slot)
+      gs->clear_keys();
+    if (in.kind == SeatInput::Pad && gs->is_my_controller_id(in.pad))
+      gs->set_controller(NULL);
+  }
+  // Exclusive per seat: picking one input clears the other, so the row says
+  // what actually drives the ship.
+  target->release_controls();  // a held key/stick must not latch across this
+  switch (in.kind) {
+    case SeatInput::Keys:
+      target->set_controller(NULL);
+      set_player_keys(target, in.slot);
+      break;
+    case SeatInput::Pad:
+      target->clear_keys();
+      target->set_controller(SDL_GameControllerFromInstanceID(in.pad));
+      break;
+    default:
+      target->clear_keys();
+      target->set_controller(NULL);
+      break;
+  }
+}
+
+void GLGame::roster_nav(unsigned char key) {
+  if (MenuSelect::is_back(key) || MenuSelect::is_confirm(key)) {
+    roster_active_ = false;  // back to the pause menu
+    return;
+  }
+  if (MenuSelect::move(key, roster_selection_, roster_row_count())) return;
+  if (!MenuSelect::is_left(key) && !MenuSelect::is_right(key)) return;
+  std::vector<SeatInput> options = roster_input_options();
+  if (options.empty()) return;
+  SeatInput current = roster_selection_ < (int)players->size()
+                          ? roster_seat_input(roster_selection_)
+                          : SeatInput();
+  int at = 0;
+  for (int i = 0; i < (int)options.size(); i++)
+    if (options[i].same_as(current)) { at = i; break; }
+  at += MenuSelect::is_right(key) ? 1 : -1;
+  if (at < 0) at = (int)options.size() - 1;
+  if (at >= (int)options.size()) at = 0;
+  roster_apply(roster_selection_, options[at]);
+}
+
+bool GLGame::roster_claim_pad(SDL_JoystickID which) {
+  if (is_player_controller(which)) return false;  // already driving a seat
+  SeatInput in;
+  in.kind = SeatInput::Pad;
+  in.pad = which;
+  roster_apply(roster_selection_, in);
+  return true;
 }
 
 bool GLGame::is_player_controller(SDL_JoystickID which) const {
@@ -1310,9 +1498,16 @@ void GLGame::controller_added(SDL_GameController *ctrl) {
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) return;
   }
-  // Assign to the first player who has no controller
+  // Give it back to a seat that has NO input at all — a pad-joined seat
+  // whose pad dropped, which is the reconnect case this exists for. It used
+  // to take the first seat without a CONTROLLER, which on a keyboard game is
+  // player 1: plugging a pad in (or launching with one already connected)
+  // silently glued it onto the keyboard pilot, so two people drove one ship
+  // and the pad's owner could never claim a seat of their own — the blocker
+  // for 2 keyboard + 2 pad (field, 2026-08-11). A spare pad now stays free,
+  // which is what START-to-join and the seat roster both want.
   for(auto* glship : *players) {
-    if(!glship->has_controller()) {
+    if(!glship->has_controller() && !glship->has_keys()) {
       glship->set_controller(ctrl);
       return;
     }
@@ -8949,6 +9144,7 @@ void GLGame::draw(void) {
   // shows ONE menu instead of a copy per cell (it answers one shared
   // cursor). No-op while the game runs.
   Overlay::paused(this);
+  Overlay::seat_roster(this);  // replaces the pause menu while it is open
   // Leaderboard prompt/upload/result — its own full-window overlay so the
   // OFFLINE game-over card gets it too (the primary solo case). No-op
   // unless a board flow is live (LEADERBOARD.md).
@@ -9664,6 +9860,26 @@ void GLGame::controller(SDL_Event event) {
     }
     return;
   }
+  // Seat roster: a pad ALREADY driving a seat navigates it; a pad driving
+  // nothing claims the highlighted seat by pressing any button, which is
+  // how a new player joins here instead of through the START ladder below.
+  if (roster_open()) {
+    if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+      if (!is_player_controller(event.cbutton.which)) {
+        roster_claim_pad(event.cbutton.which);
+        return;
+      }
+      roster_nav(nav_key_from_controller(event));
+      return;
+    }
+    if (event.type == SDL_CONTROLLERAXISMOTION &&
+        is_player_controller(event.caxis.which)) {
+      unsigned char nav = nav_key_from_controller(event);
+      if (nav) roster_nav(nav);
+    }
+    return;
+  }
+
   // Paused with the menu up: dpad and left stick move the highlight, A
   // confirms — but only from a pad that is already playing, so an unknown
   // pad's A still joins player 2 through the ladder below. START (toggle
@@ -10452,6 +10668,15 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     if (key == (unsigned char)gk.time_slow_down && replay_speed_ > 0.26f)
       replay_speed_ *= 0.5f;
     if (key == (unsigned char)gk.time_reset) replay_speed_ = 1.0f;
+    return;
+  }
+
+  // The seat roster owns input while it is up: Esc backs out to the pause
+  // menu instead of quitting the game, and left/right rebind a seat. The
+  // pause key still resumes outright (toggle_pause closes the roster).
+  if (roster_open()) {
+    if (key == (unsigned char)gk.pause) { toggle_pause(); return; }
+    roster_nav(nav_key(key));
     return;
   }
 
