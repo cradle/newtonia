@@ -2113,6 +2113,14 @@ void NetLobby::draw() {
                   jid_attested_.find(sp.jid);
               if (it != jid_attested_.end()) name = it->second.name;
             }
+            // A jid-less seat came through the LAN door: pairing is local,
+            // the per-peer offline carve-out applies, so its HELLO claim
+            // names the row (mixed rooms used to bare-label the couch
+            // friend because one worker made the whole roster strict).
+            if (name.empty() && sp.jid.empty() && sp.session) {
+              name = net_identity_name_or(sp.session->peer_identity(), "",
+                                          NET_ID_OFFLINE);
+            }
             if (name.empty()) {
               snprintf(buf, sizeof(buf), "PLAYER %d - READY", sp.seat);
               lines.push_back(buf);

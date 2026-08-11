@@ -402,6 +402,13 @@ private:
     // a DIFFERENT friend, whose own announce re-attests through the
     // worker (Event::Identity restores it).
     NetIdentity attested;
+    // This peer paired through a LOCAL door (LAN beacon) rather than the
+    // signaling worker: the offline display carve-out applies PER PEER in
+    // a mixed room (net_id_ctx_for_seat) — its claimed name renders, like
+    // the classic worker-less flows, while relay-paired peers stay
+    // ONLINE-strict. A relay REJOIN re-pairs through the worker and
+    // clears it.
+    bool offline_paired = false;
     // Transport dead / dead-man tripped. Room-level questions go through
     // the any/all predicates below, which diverge at B4.
     bool lost = false;
@@ -538,6 +545,25 @@ private:
   // (0 and 1 unused — the host's identity comes from the handshake). Filled
   // by the MSG_PEER_IDENT relay; empty = role label, exactly the legacy UI.
   NetIdentity net_seat_identities_[MAX_PLAYERS + 1];
+  // The relay's offline-paired flag per seat (client mirror of
+  // NetPeer::offline_paired): that seat paired through the host's LAN
+  // door, so its CLAIMED name renders (see net_id_ctx_for_seat).
+  bool net_seat_offline_paired_[MAX_PLAYERS + 1] = {};
+  // Display context PER SEAT: the session-global rule (net_id_ctx), except
+  // a LAN-door-paired peer gets the offline carve-out individually — a
+  // mixed relay+LAN room used to render the LAN friend as a bare role
+  // label because one worker anywhere made the whole session ONLINE-strict.
+  NetIdentityCtx net_id_ctx_for_seat(int seat) const {
+    if (net_id_ctx() == NET_ID_OFFLINE) return NET_ID_OFFLINE;
+    if (net_mode_ == NetHost) {
+      NetPeer *p = net_peer_by_seat(seat);
+      if (p && p->offline_paired) return NET_ID_OFFLINE;
+    } else if (net_mode_ == NetClient && seat >= 2 && seat <= MAX_PLAYERS &&
+               net_seat_offline_paired_[seat]) {
+      return NET_ID_OFFLINE;
+    }
+    return net_id_ctx();
+  }
   // Last WELCOME-assigned seat a live session reported (see
   // net_local_seat): survives the sessionless rejoin window. 0 = never
   // had a session (pre-handshake), which reads as the pre-B4 default 2.
@@ -546,6 +572,12 @@ private:
   // one message per remote seat, to one peer or to every live session.
   void net_send_seat_identities_to(NetPeer &peer);
   void net_broadcast_seat_identities();
+  // Rejoin-by-identity (NetSession::set_seat_resolver): the parked seat
+  // whose remembered pilot the claimed HELLO identity matches, or 0.
+  int net_rejoin_seat_for_identity(const NetIdentity &claimed) const;
+  // Eaten-offer watchdog (see net_host_rejoin_poll): ms the door's offer
+  // has sat unanswered with no handshake in flight.
+  int net_rehost_offer_age_ms_ = 0;
   // Fallback label when the peer's claim carries no renderable name
   // (badge-only identity — e.g. an iOS host with no Game Center
   // sign-in). The client of a LAN-door session knows the host's
@@ -833,6 +865,19 @@ private:
   std::vector<std::string> net_ice_;  // TURN triples for rejoin re-hosts
   NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
   bool net_rehost_offer_sent_ = false;
+  // The current rehost transport's already-drained trickle candidates
+  // ("mid\nsdp" as polled): a RE-pushed offer (watchdog, room reclaim)
+  // resets the worker's stored candidate set, and the transport streams
+  // each candidate exactly once — without a re-send from this cache a
+  // TURN-only rejoiner bootstraps candidate-less and eats a full ICE
+  // timeout before the next fresh offer. Cleared with each new transport.
+  std::vector<std::string> net_rehost_cands_;
+  // Which door the in-flight rejoin adoption came through (LAN beacon vs
+  // relay): applied to the ADOPTED peer's offline_paired at Ready — the
+  // seat resolver can re-map the adoption, so the door guess must not be
+  // mutated at answer/beacon time. One adoption at a time (both doors
+  // share net_rehost_seat_ / net_handshaking_lost_peer).
+  bool net_rehost_adopt_lan_ = false;
   // ---- LAN rejoin (round 4; see NETPLAY.md "LAN is not a mode") ----
   // On client loss the host re-opens the LAN door TOO: a fresh beacon +
   // blob listener beside the relay rejoin offer (or alone, when the

@@ -153,6 +153,13 @@ room_fail() {
   exit 1
 }
 
+# room_joiner_env I: per-joiner env assignments for room_setup's launches
+# (space-free VAR=VAL words on stdout). Drivers override it to give each
+# joiner instance its own env — e.g. a distinct NEWTONIA_NET_NAME so the
+# rejoin-by-identity door can tell the pilots apart (nseat_swap.sh).
+# Default: nothing.
+room_joiner_env() { :; }
+
 # room_setup N [HOSTVAR=VAL ...]: assemble the room and wait until it is
 # PLAYING — every seat filled, auto-started on full, every joiner
 # bootstrapped. Extra args become host-only env (test hooks).
@@ -170,7 +177,7 @@ room_setup() {
   echo "room code: $ROOM_CODE"
   for i in $(seq 1 $((n - 1))); do
     before=$(newtonia_windows)
-    ROOM_PIDS[$i]=$(launch "joiner$i")
+    ROOM_PIDS[$i]=$(launch "joiner$i" $(room_joiner_env "$i"))
     sleep 4
     ROOM_WINS[$i]=$(new_window_since "$before")
     [ -n "${ROOM_WINS[$i]}" ] || room_fail "NO WINDOW FOR joiner$i" "joiner$i"

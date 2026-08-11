@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -224,6 +225,18 @@ public:
   // fresh NetSession, so the identity re-arrives with every handshake.
   const NetIdentity &peer_identity() const { return peer_identity_; }
 
+  // Rejoin-by-identity (host role): consulted between the HELLO identity
+  // parse and the WELCOME, mapping the claimed identity to the seat this
+  // WELCOME should assign — the rejoin door pre-picks the lowest parked
+  // seat, but the claim names the PILOT, and seating them back on their
+  // own seat stops two simultaneous drops from swapping hulls when they
+  // rejoin in the other order. Return 0 (or out of range) to keep the
+  // ctor seat. The caller must read peer_seat() at Ready and adopt onto
+  // the seat actually assigned.
+  void set_seat_resolver(std::function<int(const NetIdentity &)> fn) {
+    seat_resolver_ = fn;
+  }
+
   NetTransport *transport() { return transport_; }
 
 private:
@@ -236,6 +249,7 @@ private:
   bool hello_sent_;
   int handshake_ms_;  // time spent in Handshaking, for the timeout
   NetIdentity peer_identity_;
+  std::function<int(const NetIdentity &)> seat_resolver_;  // host role, optional
   // Client role: the seat WELCOME assigned us. Host role: the seat our
   // WELCOME assigns the peer (the ctor's assign_seat).
   uint8_t assigned_seat_ = 2;
