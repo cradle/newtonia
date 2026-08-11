@@ -1,11 +1,18 @@
 # 4-Player Mode — Implementation Plan
 
 Status: **Phase A COMPLETE** (up to 4 local players live; P3/P4 join by
-controller). **Phase B COMPLETE** — B1–B6 merged and the B7
-`NET_PLAYER_CAP` flip is in this PR: online rooms hold up to 4 players.
-Shipping gate: the production signal worker must be deployed (tag) with
-the B3 multi-join protocol before any B7 client build reaches players —
-a pre-multi-join worker degrades every room to the classic single pair.
+controller). **Phase B COMPLETE** — B1–B7 all merged: the
+`NET_PLAYER_CAP` flip landed in #445, followed by the seat-HUD (#446)
+and rejoin-by-identity (#447) follow-ups; online rooms hold up to 4
+players. Shipping gate — **NOT YET SATISFIED as of 2026-08-11**: the
+production signal worker must carry the B3 multi-join protocol before
+any B7 client build reaches players, and only the BETA worker has it
+(deployed by the B3 master push); the latest release tag (v1.52.0,
+2026-08-08) predates B3, so production is still pre-multi-join — a
+pre-multi-join worker degrades every room to the classic single pair.
+The next `v*.*.*` release tag closes the gate by design (deploy-signal
+ships the production worker in minutes while the same tag's store
+builds take far longer to reach players).
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -58,7 +65,7 @@ the code is already N-player-safe.
 | Gameplay stragglers | Nova/blast friendly-fire partner check assumes partner is `front()` (glgame.cpp:1831, :4985); Intro dismissal ORs exactly the p1/p2 shoot bindings (intro.cpp:249) |
 | Options menu | `OPT_ROWS_DESKTOP` P1/P2 rows (menu.cpp:73); `[2]` state arrays (menu.h:158); hand-unrolled seed/commit (menu.cpp:286, :1930) |
 | Save read cap | `read_count(f, cnt, 2)` for players (savegame.cpp:479); `net_state_sane` rejects >2 (net_session.cpp:250) |
-| Netplay (Phase B) | one `NetSession`/transport/assembler/delta-baseline (B1 moved per-peer state into `NetPeer`; B2 made WELCOME/snapshots/headers seat-keyed; B3 made the signal worker host+3-joiners with per-jid tags/offers/identity) — remaining: host fan-out + lobby (B4), per-seat resume (B5); lobby strings "PLAYER 2 …" |
+| Netplay (Phase B) | ALL LANDED — B1 moved per-peer state into `NetPeer`; B2 made WELCOME/snapshots/headers seat-keyed; B3 made the signal worker host+3-joiners with per-jid tags/offers/identity; B4 host fan-out + waiting-room lobby; B5 per-seat resume/rejoin + spectate cycling; B6 N-instance e2e; B7 cap flip + seat HUD |
 
 ---
 
@@ -577,8 +584,12 @@ stands.
 
 ## 5. Open questions
 
-- **Achievements**: `coop_clear` currently means "≥2 players" — presumably
-  unchanged (4P clears still count). Confirm no achievement text says "two".
+- **Achievements**: `coop_clear` means "≥2 players", so 4P clears count —
+  but the portal text in all three stores reads "Clear a level in 2-player
+  mode" (ACHIEVEMENTS.md §5 and the App Store Connect table), now wrong for
+  3–4P clears. Outstanding: reword to "co-op mode" in App Store Connect /
+  Play Console / Steamworks and in ACHIEVEMENTS.md (portal edits are
+  human-only).
 - **Options layout**: flat 15-row list vs per-player sub-rows (D9 fallback) —
   decide after seeing the shot.
 - **Performance budget**: 4× world draws + up to 4 WarpPass captures on
