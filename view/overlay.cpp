@@ -70,6 +70,21 @@ static float top_hud_y(const GLGame *glgame) {
   return vh - 20 - Overlay::CORNER_INSET - safe_inset_top_v();
 }
 
+// True in the 3-4 player 2x2 grid, where a viewport is a quarter of the
+// window: both viewport counts are >= 2 only there (1P is 1x1, and either
+// 2P split keeps one axis at 1).
+static bool viewport_is_grid_cell(const GLGame *glgame) {
+  return glgame->num_x_viewports() >= 2 && glgame->num_y_viewports() >= 2;
+}
+
+// A grid cell carries the same HUD as a full window in a quarter of the
+// room, so the full-size rows and centre banners crowd each other (field:
+// CLEARED overprinted the weapons list). Shrink the HUD text there; 1P and
+// both 2P splits are untouched.
+static float hud_fit(const GLGame *glgame) {
+  return viewport_is_grid_cell(glgame) ? 0.75f : 1.0f;
+}
+
 // Full-screen text layered over the online game view (one full-screen
 // pass, not per-viewport): the 2 s generation banner (replaces the offline
 // Intro state) and the CONNECTION LOST / rejoin card. Overlay is a friend
@@ -543,15 +558,16 @@ void Overlay::paused(const GLGame *glgame) {
 void Overlay::level(const GLGame *glgame, const GLShip *glship) {
   char buf[20];
   snprintf(buf, sizeof(buf), "LEVEL %d", glgame->generation + 1);
-  Typer::draw_centered(0, top_hud_y(glgame), buf, 12);
+  Typer::draw_centered(0, top_hud_y(glgame), buf, 12 * hud_fit(glgame));
 }
 
 void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
   int remaining = glship->ship->god_mode_time_remaining();
   if(remaining <= 0) return;
+  float f = hud_fit(glgame);
   float base_y = top_hud_y(glgame);
-  Typer::draw_centered(0, base_y - 62, "God mode", 10);
-  Typer::draw_centered(0, base_y - 100, remaining / 1000, 10);
+  Typer::draw_centered(0, base_y - 62 * f, "God mode", 10 * f);
+  Typer::draw_centered(0, base_y - 100 * f, remaining / 1000, 10 * f);
 }
 
 // The time-slow pickup's countdown, in WALL seconds (the number the player
@@ -561,20 +577,22 @@ void Overlay::time_slow(const GLGame *glgame, const GLShip *glship) {
   (void)glship;  // a world effect: every viewport shows the same countdown
   int remaining = glgame->time_slow_wall_ms_remaining();
   if(remaining <= 0) return;
+  float f = hud_fit(glgame);
   float base_y = top_hud_y(glgame);
-  Typer::draw_centered(0, base_y - 137, "Time slow", 10);
-  Typer::draw_centered(0, base_y - 175, (remaining + 999) / 1000, 10);
+  Typer::draw_centered(0, base_y - 137 * f, "Time slow", 10 * f);
+  Typer::draw_centered(0, base_y - 175 * f, (remaining + 999) / 1000, 10 * f);
 }
 
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
+  float f = hud_fit(glgame);
   float vw = Typer::scaled_window_width / glgame->num_x_viewports();
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   float top_y = top_hud_y(glgame);
   float drop = (vh - 20 - CORNER_INSET) - top_y;  // cutout shift, 0 without one
-  Typer::draw(vw - 40 - CORNER_INSET, top_y, glship->ship->score, 20);
+  Typer::draw(vw - 40 * f - CORNER_INSET, top_y, glship->ship->score, 20 * f);
   if(glship->ship->multiplier() > 1) {
-    Typer::draw(vw - 35 - CORNER_INSET, vh - 92 - CORNER_INSET - drop, "x", 15);
-    Typer::draw(vw - 65 - CORNER_INSET, vh - 80 - CORNER_INSET - drop, glship->ship->multiplier(), 20);
+    Typer::draw(vw - 35 * f - CORNER_INSET, vh - (92 * f) - CORNER_INSET - drop, "x", 15 * f);
+    Typer::draw(vw - 65 * f - CORNER_INSET, vh - (80 * f) - CORNER_INSET - drop, glship->ship->multiplier(), 20 * f);
   }
 }
 
@@ -585,8 +603,20 @@ void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
   // keeps it: that game (and its countdown) really is still running.
   if (glgame->net_card_owns_input()) return;
   if(glgame->running && glgame->level_cleared && (glship->ship->is_alive() || glship->ship->lives > 0)) {
-    Typer::draw_centered(0, 150, "CLEARED", 50);
-    Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000)+1, 20);
+    int countdown = (glgame->time_until_next_generation / 1000) + 1;
+    if (viewport_is_grid_cell(glgame)) {
+      // A quarter viewport has no free width beside the weapons list: at
+      // the classic anchor the banner ran straight through "MISSILES 994 /
+      // FIRE X NEXT C" (field bug). The list is at most four rows (the
+      // current primary + secondary), so dropping the banner just below it
+      // clears the column outright — better than shrinking the text until
+      // it fits between the columns, which took it near unreadable.
+      Typer::draw_centered(0, -35, "CLEARED", 50 * hud_fit(glgame));
+      Typer::draw_centered(0, -150, countdown, 20 * hud_fit(glgame));
+    } else {
+      Typer::draw_centered(0, 150, "CLEARED", 50);
+      Typer::draw_centered(0, -60, countdown, 20);
+    }
   }
 }
 
