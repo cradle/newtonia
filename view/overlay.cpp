@@ -498,6 +498,25 @@ void Overlay::paused(const GLGame *glgame) {
   mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
+  // Dim the whole frame while the cursor menu is live: in a 4P split the
+  // menu sat over four viewports of HUD text and starfield and was hard to
+  // pick out (field feedback). Exactly the menu case — the touch pause
+  // screen keeps its play button bright (it IS the resume control), and a
+  // replay's plain "Paused" title leaves the timeline chrome undimmed.
+  bool menu_live = glgame->pause_menu_active();
+  if (menu_live) {
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(0.0f, 0.0f, 0.0f, 0.6f);
+    mb.vertex(-hw, -hh); mb.vertex(hw, -hh); mb.vertex(hw, hh);
+    mb.vertex(-hw, -hh); mb.vertex(hw, hh); mb.vertex(-hw, hh);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+  }
+
   Typer::draw_centered(0, 30, "Paused", 25);
   if(is_touch_mode()) {
     // Touch has no cursor on any screen: the pause button resumes and the
@@ -510,7 +529,7 @@ void Overlay::paused(const GLGame *glgame) {
   // disconnect card's row at y=-130. The two no longer show at once —
   // pause_menu_active() refuses while that card owns input — but the
   // positions stay put so neither screen shifts.
-  if (!glgame->pause_menu_active()) return;
+  if (!menu_live) return;
   MenuSelect::draw_row(PAUSE_ROW_Y0, "RESUME", PAUSE_ROW_SZ,
                        glgame->pause_selection_ == GLGame::PAUSE_RESUME);
   MenuSelect::draw_row(PAUSE_ROW_Y1, "RETURN TO MENU", PAUSE_ROW_SZ,
