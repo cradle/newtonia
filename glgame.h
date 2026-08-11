@@ -217,9 +217,52 @@ private:
   void toggle_pause(bool broadcast = true);  // broadcast=false: applying a
                                              // peer's PAUSE/RESUME event
   // Pause-screen menu, drawn by Overlay::paused. Every pause opens on
-  // RESUME — never on the exit row left armed by the last one.
-  enum PauseRow { PAUSE_RESUME = 0, PAUSE_EXIT = 1, PAUSE_ROWS = 2 };
+  // RESUME — never on the exit row left armed by the last one. PLAYERS
+  // (the seat roster) only exists offline, so the row list is 3 or 2 long
+  // and pause_row_at maps a selection index onto the right action.
+  enum PauseRow { PAUSE_RESUME = 0, PAUSE_PLAYERS = 1, PAUSE_EXIT = 2,
+                  PAUSE_ROWS = 3 };
   int pause_selection_ = PAUSE_RESUME;
+  int pause_row_count() const { return roster_available() ? 3 : 2; }
+  PauseRow pause_row_at(int sel) const {
+    if (roster_available()) return (PauseRow)sel;
+    return sel <= 0 ? PAUSE_RESUME : PAUSE_EXIT;
+  }
+
+  // ---- Seat input roster (offline) -----------------------------------
+  // A seat's input is a keyboard cluster (a PlayerKeys slot), a pad, or
+  // nothing — and any of them can move between seats. Seat index and keymap
+  // slot were hardwired together (seat N always got slot N), which is the
+  // only reason P3/P4 couldn't use a keyboard; the roster unpicks that, so
+  // 2 keyboard + 2 pad (or any mix) is arrangeable in-game instead of being
+  // decided by join order (FOURPLAYER.md O7).
+  struct SeatInput {
+    enum Kind { None = 0, Keys, Pad };
+    Kind kind = None;
+    int slot = -1;              // Keys: index into g_prefs.player_keys
+    SDL_JoystickID pad = -1;    // Pad: instance id
+    bool same_as(const SeatInput &o) const {
+      return kind == o.kind && slot == o.slot && pad == o.pad;
+    }
+  };
+  bool roster_available() const;   // offline, non-touch, not a replay
+  bool roster_open() const { return roster_active_ && !running &&
+                                    roster_available(); }
+  // Rows: one per seat, plus a trailing ADD row while under MAX_PLAYERS.
+  int roster_row_count() const;
+  void roster_nav(unsigned char key);
+  // An unassigned pad takes the highlighted seat by pressing any button —
+  // press-to-claim, the couch-co-op idiom. True when it was consumed.
+  bool roster_claim_pad(SDL_JoystickID which);
+  SeatInput roster_seat_input(int seat) const;
+  std::string roster_seat_label(int seat) const;
+  // Every input this machine can offer a seat, in cycle order.
+  std::vector<SeatInput> roster_input_options() const;
+  // Move an input onto a row, taking it off whatever seat held it; the ADD
+  // row seats a new player first.
+  void roster_apply(int row, const SeatInput &in);
+  bool roster_active_ = false;
+  int roster_selection_ = 0;
   // True when the pause menu is on screen AND owns navigation input. Touch
   // is excluded: it draws no cursor anywhere and already has both actions
   // (the pause button resumes, the RETURN TO MENU band leaves).

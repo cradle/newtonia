@@ -38,7 +38,7 @@ static float s_safe_inset[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 // Pause-menu row geometry (Overlay::paused). Sized to sit under "Paused"
 // (anchor 30, size 25, glyphs to -20) and still finish above the
 // disconnect overlay's "PRESS FIRE FOR MENU" at y=-130.
-static const int PAUSE_ROW_SZ = 13, PAUSE_ROW_Y0 = -42, PAUSE_ROW_Y1 = -80;
+static const int PAUSE_ROW_SZ = 13, PAUSE_ROW_Y0 = -42, PAUSE_ROW_GAP = 38;
 
 void Overlay::set_safe_insets(float top, float bottom, float left, float right) {
   s_safe_inset[0] = top;
@@ -548,10 +548,63 @@ void Overlay::paused(const GLGame *glgame) {
   // pause_menu_active() refuses while that card owns input — but the
   // positions stay put so neither screen shifts.
   if (!menu_live) return;
-  MenuSelect::draw_row(PAUSE_ROW_Y0, "RESUME", PAUSE_ROW_SZ,
-                       glgame->pause_selection_ == GLGame::PAUSE_RESUME);
-  MenuSelect::draw_row(PAUSE_ROW_Y1, "RETURN TO MENU", PAUSE_ROW_SZ,
-                       glgame->pause_selection_ == GLGame::PAUSE_EXIT);
+  // Two rows online (a peer's seat isn't ours to rearrange), three offline
+  // with PLAYERS between them — the row list and the ladder both come from
+  // pause_row_count/pause_row_at, so they can't disagree about what row 1 is.
+  int rows = glgame->pause_row_count();
+  for (int i = 0; i < rows; i++) {
+    const char *label = "RETURN TO MENU";
+    switch (glgame->pause_row_at(i)) {
+      case GLGame::PAUSE_RESUME:  label = "RESUME"; break;
+      case GLGame::PAUSE_PLAYERS: label = "PLAYERS"; break;
+      default: break;
+    }
+    MenuSelect::draw_row(PAUSE_ROW_Y0 - i * PAUSE_ROW_GAP, label, PAUSE_ROW_SZ,
+                         glgame->pause_selection_ == i);
+  }
+}
+
+// The seat roster (offline): one row per seat showing what drives it, plus
+// an ADD row while there is space. Full-window like the pause menu it sits
+// over — there is one roster, not one per split-screen cell.
+void Overlay::seat_roster(const GLGame *glgame) {
+  if (!glgame->roster_open()) return;
+
+  glViewport(0, 0, glgame->window.x(), glgame->window.y());
+  float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = glgame->window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
+  {  // same dim as the pause menu — this screen replaces it
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(0.0f, 0.0f, 0.0f, 0.6f);
+    mb.vertex(-hw, -hh); mb.vertex(hw, -hh); mb.vertex(hw, hh);
+    mb.vertex(-hw, -hh); mb.vertex(hw, hh); mb.vertex(-hw, hh);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+  }
+
+  Typer::draw_centered(0, 150, "PLAYERS", 20);
+  int rows = glgame->roster_row_count();
+  int seats = (int)glgame->players->size();
+  for (int i = 0; i < rows; i++) {
+    char label[64];
+    if (i < seats)
+      snprintf(label, sizeof label, "PLAYER %d   %s", i + 1,
+               glgame->roster_seat_label(i).c_str());
+    else
+      snprintf(label, sizeof label, "ADD PLAYER %d", i + 1);
+    MenuSelect::draw_row(90 - i * 44, label, 13, glgame->roster_selection_ == i);
+  }
+  Typer::draw_centered(0, -120, "LEFT / RIGHT   CHANGE INPUT", 8);
+  Typer::draw_centered(0, -145, "UNUSED PAD: PRESS ANY BUTTON TO TAKE THIS SEAT", 8);
+  Typer::draw_centered(0, -170, "ESC   BACK", 8);
 }
 
 

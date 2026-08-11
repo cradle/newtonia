@@ -634,6 +634,14 @@ is a separate decision (probably out of scope; pausing policy
 interactions). Needs an e2e in the nseat family: kick seat 3 in the
 lobby, verify a fresh joiner takes the freed seat.
 
+**Build it as the online half of the offline seat roster** (landed
+2026-08-11, CLAUDE.md "Seat roster"): that screen is already a per-seat
+row list with a nav ladder and a per-row action, opened from the pause
+menu's PLAYERS row and gated to `net_mode_ == NetOff`. Online the same
+frame wants remote rows whose action is KICK instead of rebind — one
+geometry, one ladder, two contexts, rather than a second screen that
+drifts from the first.
+
 ### O4 — N>1 rejoin ICE-flap wait (B5 known limit)
 
 A rejoiner whose reconnect attempt half-establishes and dies (network
@@ -699,7 +707,11 @@ A3. If the base 4× draw dominates, that's a bigger conversation
 - **Touch platforms stay single-local-player**; they seat up to three
   remote friends online.
 - **P3/P4 ship with no keyboard defaults** (D3): joinable by controller
-  only; `p3_*`/`p4_*` INI keys parse for hand-binders.
+  only; `p3_*`/`p4_*` INI keys parse for hand-binders. Superseded in part
+  2026-08-11 — the pause menu's PLAYERS roster moves any keyboard cluster
+  onto any seat at runtime, so 2 keyboard + 2 pad no longer depends on
+  join order or on hand-editing the INI. The *defaults* are unchanged:
+  P3/P4 still start keyboard-inert.
 - **An old build ignores 3+-player saves** (D8) and an old build
   re-saving the INI drops `p3_*`/`p4_*` lines (A1) — standard downgrade
   outcomes, documented in savegame.h.

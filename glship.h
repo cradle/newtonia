@@ -36,6 +36,14 @@ public:
   // Strip every keyboard binding (the netplay ghost ship must never respond
   // to this machine's keys).
   void clear_keys();
+  // Which PlayerKeys slot this seat's bindings came from, or -1 for none (a
+  // pad-only seat, or the netplay ghost). Seat index and keymap slot are
+  // deliberately SEPARATE: the seat roster rebinds clusters across seats, so
+  // "player 3 flies with WASD" is just seat 3 holding slot 0. Only
+  // set_keys/clear_keys move it, so it can never disagree with the bindings.
+  int keymap_slot() const { return keymap_slot_; }
+  bool has_keys() const { return keymap_slot_ >= 0; }
+  void set_keymap_slot(int slot) { keymap_slot_ = slot; }
   void set_keyboard_sensitivity(float s) { keyboard_sensitivity = s; }
   void set_camera_smoothing(float s)     { camera_smoothing = s; }
   // Per-player camera fixed/rotate: adopt the owning player's pref as the
@@ -52,6 +60,8 @@ public:
   // as a friend).
   bool showing_help() const { return show_help; }
   bool is_my_controller_id(SDL_JoystickID id) const;
+  // Instance id of the bound pad, or -1 — the roster names pads by it.
+  SDL_JoystickID controller_id() const { return controller_instance_id; }
   void genForceShield();
   void genRepulsor();
   void genGodShield();
@@ -123,6 +133,7 @@ protected:
   float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
   float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
 
+  int keymap_slot_ = -1;  // see keymap_slot()
   SDL_GameController *controller = NULL;
   SDL_JoystickID controller_instance_id = -1;
   bool r2_shoot_active = false;
