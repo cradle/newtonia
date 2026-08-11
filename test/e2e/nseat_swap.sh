@@ -21,20 +21,28 @@ room_joiner_env() { echo "NEWTONIA_NET_NAME=PILOT$1"; }
 room_setup "$SEATS"
 
 # INPUT flowing on every seat, then kill seats 3 (joiner2) and 4
-# (joiner3) in the same instant — the simultaneous-drop shape that used
-# to swap hulls.
+# (joiner3) — seat 3 a beat BEFORE seat 4, so its RX watchdog (10 s
+# after each seat's own last INPUT) deterministically trips first and
+# the door arms for seat 3. A same-instant kill left the trip order to
+# input-arrival jitter: seat 4 tripping milliseconds earlier armed the
+# door for seat 4, "player 3 lost" (a DOOR-ARM-scoped line) never
+# logged, and the wait below timed out — a flake, not a product bug
+# (the identity resolver doesn't care which seat the door serves). The
+# swap shape this test exists for — BOTH seats parked, pilots returning
+# in the other order — is unchanged by the stagger.
 fly_all 4
-echo "== SIGKILL seats 3 and 4 together"
-kill -9 "${ROOM_PIDS[2]}" "${ROOM_PIDS[3]}"
+echo "== SIGKILL seat 3, then seat 4 a second later"
+kill -9 "${ROOM_PIDS[2]}"
+sleep 1
+kill -9 "${ROOM_PIDS[3]}"
 wait "${ROOM_PIDS[2]}" "${ROOM_PIDS[3]}" 2>/dev/null
 ROOM_PIDS[2]=; ROOM_WINS[2]=; ROOM_PIDS[3]=; ROOM_WINS[3]=
 
 # The "player N lost" line is DOOR-ARM scoped and the door serves one
 # seat at a time (lowest parked first): with both seats parked only
 # "player 3 lost" logs — seat 4's park is real but silent until the door
-# re-arms for it. Waiting on seat 3's line covers both (the watchdog
-# trips them within the same second), and the identity-matched rejoin
-# below is the proof seat 4 was parked.
+# re-arms for it. The identity-matched rejoin below is the proof seat 4
+# was parked.
 ok=
 for _ in $(seq 1 45); do
   grep -aq "player 3 lost" "$OUT/host.log" && { ok=1; break; }

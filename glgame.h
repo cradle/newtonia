@@ -865,6 +865,19 @@ private:
   std::vector<std::string> net_ice_;  // TURN triples for rejoin re-hosts
   NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
   bool net_rehost_offer_sent_ = false;
+  // The current rehost transport's already-drained trickle candidates
+  // ("mid\nsdp" as polled): a RE-pushed offer (watchdog, room reclaim)
+  // resets the worker's stored candidate set, and the transport streams
+  // each candidate exactly once — without a re-send from this cache a
+  // TURN-only rejoiner bootstraps candidate-less and eats a full ICE
+  // timeout before the next fresh offer. Cleared with each new transport.
+  std::vector<std::string> net_rehost_cands_;
+  // Which door the in-flight rejoin adoption came through (LAN beacon vs
+  // relay): applied to the ADOPTED peer's offline_paired at Ready — the
+  // seat resolver can re-map the adoption, so the door guess must not be
+  // mutated at answer/beacon time. One adoption at a time (both doors
+  // share net_rehost_seat_ / net_handshaking_lost_peer).
+  bool net_rehost_adopt_lan_ = false;
   // ---- LAN rejoin (round 4; see NETPLAY.md "LAN is not a mode") ----
   // On client loss the host re-opens the LAN door TOO: a fresh beacon +
   // blob listener beside the relay rejoin offer (or alone, when the

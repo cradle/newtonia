@@ -2577,19 +2577,35 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
           // the peer's identity with the claim-only wire parse and re-folds
           // this copy so the badge survives the handshake.
           tp->attested = att;
-          net_apply_attested(tp->identity, att);
-          // Fast-ICE ordering: the hand-off can beat the verify round-trip,
-          // in which case the JOINED greeting composed with the role label is
-          // still on screen — rename it now that the attested name is known
-          // (the join-window guard makes this a no-op once any other banner
-          // has taken over).
-          net_refresh_join_banner();
-          NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
-                  att.name.c_str(), net_platform_label(ev.platform),
-                  (unsigned)ev.platform);
-          // The other clients' HUD rows show this name too (4P) — re-relay
-          // the roster now that a seat's badge changed.
-          net_broadcast_seat_identities();
+          if (tp->lost) {
+            // Mid-rejoin (the common ordering: worker verify ~300 ms beats
+            // p2p Ready by seconds), and the jid-matched peer is the DOOR
+            // seat — which the seat resolver may yet re-map. Folding onto
+            // its identity here would overwrite a PARKED seat's remembered
+            // pilot with the rejoiner's name, making the resolver see two
+            // seats remembering the same pilot (ambiguous → door pick):
+            // the exact hull swap rejoin-by-identity exists to prevent,
+            // in every attested-platform room. Park-time memory must stay
+            // untouched until the WELCOME settles who this is — the Ready
+            // handler re-folds `attested` onto the fresh wire identity of
+            // whichever seat the adoption actually lands on.
+            NET_LOG("net: identity attested mid-rejoin (name='%s') - "
+                    "deferred to adoption\n", att.name.c_str());
+          } else {
+            net_apply_attested(tp->identity, att);
+            // Fast-ICE ordering: the hand-off can beat the verify
+            // round-trip, in which case the JOINED greeting composed with
+            // the role label is still on screen — rename it now that the
+            // attested name is known (the join-window guard makes this a
+            // no-op once any other banner has taken over).
+            net_refresh_join_banner();
+            NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
+                    att.name.c_str(), net_platform_label(ev.platform),
+                    (unsigned)ev.platform);
+            // The other clients' HUD rows show this name too (4P) —
+            // re-relay the roster now that a seat's badge changed.
+            net_broadcast_seat_identities();
+          }
         }
       }
       return NetSigHandled;
@@ -2751,6 +2767,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
     net_rehost_seat_ = door->seat;
     net_rehost_ = NetTransport::create();
     net_rehost_offer_sent_ = false;
+    net_rehost_cands_.clear();  // fresh transport, fresh trickle stream
     if (net_rehost_) {
       net_rehost_->set_ice_servers(net_ice_);
       net_rehost_->set_trickle(true);  // the room relay carries candidates
@@ -2772,6 +2789,16 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_rehost_->local_description_ready()) {
     net_signal_->send_offer(net_rehost_->local_description());
     net_rehost_offer_sent_ = true;
+    // A RE-push (watchdog, room reclaim): the worker wiped its stored
+    // candidates with the offer and the transport's trickle stream was
+    // drained on the first send — replay the cache so a TURN-only
+    // rejoiner still connects on the first try (first send: cache empty,
+    // no-op; ICE discards duplicates harmlessly).
+    for (const std::string &c : net_rehost_cands_) {
+      size_t nl = c.find('\n');
+      if (nl != std::string::npos)
+        net_signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
+    }
   }
 
   // Trickle ICE (M3-2b): stream the rehost transport's candidates to the
@@ -2785,6 +2812,9 @@ void GLGame::net_host_rejoin_poll(int delta) {
         net_rehost_ ? net_rehost_ : (hs ? hs->session->transport() : nullptr);
     std::string c;
     while (t && t->poll_local_candidate(c)) {
+      // The rehost transport's candidates are kept for the re-push
+      // replay above (poll_local_candidate drains each exactly once).
+      if (t == net_rehost_) net_rehost_cands_.push_back(c);
       size_t nl = c.find('\n');
       if (nl != std::string::npos)
         net_signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
@@ -2819,9 +2849,13 @@ void GLGame::net_host_rejoin_poll(int delta) {
       dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
         return net_rejoin_seat_for_identity(claimed);
       });
-      // A relay rejoin re-pairs through the worker: a formerly LAN-paired
-      // seat loses its offline display carve-out (attestation governs).
-      dp->offline_paired = false;
+      // A relay rejoin re-pairs through the worker: whoever this adoption
+      // LANDS on loses any offline display carve-out (attestation
+      // governs). Recorded on the adoption, not the door peer — the seat
+      // resolver may re-map the WELCOME, and mutating the door guess here
+      // wrongly stripped a still-parked LAN seat's carve-out when the
+      // adoption moved elsewhere. Applied at Ready.
+      net_rehost_adopt_lan_ = false;
       net_rehost_ = nullptr;
       // The answering joiner is the peer this session binds to (B3 `from`
       // stamp; empty against an old worker) — the Identity fold matches
@@ -2897,7 +2931,11 @@ void GLGame::net_host_rejoin_poll(int delta) {
     net_rehost_offer_age_ms_ += delta;
     if (net_rehost_offer_age_ms_ > 6000) {
       NET_LOG("net: rejoin offer unanswered - re-pushing\n");
-      net_signal_->send_offer(net_rehost_->local_description());
+      // Re-arm the top-of-poll send rather than pushing directly: that
+      // path follows the offer with the cached candidate replay, so the
+      // rejoiner actually waiting gets a completable exchange (the bare
+      // SDP alone strands a TURN-only client until ICE times out).
+      net_rehost_offer_sent_ = false;
       net_rehost_offer_age_ms_ = 0;
     }
   } else {
@@ -2963,8 +3001,10 @@ void GLGame::net_host_rejoin_session_update(int delta) {
           dp->jid.clear();
           rp->attested = dp->attested;
           dp->attested = NetIdentity();
-          rp->offline_paired = dp->offline_paired;
-          dp->offline_paired = false;
+          // offline_paired deliberately NOT transferred: it belongs to a
+          // seat's CURRENT pairing, and both seats' pairings are settled
+          // below/on their own next adoption (the door peer stays parked
+          // with its old state intact).
           if (rp == net_peer()) net_peer_jid_ = rp->jid;
           else if (dp == net_peer()) net_peer_jid_.clear();
           dp = rp;
@@ -2979,6 +3019,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
           net_drop_session(*dp);
           if (net_signal_) {
             net_rehost_ = NetTransport::create();
+            net_rehost_cands_.clear();
             if (net_rehost_) {
               net_rehost_->set_trickle(true);
               net_rehost_->set_ice_servers(net_ice_);
@@ -2995,6 +3036,13 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       Ship *remote = gs ? gs->ship : NULL;
       pr.lost = false;
       pr.parked = false;
+      // This seat's NEW pairing decides its offline display carve-out:
+      // LAN door grants it, a relay re-pair clears it (that pairing
+      // re-attests through the worker). Same 2P exclusion as the
+      // constructor's roster rule — at one remote peer the global
+      // context governs, so which door won a 2P doors-race cannot
+      // change what renders.
+      pr.offline_paired = net_rehost_adopt_lan_ && net_peers_.size() > 1;
       net_rejoin_parked_ = false;  // the next full loss pauses afresh
       // Both doors are satisfied: a stale relay offer transport (the LAN
       // door won) and the LAN door itself close down. The relay ROOM
@@ -3019,6 +3067,11 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // net_host_signal_common_event as before.
       pr.identity = pr.session->peer_identity();
       net_apply_attested(pr.identity, pr.attested);
+      // The OTHER clients' HUD rows track this seat's badge and carve-out
+      // flag — re-relay now that both just settled (the mid-rejoin
+      // attestation fold above defers its broadcast to here; the
+      // rejoiner itself re-syncs on its first INPUT as before).
+      net_broadcast_seat_identities();
       pr.have_input = false;      // re-baseline the one-shot counters
       pr.input_zeroed = false;
       pr.rtt_ms = -1.0f;          // fresh transport, fresh RTT baseline
@@ -3089,6 +3142,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       net_drop_session(*dp);
       if (net_signal_) {
         net_rehost_ = NetTransport::create();
+        net_rehost_cands_.clear();
         if (net_rehost_) net_rehost_->set_trickle(true);
         net_rehost_offer_sent_ = false;
         if (net_rehost_) {
@@ -3169,8 +3223,12 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
         dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
           return net_rejoin_seat_for_identity(claimed);
         });
-        // Paired through the local beacon: per-peer offline carve-out.
-        dp->offline_paired = true;
+        // Paired through the local beacon: per-peer offline carve-out —
+        // recorded on the adoption and applied at Ready to whichever seat
+        // the resolver lands it on (a Failed handshake then leaves no
+        // stray carve-out on the door guess, which used to let a parked
+        // RELAY seat render its unattested claim).
+        net_rehost_adopt_lan_ = true;
         dp->jid.clear();        // LAN door: no worker jid for this pairing
         net_lan_rehost_ = nullptr;  // owned by the session now
       }
@@ -4449,10 +4507,15 @@ void GLGame::net_send_seat_identities_to(NetPeer &peer) {
     Net::put_u8(msg, src->identity.platform);
     Net::put_u8(msg, src->identity.platform_trust);
     Net::put_u8(msg, src->identity.name_trust);
-    Net::put_u8(msg, src->offline_paired ? 1 : 0);  // flags: bit0 LAN-paired
     Net::put_u8(msg, (uint8_t)name.size());
     if (!name.empty())
       Net::put_bytes(msg, (const uint8_t *)name.data(), name.size());
+    // Flags TRAILING, savegame-style: this message already shipped at
+    // PROTO 25 without it, so a mid-message insert would misparse against
+    // those builds (old reader takes flags for name_len). Appended, an old
+    // reader stops short and a missing byte reads as 0 — no carve-out,
+    // the under-render direction.
+    Net::put_u8(msg, src->offline_paired ? 1 : 0);  // flags: bit0 LAN-paired
     peer.session->transport()->send_reliable(&msg[0], msg.size());
   }
 }
@@ -6048,7 +6111,6 @@ void GLGame::net_client_poll() {
       uint8_t platform = r.u8();
       uint8_t plat_trust = r.u8();
       uint8_t name_trust = r.u8();
-      uint8_t flags = r.u8();
       uint8_t name_len = r.u8();
       std::string raw_name;
       if (r.ok && name_len) {
@@ -6058,6 +6120,10 @@ void GLGame::net_client_poll() {
         const uint8_t *bytes = r.bytes(n);
         if (bytes) raw_name.assign((const char *)bytes, n);
       }
+      // Trailing flags byte (appended post-PROTO-25-launch; see the send
+      // side): absent from an older host's message, and absence means no
+      // carve-out — the strict-context default.
+      uint8_t flags = r.remaining() ? r.u8() : 0;
       if (!r.ok) continue;
       if (seat < 2 || seat > MAX_PLAYERS || (int)seat == net_local_seat())
         continue;

@@ -263,9 +263,13 @@ enum MsgType {
   MSG_SHOCK = 15,
   // Seat identity relay (post-B7 4P HUD), H->C rel: u8 seat (2..MAX_PLAYERS),
   // u8 platform (NetPlatform), u8 platform_trust, u8 name_trust (NetTrust),
-  // u8 flags (bit0 = the seat paired through the host's LAN door, so the
-  // per-peer offline display carve-out applies — net_id_ctx_for_seat),
-  // u8 name_len, name_len bytes UTF-8. The host shares each remote seat's
+  // u8 name_len, name_len bytes UTF-8, then a TRAILING u8 flags (bit0 =
+  // the seat paired through the host's LAN door, so the per-peer offline
+  // display carve-out applies — net_id_ctx_for_seat). Flags is trailing
+  // because this message already shipped at PROTO 25 without it — the
+  // savegame append rule applied to a message body: an old reader stops
+  // short of the extra byte, a new reader treats absence as flags 0
+  // (no carve-out, the under-render direction). The host shares each remote seat's
   // badge identity with every client, so a client's HUD can name the OTHER
   // clients (its own handshake only ever carried the host's). Display
   // metadata only, like the HELLO/WELCOME identity append — and like that
