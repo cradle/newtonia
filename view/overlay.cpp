@@ -980,8 +980,12 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
       char hint[48];
       key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
       if((int)glgame->players->size() < LOCAL_PLAYER_CAP) {
-        float top_y = Typer::scaled_window_height - 40 - safe_inset_top_v();
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
+        // Per viewport, exactly as title_text places the "show" twin — see
+        // the note there; the window-sized version drew off a split's edge.
+        float vw = Typer::scaled_window_width / glgame->num_x_viewports();
+        float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+        float top_y = vh - 40 - safe_inset_top_v();
+        Typer::draw_centered(-vw/2, top_y, hint, 8);
       } else {
         float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
         Typer::draw_centered(0, vhb+85, hint, 8);
@@ -994,11 +998,19 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   Ship* p1 = glgame->players->front()->ship;
   if((int)glgame->players->size() < LOCAL_PLAYER_CAP) {
+    // Per VIEWPORT, not per window. These two hints are the only overlay
+    // elements that didn't divide by the viewport counts: they sat at the
+    // window's half-width, which IS the viewport's right/left edge once the
+    // screen splits, so "player 3 press start to join" was drawn half off
+    // the edge of every strip (field, 2026-08-11), and on a 2x2 grid the
+    // window-height anchor put them above the cell entirely.
+    float vw = Typer::scaled_window_width / glgame->num_x_viewports();
+    float vh = Typer::scaled_window_height / glgame->num_y_viewports();
     // -40 (not -10): a real margin inside the title-safe edge, matching the
     // bottom-row hints (Xbox compliance) — pulled down further by the
     // cutout inset so this row stays aligned with the LEVEL/score/weapons
     // row below the camera notch.
-    float top_y = Typer::scaled_window_height - 40 - safe_inset_top_v();
+    float top_y = vh - 40 - safe_inset_top_v();
     if(p1->is_alive() || p1->lives > 0) {
       // The join invitation blinks — it is an offer, not the only move here.
       if((glgame->current_time/1400) % 2 && !is_touch_mode()) {
@@ -1007,14 +1019,14 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         if(glgame->has_free_controller()) {
           snprintf(join_hint, sizeof(join_hint),
                    "player %d press start to join", next_seat);
-          Typer::draw_centered(Typer::scaled_window_width/2, top_y, join_hint, 8);
+          Typer::draw_centered(vw/2, top_y, join_hint, 8);
         }
 #ifndef _GAMING_XBOX
         // Keyboard join hint — on Xbox the only join path is a second
         // controller, and Enter only ever joins the P2 seat (FOURPLAYER.md
         // D3: P3/P4 are controller-first).
         else if(!is_steam_gamemode() && next_seat == 2)
-          Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press enter to join", 8);
+          Typer::draw_centered(vw/2, top_y, "player 2 press enter to join", 8);
 #endif
       }
     } else if(!is_touch_mode()) {
@@ -1039,7 +1051,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
        (glgame->current_time)/12000 % 2) {
       char hint[48];
       key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
-      Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
+      Typer::draw_centered(-vw/2, top_y, hint, 8);
     }
   } else {
     float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
