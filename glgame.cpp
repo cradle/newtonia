@@ -5797,8 +5797,13 @@ void GLGame::net_client_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
+    // MSG_PEER_IDENT joins the exemption list for EVENT's exact reason:
+    // reliable + consumed-once with NO periodic re-send (it re-fires only
+    // on a first INPUT or an attestation change), so a post-stall drain
+    // eating the burst would leave role labels on seats 3-4 indefinitely.
+    // Bounded like EVENT is: ~4 tiny messages per roster change.
     if (h.msg_type != Net::MSG_DELTA && h.msg_type != Net::MSG_SNAPSHOT_CHUNK &&
-        h.msg_type != Net::MSG_EVENT &&
+        h.msg_type != Net::MSG_EVENT && h.msg_type != Net::MSG_PEER_IDENT &&
         ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
       if (!net_action_cap_logged) {
         NET_LOG("net: rx action budget %d/poll hit - dropping flood\n",
@@ -10014,11 +10019,19 @@ GLShip *GLGame::player_by_seat(int seat) const {
 
 // The seat THIS machine's pilot sits in: the host is always 1, a client
 // the seat WELCOME assigned (2 until B4 hands out 3..4). Meaningful in
-// any mode — offline and replay both report 1 (P1's machine).
+// any mode — offline and replay both report 1 (P1's machine). The last
+// live answer is CACHED: a client's session is deleted the moment the
+// host is lost, and the provisional 2 mislabeled a seat-3/4 pilot's own
+// HUD row (their badge on seat 2's score) for the whole rejoin window.
+// A fresh session's WELCOME refreshes the cache through the live read.
 int GLGame::net_local_seat() const {
   if (net_mode_ == NetClient) {
     NetSession *s = net_session();
-    return s ? s->player_id() : 2;
+    if (s) {
+      net_local_seat_cache_ = s->player_id();
+      return net_local_seat_cache_;
+    }
+    return net_local_seat_cache_ ? net_local_seat_cache_ : 2;
   }
   return 1;
 }

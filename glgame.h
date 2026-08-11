@@ -538,6 +538,10 @@ private:
   // (0 and 1 unused — the host's identity comes from the handshake). Filled
   // by the MSG_PEER_IDENT relay; empty = role label, exactly the legacy UI.
   NetIdentity net_seat_identities_[MAX_PLAYERS + 1];
+  // Last WELCOME-assigned seat a live session reported (see
+  // net_local_seat): survives the sessionless rejoin window. 0 = never
+  // had a session (pre-handshake), which reads as the pre-B4 default 2.
+  mutable int net_local_seat_cache_ = 0;
   // Host->client seat-identity relay (see net_protocol.h MSG_PEER_IDENT):
   // one message per remote seat, to one peer or to every live session.
   void net_send_seat_identities_to(NetPeer &peer);

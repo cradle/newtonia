@@ -318,9 +318,15 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // Play-on partial loss (post-B7, PB-D7): a seat dropped but the game
     // keeps running for the healthy ones — the quiet header treatment,
     // never a card. Name the LOWEST lost seat (the one the rejoin door is
-    // serving first) and put the room code back on screen, exactly like
-    // the all-lost notice: the host may be reading it out to the friend
-    // relaunching. A second simultaneous loss rides the count.
+    // serving first) and put the room code back on screen, like the
+    // all-lost notice: the host may be reading it out to the friend
+    // relaunching. A second simultaneous loss rides the count. NOT at
+    // the all-lost spot (vh*0.80): that precedent only ever showed over
+    // an effectively-paused game, while this one sits over LIVE play —
+    // vh*0.80/0.67 ink lands exactly on the god-mode (y 443..463) and
+    // time-slow (y 368..388) indicators, both plausibly running in the
+    // "keep playing" state. vh*0.55 is the banner spot, proven for live
+    // gameplay text, and the rows below it stay clear of both.
     int lost = 0, low_seat = 0;
     for (const GLGame::NetPeer *p : glgame->net_peers_)
       if (p->lost) {
@@ -339,13 +345,13 @@ void Overlay::net_overlays(const GLGame *glgame) {
                                   role, glgame->net_id_ctx()) +
              " DISCONNECTED";
     }
-    Typer::draw_centered(0, vh * 0.80f, head.c_str(), 20);
+    Typer::draw_centered(0, vh * 0.55f, head.c_str(), 20);
     if (glgame->net_signal_) {
       std::string room = "ROOM " + glgame->net_room_code_;
-      Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
+      Typer::draw_centered(0, vh * 0.44f, room.c_str(), 18);
     }
     if (glgame->net_lan_door_open())
-      Typer::draw_centered(0, vh * (glgame->net_signal_ ? 0.57f : 0.67f),
+      Typer::draw_centered(0, vh * (glgame->net_signal_ ? 0.36f : 0.44f),
                            "VISIBLE ON THIS NETWORK", 14);
   }
 }
@@ -685,6 +691,12 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
     } else {
       // Seat 1 on a client keeps the LAN device-name nicety
       // (net_peer_fallback); other seats get their role label.
+      // A client's seats-2..4 tick (and the ATTESTED trust that lets the
+      // name render at all) is the HOST's assertion relayed via
+      // MSG_PEER_IDENT — a weaker vouch than seat 1's direct worker
+      // attestation. Accepted deliberately (net_protocol.h): the host is
+      // sim-authoritative for far more than a name, and the receiver
+      // clamps unknown trust values down, never up.
       std::string fallback = seat == 1 ? glgame->net_peer_fallback()
                                        : "PLAYER " + std::to_string(seat);
       const NetIdentity &id = glgame->net_identity_for_seat(seat);
