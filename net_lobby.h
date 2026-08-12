@@ -165,6 +165,17 @@ private:
     NetIdentity attested;
   };
   std::vector<SeatedPeer> seated_;
+  // Waiting-room roster selection (host, FOURPLAYER.md O3). -1 = no row
+  // picked, which is the resting state: confirm then means START GAME,
+  // exactly as before this existed. 0..n-1 pick a seated peer, whose
+  // confirm ARMS a kick and whose second confirm performs it — one press
+  // must not end someone's game, and Enter is also the start key.
+  int host_sel_ = -1;
+  int host_kick_armed_ = -1;
+  void host_kick_selected();
+  // Kicked sessions waiting for their goodbye to leave before the
+  // transport is destroyed (ms left). See host_kick_selected.
+  std::vector<std::pair<NetSession *, int>> closing_;
   int lan_door_serial_ = 0;  // mints the synthetic "lan#N" pending keys
   int next_free_seat() const;         // lowest free 2..cap; 0 = room full
   void waiting_room_update(int delta);  // pump handshakes + seated liveness
@@ -186,6 +197,20 @@ public:
   // closed/gone): the clipboard auto-join refuses it for the rest of this
   // run — typing it manually still works.
   static void mark_room_dead(const std::string &code);
+
+  // Kick bans, for the host process's lifetime (FOURPLAYER.md O3). Keyed on
+  // the pilot's IDENTITY — name + platform — because a jid is minted per
+  // socket and a room code is what they already have; identity is the only
+  // thing that survives a reconnect. Static (not per-lobby, not per-game)
+  // so a ban set in the waiting room still holds once the game starts and
+  // the peer tries the mid-game rejoin door, and vice versa.
+  //
+  // A NAMELESS peer cannot be banned: there is nothing to key on, and
+  // matching on platform alone would lock out every desktop player. The
+  // kick still works — they just aren't kept out.
+  static void ban_identity(const NetIdentity &id);
+  static bool identity_banned(const NetIdentity &id);
+  static void clear_bans();  // hosting a NEW room starts with a clean slate
 private:
 
   Screen screen_;

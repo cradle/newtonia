@@ -245,7 +245,13 @@ private:
       return kind == o.kind && slot == o.slot && pad == o.pad;
     }
   };
-  bool roster_available() const;   // offline, non-touch, not a replay
+  bool roster_available() const;   // offline OR host, non-touch
+  // Online-host rows: a remote pilot (KICK) rather than a local seat.
+  // (roster_peer_at is declared with the other NetPeer members, below.)
+  bool roster_row_is_peer(int row) const;
+  // Kick needs a deliberate second press — one stray confirm should not
+  // end someone's game. -1 = nothing armed; otherwise the armed row.
+  int roster_kick_armed_ = -1;
   bool roster_open() const { return roster_active_ && !running &&
                                     roster_available(); }
   // Rows: one per seat, plus a trailing ADD row while under MAX_PLAYERS.
@@ -800,6 +806,12 @@ private:
   void net_spark_asteroid_at(float x, float y);
   void net_set_generation_banner(int gen);
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
+  // client: the host KICKED us. Takes the same terminal, no-auto-rejoin
+  // path as a BYE (net_peer_bye_ is set alongside, so every existing
+  // no-rejoin test keeps working) and only changes what the card says —
+  // "the host left" would be a lie, and the player needs to know why the
+  // game ended or they will just try to reconnect.
+  bool net_kicked_ = false;
   // True while the connection-lost card owns input: every lost link EXCEPT
   // the host-with-an-open-door notice, where the game plays on. While this
   // holds, keyboard_up/controller answer only the leaderboard prompt
@@ -933,7 +945,26 @@ private:
   bool net_host_lan_rejoin_poll(int delta);  // false = LAN unavailable
   // Once per loss per SEAT: park the hull + drop the session; pauses the
   // room only when the last live remote went (PB-D7 play-on policy).
-  void net_host_rejoin_park_peer(NetPeer &p);
+  // keep_session: leave the transport alive for the caller to close on its
+  // own schedule. A KICK needs this — park's own drop would destroy the
+  // channel with the goodbye still queued in it.
+  void net_host_rejoin_park_peer(NetPeer &p, bool keep_session = false);
+  // Host: remove a peer and free its seat (the roster's KICK action).
+  void net_kick_peer(NetPeer &p);
+  // ms left before a kicked peer's session is torn down. The EV_KICKED
+  // has to actually reach the wire first: NetSession::update() returns
+  // immediately for a Ready session, so there is no "pump then close" —
+  // deleting the transport on the next statement can destroy the channel
+  // with the message still queued in SCTP, and the peer would see a bare
+  // disconnect and rejoin, which is precisely what the event prevents.
+  int net_kick_close_ms_ = 0;
+  // ...and WHICH seat it belongs to. A bare lost && parked && session
+  // predicate is exactly net_handshaking_lost_peer(): it would also match
+  // another seat's in-flight rejoin and delete that innocent handshake.
+  uint8_t net_kick_close_seat_ = 0;
+  // The peer occupying a roster row, or null (declared here: NetPeer is
+  // defined below the roster block).
+  NetPeer *roster_peer_at(int row);
   int net_rehost_seat_ = 0;  // the seat the open relay/LAN door serves
   void net_host_rejoin_session_update(int delta);  // shared adopt/resume
   void net_lan_rejoin_reset();

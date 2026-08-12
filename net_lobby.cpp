@@ -219,6 +219,51 @@ void NetLobby::mark_room_dead(const std::string &code) {
   if (!code.empty() && !room_is_dead(code)) s_dead_codes.push_back(code);
 }
 
+// Kick bans (see the header). One process-wide list so the lobby and the
+// game agree — a peer kicked in the waiting room must not walk back in
+// through the mid-game rejoin door.
+static std::vector<std::pair<std::string, uint8_t>> s_bans;
+
+// The ban key: case-folded name + platform. Case-folded because a name
+// arrives from the peer's own claim and "Glenn" must not slip past a ban
+// on "glenn"; platform included so two players sharing a display name on
+// different platforms aren't one ban.
+static bool ban_key(const NetIdentity &id,
+                    std::pair<std::string, uint8_t> &out) {
+  if (id.name.empty()) return false;  // nameless: nothing to key on
+  std::string n;
+  for (size_t i = 0; i < id.name.size(); i++) {
+    char c = id.name[i];
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    n += c;
+  }
+  out = std::make_pair(n, id.platform);
+  return true;
+}
+
+void NetLobby::ban_identity(const NetIdentity &id) {
+  std::pair<std::string, uint8_t> key;
+  if (!ban_key(id, key)) {
+    NET_LOG("[ban] nameless peer - kicked but not banned\n");
+    return;
+  }
+  for (size_t i = 0; i < s_bans.size(); i++)
+    if (s_bans[i] == key) return;
+  s_bans.push_back(key);
+  NET_LOG("[ban] '%s' (platform %d) barred from this room\n", key.first.c_str(),
+          (int)key.second);
+}
+
+bool NetLobby::identity_banned(const NetIdentity &id) {
+  std::pair<std::string, uint8_t> key;
+  if (!ban_key(id, key)) return false;
+  for (size_t i = 0; i < s_bans.size(); i++)
+    if (s_bans[i] == key) return true;
+  return false;
+}
+
+void NetLobby::clear_bans() { s_bans.clear(); }
+
 NetLobby::NetLobby()
     : screen_(Choose),
       selection_(0),
@@ -512,6 +557,10 @@ void NetLobby::confirm() {
       return;
     }
     hosting_ = (selection_ == 0);
+    // A NEW room starts with nobody barred: bans belong to the room you
+    // kicked them out of, not to the player forever. (Rejoining/resuming
+    // an existing room does NOT come through here, so its bans survive.)
+    if (hosting_) clear_bans();
     // Every NET_LOG from here on says which side it came from —
     // side-by-side host+client captures otherwise read as one soup.
     Net::set_net_log_role(hosting_);
@@ -595,9 +644,17 @@ void NetLobby::confirm() {
       set_status("THE CODE IS 5 LETTERS");
     }
   } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
-    // PB-D6: the room screen's first-ever confirm — START GAME with
-    // whoever is seated (the room also auto-starts when it fills).
-    waiting_room_start();
+    if (host_sel_ >= 0 && host_sel_ < (int)seated_.size()) {
+      // A peer row is picked: first confirm arms, second kicks. START is
+      // still on this same key with no row picked, which is why arming
+      // exists at all.
+      if (host_kick_armed_ == host_sel_) host_kick_selected();
+      else host_kick_armed_ = host_sel_;
+    } else {
+      // PB-D6: the room screen's first-ever confirm — START GAME with
+      // whoever is seated (the room also auto-starts when it fills).
+      waiting_room_start();
+    }
   } else if (lan_rejoin_browsing() && lan_sel_ >= 0) {
     // Enter/A on a highlighted row of the rejoin wait screen (see draw's
     // RoomJoining case): join it instead of waiting out the budget.
@@ -1070,6 +1127,14 @@ void NetLobby::teardown_waiting_room() {
     drop_pending(pending_.begin()->first, "lobby teardown");
   for (SeatedPeer &sp : seated_) delete sp.session;
   seated_.clear();
+  // Kicked sessions still draining their goodbye: the room is going away, so
+  // their timer will never be serviced again (waiting_room_update stops at the
+  // hand-off, and the destructor/reset paths don't tick at all). Close them
+  // here rather than leaking the session and its PeerConnection — a kick
+  // followed within the drain window by START GAME or a back-out is exactly
+  // the case that reaches this.
+  for (size_t ci = 0; ci < closing_.size(); ci++) delete closing_[ci].first;
+  closing_.clear();
 }
 
 // Pump every mid-handshake joiner and watch the seated links: Ready seats
@@ -1078,6 +1143,18 @@ void NetLobby::teardown_waiting_room() {
 // pump_signal — a signal-less (LAN-only) waiting room still advances.
 void NetLobby::waiting_room_update(int delta) {
   if (!waiting_room() || screen_ != RoomHost || handed_off_to_game_) return;
+  // Kicked sessions draining: give the goodbye time on the wire, then
+  // close. Serviced here because this runs every tick while the waiting
+  // room is up, which is exactly when a lobby kick can happen.
+  for (size_t ci = 0; ci < closing_.size();) {
+    closing_[ci].second -= delta;
+    if (closing_[ci].second <= 0) {
+      delete closing_[ci].first;  // closes + deletes the transport
+      closing_.erase(closing_.begin() + ci);
+    } else {
+      ci++;
+    }
+  }
   for (std::map<std::string, PendingJoiner>::iterator it = pending_.begin();
        it != pending_.end();) {
     PendingJoiner &pj = it->second;
@@ -1085,6 +1162,19 @@ void NetLobby::waiting_room_update(int delta) {
     pj.session->update(delta);
     NetSession::Phase p = pj.session->phase();
     if (p == NetSession::Ready) {
+      // Banned pilot coming back on a fresh socket: refuse the seat here,
+      // at the moment the handshake finally names them. Earlier is not
+      // possible — a jid is per-socket, so who they ARE only arrives with
+      // the HELLO claim this Ready represents.
+      if (identity_banned(pj.session->peer_identity())) {
+        NET_LOG("[lobby] waiting room: refusing banned pilot on seat %d\n",
+                pj.seat);
+        set_status("REMOVED PLAYER TRIED TO REJOIN");
+        std::string key = it->first;
+        ++it;
+        drop_pending(key, "banned");
+        continue;
+      }
       SeatedPeer sp;
       sp.session = pj.session;
       sp.jid = pj.lan ? std::string() : it->first;
@@ -1095,6 +1185,7 @@ void NetLobby::waiting_room_update(int delta) {
         if (at != jid_attested_.end()) sp.attested = at->second;
       }
       seated_.push_back(sp);
+      host_kick_armed_ = -1;  // a roster change disarms (see the drop path)
       NET_LOG("[lobby] waiting room: seat %d filled (%s)\n", sp.seat,
               it->first.c_str());
       char buf[48];
@@ -1124,6 +1215,11 @@ void NetLobby::waiting_room_update(int delta) {
               seated_[i].seat);
       delete seated_[i].session;
       seated_.erase(seated_.begin() + i);
+      // The roster just shifted under the highlight: a selection (and
+      // especially an ARMED kick) that stayed put would now point at a
+      // different player. Drop back to the resting state.
+      host_sel_ = -1;
+      host_kick_armed_ = -1;
     } else {
       i++;
     }
@@ -1137,6 +1233,47 @@ void NetLobby::waiting_room_update(int delta) {
 // NetSeated entry instead of the front-peer setters. Joiners still
 // mid-handshake are dropped — the room stays open, and until B5's
 // per-seat rejoin lands their side fails on its own timeout.
+// Remove the highlighted seated peer (FOURPLAYER.md O3, lobby half). Tell
+// them first — a peer that only saw its transport close would come back
+// through the ordinary join path — then drop the session and free the
+// seat, which next_free_seat() re-offers to the next arrival.
+//
+// Not a ban: a kicked player with the room code can join again. This
+// clears a wedged or unwanted peer out of the room.
+void NetLobby::host_kick_selected() {
+  if (host_sel_ < 0 || host_sel_ >= (int)seated_.size()) return;
+  SeatedPeer &sp = seated_[host_sel_];
+  NET_LOG("[lobby] waiting room: kicking seat %d\n", sp.seat);
+  // Read the identity BEFORE the session is deleted below — the ban needs
+  // it, and peer_identity() through a freed session is a use-after-free.
+  NetIdentity who = sp.session ? sp.session->peer_identity() : NetIdentity();
+  if (who.name.empty() && !sp.attested.name.empty()) who = sp.attested;
+  if (sp.session) {
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_EVENT, 1);  // from the host, seat 1
+    Net::put_u8(msg, Net::EV_KICKED);
+    Net::put_u32(msg, 0);
+    sp.session->transport()->send_reliable(&msg[0], msg.size());
+    // Do NOT delete it here: NetSession::update() is a no-op once Ready,
+    // so there is no way to pump, and destroying the transport on the
+    // next statement can take the queued goodbye with it. Hand it to the
+    // drain, which closes it a few hundred ms later.
+    closing_.push_back(std::make_pair(sp.session, 600));
+    sp.session = nullptr;
+  }
+  // The jid keeps no reservation once the peer is gone: drop its
+  // attestation too, or a DIFFERENT arrival on a recycled row could
+  // inherit the kicked player's verified name.
+  if (!sp.jid.empty()) jid_attested_.erase(sp.jid);
+  // Bar them for the rest of this process: the room code is the only thing
+  // stopping them otherwise, and they already have it.
+  ban_identity(who);
+  seated_.erase(seated_.begin() + host_sel_);
+  host_kick_armed_ = -1;
+  host_sel_ = -1;  // back to the resting state: confirm means START again
+  set_status("PLAYER REMOVED");
+}
+
 void NetLobby::waiting_room_start() {
   if (seated_.empty() || handed_off_to_game_) return;
   while (!pending_.empty())
@@ -1963,6 +2100,22 @@ void NetLobby::tick(int delta) {
         Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
         Net::Header h;
         if (!Net::read_header(r, h)) continue;
+        // A kick can land while we are still sitting on the Connected
+        // screen waiting for snapshot #1 (the host can remove someone
+        // from the waiting room). This loop dropped everything that
+        // wasn't a snapshot chunk, so the goodbye was parsed by nobody
+        // and the joiner just watched the link die.
+        if (h.msg_type == Net::MSG_EVENT) {
+          uint8_t code = r.u8();
+          if (code == Net::EV_KICKED) {
+            NET_LOG("[lobby] removed from the room by the host\n");
+            mark_room_dead(room_code_);  // no auto-rejoin to a room we're out of
+            fail_headline_ = "REMOVED FROM THE GAME";
+            screen_ = LobbyFailed;
+            return;
+          }
+          continue;
+        }
         if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;
         if (!assembler_.add_chunk(r)) continue;
 
@@ -2128,18 +2281,29 @@ void NetLobby::draw() {
               name = net_identity_name_or(sp.session->peer_identity(), "",
                                           NET_ID_OFFLINE);
             }
-            if (name.empty()) {
+            if (name.empty())
               snprintf(buf, sizeof(buf), "PLAYER %d - READY", sp.seat);
-              lines.push_back(buf);
-            } else {
+            else
               snprintf(buf, sizeof(buf), "PLAYER %d - %s", sp.seat,
                        name.c_str());
-              lines.push_back(buf);
+            // The highlighted row carries the shared cursor marks and says
+            // what confirm does to it (these rows have no column geometry,
+            // so it is Typer::cursored's string form, not draw_row).
+            int row = (int)(&sp - &seated_[0]);
+            std::string line = buf;
+            if (host_sel_ == row) {
+              line += host_kick_armed_ == row ? "   [CONFIRM KICK]" : "   KICK";
+              line = Typer::cursored(line, true);
             }
+            lines.push_back(line);
           }
           if (!seated_.empty()) {
             lines.push_back("");
-            lines.push_back("ENTER - START GAME");
+            // The start row is the resting selection, so it carries the
+            // cursor whenever no peer row is picked.
+            lines.push_back(host_sel_ < 0
+                                ? Typer::cursored("ENTER - START GAME", true)
+                                : "UP / DOWN - SELECT   ESC - BACK");
           }
         } else {
           lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
@@ -2660,6 +2824,17 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
 // navigates off the CodeEntry screen lands here exactly once.
 void NetLobby::nav_input(unsigned char key) {
   if (MenuSelect::is_back(key)) {
+    // On the waiting room's roster, back means "out of this row" first.
+    // The screen labels it BACK, but leave_to_menu() tears the whole room
+    // down (every seated peer dropped, the code dead) — a destructive
+    // action behind a key that reads as a step backwards. The in-game
+    // roster already disarms here; this is its lobby twin.
+    if (screen_ == RoomHost && waiting_room() &&
+        (host_kick_armed_ >= 0 || host_sel_ >= 0)) {
+      if (host_kick_armed_ >= 0) host_kick_armed_ = -1;
+      else host_sel_ = -1;
+      return;
+    }
     leave_to_menu();
     return;
   }
@@ -2676,6 +2851,14 @@ void NetLobby::nav_input(unsigned char key) {
     // selected", which is where the rejoin wait sits until a host is picked.
     if (MenuSelect::move_within(key, lan_sel_, -1, lan_rows_shown() - 1))
       return;
+  } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
+    // Same off-the-top rule as the LAN list: -1 is "no peer picked", where
+    // confirm still means START GAME.
+    if (MenuSelect::move_within(key, host_sel_, -1,
+                                (int)seated_.size() - 1)) {
+      host_kick_armed_ = -1;  // moving off a row disarms it
+      return;
+    }
   }
   switch (key) {
     case 'v':

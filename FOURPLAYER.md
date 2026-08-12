@@ -625,28 +625,50 @@ Reword to "co-op mode" (or "with a co-pilot") in each portal; then
 update the two ACHIEVEMENTS.md tables to match what was entered. No
 code change — the symbolic id, gating, and point values stay put.
 
-### O3 — Host per-seat manage/kick UI (B7 known limit)
+### O3 — Host per-seat manage/kick UI — DONE (2026-08-12)
 
-The hosting waiting room shows the roster (per-seat badges, attestation
-state) but offers no way to remove a peer — not in the lobby, not
-mid-game. Consequences: a griefing or wedged joiner can squat a seat
-until they disconnect themselves, and the host's only recourse is
-abandoning the room. Sketch: a lobby-side selection over the seated
-rows (the `MenuSelect` primitives; the roster is already drawn
-per-seat) with a KICK action that closes that peer's session/transport,
-frees the seat (the existing park/unpark machinery — a kick is a forced
-park with no rejoin door), and re-advertises the invite. Mid-game kick
-is a separate decision (probably out of scope; pausing policy
-interactions). Needs an e2e in the nseat family: kick seat 3 in the
-lobby, verify a fresh joiner takes the freed seat.
+Was: the hosting waiting room showed the roster but offered no way to
+remove a peer, so a wedged or unwanted joiner squatted a seat until they
+disconnected themselves and the host's only recourse was abandoning the
+room.
 
-**Build it as the online half of the offline seat roster** (landed
-2026-08-11, CLAUDE.md "Seat roster"): that screen is already a per-seat
-row list with a nav ladder and a per-row action, opened from the pause
-menu's PLAYERS row and gated to `net_mode_ == NetOff`. Online the same
-frame wants remote rows whose action is KICK instead of rebind — one
-geometry, one ladder, two contexts, rather than a second screen that
-drifts from the first.
+Built as the online half of the offline seat roster, exactly as the
+sketch here proposed — one geometry, one ladder, two contexts:
+
+- **Mid-game**: the pause menu's PLAYERS row now opens for the HOST as
+  well as offline (`roster_available()`); remote rows name the pilot and
+  carry KICK instead of the local rebind, and the ADD row is dropped
+  (online seats fill from the room, not from this machine).
+- **Lobby**: the waiting room's roster rows gained a selection that
+  rests at -1 — where confirm still means START GAME, unchanged — and
+  move onto a seated peer to kick them.
+- Both take **two confirms** (arm, then do): ENTER is also the start key
+  and the key that opens the screen, so one stray press must not end
+  someone's game. Any roster change disarms.
+- `GLGame::net_kick_peer` / `NetLobby::host_kick_selected` share the
+  shape: send `EV_KICKED` (PROTO-appended, unknown codes are ignored by
+  older clients), pump it out, then drop the session. The event is what
+  makes a kick stick — a peer that only saw its transport close would
+  come straight back through the rejoin door. Mid-game it then takes the
+  ordinary park path, which frees the hull and reopens the seat.
+- Client side: terminal, no auto-rejoin (the BYE machinery), with its
+  own card — "REMOVED FROM THE GAME", because "the host left" would be a
+  lie and would send them back to the room code.
+
+**Bans too** (added on request, same PR): a kick bars that pilot for the
+host process's lifetime — `NetLobby::ban_identity`, keyed on case-folded
+name + platform, because a jid is minted per socket and the room code is
+already in their hands. Enforced at the two points where a handshake
+first says WHO answered: the waiting room refuses to seat a banned
+Ready, and the mid-game rejoin door drops the adoption and re-offers,
+leaving the seat parked for whoever it belongs to. A NAMELESS peer can
+be kicked but not banned (nothing to key on, and matching on platform
+alone would bar every desktop player). Hosting a NEW room clears the
+list; rejoining/resuming an existing one keeps it.
+
+Verified by `test/e2e/nseat_kick.sh` against a local relay: 3-seat room,
+host kicks seat 3, the kicked peer is TOLD (not merely dropped), does
+not rejoin, and the host and the bystanding peer play on.
 
 ### O4 — N>1 rejoin ICE-flap wait (B5 known limit)
 

@@ -368,6 +368,31 @@ test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # ("host bye - no rejoin"), then no auto-rejoin, no crash.
                      # Menu exit, not SIGTERM: a SIGTERM'd process exits before
                      # libdatachannel flushes the BYE (measured at 2P and 4P)
+test/e2e/nseat_kick.sh # O3 host kick (SEATS>=3, default 3): the host pauses,
+                     # opens PLAYERS, arms and confirms a kick on the last
+                     # seat. Asserts the peer is TOLD ("kicked by the host"),
+                     # does NOT rejoin — sliced from the kick notice forward,
+                     # since a kicked client goes quiet and its ORIGINAL
+                     # "bootstrap adopted" otherwise sits in the tail and
+                     # reads as a rejoin — and that the host + bystanding
+                     # peer play on (a kick must not end anyone else's game).
+                     # Then the BAN half: a FRESH instance with the kicked
+                     # pilot's NEWTONIA_NET_NAME rejoins the room and must be
+                     # refused ("refusing banned pilot") without taking a
+                     # seat. Joiners get named pilots for exactly this — the
+                     # ban is identity-keyed, a jid is per-socket
+test/e2e/nseat_lobby_kick.sh # O3 host kick, LOBBY half — a different code
+                     # path (the victim is a NetLobby SeatedPeer, not a
+                     # GLGame NetPeer). A 4-seat room with only 2 joiners
+                     # never auto-starts, so the waiting room stays up to
+                     # kick from. Asserts the goodbye reaches a joiner still
+                     # on the connecting screen ("removed from the room by
+                     # the host" — that loop used to drop everything that
+                     # wasn't a snapshot chunk), the ban refuses a fresh
+                     # process under the same pilot name, and START GAME
+                     # still works right after: the kicked session is handed
+                     # to a drain that closes it ~600 ms later, so starting
+                     # inside that window is the case that leaked it
 test/e2e/nseat_soak.sh # B6 N-seat generation soak (SOAK_GENS, default 15):
                      # per-gen liveness on every instance, all-hands bursts
                      # every 5th gen, telemetry-advance + no-drop asserts
