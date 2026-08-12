@@ -655,10 +655,16 @@ sketch here proposed — one geometry, one ladder, two contexts:
   own card — "REMOVED FROM THE GAME", because "the host left" would be a
   lie and would send them back to the room code.
 
-**Not a ban** (deliberate): a kicked player holding the room code can
-join again. This clears a wedged or unwanted peer; keeping someone out
-is a different feature, and this is a co-op game played with friends. An
-identity ban would be the follow-up if it is ever wanted.
+**Bans too** (added on request, same PR): a kick bars that pilot for the
+host process's lifetime — `NetLobby::ban_identity`, keyed on case-folded
+name + platform, because a jid is minted per socket and the room code is
+already in their hands. Enforced at the two points where a handshake
+first says WHO answered: the waiting room refuses to seat a banned
+Ready, and the mid-game rejoin door drops the adoption and re-offers,
+leaving the seat parked for whoever it belongs to. A NAMELESS peer can
+be kicked but not banned (nothing to key on, and matching on platform
+alone would bar every desktop player). Hosting a NEW room clears the
+list; rejoining/resuming an existing one keeps it.
 
 Verified by `test/e2e/nseat_kick.sh` against a local relay: 3-seat room,
 host kicks seat 3, the kicked peer is TOLD (not merely dropped), does

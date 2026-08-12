@@ -19,6 +19,10 @@ SEATS=${SEATS:-3}
 [ "$SEATS" -ge 3 ] || { echo "SEATS must be >= 3 (need a bystander)"; exit 1; }
 relay_check
 
+# Named pilots: the ban is keyed on IDENTITY (a jid is per-socket), so the
+# kicked pilot needs a name for the ban half of this test to mean anything.
+room_joiner_env() { echo "NEWTONIA_NET_NAME=PILOT$1"; }
+
 room_setup "$SEATS" NEWTONIA_NET_TEST_SEATS="$SEATS"
 
 VICTIM=$((SEATS - 1))          # last joiner index -> seat $SEATS
@@ -72,5 +76,26 @@ room_alive
 grep -aq "kicked by the host" "$OUT/joiner$BYSTANDER.log" &&
   room_fail "BYSTANDER WAS KICKED TOO" "joiner$BYSTANDER"
 
+echo "== and a FRESH instance with the kicked pilot's name is barred"
+# The kicked client goes terminal, so it never retries by itself. This is
+# the real "they come back" case: a new process, same pilot name, same
+# room code. The ban is identity-keyed, so it must refuse this one while
+# the room still has the seat open.
+before=$(newtonia_windows)
+BAN_PID=$(launch banned NEWTONIA_NET_NAME="PILOT$VICTIM")
+sleep 4
+BAN_WIN=$(new_window_since "$before")
+[ -n "$BAN_WIN" ] || room_fail "NO WINDOW FOR THE BANNED RETRY" banned
+nav_join "$BAN_WIN" "$ROOM_CODE"
+ok=
+for _ in $(seq 1 30); do
+  grep -aq "refusing banned pilot" "$OUT/host.log" && { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "BANNED PILOT WAS NOT REFUSED" host
+grep -aq "seat $VICTIM_SEAT filled" <(sed -n '/kicking player/,$p' "$OUT/host.log") &&
+  room_fail "BANNED PILOT GOT A SEAT" host
+kill "$BAN_PID" 2>/dev/null
+
 room_kill_all
-echo "NSEAT-KICK-OK (seats=$SEATS, kicked seat $VICTIM_SEAT)"
+echo "NSEAT-KICK-OK (seats=$SEATS, kicked seat $VICTIM_SEAT, ban enforced)"

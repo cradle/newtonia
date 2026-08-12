@@ -375,7 +375,12 @@ test/e2e/nseat_kick.sh # O3 host kick (SEATS>=3, default 3): the host pauses,
                      # since a kicked client goes quiet and its ORIGINAL
                      # "bootstrap adopted" otherwise sits in the tail and
                      # reads as a rejoin — and that the host + bystanding
-                     # peer play on (a kick must not end anyone else's game)
+                     # peer play on (a kick must not end anyone else's game).
+                     # Then the BAN half: a FRESH instance with the kicked
+                     # pilot's NEWTONIA_NET_NAME rejoins the room and must be
+                     # refused ("refusing banned pilot") without taking a
+                     # seat. Joiners get named pilots for exactly this — the
+                     # ban is identity-keyed, a jid is per-socket
 test/e2e/nseat_soak.sh # B6 N-seat generation soak (SOAK_GENS, default 15):
                      # per-gen liveness on every instance, all-hands bursts
                      # every 5th gen, telemetry-advance + no-drop asserts

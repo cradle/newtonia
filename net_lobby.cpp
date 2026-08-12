@@ -219,6 +219,51 @@ void NetLobby::mark_room_dead(const std::string &code) {
   if (!code.empty() && !room_is_dead(code)) s_dead_codes.push_back(code);
 }
 
+// Kick bans (see the header). One process-wide list so the lobby and the
+// game agree — a peer kicked in the waiting room must not walk back in
+// through the mid-game rejoin door.
+static std::vector<std::pair<std::string, uint8_t>> s_bans;
+
+// The ban key: case-folded name + platform. Case-folded because a name
+// arrives from the peer's own claim and "Glenn" must not slip past a ban
+// on "glenn"; platform included so two players sharing a display name on
+// different platforms aren't one ban.
+static bool ban_key(const NetIdentity &id,
+                    std::pair<std::string, uint8_t> &out) {
+  if (id.name.empty()) return false;  // nameless: nothing to key on
+  std::string n;
+  for (size_t i = 0; i < id.name.size(); i++) {
+    char c = id.name[i];
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    n += c;
+  }
+  out = std::make_pair(n, id.platform);
+  return true;
+}
+
+void NetLobby::ban_identity(const NetIdentity &id) {
+  std::pair<std::string, uint8_t> key;
+  if (!ban_key(id, key)) {
+    NET_LOG("[ban] nameless peer - kicked but not banned\n");
+    return;
+  }
+  for (size_t i = 0; i < s_bans.size(); i++)
+    if (s_bans[i] == key) return;
+  s_bans.push_back(key);
+  NET_LOG("[ban] '%s' (platform %d) barred from this room\n", key.first.c_str(),
+          (int)key.second);
+}
+
+bool NetLobby::identity_banned(const NetIdentity &id) {
+  std::pair<std::string, uint8_t> key;
+  if (!ban_key(id, key)) return false;
+  for (size_t i = 0; i < s_bans.size(); i++)
+    if (s_bans[i] == key) return true;
+  return false;
+}
+
+void NetLobby::clear_bans() { s_bans.clear(); }
+
 NetLobby::NetLobby()
     : screen_(Choose),
       selection_(0),
@@ -512,6 +557,10 @@ void NetLobby::confirm() {
       return;
     }
     hosting_ = (selection_ == 0);
+    // A NEW room starts with nobody barred: bans belong to the room you
+    // kicked them out of, not to the player forever. (Rejoining/resuming
+    // an existing room does NOT come through here, so its bans survive.)
+    if (hosting_) clear_bans();
     // Every NET_LOG from here on says which side it came from —
     // side-by-side host+client captures otherwise read as one soup.
     Net::set_net_log_role(hosting_);
@@ -1093,6 +1142,19 @@ void NetLobby::waiting_room_update(int delta) {
     pj.session->update(delta);
     NetSession::Phase p = pj.session->phase();
     if (p == NetSession::Ready) {
+      // Banned pilot coming back on a fresh socket: refuse the seat here,
+      // at the moment the handshake finally names them. Earlier is not
+      // possible — a jid is per-socket, so who they ARE only arrives with
+      // the HELLO claim this Ready represents.
+      if (identity_banned(pj.session->peer_identity())) {
+        NET_LOG("[lobby] waiting room: refusing banned pilot on seat %d\n",
+                pj.seat);
+        set_status("REMOVED PLAYER TRIED TO REJOIN");
+        std::string key = it->first;
+        ++it;
+        drop_pending(key, "banned");
+        continue;
+      }
       SeatedPeer sp;
       sp.session = pj.session;
       sp.jid = pj.lan ? std::string() : it->first;
@@ -1162,6 +1224,10 @@ void NetLobby::host_kick_selected() {
   if (host_sel_ < 0 || host_sel_ >= (int)seated_.size()) return;
   SeatedPeer &sp = seated_[host_sel_];
   NET_LOG("[lobby] waiting room: kicking seat %d\n", sp.seat);
+  // Read the identity BEFORE the session is deleted below — the ban needs
+  // it, and peer_identity() through a freed session is a use-after-free.
+  NetIdentity who = sp.session ? sp.session->peer_identity() : NetIdentity();
+  if (who.name.empty() && !sp.attested.name.empty()) who = sp.attested;
   if (sp.session) {
     std::vector<uint8_t> msg;
     Net::put_header(msg, Net::MSG_EVENT, 1);  // from the host, seat 1
@@ -1175,6 +1241,9 @@ void NetLobby::host_kick_selected() {
   // attestation too, or a DIFFERENT arrival on a recycled row could
   // inherit the kicked player's verified name.
   if (!sp.jid.empty()) jid_attested_.erase(sp.jid);
+  // Bar them for the rest of this process: the room code is the only thing
+  // stopping them otherwise, and they already have it.
+  ban_identity(who);
   seated_.erase(seated_.begin() + host_sel_);
   host_kick_armed_ = -1;
   host_sel_ = -1;  // back to the resting state: confirm means START again

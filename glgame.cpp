@@ -2977,6 +2977,13 @@ void GLGame::net_kick_peer(NetPeer &p) {
     // learns WHY rather than seeing a bare disconnect and rejoining.
     p.session->update(0);
   }
+  // Bar them from coming back. The event above stops a well-behaved
+  // client, but the room code is in their hands and nothing else would
+  // refuse a fresh join. Identity-keyed (see NetLobby::ban_identity):
+  // a nameless peer can't be banned, only kicked.
+  NetLobby::ban_identity(p.identity.name.empty() && !p.attested.name.empty()
+                             ? p.attested
+                             : p.identity);
   // Park frees the hull and opens the rejoin door (the seat becomes
   // available), and dropping the session is what actually disconnects
   // them — parking alone would leave a kicked peer connected and frozen.
@@ -3254,6 +3261,18 @@ void GLGame::net_host_rejoin_session_update(int delta) {
   if (dp) {
     dp->session->update(delta);
     if (dp->session->phase() == NetSession::Ready) {
+      // A banned pilot back on a fresh socket. Ready is the first moment
+      // this machine knows WHO answered the door — a jid is per-socket, so
+      // the HELLO claim inside this handshake is the only identity there
+      // is. Drop and re-offer (the Failed-branch treatment), leaving the
+      // seat parked for whoever it actually belongs to.
+      if (NetLobby::identity_banned(dp->session->peer_identity())) {
+        NET_LOG("net: refusing banned pilot at the rejoin door\n");
+        dp->attested = NetIdentity();
+        net_drop_session(*dp);
+        net_rehost_offer_sent_ = false;  // re-arm the door for someone else
+        return;
+      }
       // Rejoin-by-identity: the WELCOME may have promised a DIFFERENT
       // parked seat than the door pre-picked (peer_seat() is what the
       // resolver made it). Move the whole adoption — session, answering
