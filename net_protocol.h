@@ -339,6 +339,14 @@ enum EventCode {
   // explosion treatment. Fatal rams need no relay (the extras' death
   // detonate already runs client-side). No arg.
   EV_RAM_BLAST = 18,
+  // H->C, targeted: the host removed this peer from the room. Behaves like
+  // a BYE for the receiver (terminal, no auto-rejoin — a kicked client that
+  // reconnected on its own would undo the kick), with its own wording so
+  // "you were removed" doesn't read as "the host left". Appended, not a
+  // PROTO bump: net_handle_event ignores unknown codes, so an older client
+  // just sees the transport close and tries to rejoin — the seat may well
+  // be gone by then, and the host is free to kick again.
+  EV_KICKED = 19,
 };
 
 // EV_ACHIEVEMENT arg values. Stable wire numbers — append only.

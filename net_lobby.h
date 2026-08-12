@@ -165,6 +165,14 @@ private:
     NetIdentity attested;
   };
   std::vector<SeatedPeer> seated_;
+  // Waiting-room roster selection (host, FOURPLAYER.md O3). -1 = no row
+  // picked, which is the resting state: confirm then means START GAME,
+  // exactly as before this existed. 0..n-1 pick a seated peer, whose
+  // confirm ARMS a kick and whose second confirm performs it — one press
+  // must not end someone's game, and Enter is also the start key.
+  int host_sel_ = -1;
+  int host_kick_armed_ = -1;
+  void host_kick_selected();
   int lan_door_serial_ = 0;  // mints the synthetic "lan#N" pending keys
   int next_free_seat() const;         // lowest free 2..cap; 0 = room full
   void waiting_room_update(int delta);  // pump handshakes + seated liveness

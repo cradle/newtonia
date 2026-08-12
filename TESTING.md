@@ -368,6 +368,14 @@ test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # ("host bye - no rejoin"), then no auto-rejoin, no crash.
                      # Menu exit, not SIGTERM: a SIGTERM'd process exits before
                      # libdatachannel flushes the BYE (measured at 2P and 4P)
+test/e2e/nseat_kick.sh # O3 host kick (SEATS>=3, default 3): the host pauses,
+                     # opens PLAYERS, arms and confirms a kick on the last
+                     # seat. Asserts the peer is TOLD ("kicked by the host"),
+                     # does NOT rejoin — sliced from the kick notice forward,
+                     # since a kicked client goes quiet and its ORIGINAL
+                     # "bootstrap adopted" otherwise sits in the tail and
+                     # reads as a rejoin — and that the host + bystanding
+                     # peer play on (a kick must not end anyone else's game)
 test/e2e/nseat_soak.sh # B6 N-seat generation soak (SOAK_GENS, default 15):
                      # per-gen liveness on every instance, all-hands bursts
                      # every 5th gen, telemetry-advance + no-drop asserts

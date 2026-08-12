@@ -1305,13 +1305,39 @@ static int pad_number(SDL_JoystickID id) {
 }
 
 bool GLGame::roster_available() const {
-  // Online seats belong to peers (kick/manage is a separate job) and touch
-  // has one local player by construction, so this is the offline screen.
-  return net_mode_ == NetOff && !is_touch_mode();
+  // Two contexts, one screen (FOURPLAYER.md O3): offline it re-binds local
+  // inputs, and on the HOST online it lists the peers with a KICK action.
+  // Not on a client (other people's seats aren't theirs to manage) and not
+  // on touch (no cursor; one local player by construction).
+  if (is_touch_mode()) return false;
+  return net_mode_ == NetOff || net_mode_ == NetHost;
+}
+
+// True when this row is a remote pilot the host may remove, rather than a
+// local seat whose input can be re-bound.
+bool GLGame::roster_row_is_peer(int row) const {
+  if (net_mode_ != NetHost) return false;
+  GLShip *gs = seat_ship_at(players, row);
+  if (!gs) return false;
+  for (const NetPeer *p : net_peers_)
+    if (p->seat == gs->ship->net_seat) return true;
+  return false;
+}
+
+// The peer occupying a roster row, or null.
+GLGame::NetPeer *GLGame::roster_peer_at(int row) {
+  GLShip *gs = seat_ship_at(players, row);
+  if (!gs) return NULL;
+  for (NetPeer *p : net_peers_)
+    if (p->seat == gs->ship->net_seat) return p;
+  return NULL;
 }
 
 int GLGame::roster_row_count() const {
   int seats = (int)players->size();
+  // Online the ADD row would be a lie — seats fill from the room, not from
+  // this machine — so the host's list is exactly the seats.
+  if (net_mode_ != NetOff) return seats;
   return seats < MAX_PLAYERS ? seats + 1 : seats;
 }
 
@@ -1408,11 +1434,34 @@ void GLGame::roster_apply(int row, const SeatInput &in) {
 }
 
 void GLGame::roster_nav(unsigned char key) {
+  // Host rows: confirm ARMS the kick, a second confirm on the same row
+  // does it. Ending someone's game is not something a stray Enter — the
+  // key that opened this screen — should be able to do.
+  if (MenuSelect::is_confirm(key) && roster_row_is_peer(roster_selection_)) {
+    if (roster_kick_armed_ == roster_selection_) {
+      NetPeer *p = roster_peer_at(roster_selection_);
+      roster_kick_armed_ = -1;
+      if (p) net_kick_peer(*p);
+    } else {
+      roster_kick_armed_ = roster_selection_;
+    }
+    return;
+  }
+  if (MenuSelect::is_back(key) && roster_kick_armed_ >= 0) {
+    roster_kick_armed_ = -1;  // back disarms before it closes the screen
+    return;
+  }
   if (MenuSelect::is_back(key) || MenuSelect::is_confirm(key)) {
     roster_active_ = false;  // back to the pause menu
     return;
   }
-  if (MenuSelect::move(key, roster_selection_, roster_row_count())) return;
+  if (MenuSelect::move(key, roster_selection_, roster_row_count())) {
+    roster_kick_armed_ = -1;  // moving off a row disarms it
+    return;
+  }
+  // Input re-binding is a LOCAL-seat idea: online the seats belong to
+  // peers and the only action is KICK.
+  if (net_mode_ != NetOff) return;
   if (!MenuSelect::is_left(key) && !MenuSelect::is_right(key)) return;
   std::vector<SeatInput> options = roster_input_options();
   if (options.empty()) return;
@@ -2909,6 +2958,33 @@ void GLGame::net_host_signal_maintain(int delta) {
 // The room-level pause latch (net_rejoin_parked_) guards toggle_pause
 // (it toggles — a second call would silently unpause) and resets when
 // any rejoin completes.
+// Host: remove a peer from the room (FOURPLAYER.md O3). Tell them first —
+// a peer that only saw its transport die would come straight back through
+// the rejoin door and undo this — then take the ordinary loss path, which
+// already knows how to free a seat: park frees the hull and opens the
+// door, so the seat is immediately available to whoever joins next.
+//
+// Deliberately NOT a ban: a kicked player holding the room code can join
+// again. This removes a wedged or unwanted peer; keeping someone out is a
+// different feature, and this is a co-op game played with friends.
+void GLGame::net_kick_peer(NetPeer &p) {
+  if (net_mode_ != NetHost) return;
+  NET_LOG("net: kicking player %d\n", (int)p.seat);
+  if (p.session) {
+    net_send_event_to(p, Net::EV_KICKED);
+    // Pump once so the reliable EVENT reaches the wire before the close
+    // below tears the transport down — the whole point is that the peer
+    // learns WHY rather than seeing a bare disconnect and rejoining.
+    p.session->update(0);
+  }
+  // Park frees the hull and opens the rejoin door (the seat becomes
+  // available), and dropping the session is what actually disconnects
+  // them — parking alone would leave a kicked peer connected and frozen.
+  p.lost = true;
+  net_host_rejoin_park_peer(p);
+  net_drop_session(p);
+}
+
 void GLGame::net_host_rejoin_park_peer(NetPeer &p) {
   if (p.parked) return;
   p.parked = true;
@@ -4763,6 +4839,23 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
         net_peer_bye_ = true;
         net_lan_host_name_.clear();
         NET_LOG("net: host bye - no lan rejoin\n");
+      }
+      break;
+    case Net::EV_KICKED:
+      // The host removed us. Terminal by exactly the BYE machinery — the
+      // room code is dead to us, the rejoin path must not fire (a client
+      // that reconnected on its own would undo the kick), and the card
+      // takes its own wording off net_kicked_.
+      if (net_mode_ == NetClient) {
+        net_peer_make().lost = true;
+        net_kicked_ = true;
+        net_peer_bye_ = true;
+        if (!net_room_code_.empty()) {
+          NetLobby::mark_room_dead(net_room_code_);
+          net_room_code_.clear();
+        }
+        net_lan_host_name_.clear();
+        NET_LOG("net: kicked by the host - no rejoin\n");
       }
       break;
     case Net::EV_ACHIEVEMENT: {

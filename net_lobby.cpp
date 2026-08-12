@@ -595,9 +595,17 @@ void NetLobby::confirm() {
       set_status("THE CODE IS 5 LETTERS");
     }
   } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
-    // PB-D6: the room screen's first-ever confirm — START GAME with
-    // whoever is seated (the room also auto-starts when it fills).
-    waiting_room_start();
+    if (host_sel_ >= 0 && host_sel_ < (int)seated_.size()) {
+      // A peer row is picked: first confirm arms, second kicks. START is
+      // still on this same key with no row picked, which is why arming
+      // exists at all.
+      if (host_kick_armed_ == host_sel_) host_kick_selected();
+      else host_kick_armed_ = host_sel_;
+    } else {
+      // PB-D6: the room screen's first-ever confirm — START GAME with
+      // whoever is seated (the room also auto-starts when it fills).
+      waiting_room_start();
+    }
   } else if (lan_rejoin_browsing() && lan_sel_ >= 0) {
     // Enter/A on a highlighted row of the rejoin wait screen (see draw's
     // RoomJoining case): join it instead of waiting out the budget.
@@ -1095,6 +1103,7 @@ void NetLobby::waiting_room_update(int delta) {
         if (at != jid_attested_.end()) sp.attested = at->second;
       }
       seated_.push_back(sp);
+      host_kick_armed_ = -1;  // a roster change disarms (see the drop path)
       NET_LOG("[lobby] waiting room: seat %d filled (%s)\n", sp.seat,
               it->first.c_str());
       char buf[48];
@@ -1124,6 +1133,11 @@ void NetLobby::waiting_room_update(int delta) {
               seated_[i].seat);
       delete seated_[i].session;
       seated_.erase(seated_.begin() + i);
+      // The roster just shifted under the highlight: a selection (and
+      // especially an ARMED kick) that stayed put would now point at a
+      // different player. Drop back to the resting state.
+      host_sel_ = -1;
+      host_kick_armed_ = -1;
     } else {
       i++;
     }
@@ -1137,6 +1151,36 @@ void NetLobby::waiting_room_update(int delta) {
 // NetSeated entry instead of the front-peer setters. Joiners still
 // mid-handshake are dropped — the room stays open, and until B5's
 // per-seat rejoin lands their side fails on its own timeout.
+// Remove the highlighted seated peer (FOURPLAYER.md O3, lobby half). Tell
+// them first — a peer that only saw its transport close would come back
+// through the ordinary join path — then drop the session and free the
+// seat, which next_free_seat() re-offers to the next arrival.
+//
+// Not a ban: a kicked player with the room code can join again. This
+// clears a wedged or unwanted peer out of the room.
+void NetLobby::host_kick_selected() {
+  if (host_sel_ < 0 || host_sel_ >= (int)seated_.size()) return;
+  SeatedPeer &sp = seated_[host_sel_];
+  NET_LOG("[lobby] waiting room: kicking seat %d\n", sp.seat);
+  if (sp.session) {
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_EVENT, 1);  // from the host, seat 1
+    Net::put_u8(msg, Net::EV_KICKED);
+    Net::put_u32(msg, 0);
+    sp.session->transport()->send_reliable(&msg[0], msg.size());
+    sp.session->update(0);  // pump it out before the close below
+    delete sp.session;      // closes + deletes the transport
+  }
+  // The jid keeps no reservation once the peer is gone: drop its
+  // attestation too, or a DIFFERENT arrival on a recycled row could
+  // inherit the kicked player's verified name.
+  if (!sp.jid.empty()) jid_attested_.erase(sp.jid);
+  seated_.erase(seated_.begin() + host_sel_);
+  host_kick_armed_ = -1;
+  host_sel_ = -1;  // back to the resting state: confirm means START again
+  set_status("PLAYER REMOVED");
+}
+
 void NetLobby::waiting_room_start() {
   if (seated_.empty() || handed_off_to_game_) return;
   while (!pending_.empty())
@@ -2128,18 +2172,29 @@ void NetLobby::draw() {
               name = net_identity_name_or(sp.session->peer_identity(), "",
                                           NET_ID_OFFLINE);
             }
-            if (name.empty()) {
+            if (name.empty())
               snprintf(buf, sizeof(buf), "PLAYER %d - READY", sp.seat);
-              lines.push_back(buf);
-            } else {
+            else
               snprintf(buf, sizeof(buf), "PLAYER %d - %s", sp.seat,
                        name.c_str());
-              lines.push_back(buf);
+            // The highlighted row carries the shared cursor marks and says
+            // what confirm does to it (these rows have no column geometry,
+            // so it is Typer::cursored's string form, not draw_row).
+            int row = (int)(&sp - &seated_[0]);
+            std::string line = buf;
+            if (host_sel_ == row) {
+              line += host_kick_armed_ == row ? "   [CONFIRM KICK]" : "   KICK";
+              line = Typer::cursored(line, true);
             }
+            lines.push_back(line);
           }
           if (!seated_.empty()) {
             lines.push_back("");
-            lines.push_back("ENTER - START GAME");
+            // The start row is the resting selection, so it carries the
+            // cursor whenever no peer row is picked.
+            lines.push_back(host_sel_ < 0
+                                ? Typer::cursored("ENTER - START GAME", true)
+                                : "UP / DOWN - SELECT   ESC - BACK");
           }
         } else {
           lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
@@ -2676,6 +2731,14 @@ void NetLobby::nav_input(unsigned char key) {
     // selected", which is where the rejoin wait sits until a host is picked.
     if (MenuSelect::move_within(key, lan_sel_, -1, lan_rows_shown() - 1))
       return;
+  } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
+    // Same off-the-top rule as the LAN list: -1 is "no peer picked", where
+    // confirm still means START GAME.
+    if (MenuSelect::move_within(key, host_sel_, -1,
+                                (int)seated_.size() - 1)) {
+      host_kick_armed_ = -1;  // moving off a row disarms it
+      return;
+    }
   }
   switch (key) {
     case 'v':

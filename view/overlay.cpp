@@ -303,7 +303,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
     if (!is_touch_mode())
       MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
   } else if (glgame->net_all_peers_lost()) {
-    if (glgame->net_peer_bye_) {
+    if (glgame->net_kicked_) {
+      // Checked before the BYE wording (a kick sets both): the player was
+      // removed, and telling them the host left would send them straight
+      // back to the room code wondering why it stopped working.
+      Typer::draw_centered(0, vh * 0.55f, "REMOVED FROM THE GAME", 22);
+    } else if (glgame->net_peer_bye_) {
       // Named like DISCONNECTED/RECONNECTED but near the middle, at the
       // banner spot ("GLENN LEFT THE GAME"; the host is player 1, so a
       // nameless/legacy host reads "PLAYER 1 LEFT THE GAME"). Clear of the
@@ -603,20 +608,43 @@ void Overlay::seat_roster(const GLGame *glgame) {
     mesh.draw();
   }
 
+  bool hosting = glgame->net_mode_ == GLGame::NetHost;
   Typer::draw_centered(0, 150, "PLAYERS", 20);
   int rows = glgame->roster_row_count();
   int seats = (int)glgame->players->size();
   for (int i = 0; i < rows; i++) {
-    char label[64];
-    if (i < seats)
+    char label[80];
+    if (i >= seats) {
+      snprintf(label, sizeof label, "ADD PLAYER %d", i + 1);
+    } else if (glgame->roster_row_is_peer(i)) {
+      // A remote pilot: name them (their badge, else the role label) and
+      // say what confirm will do — armed rows say it twice as loudly,
+      // because the next press ends their game.
+      const GLGame::NetPeer *p =
+          const_cast<GLGame *>(glgame)->roster_peer_at(i);
+      std::string who = p ? net_identity_name_or(p->identity, "",
+                                                 glgame->net_id_ctx())
+                          : std::string();
+      char seat_txt[24];
+      if (who.empty()) {
+        snprintf(seat_txt, sizeof seat_txt, "PLAYER %d", i + 1);
+        who = seat_txt;
+      }
+      snprintf(label, sizeof label, "PLAYER %d   %s   %s", i + 1, who.c_str(),
+               glgame->roster_kick_armed_ == i ? "[CONFIRM KICK]" : "KICK");
+    } else {
       snprintf(label, sizeof label, "PLAYER %d   %s", i + 1,
                glgame->roster_seat_label(i).c_str());
-    else
-      snprintf(label, sizeof label, "ADD PLAYER %d", i + 1);
+    }
     MenuSelect::draw_row(90 - i * 44, label, 13, glgame->roster_selection_ == i);
   }
-  Typer::draw_centered(0, -120, "LEFT / RIGHT   CHANGE INPUT", 8);
-  Typer::draw_centered(0, -145, "UNUSED PAD: PRESS ANY BUTTON TO TAKE THIS SEAT", 8);
+  if (hosting) {
+    Typer::draw_centered(0, -120, "ENTER   KICK THIS PLAYER (TWICE TO CONFIRM)", 8);
+    Typer::draw_centered(0, -145, "THEIR SEAT REOPENS FOR ANYONE WITH THE ROOM CODE", 8);
+  } else {
+    Typer::draw_centered(0, -120, "LEFT / RIGHT   CHANGE INPUT", 8);
+    Typer::draw_centered(0, -145, "UNUSED PAD: PRESS ANY BUTTON TO TAKE THIS SEAT", 8);
+  }
   Typer::draw_centered(0, -170, "ESC   BACK", 8);
 }
 
