@@ -1320,7 +1320,12 @@ bool GLGame::roster_row_is_peer(int row) const {
   GLShip *gs = seat_ship_at(players, row);
   if (!gs) return false;
   for (const NetPeer *p : net_peers_)
-    if (p->seat == gs->ship->net_seat) return true;
+    if (p->seat == gs->ship->net_seat)
+      // A lost or parked seat has nobody to remove — the pilot is already
+      // gone (kicked, or dropped and rejoining). Offering KICK there is a
+      // button that does nothing, which is how a screen teaches people to
+      // distrust it.
+      return !p->lost && !p->parked;
   return false;
 }
 
@@ -1478,6 +1483,12 @@ void GLGame::roster_nav(unsigned char key) {
 }
 
 bool GLGame::roster_claim_pad(SDL_JoystickID which) {
+  // Offline only. Press-to-claim binds a LOCAL device to the highlighted
+  // row, and online that row is a remote pilot's ship: the host's spare
+  // pad would end up driving the peer's hull alongside their INPUT
+  // stream. roster_nav's left/right was gated when the screen went
+  // online; this second entry point into roster_apply was not.
+  if (net_mode_ != NetOff) return false;
   if (is_player_controller(which)) return false;  // already driving a seat
   SeatInput in;
   in.kind = SeatInput::Pad;
@@ -2972,24 +2983,31 @@ void GLGame::net_kick_peer(NetPeer &p) {
   NET_LOG("net: kicking player %d\n", (int)p.seat);
   if (p.session) {
     net_send_event_to(p, Net::EV_KICKED);
-    // Pump once so the reliable EVENT reaches the wire before the close
-    // below tears the transport down — the whole point is that the peer
-    // learns WHY rather than seeing a bare disconnect and rejoining.
-    p.session->update(0);
+    // The session is NOT dropped here — see net_kick_close_ms_. The peer
+    // is parked below (seat freed, hull frozen, sim ignores it), and the
+    // transport is torn down a few ticks later once the goodbye has had
+    // time to leave.
+    net_kick_close_ms_ = 600;
   }
   // Bar them from coming back. The event above stops a well-behaved
   // client, but the room code is in their hands and nothing else would
   // refuse a fresh join. Identity-keyed (see NetLobby::ban_identity):
   // a nameless peer can't be banned, only kicked.
-  NetLobby::ban_identity(p.identity.name.empty() && !p.attested.name.empty()
-                             ? p.attested
-                             : p.identity);
+  //
+  // BOTH the folded identity and the raw HELLO claim: p.identity carries
+  // the worker's attestation folded over it, while enforcement can only
+  // ever see the claim (that is all a fresh handshake has at the moment
+  // it must decide). Banning only the attested form silently fails to
+  // match wherever the two differ, and the peer walks back in.
+  if (p.session) NetLobby::ban_identity(p.session->peer_identity());
+  NetLobby::ban_identity(p.identity);
+  if (!p.attested.name.empty()) NetLobby::ban_identity(p.attested);
   // Park frees the hull and opens the rejoin door (the seat becomes
-  // available), and dropping the session is what actually disconnects
-  // them — parking alone would leave a kicked peer connected and frozen.
+  // available). The session dies on the timer above — parking alone
+  // would leave a kicked peer connected and frozen.
   p.lost = true;
   net_host_rejoin_park_peer(p);
-  net_drop_session(p);
+  if (!p.session) return;  // nothing to flush; already gone
 }
 
 void GLGame::net_host_rejoin_park_peer(NetPeer &p) {
@@ -7768,6 +7786,19 @@ void GLGame::tick(int delta) {
     // must not gate another seat's traffic (net_host_poll and
     // net_ping_tick skip session-less/lost peers themselves).
     net_host_poll();
+    // A kicked peer's goodbye needs a moment on the wire before its
+    // transport goes (see net_kick_close_ms_). The seat is already parked
+    // and free, so this only delays the teardown, nothing the game waits
+    // on. Peers are matched by `lost && parked && session` — a kick is
+    // the only thing that leaves a session attached to one.
+    if (net_kick_close_ms_ > 0) {
+      net_kick_close_ms_ -= delta;
+      if (net_kick_close_ms_ <= 0) {
+        net_kick_close_ms_ = 0;
+        for (NetPeer *pk : net_peers_)
+          if (pk->lost && pk->parked && pk->session) net_drop_session(*pk);
+      }
+    }
     net_ping_tick(delta);
     for (NetPeer *pw : net_peers_) {
       if (pw->lost || !pw->session) continue;

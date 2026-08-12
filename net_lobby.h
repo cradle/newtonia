@@ -173,6 +173,9 @@ private:
   int host_sel_ = -1;
   int host_kick_armed_ = -1;
   void host_kick_selected();
+  // Kicked sessions waiting for their goodbye to leave before the
+  // transport is destroyed (ms left). See host_kick_selected.
+  std::vector<std::pair<NetSession *, int>> closing_;
   int lan_door_serial_ = 0;  // mints the synthetic "lan#N" pending keys
   int next_free_seat() const;         // lowest free 2..cap; 0 = room full
   void waiting_room_update(int delta);  // pump handshakes + seated liveness

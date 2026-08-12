@@ -948,6 +948,13 @@ private:
   void net_host_rejoin_park_peer(NetPeer &p);
   // Host: remove a peer and free its seat (the roster's KICK action).
   void net_kick_peer(NetPeer &p);
+  // ms left before a kicked peer's session is torn down. The EV_KICKED
+  // has to actually reach the wire first: NetSession::update() returns
+  // immediately for a Ready session, so there is no "pump then close" —
+  // deleting the transport on the next statement can destroy the channel
+  // with the message still queued in SCTP, and the peer would see a bare
+  // disconnect and rejoin, which is precisely what the event prevents.
+  int net_kick_close_ms_ = 0;
   // The peer occupying a roster row, or null (declared here: NetPeer is
   // defined below the roster block).
   NetPeer *roster_peer_at(int row);

@@ -1135,6 +1135,18 @@ void NetLobby::teardown_waiting_room() {
 // pump_signal — a signal-less (LAN-only) waiting room still advances.
 void NetLobby::waiting_room_update(int delta) {
   if (!waiting_room() || screen_ != RoomHost || handed_off_to_game_) return;
+  // Kicked sessions draining: give the goodbye time on the wire, then
+  // close. Serviced here because this runs every tick while the waiting
+  // room is up, which is exactly when a lobby kick can happen.
+  for (size_t ci = 0; ci < closing_.size();) {
+    closing_[ci].second -= delta;
+    if (closing_[ci].second <= 0) {
+      delete closing_[ci].first;  // closes + deletes the transport
+      closing_.erase(closing_.begin() + ci);
+    } else {
+      ci++;
+    }
+  }
   for (std::map<std::string, PendingJoiner>::iterator it = pending_.begin();
        it != pending_.end();) {
     PendingJoiner &pj = it->second;
@@ -1234,8 +1246,12 @@ void NetLobby::host_kick_selected() {
     Net::put_u8(msg, Net::EV_KICKED);
     Net::put_u32(msg, 0);
     sp.session->transport()->send_reliable(&msg[0], msg.size());
-    sp.session->update(0);  // pump it out before the close below
-    delete sp.session;      // closes + deletes the transport
+    // Do NOT delete it here: NetSession::update() is a no-op once Ready,
+    // so there is no way to pump, and destroying the transport on the
+    // next statement can take the queued goodbye with it. Hand it to the
+    // drain, which closes it a few hundred ms later.
+    closing_.push_back(std::make_pair(sp.session, 600));
+    sp.session = nullptr;
   }
   // The jid keeps no reservation once the peer is gone: drop its
   // attestation too, or a DIFFERENT arrival on a recycled row could
@@ -2076,6 +2092,22 @@ void NetLobby::tick(int delta) {
         Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
         Net::Header h;
         if (!Net::read_header(r, h)) continue;
+        // A kick can land while we are still sitting on the Connected
+        // screen waiting for snapshot #1 (the host can remove someone
+        // from the waiting room). This loop dropped everything that
+        // wasn't a snapshot chunk, so the goodbye was parsed by nobody
+        // and the joiner just watched the link die.
+        if (h.msg_type == Net::MSG_EVENT) {
+          uint8_t code = r.u8();
+          if (code == Net::EV_KICKED) {
+            NET_LOG("[lobby] removed from the room by the host\n");
+            mark_room_dead(room_code_);  // no auto-rejoin to a room we're out of
+            fail_headline_ = "REMOVED FROM THE GAME";
+            screen_ = LobbyFailed;
+            return;
+          }
+          continue;
+        }
         if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;
         if (!assembler_.add_chunk(r)) continue;
 
@@ -2784,6 +2816,17 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
 // navigates off the CodeEntry screen lands here exactly once.
 void NetLobby::nav_input(unsigned char key) {
   if (MenuSelect::is_back(key)) {
+    // On the waiting room's roster, back means "out of this row" first.
+    // The screen labels it BACK, but leave_to_menu() tears the whole room
+    // down (every seated peer dropped, the code dead) — a destructive
+    // action behind a key that reads as a step backwards. The in-game
+    // roster already disarms here; this is its lobby twin.
+    if (screen_ == RoomHost && waiting_room() &&
+        (host_kick_armed_ >= 0 || host_sel_ >= 0)) {
+      if (host_kick_armed_ >= 0) host_kick_armed_ = -1;
+      else host_sel_ = -1;
+      return;
+    }
     leave_to_menu();
     return;
   }
