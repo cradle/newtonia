@@ -95,8 +95,26 @@ cmp -s "$OUT/play-t2.png" "$OUT/play-t3.png" && fail "S2: t2==t3 (world frozen?)
 # underneath (field: Android, 2026-07-27). Screenshotting either side of a
 # wait is the only way to see that; "playback finished" arriving still only
 # proves the unpause worked.
-key "$W" p; sleep 1
-shot "$W" play-pause1
+key "$W" p
+# Wait for the pause to TAKE EFFECT before timing it: the old fixed 1 s
+# settle was enough locally and not on a CI runner, where the first shot
+# still caught a moving world and the comparison failed as "world still
+# moving while paused" — the product invariant reported broken by a
+# screenshot taken too early (2026-08-12). Frozen is observable: two frames
+# in a row that match. If they never do, playback really is running on
+# underneath, and this loop fails for the right reason.
+frozen=
+shot "$W" pause-settle-0
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  sleep 0.5
+  shot "$W" "pause-settle-$i"
+  if cmp -s "$OUT/pause-settle-$((i - 1)).png" "$OUT/pause-settle-$i.png"; then
+    frozen=1; cp "$OUT/pause-settle-$i.png" "$OUT/play-pause1.png"; break
+  fi
+done
+[ -n "$frozen" ] || fail "S2: world never froze after the pause key"
+# ...and having frozen, it must STAY frozen: this is the assertion that
+# caught the field bug where the replay clock ignored `running`.
 sleep 3
 shot "$W" play-pause2
 cmp -s "$OUT/play-pause1.png" "$OUT/play-pause2.png" \

@@ -116,7 +116,7 @@ run_driver() {
     start=$(date +%s)
     ( export NEWTONIA_TEST_OUT="$OUTDIR/$d.$attempt"
       mkdir -p "$NEWTONIA_TEST_OUT"
-      env $(driver_env "$d") timeout "$DRIVER_TIMEOUT" \
+      env $(driver_env "$d") timeout "$(driver_timeout "$d")" \
         bash "$ROOT/test/e2e/$d.sh" ) > "$OUTDIR/$d.attempt$attempt.log" 2>&1
     rc=$?
     elapsed=$(( $(date +%s) - start ))
@@ -132,7 +132,7 @@ run_driver() {
     fi
     # 124 is timeout(1) killing a wedged driver — worth naming, since its log
     # ends mid-step rather than with a verdict.
-    [ "$rc" = 124 ] && echo "  .. $d TIMED OUT after ${DRIVER_TIMEOUT}s"
+    [ "$rc" = 124 ] && echo "  .. $d TIMED OUT after $(driver_timeout "$d")s"
     [ "$attempt" = 1 ] && echo "  .. $d failed in ${elapsed}s (rc=$rc), retrying"
   done
   printf '  FAIL   %-22s %4ss (rc=%s)\n' "$d" "$elapsed" "$rc"
@@ -154,12 +154,24 @@ run_shard() {
   done
 }
 
-# Per-driver cap. The longest driver measured is replay_playback at ~300 s, so
-# 480 leaves generous headroom while keeping a wedged driver from eating the
-# shard: at the old 900 s a single driver could burn 30 minutes across its two
-# attempts, overrun the JOB timeout, and take the whole shard down with no
-# summary and no uploaded artifact (solo-misc, run 1).
+# Per-driver cap. Most drivers land under 150 s and the longest of the ordinary
+# ones is replay_playback at ~300 s, so 480 leaves headroom while keeping a
+# wedged driver from eating the shard: at 900 s a single driver could burn 30
+# minutes across its two attempts, overrun the JOB timeout, and take the shard
+# down with no summary and no uploaded artifact (solo-misc, run 1).
 DRIVER_TIMEOUT="${DRIVER_TIMEOUT:-480}"
+
+# ...except the ones that are genuinely long. leaderboard.sh stands up its own
+# board worker and plays six scenarios through it, including two that need a
+# dedicated worker of their own: 8m44s measured locally, all six passing. It
+# spent two attempts hitting the 480 s cap and reporting a timeout for work
+# that was simply not finished (2026-08-12).
+driver_timeout() {
+  case "$1" in
+    leaderboard) echo 900 ;;
+    *)           echo "$DRIVER_TIMEOUT" ;;
+  esac
+}
 OUTDIR="${NEWTONIA_CI_OUT:-$(mktemp -d /tmp/newtonia-ci.XXXXXX)}"
 mkdir -p "$OUTDIR"
 FAILED=""
