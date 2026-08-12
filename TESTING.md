@@ -381,6 +381,18 @@ test/e2e/nseat_kick.sh # O3 host kick (SEATS>=3, default 3): the host pauses,
                      # refused ("refusing banned pilot") without taking a
                      # seat. Joiners get named pilots for exactly this — the
                      # ban is identity-keyed, a jid is per-socket
+test/e2e/nseat_lobby_kick.sh # O3 host kick, LOBBY half — a different code
+                     # path (the victim is a NetLobby SeatedPeer, not a
+                     # GLGame NetPeer). A 4-seat room with only 2 joiners
+                     # never auto-starts, so the waiting room stays up to
+                     # kick from. Asserts the goodbye reaches a joiner still
+                     # on the connecting screen ("removed from the room by
+                     # the host" — that loop used to drop everything that
+                     # wasn't a snapshot chunk), the ban refuses a fresh
+                     # process under the same pilot name, and START GAME
+                     # still works right after: the kicked session is handed
+                     # to a drain that closes it ~600 ms later, so starting
+                     # inside that window is the case that leaked it
 test/e2e/nseat_soak.sh # B6 N-seat generation soak (SOAK_GENS, default 15):
                      # per-gen liveness on every instance, all-hands bursts
                      # every 5th gen, telemetry-advance + no-drop asserts

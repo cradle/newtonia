@@ -638,9 +638,15 @@ void Overlay::seat_roster(const GLGame *glgame) {
     }
     MenuSelect::draw_row(90 - i * 44, label, 13, glgame->roster_selection_ == i);
   }
-  if (hosting) {
+  // The footer describes what confirm does on the SELECTED row, not what the
+  // screen is for. Row 0 is the host's own seat and a lost/parked seat has
+  // nobody left to remove, so on those rows confirm merely closes the screen —
+  // advertising a kick there is a promise the button doesn't keep.
+  if (hosting && glgame->roster_row_is_peer(glgame->roster_selection_)) {
     Typer::draw_centered(0, -120, "ENTER   KICK THIS PLAYER (TWICE TO CONFIRM)", 8);
     Typer::draw_centered(0, -145, "THEIR SEAT REOPENS FOR ANYONE WITH THE ROOM CODE", 8);
+  } else if (hosting) {
+    Typer::draw_centered(0, -120, "UP / DOWN   PICK A PLAYER TO REMOVE", 8);
   } else {
     Typer::draw_centered(0, -120, "LEFT / RIGHT   CHANGE INPUT", 8);
     Typer::draw_centered(0, -145, "UNUSED PAD: PRESS ANY BUTTON TO TAKE THIS SEAT", 8);

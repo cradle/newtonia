@@ -1127,6 +1127,14 @@ void NetLobby::teardown_waiting_room() {
     drop_pending(pending_.begin()->first, "lobby teardown");
   for (SeatedPeer &sp : seated_) delete sp.session;
   seated_.clear();
+  // Kicked sessions still draining their goodbye: the room is going away, so
+  // their timer will never be serviced again (waiting_room_update stops at the
+  // hand-off, and the destructor/reset paths don't tick at all). Close them
+  // here rather than leaking the session and its PeerConnection — a kick
+  // followed within the drain window by START GAME or a back-out is exactly
+  // the case that reaches this.
+  for (size_t ci = 0; ci < closing_.size(); ci++) delete closing_[ci].first;
+  closing_.clear();
 }
 
 // Pump every mid-handshake joiner and watch the seated links: Ready seats

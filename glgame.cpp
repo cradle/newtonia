@@ -2988,6 +2988,7 @@ void GLGame::net_kick_peer(NetPeer &p) {
     // transport is torn down a few ticks later once the goodbye has had
     // time to leave.
     net_kick_close_ms_ = 600;
+    net_kick_close_seat_ = p.seat;
   }
   // Bar them from coming back. The event above stops a well-behaved
   // client, but the room code is in their hands and nothing else would
@@ -3006,11 +3007,13 @@ void GLGame::net_kick_peer(NetPeer &p) {
   // available). The session dies on the timer above — parking alone
   // would leave a kicked peer connected and frozen.
   p.lost = true;
-  net_host_rejoin_park_peer(p);
-  if (!p.session) return;  // nothing to flush; already gone
+  // keep_session: park's own net_drop_session would destroy the channel
+  // with the goodbye still queued in it — the exact thing the timer above
+  // exists to avoid.
+  net_host_rejoin_park_peer(p, /*keep_session=*/true);
 }
 
-void GLGame::net_host_rejoin_park_peer(NetPeer &p) {
+void GLGame::net_host_rejoin_park_peer(NetPeer &p, bool keep_session) {
   if (p.parked) return;
   p.parked = true;
   // The departed peer's worker attestation dies with them: whoever fills
@@ -3036,7 +3039,7 @@ void GLGame::net_host_rejoin_park_peer(NetPeer &p) {
       remote->time_until_respawn = 1 << 29;
     }
   }
-  net_drop_session(p);
+  if (!keep_session) net_drop_session(p);
   if (net_all_peers_lost() && !net_rejoin_parked_) {
     net_rejoin_parked_ = true;
     if (running) {
@@ -7789,14 +7792,17 @@ void GLGame::tick(int delta) {
     // A kicked peer's goodbye needs a moment on the wire before its
     // transport goes (see net_kick_close_ms_). The seat is already parked
     // and free, so this only delays the teardown, nothing the game waits
-    // on. Peers are matched by `lost && parked && session` — a kick is
-    // the only thing that leaves a session attached to one.
+    // on. Matched by SEAT, not by `lost && parked && session` — that
+    // predicate is exactly net_handshaking_lost_peer(), so it would also
+    // delete another seat's in-flight rejoin that happened to complete
+    // inside this window.
     if (net_kick_close_ms_ > 0) {
       net_kick_close_ms_ -= delta;
       if (net_kick_close_ms_ <= 0) {
         net_kick_close_ms_ = 0;
-        for (NetPeer *pk : net_peers_)
-          if (pk->lost && pk->parked && pk->session) net_drop_session(*pk);
+        NetPeer *pk = net_peer_by_seat((int)net_kick_close_seat_);
+        if (pk && pk->lost && pk->parked && pk->session) net_drop_session(*pk);
+        net_kick_close_seat_ = 0;
       }
     }
     net_ping_tick(delta);
