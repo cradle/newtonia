@@ -1,0 +1,162 @@
+#!/bin/bash
+# Run one CI shard of the e2e suite (TESTING.md section 4). The shard lists
+# live here, not in the workflow, so the same split runs locally:
+#
+#   test/e2e/ci_shard.sh netplay-core        # one shard
+#   test/e2e/ci_shard.sh list                # every shard name
+#   test/e2e/ci_shard.sh all                 # the whole suite, serially
+#
+# Needs a netplay build at the repo root (make -j) and, for every shard except
+# solo-*/lan, node+npx for the local signal relay this script boots itself.
+# Each driver re-execs itself under its own xvfb-run, so shards run drivers
+# SEQUENTIALLY: measured 2026-08-12, four netplay drivers at once on a 4-vCPU
+# runner lost a shock bolt in one of them (shock_net passes alone in 54s), so
+# concurrency inside a shard buys wall-clock at the cost of exactly the timing
+# assertions these drivers exist to make. Parallelism belongs across shards.
+set -u
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT" || exit 1
+
+# Shards are balanced on measured wall time (2026-08-12, 4 vCPU + llvmpipe):
+# ~9-11 min each, so the whole suite lands in about the time of one shard.
+# turnexpiry.sh is deliberately absent — it needs real Cloudflare TURN
+# credentials and UDP egress, so no runner can host it (TESTING.md).
+SHARDS="solo-replay solo-misc lobby-and-lan netplay-core netplay-resilience seats-and-soak"
+
+shard_drivers() {
+  case "$1" in
+    solo-replay)  echo "replay_keyframe replay_menu fourplayer replay replay_playback" ;;
+    solo-misc)    echo "lan replay_failures video leaderboard identity_attested
+                        identity_tick" ;;
+    lobby-and-lan) echo "lan_hidden lanclip lanrejoin lanrename byecard lankeep
+                         ownroom mismatch policy identity identity_legacy pairstart fly" ;;
+    netplay-core) echo "room weapons_net missile_net shock_net shock_hazards_net
+                        hazards_net timeslow_net impacts replay_online" ;;
+    netplay-resilience) echo "rejoin rejoinexit hiccup blackout invite hostresume
+                              spectate spectate_disconnect revive" ;;
+    seats-and-soak) echo "nseat nseat_rejoin nseat_gameover nseat_swap nseat_soak
+                          gensoak" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Shards whose drivers need the shared local relay. The solo shards do not:
+# their drivers either never connect, drive the LAN door with a deliberately
+# dead signal URL, or — leaderboard.sh, identity_attested.sh, identity_tick.sh
+# — stand up their own worker on their own port with its own flags.
+shard_needs_relay() {
+  case "$1" in
+    solo-replay|solo-misc) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# N-seat drivers default to 4 seats here (FOURPLAYER.md B6); the wrappers
+# threeseat.sh / threeseat_rejoin.sh / fourseat.sh only re-run these with a
+# different SEATS, so CI runs the drivers directly.
+driver_env() {
+  case "$1" in
+    nseat|nseat_rejoin|nseat_gameover|nseat_swap|nseat_soak) echo "SEATS=4" ;;
+    *) echo "" ;;
+  esac
+}
+
+RELAY_PID=""
+start_relay() {
+  # A PLAIN relay: identity.sh asserts that an unattested claim stays
+  # unattested, so FAKE_VERIFY here would fail it (and it is the only flavour
+  # difference in the suite — the attested drivers boot their own).
+  # The rate limits are the reason for the overrides: wrangler dev sees no
+  # CF-Connecting-IP, so every socket shares the key "local" and production's
+  # 10 host-creates / 10 min would refuse a shard's later drivers as
+  # "rate-limited" — which reads exactly like a protocol bug.
+  echo "== starting local signal relay on :8787"
+  ( cd "$ROOT/signal" && rm -rf .wrangler &&
+    exec npx wrangler@4 dev --local --port 8787 \
+      --var RATE_HOST_LIMIT:500 --var RATE_JOIN_LIMIT:1000 ) > "$OUTDIR/relay.log" 2>&1 &
+  RELAY_PID=$!
+  local i
+  for i in $(seq 1 90); do
+    curl -s --max-time 2 http://127.0.0.1:8787/ | grep -q newtonia-signal && break
+    sleep 1
+  done
+  curl -s --max-time 2 http://127.0.0.1:8787/ | grep -q newtonia-signal || {
+    echo "FATAL: relay never came up"; tail -20 "$OUTDIR/relay.log"; exit 1; }
+}
+
+stop_relay() {
+  [ -n "$RELAY_PID" ] || return 0
+  # Killing the npx wrapper leaves workerd holding :8787, and the next boot
+  # then dies with "Address already in use" — take the whole tree down.
+  pkill -P "$RELAY_PID" 2>/dev/null
+  kill "$RELAY_PID" 2>/dev/null
+  pkill -x workerd 2>/dev/null
+  RELAY_PID=""
+}
+trap stop_relay EXIT
+
+# A driver gets one retry: these drive real windows through a software GL
+# stack, and a dropped keystroke is not a product regression. A driver that
+# needs the retry is reported, so a creeping flake stays visible instead of
+# being laundered by the green tick.
+run_driver() {
+  local d=$1 attempt rc start elapsed
+  for attempt in 1 2; do
+    start=$(date +%s)
+    ( export NEWTONIA_TEST_OUT="$OUTDIR/$d.$attempt"
+      mkdir -p "$NEWTONIA_TEST_OUT"
+      env $(driver_env "$d") timeout "$DRIVER_TIMEOUT" \
+        bash "$ROOT/test/e2e/$d.sh" ) > "$OUTDIR/$d.attempt$attempt.log" 2>&1
+    rc=$?
+    elapsed=$(( $(date +%s) - start ))
+    if [ "$rc" = 0 ]; then
+      [ "$attempt" = 1 ] && printf '  ok     %-22s %4ss\n' "$d" "$elapsed" \
+                         || printf '  FLAKY  %-22s %4ss (passed on retry)\n' "$d" "$elapsed"
+      [ "$attempt" = 1 ] || FLAKY="$FLAKY $d"
+      return 0
+    fi
+    [ "$attempt" = 1 ] && echo "  .. $d failed in ${elapsed}s (rc=$rc), retrying"
+  done
+  printf '  FAIL   %-22s %4ss (rc=%s)\n' "$d" "$elapsed" "$rc"
+  tail -25 "$OUTDIR/$d.attempt2.log"
+  FAILED="$FAILED $d"
+  return 1
+}
+
+run_shard() {
+  local shard=$1 d drivers
+  drivers=$(shard_drivers "$shard") || { echo "unknown shard: $shard"; exit 2; }
+  echo "== shard $shard"
+  shard_needs_relay "$shard" && [ -z "$RELAY_PID" ] && start_relay
+  for d in $drivers; do
+    [ -f "$ROOT/test/e2e/$d.sh" ] || { echo "  MISSING $d.sh"; FAILED="$FAILED $d"; continue; }
+    run_driver "$d"
+  done
+}
+
+DRIVER_TIMEOUT="${DRIVER_TIMEOUT:-900}"
+OUTDIR="${NEWTONIA_CI_OUT:-$(mktemp -d /tmp/newtonia-ci.XXXXXX)}"
+mkdir -p "$OUTDIR"
+FAILED=""
+FLAKY=""
+
+case "${1:-}" in
+  ""|-h|--help) echo "usage: $0 <shard|all|list>"; echo "shards: $SHARDS"; exit 2 ;;
+  list)         echo "$SHARDS"; exit 0 ;;
+  all)          [ -x "$ROOT/newtonia" ] || { echo "FATAL: build first (make -j)"; exit 1; }
+                echo "logs: $OUTDIR"
+                for s in $SHARDS; do run_shard "$s"; done ;;
+  *)            [ -x "$ROOT/newtonia" ] || { echo "FATAL: build first (make -j)"; exit 1; }
+                echo "logs: $OUTDIR"
+                run_shard "$1" ;;
+esac
+
+stop_relay
+echo
+[ -n "$FLAKY" ] && echo "PASSED ON RETRY:$FLAKY"
+if [ -n "$FAILED" ]; then
+  echo "E2E-SHARD-FAIL:$FAILED"
+  exit 1
+fi
+echo "E2E-SHARD-OK"

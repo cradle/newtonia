@@ -37,22 +37,42 @@ stop_hard $P
 [ -f "$RDIR/current.nrp" ] || { fail "no current.nrp recorded"; }
 
 echo "== menu -> REPLAYS -> play -> Esc -> menu -> REPLAYS -> Esc"
-P=$(launch_game menu); sleep 2; W=$(win)
-key "$W" Return; sleep 0.5                       # attract
-# Rows with a save + a replay: CONTINUE, NEW GAME, [ONLINE], OPTIONS, REPLAYS
-# — REPLAYS is last; overshoot the cursor (it clamps at the bottom).
-for i in $(seq 1 6); do key "$W" s; done
-shot "$W" menu-rows
-key "$W" Return; sleep 1                         # open the list
-shot "$W" replays-list
-key "$W" Return; sleep 2                         # select CURRENT RUN
-grep -q "replay: playback started" "$OUT/menu.log" \
-  || fail "selecting the row did not start playback"
+
+# Rows with a save + a replay: CONTINUE, NEW GAME, [ONLINE], OPTIONS, REPLAYS,
+# [LEADERBOARD]. REPLAYS is NOT reliably last: a netplay build that can reach
+# the board worker appends LEADERBOARD after it (Menu::show_board_row), a
+# netless one does not — so overshooting to the bottom lands on a different
+# row per build, which is how this driver silently started opening the
+# leaderboard instead. Overshoot, then step UP past whatever sits below
+# REPLAYS; $UPS is probed on a FRESH process (blind keys on an unknown screen
+# drift into the quit confirmation) and reused for the second visit.
+UPS=0
+goto_replays() {                                 # cursor -> the REPLAYS row
+  local i
+  for i in $(seq 1 8); do key "$W" s; done       # clamps at the bottom row
+  for i in $(seq 1 "$UPS"); do key "$W" w; done
+}
+
+for UPS in 0 1; do
+  P=$(launch_game menu); sleep 2; W=$(win)
+  key "$W" Return; sleep 0.5                     # attract
+  goto_replays
+  shot "$W" menu-rows
+  key "$W" Return; sleep 1                       # open the list
+  shot "$W" replays-list
+  key "$W" Return; sleep 2                       # select CURRENT RUN
+  grep -q "replay: playback started" "$OUT/menu.log" && break
+  if [ "$UPS" = 1 ]; then
+    fail "selecting the row did not start playback"
+    break
+  fi
+  stop_hard $P                                   # retry one row up, fresh
+done
 shot "$W" menu-playback
 key "$W" Escape; sleep 2                         # exit playback -> menu
 kill -0 $P 2>/dev/null || fail "died leaving playback"
 key "$W" Return; sleep 0.5                       # attract again
-for i in $(seq 1 6); do key "$W" s; done
+goto_replays
 key "$W" Return; sleep 1                         # reopen the list
 key "$W" Escape; sleep 1                         # back out of the list
 kill -0 $P 2>/dev/null || fail "died backing out of the list"

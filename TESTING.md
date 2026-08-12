@@ -881,9 +881,45 @@ procedure after any change to the credential mint, the worker's
 | Xbox compile paths | xbox-dev.yml, xbox-console-smoke.yml |
 | Worker unit + protocol tests (`signal/test/`) | deploy-signal.yml, as the deploy gate (prod on v* tags, beta worker on master pushes touching signal/) |
 | Worker deploy | deploy-signal.yml (manual `npx wrangler deploy` still works — see signal/README.md) |
+| **The e2e suite (§4) + both worker suites** | **e2e.yml, on every PR and every push to master** |
 
-The e2e drivers are currently run locally/by-agent, not in CI (wrangler dev
-+ Xvfb in Actions is possible if flakiness proves acceptable).
+### The e2e suite in CI (e2e.yml)
+
+One build job uploads the binary + `libdatachannel.so`; six shards download
+it, boot their own local relay, and run their drivers. The lists live in
+`test/e2e/ci_shard.sh`, not in the workflow, so the same split runs locally:
+
+```sh
+test/e2e/ci_shard.sh list                 # shard names
+test/e2e/ci_shard.sh netplay-core         # one shard (boots its own relay)
+test/e2e/ci_shard.sh all                  # everything, serially (~58 min)
+```
+
+Measured 2026-08-12 on 4 vCPU + llvmpipe, driver by driver: the suite is
+~58 min serial, ~11 min per shard, ~15 min for the workflow. Notes that the
+numbers came with, all of them load-bearing:
+
+- **Drivers run one at a time inside a shard.** Two solo drivers in parallel
+  cost nothing (309 s vs 424 s sequential, both passing), but four netplay
+  drivers at once lost a shock bolt in one of them — `shock_net` passes alone
+  in 54 s. Parallelism goes across shards, not inside one.
+- **The shared relay is PLAIN** (no `FAKE_VERIFY`): `identity.sh` asserts an
+  unattested claim stays unattested. `identity_attested.sh`,
+  `identity_tick.sh` and `leaderboard.sh` stand up their own workers on their
+  own ports, so they need no shared relay at all.
+- **`RATE_HOST_LIMIT`/`RATE_JOIN_LIMIT` are widened** for it. `wrangler dev`
+  sees no `CF-Connecting-IP`, so every socket shares the key `local` and
+  production's 10 host-creates / 10 min would start refusing a shard's later
+  drivers — which reads exactly like a protocol bug (§3).
+- **Killing the `npx` wrapper leaves `workerd` holding :8787**, and the next
+  boot dies with "Address already in use". `ci_shard.sh` takes the whole
+  process tree down.
+- **Each driver gets one retry**, and a driver that needed it is reported as
+  `FLAKY … (passed on retry)` — a creeping flake stays visible rather than
+  being laundered by the green tick.
+- `turnexpiry.sh` is **not** in any shard: it needs real Cloudflare TURN
+  credentials and UDP egress (§4). The web drivers (§8) are not either — they
+  need an emcc build and playwright.
 
 ## 7. Hardware-only checks
 

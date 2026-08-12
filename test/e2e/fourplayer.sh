@@ -24,6 +24,18 @@ newgame() {
   xdotool key --window $W Return; sleep 2   # first menu row (NEW GAME / CONTINUE)
 }
 stop() { kill $PID; wait $PID || fail "unclean shutdown at $1"; PID=""; }
+# The auto-save is written on the way out to the menu, and the FIRST launch on
+# a machine that has never run the game is slow enough (pref dir creation, cold
+# GL) that a bare -f test raced it — which is every CI run, and was a one-in-two
+# failure on a fresh container. Poll instead of sampling once.
+wait_for_save() {
+  local i
+  for i in $(seq 1 15); do
+    [ -f "$PREF_DIR/savegame.dat" ] && return 0
+    sleep 1
+  done
+  return 1
+}
 
 rm -f "$PREF_DIR/savegame.dat"
 
@@ -34,7 +46,7 @@ sleep 3; alive "4P running"
 xdotool key --window $W n; sleep 2; alive "4P after skip-level"
 xdotool key --window $W Escape; sleep 2   # exit to menu, auto-saving
 stop "4P save"
-[ -f "$PREF_DIR/savegame.dat" ] || fail "no 4P save written"
+wait_for_save || fail "no 4P save written"
 
 # 2. plain relaunch resumes the 4P save via CONTINUE
 ./newtonia > /dev/null 2>&1 & PID=$!
