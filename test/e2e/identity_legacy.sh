@@ -24,25 +24,39 @@ relay_check
 # connect; the legacy side launches with NEWTONIA_NET_NO_IDENTITY=1 (the
 # env stays contained — command substitution runs in a subshell).
 run_pair() {
-  local hname=$1 jname=$2 legacy=$3 pa pb wins a b code
+  local hname=$1 jname=$2 legacy=$3 pa pb before a b code
   wait_no_windows
+  # The previous pairing hosted and was killed, leaving a resume ticket whose
+  # "RESUME HOSTING <CODE>" row sits above the layout nav_host assumes — the
+  # phase-B "NO ROOM CODE" (lib.sh).
+  fresh_menu_state
+  # Per-launch window diff, not a sorted id list: across sequential pairings X
+  # recycles the previous windows' ids, so "head -1" is not reliably the older
+  # instance (the hazard new_window_since was added for, B5).
+  before=$(newtonia_windows)
   if [ "$legacy" = host ]; then
     pa=$(NEWTONIA_NET_NO_IDENTITY=1 launch "$hname")
   else
     pa=$(launch "$hname")
   fi
   sleep 2
+  a=$(new_window_since "$before")
+  before=$(newtonia_windows)
   if [ "$legacy" = joiner ]; then
     pb=$(NEWTONIA_NET_NO_IDENTITY=1 launch "$jname")
   else
     pb=$(launch "$jname")
   fi
   sleep 4
+  b=$(new_window_since "$before")
 
-  wins=$(newtonia_windows)
-  [ "$(echo "$wins" | wc -l)" -eq 2 ] ||
-    { echo "expected 2 game windows, got: $wins"; kill_pair $pa $pb; exit 1; }
-  a=$(echo "$wins" | head -1); b=$(echo "$wins" | tail -1)
+  [ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ] ||
+    { echo "expected 2 game windows, got: '$a' '$b'"; kill_pair $pa $pb; exit 1; }
+
+  # On the menu before typing: the second pairing starts slower and a
+  # swallowed first Return shifts the whole nav sequence (lib.sh).
+  wait_for_menu "$hname" || { kill_pair $pa $pb; exit 1; }
+  wait_for_menu "$jname" || { kill_pair $pa $pb; exit 1; }
 
   nav_host $a
   code=$(host_room_code "$hname")

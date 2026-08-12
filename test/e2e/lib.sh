@@ -149,21 +149,26 @@ wait_for_menu() {
   return 1
 }
 
-# fresh_menu_state: drop the savegame from this run's shared pref dir.
+# fresh_menu_state: clear everything that adds a ROW to the main menu.
 #
 # lib.sh guarantees fresh prefs per DRIVER, and nav_host/nav_join encode the
 # fresh-prefs row layout (NEW GAME, ONLINE, ...). A driver that runs SEVERAL
 # pairings in one process breaks that guarantee itself: the first pairing
-# plays a game and its instances auto-save on the way out, so the next
-# pairing's menu opens with a CONTINUE row on top and every nav keystroke
-# lands one row high. The symptom is not a menu complaint — nav_host starts a
-# NEW GAME instead of opening the lobby, and the driver reports "NO ROOM
-# CODE", i.e. a relay-shaped failure with a menu-shaped cause (identity.sh
-# and identity_legacy.sh, both phase B, 2026-08-12).
+# hosts a game and is then SIGTERMed, which leaves a resume ticket behind —
+# so the next pairing's menu opens with "RESUME HOSTING <CODE>" on top, every
+# row below it shifts down one, and nav_host's single `s` lands on NEW GAME.
+# The driver then reports "NO ROOM CODE" while its host log shows
+# "Presence: Level 1 Co-Op": a relay-shaped symptom with a menu-shaped cause,
+# and invisible without a screenshot of the row list (identity.sh and
+# identity_legacy.sh, both phase B, 2026-08-12). A savegame does the same
+# thing via CONTINUE.
 #
 # Call this before each pairing in a multi-pairing driver.
 fresh_menu_state() {
-  rm -f "$XDG_DATA_HOME/cc.gfm/newtonia/savegame.dat"
+  local dir="$XDG_DATA_HOME/cc.gfm/newtonia"
+  rm -f "$dir/savegame.dat"          # CONTINUE
+  rm -f "$dir/netplay_resume.dat"    # RESUME HOSTING (net_resume.cpp)
+  rm -f "$dir/online_savegame.dat"   # its paired world (savegame.cpp)
 }
 
 # skip_to_generation WINDOW LOGNAME TARGET: drive the host to generation

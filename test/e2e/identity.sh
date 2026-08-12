@@ -27,17 +27,33 @@ relay_check
 # host+joiner run to a connected game; logs at $OUT/$1.log / $OUT/$2.log.
 # HOSTANON=1 withholds the host's name on the wire.
 pair() {
-  local hname=$1 jname=$2 anon=$3 hn=$4 jn=$5 pa pb wins a b code
+  local hname=$1 jname=$2 anon=$3 hn=$4 jn=$5 pa pb before a b code
+  # The previous pairing hosted and was killed, leaving a resume ticket: its
+  # "RESUME HOSTING <CODE>" row would push every row below it down one and
+  # nav_host would land on NEW GAME ("NO ROOM CODE" — see lib.sh).
+  fresh_menu_state
+  # Identify each instance by the window that appeared when IT launched rather
+  # than by sorting the id list: across sequential pairings X recycles the
+  # previous windows' ids, so "head -1" is not reliably the older instance
+  # (the hazard new_window_since was added for, B5).
+  before=$(newtonia_windows)
   pa=$(NEWTONIA_NET_NAME="$hn" NEWTONIA_NET_ANON_IDENTITY="$anon" \
        launch "$hname")
   sleep 2
+  a=$(new_window_since "$before")
+  before=$(newtonia_windows)
   pb=$(NEWTONIA_NET_NAME="$jn" launch "$jname")
   sleep 4
+  b=$(new_window_since "$before")
 
-  wins=$(newtonia_windows)
-  [ "$(echo "$wins" | wc -l)" -eq 2 ] ||
-    { echo "expected 2 game windows, got: $wins"; kill_pair $pa $pb; exit 1; }
-  a=$(echo "$wins" | head -1); b=$(echo "$wins" | tail -1)
+  [ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ] ||
+    { echo "expected 2 game windows, got: '$a' '$b'"; kill_pair $pa $pb; exit 1; }
+
+  # Both instances must be ON the menu before anything is typed at them: a
+  # later pairing starts slower, and a swallowed first Return shifts the whole
+  # sequence (lib.sh).
+  wait_for_menu "$hname" || { kill_pair $pa $pb; exit 1; }
+  wait_for_menu "$jname" || { kill_pair $pa $pb; exit 1; }
 
   nav_host $a
   code=$(host_room_code "$hname")
