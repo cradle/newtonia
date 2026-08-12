@@ -58,8 +58,10 @@ launch() {
 # alive PID NAME: exit the driver if the process died (139 = SIGSEGV)
 alive() { kill -0 "$1" 2>/dev/null || { echo "DEAD: $2"; exit 1; }; }
 
-# key WINDOW KEY: one keypress with settle time
-key() { xdotool key --window "$1" "$2"; sleep 0.35; }
+# key WINDOW KEY: one keypress with settle time. KEY_SETTLE tunes the pause
+# for slower rigs (a dropped menu keystroke does not fail loudly — it shifts
+# the rest of the sequence onto the wrong rows).
+key() { xdotool key --window "$1" "$2"; sleep "${KEY_SETTLE:-0.35}"; }
 
 # shot WINDOW NAME: screenshot to $OUT/NAME.png (xwd, not import — an
 # `import -window root` capture is black under Xvfb once GL is up)
@@ -121,6 +123,47 @@ host_room_code() {
     [ -n "$code" ] && break
   done
   echo "$code"
+}
+
+# wait_for_menu LOGNAME: block until that instance reports it is on the menu.
+#
+# The fixed "sleep 2 after launch, then start typing" that most drivers use is
+# fine for a first pairing on a warm box. It is NOT fine for a driver's second
+# or third pairing: the previous instances are still being reaped, the new
+# process reaches its window later, and its FIRST Return is swallowed. Nothing
+# complains — the whole nav sequence just shifts one keystroke, so nav_host
+# picks NEW GAME instead of ONLINE and the driver waits out its 30 s poll for a
+# room code that was never going to appear ("NO ROOM CODE", with the log
+# showing "Presence: Level 1" — a menu-shaped failure wearing a relay's
+# clothes; identity.sh/identity_legacy.sh phase B, 2026-08-12).
+#
+# Presence::set_menu logs one line per state change, unconditionally, so the
+# menu becoming ready is directly observable rather than assumed.
+wait_for_menu() {
+  local i
+  for i in $(seq 1 30); do
+    grep -aq "Presence: In the Menu" "$OUT/$1.log" && return 0
+    sleep 1
+  done
+  echo "instance '$1' never reached the menu"
+  return 1
+}
+
+# fresh_menu_state: drop the savegame from this run's shared pref dir.
+#
+# lib.sh guarantees fresh prefs per DRIVER, and nav_host/nav_join encode the
+# fresh-prefs row layout (NEW GAME, ONLINE, ...). A driver that runs SEVERAL
+# pairings in one process breaks that guarantee itself: the first pairing
+# plays a game and its instances auto-save on the way out, so the next
+# pairing's menu opens with a CONTINUE row on top and every nav keystroke
+# lands one row high. The symptom is not a menu complaint — nav_host starts a
+# NEW GAME instead of opening the lobby, and the driver reports "NO ROOM
+# CODE", i.e. a relay-shaped failure with a menu-shaped cause (identity.sh
+# and identity_legacy.sh, both phase B, 2026-08-12).
+#
+# Call this before each pairing in a multi-pairing driver.
+fresh_menu_state() {
+  rm -f "$XDG_DATA_HOME/cc.gfm/newtonia/savegame.dat"
 }
 
 # skip_to_generation WINDOW LOGNAME TARGET: drive the host to generation
