@@ -7511,11 +7511,26 @@ void GLGame::tick(int delta) {
         test_kill_ms[k] = e ? atoi(e) : -1;
         const char *who = getenv(who_var[k]);
         std::string w = who ? who : "";
-        test_kill_who[k] = w.empty() ? 1
-                         : w == "local" ? 0
-                         : w == "all" ? 2
-                         : w.compare(0, 4, "seat") == 0 ? -atoi(w.c_str() + 4)
-                         : 1;
+        if (w.empty()) test_kill_who[k] = 1;
+        else if (w == "local") test_kill_who[k] = 0;
+        else if (w == "all") test_kill_who[k] = 2;
+        else if (w.compare(0, 4, "seat") == 0) {
+          // Validate: "seat", "seat0" and any typo atoi to 0, which is the
+          // LOCAL code — the hook would quietly empty player 1 and log
+          // "forcing local player", so a staggered-death driver could pass
+          // or fail for the wrong reason. A bad spec disables the firing
+          // loudly instead.
+          int seat = atoi(w.c_str() + 4);
+          if (seat >= 1 && seat <= MAX_PLAYERS) {
+            test_kill_who[k] = -seat;
+          } else {
+            NET_LOG("net: TEST bad KILL WHO '%s' - firing disabled\n",
+                    w.c_str());
+            test_kill_ms[k] = -1;
+          }
+        } else {
+          test_kill_who[k] = 1;
+        }
       }
     }
     for (int k = 0; k < 2; k++) {
@@ -10392,19 +10407,27 @@ void GLGame::revive_fallen_partner(Ship *except) {
   // had been waiting since the last generation could watch the seat below
   // them jump the queue. Ship::out_order() stamps a monotonic counter the
   // moment a ship runs out of lives, so the smallest stamp is whoever has
-  // been out longest. Stamp 0 means "out before the counter saw it" — a
-  // resumed save — and sorts oldest, which keeps the old list-order pick
-  // for those and never leaves a restored player unrevivable.
+  // been out longest. An UNSTAMPED ship (0) is the freshest kind there is,
+  // not the oldest: step() stamps at the fully-out transition, and the only
+  // way to reach here before that is to have died in THIS tick's collision
+  // pass, which runs after the step loops and before pickup collection. So
+  // 0 sorts newest — treating it as oldest let a player who died a
+  // millisecond ago jump the whole queue, the exact inversion this fixes.
+  // (A restored save needs no special case: its out players are stamped on
+  // the first step, well before any pickup can be collected, and they take
+  // list order among themselves — the old behaviour, for those.)
   Ship *best = NULL;
+  unsigned best_rank = 0;
   for (auto *gs : *players) {
     Ship *fallen = gs->ship;
     if (fallen == except) continue;
     if (fallen->is_alive() || fallen->lives > 0) continue;  // not fully out
-    if (best == NULL) { best = fallen; continue; }
-    if (best->out_order() == 0) continue;                   // best is oldest
-    if (fallen->out_order() == 0 ||
-        fallen->out_order() < best->out_order())
+    unsigned rank = fallen->out_order();
+    if (rank == 0) rank = ~0u;  // out this very tick: newest
+    if (best == NULL || rank < best_rank) {
       best = fallen;
+      best_rank = rank;
+    }
   }
   if (best == NULL) return;
   unsigned order = best->out_order();
