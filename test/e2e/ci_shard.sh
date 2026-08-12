@@ -96,10 +96,20 @@ stop_relay() {
 }
 trap stop_relay EXIT
 
+# xdotool prints "XGetInputFocus returned the focused window of 1" for every
+# single keystroke, so an unfiltered tail of a driver log is 25 lines of that
+# and none of the verdict. Everything printed back to the job log goes through
+# this — the first CI failure was undiagnosable for exactly that reason.
+driver_log() { grep -av "XGetInputFocus" "$1"; }
+
+# The driver's own verdict lines: what it was doing and why it gave up.
+driver_reason() { driver_log "$1" | grep -aE "FAIL|FATAL|DEAD|MISSING|NO " | head -3; }
+
 # A driver gets one retry: these drive real windows through a software GL
 # stack, and a dropped keystroke is not a product regression. A driver that
-# needs the retry is reported, so a creeping flake stays visible instead of
-# being laundered by the green tick.
+# needs the retry is reported WITH the reason its first attempt failed, so a
+# creeping flake stays visible — and diagnosable — instead of being laundered
+# by the green tick.
 run_driver() {
   local d=$1 attempt rc start elapsed
   for attempt in 1 2; do
@@ -111,15 +121,24 @@ run_driver() {
     rc=$?
     elapsed=$(( $(date +%s) - start ))
     if [ "$rc" = 0 ]; then
-      [ "$attempt" = 1 ] && printf '  ok     %-22s %4ss\n' "$d" "$elapsed" \
-                         || printf '  FLAKY  %-22s %4ss (passed on retry)\n' "$d" "$elapsed"
-      [ "$attempt" = 1 ] || FLAKY="$FLAKY $d"
+      if [ "$attempt" = 1 ]; then
+        printf '  ok     %-22s %4ss\n' "$d" "$elapsed"
+      else
+        printf '  FLAKY  %-22s %4ss (passed on retry)\n' "$d" "$elapsed"
+        driver_reason "$OUTDIR/$d.attempt1.log" | sed 's/^/           first attempt: /'
+        FLAKY="$FLAKY $d"
+      fi
       return 0
     fi
+    # 124 is timeout(1) killing a wedged driver — worth naming, since its log
+    # ends mid-step rather than with a verdict.
+    [ "$rc" = 124 ] && echo "  .. $d TIMED OUT after ${DRIVER_TIMEOUT}s"
     [ "$attempt" = 1 ] && echo "  .. $d failed in ${elapsed}s (rc=$rc), retrying"
   done
   printf '  FAIL   %-22s %4ss (rc=%s)\n' "$d" "$elapsed" "$rc"
-  tail -25 "$OUTDIR/$d.attempt2.log"
+  echo "  ---- $d, last attempt (xdotool noise filtered) ----"
+  driver_log "$OUTDIR/$d.attempt2.log" | tail -40 | sed 's/^/  | /'
+  echo "  ----"
   FAILED="$FAILED $d"
   return 1
 }
@@ -135,7 +154,12 @@ run_shard() {
   done
 }
 
-DRIVER_TIMEOUT="${DRIVER_TIMEOUT:-900}"
+# Per-driver cap. The longest driver measured is replay_playback at ~300 s, so
+# 480 leaves generous headroom while keeping a wedged driver from eating the
+# shard: at the old 900 s a single driver could burn 30 minutes across its two
+# attempts, overrun the JOB timeout, and take the whole shard down with no
+# summary and no uploaded artifact (solo-misc, run 1).
+DRIVER_TIMEOUT="${DRIVER_TIMEOUT:-480}"
 OUTDIR="${NEWTONIA_CI_OUT:-$(mktemp -d /tmp/newtonia-ci.XXXXXX)}"
 mkdir -p "$OUTDIR"
 FAILED=""
