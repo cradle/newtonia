@@ -301,7 +301,13 @@ The core of the phase.
   with a 3P test, don't assume).
 - Revive: mechanics are already N-safe (revives the first fallen; multiple
   fallen partners take successive pickups — one in the world at a time is the
-  existing rule and stays).
+  existing rule and stays). **Amended 2026-08-11**: "first fallen" meant
+  first in the list, i.e. the lowest seat, however recently they fell — fine
+  at 2P where there was only ever one partner down, arbitrary at 3-4P. It now
+  revives whoever has been out LONGEST (`Ship::out_order()`, stamped in
+  `step()` at the fully-out transition so every path that empties a seat is
+  covered, not just the fatal blow). One per pickup and one pickup in the
+  world at a time are unchanged.
 - `all_players_out()`'s seven inlined copies (glgame.cpp:4540, :7714, :8766,
   :8798, :8837, :9002, :9476) are already loops — leave them, or fold into the
   helper opportunistically while touching those files.

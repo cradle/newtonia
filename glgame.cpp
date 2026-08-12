@@ -7493,30 +7493,48 @@ void GLGame::tick(int delta) {
     // "all" empties everyone — the deterministic game-over trigger the
     // leaderboard-prompt drivers need (a spray-scored host with a nearly
     // cleared field can survive blind crash loops indefinitely).
-    static int test_kill_ms = -2;
-    static int test_kill_who = 1;  // 0 local, 1 remote, 2 all
-    if (test_kill_ms == -2) {
-      const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
-      test_kill_ms = e ? atoi(e) : -1;
-      const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
-      test_kill_who = !who ? 1
-                    : std::string(who) == "local" ? 0
-                    : std::string(who) == "all" ? 2 : 1;
+    // Two independent firings (…_KILL_MS / …_KILL2_MS), and WHO takes
+    // "seatN" as well as local/remote/all, so a driver can STAGGER deaths:
+    // the revive queue's order only means anything when players fall at
+    // different times, and a single simultaneous wipe stamps them in seat
+    // order — which is exactly the case that can't tell the longest-dead
+    // pick apart from the old lowest-seat one.
+    static int test_kill_ms[2] = {-2, -2};
+    static int test_kill_who[2] = {1, 1};  // 0 local, 1 remote, 2 all, <0 seat
+    if (test_kill_ms[0] == -2) {
+      const char *ms_var[2] = {"NEWTONIA_NET_TEST_KILL_MS",
+                               "NEWTONIA_NET_TEST_KILL2_MS"};
+      const char *who_var[2] = {"NEWTONIA_NET_TEST_KILL_WHO",
+                                "NEWTONIA_NET_TEST_KILL2_WHO"};
+      for (int k = 0; k < 2; k++) {
+        const char *e = getenv(ms_var[k]);
+        test_kill_ms[k] = e ? atoi(e) : -1;
+        const char *who = getenv(who_var[k]);
+        std::string w = who ? who : "";
+        test_kill_who[k] = w.empty() ? 1
+                         : w == "local" ? 0
+                         : w == "all" ? 2
+                         : w.compare(0, 4, "seat") == 0 ? -atoi(w.c_str() + 4)
+                         : 1;
+      }
     }
-    if (test_kill_ms > 0) {
-      test_kill_ms -= delta;
-      if (test_kill_ms <= 0) {
-        test_kill_ms = -1;
+    for (int k = 0; k < 2; k++) {
+      if (test_kill_ms[k] <= 0) continue;
+      test_kill_ms[k] -= delta;
+      if (test_kill_ms[k] > 0) continue;
+      test_kill_ms[k] = -1;
+      int who = test_kill_who[k];
+      if (who < 0)
+        NET_LOG("net: TEST forcing seat %d out of lives\n", -who);
+      else
         NET_LOG("net: TEST forcing %s out of lives\n",
-                test_kill_who == 2 ? "everyone"
-                                   : test_kill_who ? "remote player"
-                                                   : "local player");
-        for (auto *gs : *players) {
-          if (test_kill_who == 0 && gs != players->front()) continue;
-          if (test_kill_who == 1 && gs != players->back()) continue;
-          gs->ship->lives = 0;
-          gs->ship->kill();
-        }
+                who == 2 ? "everyone" : who ? "remote player" : "local player");
+      for (auto *gs : *players) {
+        if (who == 0 && gs != players->front()) continue;
+        if (who == 1 && gs != players->back()) continue;
+        if (who < 0 && (int)gs->ship->net_seat != -who) continue;
+        gs->ship->lives = 0;
+        gs->ship->kill();
       }
     }
     // Apply the revive effect to whichever player is fully out — the
@@ -10368,16 +10386,34 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
 // wreck. No fallen partner (they beat the pickup back some other way) is
 // a quiet no-op. except = the collector (never revives itself).
 void GLGame::revive_fallen_partner(Ship *except) {
+  // Longest-dead first. At 2P there was only ever one partner to revive, so
+  // "the first fallen in the list" was unambiguous; with 3-4 seats it meant
+  // the LOWEST SEAT always won however recently they fell, and a player who
+  // had been waiting since the last generation could watch the seat below
+  // them jump the queue. Ship::out_order() stamps a monotonic counter the
+  // moment a ship runs out of lives, so the smallest stamp is whoever has
+  // been out longest. Stamp 0 means "out before the counter saw it" — a
+  // resumed save — and sorts oldest, which keeps the old list-order pick
+  // for those and never leaves a restored player unrevivable.
+  Ship *best = NULL;
   for (auto *gs : *players) {
     Ship *fallen = gs->ship;
     if (fallen == except) continue;
-    if (!fallen->is_alive() && fallen->lives <= 0) {
-      fallen->lives = 1;
-      fallen->time_until_respawn = fallen->respawn_time;
-      NET_LOG("revive - partner respawning\n");
-      break;
-    }
+    if (fallen->is_alive() || fallen->lives > 0) continue;  // not fully out
+    if (best == NULL) { best = fallen; continue; }
+    if (best->out_order() == 0) continue;                   // best is oldest
+    if (fallen->out_order() == 0 ||
+        fallen->out_order() < best->out_order())
+      best = fallen;
   }
+  if (best == NULL) return;
+  unsigned order = best->out_order();
+  best->revive_one_life();
+  // Name the seat: with more than one player down, "a partner" no longer
+  // identifies anyone, and this is the only record of which way the
+  // longest-dead pick went.
+  NET_LOG("revive - player %d respawning (out order %u)\n",
+          (int)best->net_seat, order);
 }
 
 // Time-slow pickup collected: slow the WORLD's wall-clock rate for
