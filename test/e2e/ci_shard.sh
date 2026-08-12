@@ -105,6 +105,26 @@ driver_log() { grep -av "XGetInputFocus" "$1"; }
 # The driver's own verdict lines: what it was doing and why it gave up.
 driver_reason() { driver_log "$1" | grep -aE "FAIL|FATAL|DEAD|MISSING|NO " | head -3; }
 
+# Kill workers a DRIVER stood up for itself, leaving this shard's relay alone.
+#
+# leaderboard.sh, identity_attested.sh and identity_tick.sh each boot their own
+# worker on their own port, and killing the npx wrapper leaves workerd holding
+# it. A retry then cannot bind, silently talks to the PREVIOUS attempt's
+# worker, and inherits its database: the retry of leaderboard.sh found the
+# first attempt's rows already on the board, so its fresh score could not
+# place and S1 failed with "never placed" — the retry poisoned by the very
+# attempt it was meant to redo (2026-08-12). The shard relay is identified by
+# its port and deliberately spared; everything else wrangler-shaped goes.
+kill_driver_workers() {
+  local p args
+  for p in $(pgrep -x workerd 2>/dev/null) $(pgrep -f 'wrangler[-]dist' 2>/dev/null); do
+    args=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
+    case "$args" in *8787*) continue ;; esac   # the shard's own relay
+    kill -9 "$p" 2>/dev/null
+  done
+  return 0
+}
+
 # A driver gets one retry: these drive real windows through a software GL
 # stack, and a dropped keystroke is not a product regression. A driver that
 # needs the retry is reported WITH the reason its first attempt failed, so a
@@ -134,8 +154,10 @@ run_driver() {
     # ends mid-step rather than with a verdict.
     [ "$rc" = 124 ] && echo "  .. $d TIMED OUT after $(driver_timeout "$d")s"
     [ "$attempt" = 1 ] && echo "  .. $d failed in ${elapsed}s (rc=$rc), retrying"
+    kill_driver_workers   # a leftover worker would serve the retry stale state
   done
   printf '  FAIL   %-22s %4ss (rc=%s)\n' "$d" "$elapsed" "$rc"
+  driver_reason "$OUTDIR/$d.attempt1.log" | sed 's/^/         first attempt: /'
   echo "  ---- $d, last attempt (xdotool noise filtered) ----"
   driver_log "$OUTDIR/$d.attempt2.log" | tail -40 | sed 's/^/  | /'
   echo "  ----"
