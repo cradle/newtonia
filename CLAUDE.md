@@ -21,9 +21,11 @@ Compiler: g++ with `-Wall -O3 -std=c++11`. Sources include root, `weapon/`, and 
 
 **Netplay builds by default** (the old opt-in `NETPLAY=1` still works and is
 now redundant). The default needs libdatachannel at `./netplay-libs` — build
-it ONCE with `./build_netplay_deps.sh` (`--universal` for `make osx`). A
-missing prefix is a hard `make` error (never a silent netless fallback);
-`make NETPLAY=0` is the explicit opt-out. `make web` / `make android*` don't
+it ONCE with `./build_netplay_deps.sh` (`--universal` for `make osx`; needs
+`cmake` + OpenSSL headers on top of the game's own deps — see the per-OS
+dependency sections below). A missing prefix is a hard `make` error (never a
+silent netless fallback); `make NETPLAY=0` is the explicit opt-out.
+`make web` / `make android*` don't
 need the prefix (web's backend is unconditional; Android builds via Gradle).
 
 **libdatachannel is PATCHED** — `patches/libdatachannel-ws-ca-cert.patch`
@@ -49,11 +51,13 @@ See the `platform-builds` skill (`.claude/skills/platform-builds/SKILL.md`) for 
 #### Linux dependencies
 ```sh
 sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev freeglut3-dev
+sudo apt-get install -y cmake libssl-dev        # only for ./build_netplay_deps.sh
 ```
 
 #### macOS dependencies
 ```sh
 brew install sdl2 sdl2_mixer
+brew install cmake openssl@3                    # only for ./build_netplay_deps.sh
 ```
 GLUT ships with Xcode Command Line Tools (`xcode-select --install`).
 
