@@ -36,12 +36,8 @@ alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; exit 1; }
 
 echo "== host skips to generation 12 (through pulsar/comet/seeker)"
-for g in $(seq 1 12); do
-  key $A n
-  sleep 3
-  alive $PA host || exit 1
-  alive $PB joiner || exit 1
-done
+skip_to_generation $A host 12 || { echo "FAIL: host never reached generation 12"; exit 1; }
+alive $PA host; alive $PB joiner
 # Hold on gen 12 so all three kinds replicate to the joiner, then both fire
 # (held) to drive the client bullet-vs-hazard cosmetic path, then screenshot.
 sleep 4

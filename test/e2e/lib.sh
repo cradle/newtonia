@@ -123,6 +123,39 @@ host_room_code() {
   echo "$code"
 }
 
+# skip_to_generation WINDOW LOGNAME TARGET: drive the host to generation
+# TARGET with the skip-level key, and CONFIRM it got there.
+#
+# The obvious loop — press n TARGET times — lands short whenever Xvfb drops a
+# keystroke under load, and the failure surfaces nowhere near its cause: a
+# press lost on the way to gen 9 reads as "joiner never replicated the
+# pulsar", i.e. exactly like a netplay bug. Two of three retried drivers in
+# the first CI shard run failed this way (2026-08-12).
+#
+# The generation is only observable through the host's 10 s snapshot
+# telemetry (`net: slot #N gen=G`), so the correction waits for a FRESH slot
+# line before topping up — reading a stale one would press n again and
+# overshoot the level the driver wants to sit on.
+skip_to_generation() {
+  local w=$1 log=$2 target=$3 i gen before now tries
+  for i in $(seq 1 "$target"); do key "$w" n; sleep 3; done
+  for tries in 1 2 3; do
+    before=$(grep -ac "slot #" "$OUT/$log.log")
+    for i in $(seq 1 15); do
+      now=$(grep -ac "slot #" "$OUT/$log.log")
+      [ "$now" -gt "$before" ] && break
+      sleep 1
+    done
+    gen=$(grep -a "slot #" "$OUT/$log.log" | tail -1 |
+          sed 's/.*gen=\([0-9]*\).*/\1/')
+    [ -n "$gen" ] || return 1
+    [ "$gen" -ge "$target" ] && return 0
+    echo "== skip correction: at generation $gen, want $target"
+    for i in $(seq 1 $((target - gen))); do key "$w" n; sleep 3; done
+  done
+  return 1
+}
+
 # ---- N-seat room helpers (FOURPLAYER.md B6) ----
 # A "room" is one host + (N-1) relay joiners assembled through the B4b
 # waiting room. Callers export NEWTONIA_NET_TEST_SEATS=N before the first
