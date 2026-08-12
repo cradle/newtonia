@@ -60,6 +60,31 @@ key $B c
 for i in 1 2 3; do key $B x; done
 key $B c
 
+# ...and CONFIRM the cursor actually landed on missiles before firing 120 of
+# them. Two `c` presses reach missiles only if both land; a dropped one leaves
+# the joiner on giga mines, the whole burst deploys the wrong weapon, and the
+# driver's verdict is "the burst never reached MISSILES, so nothing was
+# tested" — true, and no help in saying why (twice on CI, 2026-08-12).
+# Each deploy kind logs its own confirm line, so the selection is observable:
+# fire one, see what came back, cycle if it wasn't a missile.
+select_missiles() {
+  local before after i
+  for i in 1 2 3 4 5 6; do
+    before=$(grep -ac "missile deploy confirmed" "$OUT/joiner.log")
+    key $B x                       # fire one of whatever is armed
+    sleep 2
+    after=$(grep -ac "missile deploy confirmed" "$OUT/joiner.log")
+    [ "$after" -gt "$before" ] && { echo "   (missiles armed after $i probe(s))"; return 0; }
+    key $B c                       # not missiles — next secondary
+    sleep 0.5
+  done
+  return 1
+}
+select_missiles || {
+  echo "FAIL: could not arm MISSILES — cycled the whole secondary list without"
+  echo "      a single missile deploy confirmed by the host"
+  kill_pair $PA $PB; exit 1; }
+
 # Long bursts of discrete presses (one missile per press — the secondary
 # trigger has no auto-fire). The muzzle-blast race is per-launch and only
 # fires when a snapshot apply lands in the window between the press and
