@@ -118,6 +118,21 @@ class Ship : public CompositeObject {
     // online peer and the world actors false.
     bool sound_own_cues = true;
 
+    // Order in which players ran OUT of lives — a monotonic stamp taken the
+    // moment a ship dies with none left, so the revive pickup can hand the
+    // life to whoever has been waiting longest instead of to the lowest
+    // seat. 0 means "not out", or "out before this counter saw it" (a
+    // resumed save, which the pickup treats as oldest).
+    unsigned out_order() const { return out_order_; }
+    // Back from fully out: one life and a fresh respawn countdown. Clears
+    // the stamp here so a later death is ordered afresh — the two must move
+    // together, which is why this isn't done at the call site.
+    void revive_one_life() {
+      lives = 1;
+      time_until_respawn = respawn_time;
+      out_order_ = 0;
+    }
+
     // Respawn-countdown tic, deferred: step() flags the second-boundary
     // crossing here (1 = tic, 2 = final-second tic_low) instead of playing
     // it, and GLGame drains the flags ONCE per step across all players —
@@ -609,6 +624,8 @@ class Ship : public CompositeObject {
     // stacked copies of the same full-volume loop were "way too loud" (4P
     // field bug). First own-cues ship to hum starts the channel, the last
     // to stop halts it; overlapping windows hold it at one hum's loudness.
+    unsigned out_order_ = 0;             // see out_order()
+    static unsigned out_order_seq_;      // monotonic, stamps out_order_
     bool shield_humming = false;         // this ship's contribution
     static int shield_hum_refs;          // ships currently humming
     static int shield_hum_shared_channel;

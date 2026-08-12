@@ -86,7 +86,7 @@ for i in $(seq 1 70); do
 done
 grep -aq "TEST applying revive" "$OUT/host.log" || {
   echo "REVIVE HOOK DID NOT FIRE"; kill $PA $PB; exit 1; }
-grep -aq "revive - partner respawning" "$OUT/host.log" || {
+grep -aq "revive - player .* respawning" "$OUT/host.log" || {
   echo "FAIL: revive applied but no fallen partner found"; kill $PA $PB; exit 1; }
 
 # The joiner's lives replicate -> its spectate must end (camera back to its

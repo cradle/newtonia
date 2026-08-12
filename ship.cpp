@@ -24,6 +24,7 @@
 static const int NOVA_MAX_AMMO = 10;
 
 bool Ship::net_quiet_respawn = false;
+unsigned Ship::out_order_seq_ = 0;
 int Ship::shield_hum_refs = 0;
 int Ship::shield_hum_shared_channel = -1;
 std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
@@ -2710,6 +2711,16 @@ void Ship::step(float delta, const Grid &grid) {
     if(time_until_respawn < 0) {
       respawn(grid);
     }
+  } else if (out_order_ == 0) {
+    // Dead with no lives left: this ship is fully out, and this branch is
+    // the game RECOGNISING that (the one above respawns while lives
+    // remain), so it is where the revive queue's stamp belongs. Stamping
+    // on the fatal blow instead missed every path that empties a ship
+    // some other way — a life count zeroed while it was already dead
+    // (kill() no-ops on a dead ship), or lives arriving from a snapshot —
+    // and an unstamped player then sorted as "waiting longest" forever.
+    // Guarded on 0 so it is taken once, at the transition, not every tick.
+    out_order_ = ++out_order_seq_;
   }
 
   facing.rotate(rotation_direction * rotation_force * rotation_scale *

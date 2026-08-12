@@ -588,6 +588,15 @@ to make the host spectate the joiner. It burst-screenshots the spectator's
 window across the 5 s countdown and the hand-off; asserts SPECTATE-E2E-OK and a
 clean log.
 
+`_WHO` also takes `seatN` (a specific seat, by its wire seat number), and a
+SECOND firing exists — `NEWTONIA_NET_TEST_KILL2_MS`/`_WHO2` — so a driver can
+**stagger** deaths. That is what makes the revive queue testable: pair it with
+`NEWTONIA_NET_TEST_REVIVE_MS` and check the `revive - player N respawning
+(out order M)` log line. Emptying seat 3 before seat 2 and then reviving must
+name player 3 — whoever has been out longest, not the lowest seat (a
+simultaneous wipe stamps seats in order, so it can't tell the two rules
+apart). Offline works: run one instance with `NEWTONIA_START_PLAYERS=3`.
+
 turnexpiry.sh is the real-credential companion to hiccup.sh and CANNOT run
 in the dev container (no UDP egress; STUN/TURN unreachable). Run it on any
 Linux box with normal internet after `wrangler secret put TURN_TTL` (e.g.
