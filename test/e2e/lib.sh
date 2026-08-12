@@ -71,6 +71,23 @@ shot() {
     convert "$OUT/$2.xwd" "$OUT/$2.png" && rm -f "$OUT/$2.xwd"
 }
 
+# frame_delta FILE1 FILE2: how many pixels differ between two screenshots.
+#
+# A byte comparison answers "are these identical", which is the wrong question
+# across machines: it cannot tell a world that is still playing (tens of
+# thousands of pixels) from a rasteriser that painted one edge differently
+# (a handful). Prints a count; a missing/unreadable file prints a huge number
+# so callers fail rather than pass on nothing.
+frame_delta() {
+  local n
+  [ -s "$1" ] && [ -s "$2" ] || { echo 999999999; return; }
+  n=$(compare -metric AE "$1" "$2" null: 2>&1 | tr -d '\r' | awk '{print $1}')
+  case "$n" in
+    ''|*[!0-9.]*) echo 999999999 ;;
+    *)            printf '%.0f\n' "$n" ;;
+  esac
+}
+
 # newtonia_windows: window ids of all game instances, oldest first
 newtonia_windows() { xdotool search --name Newtonia | sort -n; }
 

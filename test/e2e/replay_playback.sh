@@ -103,26 +103,42 @@ key "$W" p
 # screenshot taken too early (2026-08-12). Frozen is observable: two frames
 # in a row that match. If they never do, playback really is running on
 # underneath, and this loop fails for the right reason.
+# "Frozen" is measured in pixels changed, not in bytes equal. A byte compare
+# passed locally and failed on a CI runner with no way to tell which of two
+# very different things had happened — a world still playing, or a software
+# rasteriser painting an edge differently between frames. FREEZE_TOL is far
+# below anything real motion produces (a drifting asteroid field redraws tens
+# of thousands of pixels) and above rasteriser noise; the counts print either
+# way, so the next failure says which it was.
+FREEZE_TOL="${FREEZE_TOL:-800}"
 frozen=
 shot "$W" pause-settle-0
 for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 0.5
   shot "$W" "pause-settle-$i"
-  if cmp -s "$OUT/pause-settle-$((i - 1)).png" "$OUT/pause-settle-$i.png"; then
-    frozen=1; cp "$OUT/pause-settle-$i.png" "$OUT/play-pause1.png"; break
+  D=$(frame_delta "$OUT/pause-settle-$((i - 1)).png" "$OUT/pause-settle-$i.png")
+  if [ "$D" -le "$FREEZE_TOL" ]; then
+    frozen=1; cp "$OUT/pause-settle-$i.png" "$OUT/play-pause1.png"
+    echo "S2: froze after $((i / 2))s (delta ${D}px)"
+    break
   fi
 done
-[ -n "$frozen" ] || fail "S2: world never froze after the pause key"
+[ -n "$frozen" ] || fail "S2: world never froze after the pause key (last delta ${D}px)"
 # ...and having frozen, it must STAY frozen: this is the assertion that
 # caught the field bug where the replay clock ignored `running`.
 sleep 3
 shot "$W" play-pause2
-cmp -s "$OUT/play-pause1.png" "$OUT/play-pause2.png" \
-  || fail "S2: world still moving while paused"
+D=$(frame_delta "$OUT/play-pause1.png" "$OUT/play-pause2.png")
+echo "S2: paused 3s delta ${D}px"
+[ "$D" -le "$FREEZE_TOL" ] || fail "S2: world still moving while paused (${D}px changed)"
 key "$W" p; sleep 2
 shot "$W" play-resumed
-cmp -s "$OUT/play-pause2.png" "$OUT/play-resumed.png" \
-  && fail "S2: unpause did not resume playback"
+# The mirror image of the freeze check, and it needs the same tolerance: on a
+# rig where a still frame can differ by a few pixels, "not byte-identical" is
+# not evidence that playback resumed.
+D=$(frame_delta "$OUT/play-pause2.png" "$OUT/play-resumed.png")
+echo "S2: unpause delta ${D}px"
+[ "$D" -gt "$FREEZE_TOL" ] || fail "S2: unpause did not resume playback (${D}px changed)"
 wait_log play1 "replay: playback finished" $(( DUR_MS / 1000 + 15 )) \
   || fail "S2: playback never finished"
 alive $P play1
