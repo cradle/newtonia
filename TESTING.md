@@ -934,6 +934,13 @@ numbers came with, all of them load-bearing:
   attempts, sparing the relay by PROCESS TREE (wrangler runs two workerd
   processes and only one carries the port, so matching on the port killed the
   relay and cascaded "no signal relay" through seven drivers).
+- **`missile_net.sh`'s muzzle threshold is 2900, not 2800** (2026-08-13). A
+  loaded runner produced one vanish at 2840 — 160 ms of flight, matching
+  neither population: the grace-disabled bug logs 2990-3000, the closest real
+  detonation on record is 2576. That middle ground is the delayed-INPUT case
+  `ship.h`'s NET_DEPLOY_GRACE comment already calls out and accepts (deploy
+  vanishes, reappears as the late echo, no desync). The real signature still
+  has 90 ms of margin.
 - `turnexpiry.sh` is **not** in any shard: it needs real Cloudflare TURN
   credentials and UDP egress (§4). The web drivers (§8) are not either — they
   need an emcc build and playwright.
