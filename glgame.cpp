@@ -7683,23 +7683,26 @@ void GLGame::tick(int delta) {
   }
   current_time += delta;
 
-  // Co-op e2e hooks, live OFFLINE and as host alike (they drive the shared
-  // sim: lives, the revive payload, and a real revive pickup drop). All
-  // inert without their env vars.
-  if (players->size() >= 2) {
-    // Drive a player fully out of lives on a timer so the revive/spectate
-    // flows can be exercised headlessly. Online, lives are
-    // host-authoritative and replicate; "remote"/default = players->back()
-    // (the joiner online, P2 offline), "local" = players->front(), and
-    // "all" empties everyone — the deterministic game-over trigger the
-    // leaderboard-prompt drivers need (a spray-scored host with a nearly
-    // cleared field can survive blind crash loops indefinitely).
-    // Two independent firings (…_KILL_MS / …_KILL2_MS), and WHO takes
-    // "seatN" as well as local/remote/all, so a driver can STAGGER deaths:
-    // the revive queue's order only means anything when players fall at
-    // different times, and a single simultaneous wipe stamps them in seat
-    // order — which is exactly the case that can't tell the longest-dead
-    // pick apart from the old lowest-seat one.
+  // Drive a player fully out of lives so the revive/spectate flows and the
+  // game-over paths can be exercised headlessly. Online, lives are
+  // host-authoritative and replicate; "remote"/default = players->back()
+  // (the joiner online, P2 offline), "local" = players->front(), and
+  // "all" empties everyone — the deterministic game-over trigger the
+  // leaderboard-prompt drivers need (a spray-scored run with a nearly
+  // cleared field can survive blind crash loops indefinitely).
+  // Two independent firings (…_KILL_MS / …_KILL2_MS), and WHO takes
+  // "seatN" as well as local/remote/all, so a driver can STAGGER deaths:
+  // the revive queue's order only means anything when players fall at
+  // different times, and a single simultaneous wipe stamps them in seat
+  // order — which is exactly the case that can't tell the longest-dead
+  // pick apart from the old lowest-seat one.
+  // The FILE trigger below is deliberately OUTSIDE the >= 2 players gate
+  // (the revive hooks need a partner; emptying a player's lives does not),
+  // so the solo leaderboard drivers can reach a real game over without
+  // ramming asteroids and hoping — the same reason the time-slow hook
+  // further down sits outside it. The timer keeps its co-op scope; see
+  // below. Inert without its env vars, at any player count.
+  {
     static int test_kill_ms[2] = {-2, -2};
     static int test_kill_who[2] = {1, 1};  // 0 local, 1 remote, 2 all, <0 seat
     if (test_kill_ms[0] == -2) {
@@ -7734,12 +7737,7 @@ void GLGame::tick(int delta) {
         }
       }
     }
-    for (int k = 0; k < 2; k++) {
-      if (test_kill_ms[k] <= 0) continue;
-      test_kill_ms[k] -= delta;
-      if (test_kill_ms[k] > 0) continue;
-      test_kill_ms[k] = -1;
-      int who = test_kill_who[k];
+    auto force_out = [&](int who) {
       if (who < 0)
         NET_LOG("net: TEST forcing seat %d out of lives\n", -who);
       else
@@ -7752,7 +7750,56 @@ void GLGame::tick(int delta) {
         gs->ship->lives = 0;
         gs->ship->kill();
       }
+    };
+    // The TIMER stays co-op-scoped: its countdown only advances with a
+    // partner present, so the 20 s the existing drivers pass means 20 s
+    // AFTER the join, not after launch. They all start as a lone host and
+    // spend an unbounded stretch creating the room and handshaking, so
+    // ticking this from process start would fire the kill early — before
+    // the joiner has even arrived.
+    if (players->size() >= 2) {
+      for (int k = 0; k < 2; k++) {
+        if (test_kill_ms[k] <= 0) continue;
+        test_kill_ms[k] -= delta;
+        if (test_kill_ms[k] > 0) continue;
+        test_kill_ms[k] = -1;
+        force_out(test_kill_who[k]);
+      }
     }
+    // A TIMER can only say "N ms from launch", which is no use when the
+    // phase before the death has no fixed length: the leaderboard drivers
+    // score a qualifying run first and re-spray until one lands, so
+    // nothing knows in advance when the run should end. KILL_FILE lets the
+    // driver say WHEN — it touches the file, and the players named by
+    // …_KILL_WHO empty out on the next poll. Fires once; polled 4x/s and
+    // only while the var is set, so a normal build never stats anything.
+    static std::string test_kill_file;
+    static int test_kill_file_state = -2;  // -2 unread, -1 off, 1 armed
+    static int test_kill_file_poll = 0;
+    if (test_kill_file_state == -2) {
+      const char *f = getenv("NEWTONIA_NET_TEST_KILL_FILE");
+      test_kill_file = f ? f : "";
+      test_kill_file_state = test_kill_file.empty() ? -1 : 1;
+    }
+    if (test_kill_file_state == 1) {
+      test_kill_file_poll -= delta;
+      if (test_kill_file_poll <= 0) {
+        test_kill_file_poll = 250;
+        FILE *fp = fopen(test_kill_file.c_str(), "rb");
+        if (fp) {
+          fclose(fp);
+          test_kill_file_state = -1;
+          NET_LOG("net: TEST kill file seen\n");
+          force_out(test_kill_who[0]);
+        }
+      }
+    }
+  }
+
+  // Co-op e2e hooks, live OFFLINE and as host alike (they drive the shared
+  // sim: the revive payload and a real revive pickup drop). All inert
+  // without their env vars.
+  if (players->size() >= 2) {
     // Apply the revive effect to whichever player is fully out — the
     // pickup-collection payload without the blind-navigation problem of
     // actually touching a pickup in a driver.
