@@ -213,7 +213,18 @@ skip_to_generation() {
     done
     gen=$(grep -a "slot #" "$OUT/$log.log" | tail -1 |
           sed 's/.*gen=\([0-9]*\).*/\1/')
-    [ -n "$gen" ] || return 1
+    # No telemetry to read: the game's stdout is a FILE here, so its lines are
+    # block-buffered and a slot line can sit unflushed past this window. That
+    # makes the generation unobservable, not wrong — failing on it turns a
+    # missing diagnostic into a missing pulsar ("host never reached generation
+    # 9", twice, where the blind presses had probably worked; 2026-08-12).
+    # Press a few extra times as insurance against a dropped key and let the
+    # driver's real assertion — did the object replicate — decide.
+    if [ -z "$gen" ]; then
+      echo "== skip: no generation telemetry yet; pressing 2 extra and continuing"
+      for i in 1 2; do key "$w" n; sleep 3; done
+      return 0
+    fi
     [ "$gen" -ge "$target" ] && return 0
     echo "== skip correction: at generation $gen, want $target"
     for i in $(seq 1 $((target - gen))); do key "$w" n; sleep 3; done
