@@ -153,7 +153,16 @@ private:
     bool offer_sent = false;
     int seat = 0;      // reserved when the session forms (WELCOME is fixed)
     bool lan = false;  // came through the LAN door (synthetic key, no jid)
+    // How long this joiner has waited for the worker's attestation while
+    // the host is refusing anonymous players. The verdict is async and can
+    // land after the handshake, so "not attested yet" must not be read as
+    // "anonymous" the instant the peer connects.
+    int anon_wait_ms = 0;
   };
+  // How long to wait for that verdict before judging. Generous: the cost of
+  // waiting is a joiner sitting on CONNECTING a moment longer, the cost of
+  // being hasty is refusing someone who is not anonymous at all.
+  static const int ANON_ATTEST_GRACE_MS = 4000;
   std::map<std::string, PendingJoiner> pending_;  // keyed by jid / "lan#N"
   struct SeatedPeer {
     NetSession *session;
@@ -171,11 +180,25 @@ private:
   // confirm ARMS a kick and whose second confirm performs it — one press
   // must not end someone's game, and Enter is also the start key.
   int host_sel_ = -1;
+  // The waiting room's rows in DRAWN order: one per seated peer, then START
+  // GAME (only once someone is seated), then ALLOW ANONYMOUS PLAYERS. The
+  // ladder walks THIS, and host_sel_ is the peer index it maps back to (-1
+  // on the two trailing rows) — the drawn order and the selection cannot
+  // disagree, which is how the cursor ended up walking backwards before.
+  enum HostRow { HostRowPeer, HostRowStart, HostRowAnon };
+  int host_row_count() const;
+  int host_start_row() const;  // -1 when nobody is seated
+  int host_anon_row() const;
+  HostRow host_row_kind(int row) const;
+  int host_row_selected() const;      // current row in drawn order
+  void host_row_select(int row);      // ...and move to one (clamped)
+  bool host_anon_sel_ = false;        // the policy row, not START, is picked
   int host_kick_armed_ = -1;
   // Which removal the highlighted row offers: false = KICK (they may come
   // back with the room code), true = BAN (their next handshake is refused).
   // Left/right picks it; moving the highlight resets to the softer one.
   bool host_ban_ = false;
+  bool host_row_can_ban(int row) const;
   void host_kick_selected(bool ban);
   // Geometry of the centred text list the last draw() laid out, and where
   // the waiting room's rows landed in it (-1 = not on screen). RECORDED by
@@ -185,7 +208,7 @@ private:
   // — the TapBand rule for a list whose geometry is dynamic.
   float list_origin_y_ = 0.0f;
   int list_line_h_ = 0, list_line_sz_ = 0, list_rows_ = 0;
-  int host_peer_line0_ = -1, host_start_line_ = -1;
+  int host_peer_line0_ = -1, host_start_line_ = -1, host_anon_line_ = -1;
   int list_row_at(float ny) const;
   // Kicked sessions waiting for their goodbye to leave before the
   // transport is destroyed (ms left). See host_kick_selected.

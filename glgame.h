@@ -249,6 +249,14 @@ private:
   // Online-host rows: a remote pilot (KICK / BAN) rather than a local seat.
   // (roster_peer_at is declared with the other NetPeer members, below.)
   bool roster_row_is_peer(int row) const;
+  // ...and whether BAN is on offer there (a worker-attested name; see
+  // net_identity_anonymous). False leaves KICK as the row's only action.
+  bool roster_row_can_ban(int row) const;
+  // The trailing ALLOW ANONYMOUS PLAYERS row (host only) — the admission
+  // policy the empty seats are filled under. Its twin is the lobby waiting
+  // room's row of the same name; both write Preferences::allow_anonymous.
+  bool roster_has_anon_row() const;
+  bool roster_row_is_anon(int row) const;
   // Removing needs a deliberate second press — one stray confirm should not
   // end someone's game. -1 = nothing armed; otherwise the armed row.
   int roster_kick_armed_ = -1;

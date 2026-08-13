@@ -230,6 +230,20 @@ std::string net_identity_name_or(const NetIdentity &id, const char *fallback,
 // label being ours and never a claim.
 bool net_identity_verified(const NetIdentity &id, NetIdentityCtx ctx);
 
+// ANONYMOUS: nobody vouched for who this is. True unless the signalling
+// worker attested the NAME itself — a merely CLAIMED name is a self-report
+// the same person can change on their next handshake, so it identifies
+// nobody. Deliberately NOT the negation of NetIdentity::attested(): that is
+// true when EITHER field is vouched for, and an iOS peer has its account
+// attested with no alias at all — platform-only would make "everyone on
+// that platform" one identity, which is exactly what the name prevents.
+//
+// One predicate, two host-facing consequences (FOURPLAYER.md O3): a ban
+// keyed on an anonymous identity would hold nothing, so the roster offers
+// only KICK there; and the ALLOW ANONYMOUS PLAYERS row refuses them the
+// room outright when the host turns it off.
+bool net_identity_anonymous(const NetIdentity &id);
+
 // True when the Typer font can draw `c`. DEFINED IN typer.cpp, right next
 // to the glyph table it must mirror, so a glyph addition updates both in
 // one file; declared here so the SDL/GL-free net_identity.cpp can call it

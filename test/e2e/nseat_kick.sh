@@ -15,6 +15,27 @@
 # SEATS defaults to 3: two peers, so there is a bystander to check.
 set -u
 cd "$(dirname "$0")"
+
+# BAN is only OFFERED on a peer whose name the worker attested — a claimed
+# name is a self-report they can change on their next handshake, so a ban
+# keyed on one promises nothing (net_identity_bannable). The shared :8787
+# dev relay attests nothing, so this driver self-hosts its own FAKE_VERIFY
+# relay on a private port, exactly as identity_attested.sh does. Without
+# it the roster would show KICK alone and the right-arrow would do nothing.
+PORT="${KICK_RELAY_PORT:-8789}"
+export NEWTONIA_SIGNAL_URL="ws://127.0.0.1:$PORT/ws"
+( cd ../../signal &&
+  exec npx wrangler@4 dev --local --port "$PORT" --var FAKE_VERIFY:1 ) \
+  > /tmp/nseat_kick_wrangler.log 2>&1 &
+WPID=$!
+trap 'kill $WPID 2>/dev/null' EXIT
+echo "== starting FAKE_VERIFY relay on :$PORT (pid $WPID)"
+for _ in $(seq 1 90); do
+  curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break
+  kill -0 $WPID 2>/dev/null || { echo "relay died:"; cat /tmp/nseat_kick_wrangler.log; exit 1; }
+  sleep 1
+done
+
 . ./lib.sh
 
 SEATS=${SEATS:-3}
@@ -40,6 +61,14 @@ xdotool key --window "$HW" Return; sleep 0.8   # open the roster
 for _ in $(seq 1 $((VICTIM_SEAT - 1))); do
   xdotool key --window "$HW" s; sleep 0.3
 done
+# The host must have SEEN the attestation before BAN is on offer, or the
+# right-arrow lands on a row still showing KICK alone.
+ok=
+for _ in $(seq 1 20); do
+  grep -aq "identity attested (joiner.*name='PILOT$VICTIM'" "$OUT/host.log" && { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "HOST NEVER SAW THE VICTIM'S ATTESTATION" host
 xdotool key --window "$HW" d; sleep 0.4        # KICK -> BAN
 xdotool key --window "$HW" Return; sleep 0.5   # arm
 xdotool key --window "$HW" Return; sleep 1.5   # confirm

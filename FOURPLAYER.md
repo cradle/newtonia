@@ -673,11 +673,33 @@ the list; rejoining/resuming an existing one keeps it. KICK is the
 default on every row and the highlight resets to it, so the harsher
 action is always a deliberate press.
 
+**BAN is only OFFERED where a ban would hold** (2026-08-13): it keys on
+name + platform, and a merely claimed name is a self-report the peer can
+change on their next handshake, so `net_identity_anonymous()` — the
+worker attested the NAME itself, not merely the account — gates the
+action. An unattested row reads `KICK`, with no arrows offering a second
+action the game cannot deliver.
+
+**ALLOW ANONYMOUS PLAYERS YES/NO** (same request): the other side of that
+predicate, as a row on both screens — the waiting room's list and the
+in-game roster — writing one preference (`Preferences::allow_anonymous`,
+saved on change, default YES = the behaviour that always existed). NO
+refuses every unattested peer at the same two points the ban is enforced.
+The waiting room holds a joiner for `ANON_ATTEST_GRACE_MS` first: the
+worker's verdict is async and usually lands AFTER the handshake, so
+judging on arrival would refuse attested players for connecting too fast.
+Strict by design — a room of desktop builds attests nobody, so turning it
+off there closes the room to everyone.
+
 Verified against a local relay by a driver per action: `nseat_kick.sh`
 (mid-game) bans seat 3 — the peer is TOLD, does not rejoin, a fresh
 process under its name is refused, and the host and bystander play on —
 and `nseat_lobby_kick.sh` (lobby) kicks seat 3 and proves the softer
 action is really softer: the same pilot re-enters the room afterwards.
+`nseat_anon.sh` sets the policy to NO and shows an attested pilot seated
+beside an anonymous one refused. `nseat_kick.sh` and `nseat_anon.sh` both
+self-host a FAKE_VERIFY relay, since the plain dev relay attests nobody
+and neither BAN nor the admission rule would have anything to act on.
 `nseat_lobby_mouse.sh` covers the same screen under a pointer.
 
 ### O4 — N>1 rejoin ICE-flap wait (B5 known limit)

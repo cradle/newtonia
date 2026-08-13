@@ -1329,6 +1329,15 @@ bool GLGame::roster_row_is_peer(int row) const {
   return false;
 }
 
+// Can this row's pilot be BANNED, or only kicked? Only a worker-attested
+// name makes a ban durable — see net_identity_bannable. Everything else
+// (a legacy peer, a badge-only backend, an unverified claim) gets KICK
+// alone rather than a button that quietly does less than it says.
+bool GLGame::roster_row_can_ban(int row) const {
+  const NetPeer *p = const_cast<GLGame *>(this)->roster_peer_at(row);
+  return p && !net_identity_anonymous(p->identity);
+}
+
 // The peer occupying a roster row, or null.
 GLGame::NetPeer *GLGame::roster_peer_at(int row) {
   GLShip *gs = seat_ship_at(players, row);
@@ -1341,9 +1350,20 @@ GLGame::NetPeer *GLGame::roster_peer_at(int row) {
 int GLGame::roster_row_count() const {
   int seats = (int)players->size();
   // Online the ADD row would be a lie — seats fill from the room, not from
-  // this machine — so the host's list is exactly the seats.
-  if (net_mode_ != NetOff) return seats;
+  // this machine — so the host's list is the seats plus the one thing that
+  // IS the host's to decide: who is allowed to take the empty ones.
+  if (net_mode_ != NetOff) return seats + (roster_has_anon_row() ? 1 : 0);
   return seats < MAX_PLAYERS ? seats + 1 : seats;
+}
+
+// The ALLOW ANONYMOUS PLAYERS row: the host's admission policy, so it shows
+// for the host only. Its lobby twin is the waiting room's row of the same
+// name — one preference (Preferences::allow_anonymous), settable wherever
+// the host is standing when they think of it.
+bool GLGame::roster_has_anon_row() const { return net_mode_ == NetHost; }
+
+bool GLGame::roster_row_is_anon(int row) const {
+  return roster_has_anon_row() && row == (int)players->size();
 }
 
 GLGame::SeatInput GLGame::roster_seat_input(int seat) const {
@@ -1445,9 +1465,27 @@ void GLGame::roster_nav(unsigned char key) {
   // then ARMS it and a second confirm on the same row does it: ending
   // someone's game is not something a stray Enter — the key that opened
   // this screen — should be able to do.
+  // The policy row: left/right and confirm all mean the same thing on a
+  // two-state row, so answer all three rather than making the host guess
+  // which one this screen wanted.
+  if (roster_row_is_anon(roster_selection_)) {
+    if (MenuSelect::is_left(key) || MenuSelect::is_right(key) ||
+        MenuSelect::is_confirm(key)) {
+      g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
+      NET_LOG("net: allow anonymous players: %s\n",
+              g_prefs.allow_anonymous ? "YES" : "NO");
+      save_preferences();  // a hosting policy should outlive the session
+      return;
+    }
+  }
   if (roster_row_is_peer(roster_selection_) &&
       (MenuSelect::is_left(key) || MenuSelect::is_right(key))) {
-    roster_ban_ = MenuSelect::is_right(key);
+    // BAN only where a ban would mean something (net_identity_bannable):
+    // on a peer whose name the worker never vouched for, the key is their
+    // own say-so and they can walk back in under another one. The row
+    // draws KICK alone there, and this keeps the state matching the draw.
+    roster_ban_ = MenuSelect::is_right(key) &&
+                  roster_row_can_ban(roster_selection_);
     roster_kick_armed_ = -1;  // changing the action disarms
     return;
   }
@@ -3307,6 +3345,21 @@ void GLGame::net_host_rejoin_session_update(int delta) {
         dp->attested = NetIdentity();
         net_drop_session(*dp);
         net_rehost_offer_sent_ = false;  // re-arm the door for someone else
+        return;
+      }
+      // Host policy: no anonymous players (Preferences::allow_anonymous —
+      // the ALLOW ANONYMOUS PLAYERS row on the roster and in the lobby).
+      // The door's twin of the waiting room's check. dp->attested is what
+      // the worker said about the socket that answered, so an unattested
+      // NAME here means nobody vouched for them; unlike the lobby there is
+      // no grace timer, because the door re-offers on the very next tick
+      // and a genuine player's next attempt carries its attestation.
+      if (!g_prefs.allow_anonymous && !dp->jid.empty() &&
+          net_identity_anonymous(dp->attested)) {
+        NET_LOG("net: refusing anonymous pilot at the rejoin door\n");
+        dp->attested = NetIdentity();
+        net_drop_session(*dp);
+        net_rehost_offer_sent_ = false;
         return;
       }
       // Rejoin-by-identity: the WELCOME may have promised a DIFFERENT

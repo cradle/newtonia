@@ -20,12 +20,23 @@ cd "$(dirname "$0")"
 relay_check
 export NEWTONIA_NET_TEST_SEATS=4
 
-# The list's geometry, mirrored from the draw (net_lobby.cpp, desktop
-# waiting room): origin y=20, 52 per row, size 18. Rows are ROOM CODE,
-# COPIED TO CLIPBOARD, "", the count line, one per peer, "", then START.
-# vy = (1 - 2*ny) * 600  =>  ny = (1 - vy/600) / 2, and a row's mid-line
-# sits a glyph size below its anchor.
-row_ny() { awk -v i="$1" 'BEGIN { vy = 20 - i * 52 - 18; print (1 - vy / 600) / 2 }'; }
+# Where a row IS, read from the game rather than mirrored: the list shrinks
+# its step and size to fit once the roster grows, so a hardcoded copy of the
+# layout aims at the wrong row the moment the screen gains one (it did — the
+# ALLOW ANONYMOUS row pushed the list over the fit threshold and this driver
+# started clicking the policy row instead of START). The lobby publishes the
+# geometry it drew under NEWTONIA_NET_DEBUG; parse the latest line.
+#
+# vy = (1 - 2*ny) * 600  =>  ny = (1 - vy/600) / 2, and a row's mid-line sits
+# a glyph size below its anchor.
+geom() {  # geom KEY -> value from the last "list geom" line
+  sed -n 's/.*\[lobby\] list geom .*/&/p' "$OUT/host.log" | tail -1 |
+    sed -n "s/.*$1=\([-0-9]*\).*/\1/p"
+}
+row_ny() {  # row_ny ROW -> normalized y of that row's mid-line
+  awk -v i="$1" -v o="$(geom origin)" -v h="$(geom step)" -v s="$(geom size)" \
+      'BEGIN { vy = o - i * h - s; print (1 - vy / 600) / 2 }'
+}
 
 click() {  # click WINDOW NY
   local w=$1 ny=$2 wh ww
@@ -77,8 +88,26 @@ xdotool search --name Newtonia | grep -q "^$HW$" ||
 grep -aq "room closed\|leaving" "$OUT/host.log" &&
   room_fail "LOW CLICK LEFT THE LOBBY" host
 
+echo "== a click ON the policy row toggles it (and does not start the game)"
+ANON_ROW=$(geom anon)
+[ -n "$ANON_ROW" ] && [ "$ANON_ROW" -ge 0 ] ||
+  room_fail "NO POLICY ROW IN THE PUBLISHED GEOMETRY" host
+click "$HW" "$(row_ny "$ANON_ROW")"
+ok=
+for _ in $(seq 1 10); do
+  grep -aq "allow anonymous players: NO" "$OUT/host.log" && { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "CLICKING THE POLICY ROW DID NOTHING" host
+grep -aq "starting with" "$OUT/host.log" &&
+  room_fail "THE POLICY CLICK STARTED THE GAME" host
+click "$HW" "$(row_ny "$ANON_ROW")"   # back to YES, the default this room ran on
+
 echo "== a click ON the START row starts the game"
-click "$HW" "$(row_ny 6)"
+START_ROW=$(geom start)
+[ -n "$START_ROW" ] && [ "$START_ROW" -ge 0 ] ||
+  room_fail "NO START ROW IN THE PUBLISHED GEOMETRY" host
+click "$HW" "$(row_ny "$START_ROW")"
 ok=
 for _ in $(seq 1 20); do
   grep -aq "starting with 1 peer" "$OUT/host.log" && { ok=1; break; }
@@ -94,4 +123,4 @@ done
 room_alive
 
 room_kill_all
-echo "NSEAT-LOBBY-MOUSE-OK (low click inert, START row clickable)"
+echo "NSEAT-LOBBY-MOUSE-OK (low click inert, policy + START rows clickable)"

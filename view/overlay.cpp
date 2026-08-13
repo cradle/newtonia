@@ -622,7 +622,13 @@ void Overlay::seat_roster(const GLGame *glgame) {
   int seats = (int)glgame->players->size();
   for (int i = 0; i < rows; i++) {
     char label[80];
-    if (i >= seats) {
+    if (glgame->roster_row_is_anon(i)) {
+      // Who may take the seats that are still empty. Checked before the
+      // ADD row: online there is no ADD row, and this one sits where it
+      // would have been.
+      snprintf(label, sizeof label, "ALLOW ANONYMOUS PLAYERS   %s",
+               g_prefs.allow_anonymous ? "YES" : "NO");
+    } else if (i >= seats) {
       snprintf(label, sizeof label, "ADD PLAYER %d", i + 1);
     } else if (glgame->roster_row_is_peer(i)) {
       // A remote pilot: name them (their badge, else the role label) and
@@ -642,17 +648,23 @@ void Overlay::seat_roster(const GLGame *glgame) {
       // one row, two actions (kick, which they can come back from, and
       // ban, which they can't), and which one is armed is never in doubt.
       // Kept short: the row already carries a name of up to 24 glyphs.
+      // BAN is only on offer where a ban would hold (a worker-attested
+      // name): elsewhere the row says KICK alone, with no arrows, because
+      // there is no second action to swap to.
+      bool can_ban = glgame->roster_row_can_ban(i);
       const char *act = glgame->roster_ban_ ? "BAN" : "KICK";
       char action[24];
       if (glgame->roster_selection_ != i)
-        // Not the cursor's row: name the two actions without claiming
-        // either is picked. roster_ban_ belongs to the HIGHLIGHTED row, so
-        // rendering it here put "< BAN >" on rows nobody had chosen.
-        snprintf(action, sizeof action, "KICK / BAN");
+        // Not the cursor's row: name the actions without claiming either is
+        // picked. roster_ban_ belongs to the HIGHLIGHTED row, so rendering
+        // it here put "< BAN >" on rows nobody had chosen.
+        snprintf(action, sizeof action, can_ban ? "KICK / BAN" : "KICK");
       else if (glgame->roster_kick_armed_ == i)
         snprintf(action, sizeof action, "[CONFIRM %s]", act);
-      else
+      else if (can_ban)
         snprintf(action, sizeof action, "< %s >", act);
+      else
+        snprintf(action, sizeof action, "KICK");
       if (who.empty())
         snprintf(label, sizeof label, "PLAYER %d   %s", i + 1, action);
       else
