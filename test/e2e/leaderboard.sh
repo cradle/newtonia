@@ -59,6 +59,13 @@ trap 'kill -9 $P 2>/dev/null; [ -n "$WRANGLER_PID" ] && kill $WRANGLER_PID 2>/de
 use_home() {
   export XDG_DATA_HOME="$OUT/xdg-$1"
   RDIR="$XDG_DATA_HOME/cc.gfm/newtonia/replays"
+  # Per-scenario kill trigger (see crash_to_game_over). Exported, because
+  # every launch below runs inside a $(…) subshell — a plain assignment in
+  # launch_game would not survive back into the scenario. Cleared first:
+  # a stale file from an earlier scenario would end the run on spawn.
+  export NEWTONIA_NET_TEST_KILL_FILE="$OUT/kill-$1"
+  export NEWTONIA_NET_TEST_KILL_WHO=all
+  rm -f "$NEWTONIA_NET_TEST_KILL_FILE"
 }
 launch_game() { "$ROOT/newtonia" > "$OUT/$1.log" 2>&1 & echo $!; }
 win() { xdotool search --name Newtonia | tail -1; }
@@ -103,29 +110,34 @@ clean_best() {
   sleep 1
 }
 
-# Die in the current run. The heat mechanic is disabled (ship.cpp), so the
-# ship does NOT overheat — it dies by colliding with asteroids while
-# thrusting. The time cheat (8x) speeds the wall-clock; held thrust drives
-# it into the field. The run is cheat-flagged, which is fine: the upload
-# candidate is the earlier CLEAN best.nrp, not this run.
+# End the current run. Death is TRIGGERED, not attempted: touching the kill
+# file empties the player's lives on the game's next poll (glgame.cpp,
+# NEWTONIA_NET_TEST_KILL_FILE), so this returns as soon as the run has
+# actually ended rather than on a fixed budget.
+#
+# This used to ram asteroids — hold thrust for up to 240 s at 8x and hope
+# for a collision, since the heat mechanic is disabled (ship.cpp) and a
+# ship cannot overheat. A late-generation field is mostly empty space, so
+# the collision that ends the run may simply never happen: S1 and S5 both
+# died on "never reached game over" on master (run 31683555476), and every
+# assertion after them failed as a cascade. This job gets ONE attempt.
+#
+# The time cheat stays: it speeds the wall-clock, and S3 depends on the
+# cheat flag it sets to keep the run from being promoted. The run is
+# cheat-flagged, which is fine elsewhere too — the upload candidate is the
+# earlier CLEAN best.nrp, not this run.
 crash_to_game_over() {
   local W=$1 LOG=$2 i
   key "$W" space                               # spawn out of the countdown
   for i in $(seq 1 7); do key "$W" equal; done # time cheat: 8x wall-clock
-  xdotool keydown --window "$W" w              # thrust into the asteroids
-  # Held X key state can drop under Xvfb, and a lucky heading can cruise
-  # through open space for a long time — so while waiting, periodically
-  # re-assert the thrust hold and nudge the heading so the wraps sweep
-  # fresh parts of the field instead of retracing one lane.
-  for i in $(seq 1 48); do                     # up to 240 s, nudge every 5 s
+  sleep 1                                      # let the run get underway
+  : > "$NEWTONIA_NET_TEST_KILL_FILE"           # ...and end it, now
+  for i in $(seq 1 30); do                     # polled 4x/s; 30 s is slack
     grep -aq "replay: run ended" "$LOG" && break
     kill -0 $P 2>/dev/null || { fail "game died before game over"; break; }
-    xdotool keydown --window "$W" w
-    key "$W" d
-    sleep 5
+    sleep 1
   done
   grep -aq "replay: run ended" "$LOG" || fail "never reached game over"
-  xdotool keyup --window "$W" w
 }
 
 echo "===== S1: personal best -> prompt -> YES -> placed ====="
