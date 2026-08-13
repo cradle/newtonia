@@ -63,7 +63,7 @@ run_pair() {
   [ -n "$code" ] || { echo "NO ROOM CODE ($hname)"; kill_pair $pa $pb; exit 1; }
   echo "room code ($hname): $code"
 
-  nav_join $b "$code"
+  nav_join $b "$code" "$jname"
   echo "== waiting for connect ($hname vs $jname)"; sleep 18
   alive $pa "$hname"; alive $pb "$jname"
   grep -aq "bootstrap adopted" "$OUT/$jname.log" ||

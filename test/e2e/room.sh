@@ -27,10 +27,9 @@ CODE=$(host_room_code host)
 [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
 echo "room code: $CODE"
 
-# Joiner: attract -> menu -> ONLINE -> JOIN -> type the code (auto-joins
-# when the fifth character lands)
-key $B Return; sleep 1; key $B s; key $B Return; sleep 1; key $B s; key $B Return; sleep 1
-for c in $(echo "$CODE" | grep -o .); do key $B "$c"; done
+# Joiner: attract -> menu -> ONLINE -> JOIN (the clipboard usually joins for
+# us there; nav_join types the code only when it doesn't)
+nav_join $B "$CODE" joiner
 echo "== waiting for connect"; sleep 18
 alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; exit 1; }

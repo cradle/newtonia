@@ -30,7 +30,7 @@ CODE=$(host_room_code host)
 [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
 echo "room code: $CODE"
 
-nav_join $B "$CODE"
+nav_join $B "$CODE" joiner
 echo "== waiting for connect"; sleep 18
 alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; exit 1; }

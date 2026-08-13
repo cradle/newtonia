@@ -28,7 +28,7 @@ CODE=$(host_room_code host)
 [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill_pair $PA $PB; exit 1; }
 echo "room code: $CODE"
 
-nav_join $B "$CODE"
+nav_join $B "$CODE" joiner
 echo "== waiting for the refusal"; sleep 15
 alive $PA host; alive $PB joiner
 shot $B policy-joiner-refused

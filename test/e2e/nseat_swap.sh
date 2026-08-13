@@ -62,7 +62,7 @@ P4=$(launch rejoin4 NEWTONIA_NET_NAME=PILOT3)
 sleep 4
 W4=$(new_window_since "$BEFORE")
 [ -n "$W4" ] || { kill "$P4" 2>/dev/null; room_fail "NO REJOIN4 WINDOW"; }
-nav_join "$W4" "$ROOM_CODE"
+nav_join "$W4" "$ROOM_CODE" rejoin4
 ok=
 for _ in $(seq 1 45); do
   grep -aq "player 4 rejoined" "$OUT/host.log" && { ok=1; break; }
@@ -83,7 +83,7 @@ P3=$(launch rejoin3 NEWTONIA_NET_NAME=PILOT2)
 sleep 4
 W3=$(new_window_since "$BEFORE")
 [ -n "$W3" ] || { kill "$P3" 2>/dev/null; room_fail "NO REJOIN3 WINDOW"; }
-nav_join "$W3" "$ROOM_CODE"
+nav_join "$W3" "$ROOM_CODE" rejoin3
 ok=
 for _ in $(seq 1 45); do
   grep -aq "player 3 rejoined" "$OUT/host.log" && { ok=1; break; }

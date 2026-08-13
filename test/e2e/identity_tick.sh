@@ -62,7 +62,7 @@ code=$(host_room_code host)
 [ -n "$code" ] || { echo "NO ROOM CODE"; kill_pair $pa $pb; exit 1; }
 echo "room code: $code"
 
-nav_join $b "$code"
+nav_join $b "$code" joiner
 echo "== waiting for connect + attestation"; sleep 18
 alive $pa host; alive $pb joiner
 

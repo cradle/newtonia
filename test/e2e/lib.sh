@@ -119,13 +119,56 @@ nav_host() {
   key "$1" Return; sleep 1; key "$1" s; key "$1" Return; sleep 1; key "$1" Return
 }
 
-# nav_join WINDOW CODE: attract -> menu -> ONLINE -> JOIN -> type the code
-# (the join fires when the fifth character lands).
+# join_count LOGNAME: how many times that instance has begun joining a room.
+# A COUNT, not a flag: the rejoin drivers join several times in one log, so
+# "has it joined" has to mean "since I last looked".
+join_count() {
+  local n
+  n=$(grep -ac "\[lobby\] joining room" "$OUT/$1.log" 2>/dev/null)
+  [ -n "$n" ] || n=0
+  echo "$n"
+}
+
+# nav_join WINDOW CODE LOGNAME: attract -> menu -> ONLINE -> JOIN -> join.
+#
+# TYPING THE CODE IS THE FALLBACK, NOT THE PLAN. The host auto-copies its
+# join link to the clipboard, and both instances share ONE X clipboard under
+# the driver's single Xvfb — so the JOIN screen's clipboard auto-join
+# (net_lobby.cpp, "if (ok && code_entry_.empty())") normally fires the moment
+# the screen opens, before a single character is typed. Typing anyway sends
+# those five characters to the RUNNING GAME as gameplay keys, and the room
+# code alphabet overlaps the default bindings — it already excludes F for the
+# fullscreen key, but still contains p (PAUSE, and a client's pause is shared,
+# so the host's skip-level presses then do nothing), q (next weapon — off
+# whatever the driver stocked), x (drop a mine), c (next secondary), w/a/d
+# (fly the ship) and g (toggle friendly fire).
+#
+# Both failures of shock_hazards_net in the first master run of the e2e
+# workflow were this, one keystroke each (2026-08-13): VPK84's 'p' paused the
+# game, so the host sat at generation 0 for 308 s ("host never reached
+# generation 9"), and 9NYQ3's 'q' cycled the joiner off SHOCK, so it spent the
+# firing rounds shooting the base gun ("client shock never reached the host").
+# Neither is a game bug; both were the driver typing into a live world.
+#
+# So: give the auto-join a moment to declare itself, and type only if it never
+# came. LOGNAME is required — without it the wait cannot be observed, and a
+# silent fallback to typing is exactly the bug.
 nav_join() {
-  local c
-  key "$1" Return; sleep 1; key "$1" s; key "$1" Return; sleep 1
-  key "$1" s; key "$1" Return; sleep 1
-  for c in $(echo "$2" | grep -o .); do key "$1" "$c"; done
+  local w=$1 code=$2 log=$3 c i before
+  before=$(join_count "$log")
+  key "$w" Return; sleep 1; key "$w" s; key "$w" Return; sleep 1
+  key "$w" s; key "$w" Return; sleep 1
+  for i in $(seq 1 6); do
+    if [ "$(join_count "$log")" -gt "$before" ]; then
+      echo "== $log auto-joined from the clipboard (code not typed)"
+      return 0
+    fi
+    sleep 0.5
+  done
+  # No auto-join (no game host on this display owns the clipboard — e.g.
+  # mismatch.sh's node stand-in): type it, the join fires on the fifth
+  # character.
+  for c in $(echo "$code" | grep -o .); do key "$w" "$c"; done
 }
 
 # host_room_code LOGNAME: poll the host's log for the room code (30 s)
@@ -283,7 +326,7 @@ room_setup() {
     sleep 4
     ROOM_WINS[$i]=$(new_window_since "$before")
     [ -n "${ROOM_WINS[$i]}" ] || room_fail "NO WINDOW FOR joiner$i" "joiner$i"
-    nav_join "${ROOM_WINS[$i]}" "$ROOM_CODE"
+    nav_join "${ROOM_WINS[$i]}" "$ROOM_CODE" "joiner$i"
     seat=$((i + 1)); ok=
     for _ in $(seq 1 40); do
       grep -aq "seat $seat filled" "$OUT/host.log" && { ok=1; break; }

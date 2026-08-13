@@ -86,7 +86,7 @@ BAN_PID=$(launch banned NEWTONIA_NET_NAME="PILOT$VICTIM")
 sleep 4
 BAN_WIN=$(new_window_since "$before")
 [ -n "$BAN_WIN" ] || room_fail "NO WINDOW FOR THE BANNED RETRY" banned
-nav_join "$BAN_WIN" "$ROOM_CODE"
+nav_join "$BAN_WIN" "$ROOM_CODE" banned
 ok=
 for _ in $(seq 1 30); do
   grep -aq "refusing banned pilot" "$OUT/host.log" && { ok=1; break; }

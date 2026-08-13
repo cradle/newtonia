@@ -42,13 +42,6 @@ launch_with() {  # XDG NAME -> pid
   XDG_DATA_HOME="$1" "$ROOT/newtonia" > "$OUT/$2.log" 2>&1 & echo $!
 }
 
-join_with_code() {  # WINDOW CODE: menu -> ONLINE -> JOIN -> type code
-  local W=$1 CODE=$2 c
-  key $W Return; sleep 1; key $W s; key $W Return; sleep 1
-  key $W s; key $W Return; sleep 1
-  for c in $(echo "$CODE" | grep -o .); do key $W "$c"; done
-}
-
 field() {  # FILE KEY -> value (0 if absent)
   local v
   v=$(python3 "$CHECK" "$1" 2>/dev/null | grep "^$2=" | cut -d= -f2)
@@ -71,7 +64,7 @@ key $A Return; sleep 1; key $A s; key $A Return; sleep 1; key $A Return
 CODE=$(host_room_code host)
 [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
 echo "room code: $CODE"
-join_with_code $B "$CODE"
+nav_join $B "$CODE" joiner1
 echo "== waiting for connect"; sleep 18
 alive $PA host; alive $PB joiner1
 grep -aq "bootstrap adopted" "$OUT/joiner1.log" || { echo "NO BOOTSTRAP"; exit 1; }
@@ -119,7 +112,7 @@ alive $PA host
 PB=$(launch_with "$XDG_B" joiner2)
 sleep 4
 for w in $(newtonia_windows); do [ "$w" != "$A" ] && B=$w; done
-join_with_code $B "$CODE"
+nav_join $B "$CODE" joiner2
 echo "== waiting for rejoin"; sleep 12
 alive $PA host; alive $PB joiner2
 grep -aq "player 2 rejoined" "$OUT/host.log" || { echo "NO REJOIN"; exit 1; }
