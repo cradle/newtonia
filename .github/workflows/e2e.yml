@@ -200,7 +200,6 @@ jobs:
         shard:
           - solo-replay
           - solo-misc
-          - leaderboard
           - lobby-and-lan
           - netplay-core
           - netplay-resilience
@@ -257,5 +256,67 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-${{ matrix.shard }}-output
+          path: ${{ runner.temp }}/ci-out
+          retention-days: 7
+
+  # leaderboard.sh runs on master pushes, NOT on pull requests.
+  #
+  # It is the suite's long pole and a variable one: the same code measured
+  # 524 s, 735 s, 886 s and once past 900 s. On a PR that variance is the
+  # difference between a 15-minute answer and a 25-minute one, for a driver
+  # whose subject — the board worker's submit/place/retry protocol — is
+  # already unit- and protocol-tested in the workers job. It still gates
+  # master, so a regression is caught before release, just not on every push
+  # to a branch.
+  leaderboard:
+    name: e2e (leaderboard, master only)
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # npx wrangler, for the board worker it stands up
+
+      - name: Install runtime + driver tooling
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try sudo apt-get update
+          try sudo apt-get install -y \
+            libsdl2-2.0-0 \
+            freeglut3 \
+            libglu1-mesa \
+            libgl1-mesa-dri \
+            libxi6 \
+            xvfb \
+            xdotool \
+            x11-apps \
+            imagemagick
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: newtonia-e2e-bin
+
+      - name: Restore the binary
+        run: |
+          chmod +x newtonia
+          ldd newtonia | grep datachannel
+
+      - name: Run shard
+        env:
+          NEWTONIA_CI_OUT: ${{ runner.temp }}/ci-out
+        run: test/e2e/ci_shard.sh leaderboard
+
+      - name: Upload driver output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-leaderboard-output
           path: ${{ runner.temp }}/ci-out
           retention-days: 7

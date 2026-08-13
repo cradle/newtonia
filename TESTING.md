@@ -917,12 +917,15 @@ numbers came with, all of them load-bearing:
 - **Each driver gets one retry**, and a driver that needed it is reported as
   `FLAKY … (passed on retry)` — a creeping flake stays visible rather than
   being laundered by the green tick. `leaderboard.sh` is the exception: it
-  runs alone in its own shard, with no retry and a 1500 s cap. It stands up
+  runs alone in its own shard on MASTER PUSHES ONLY, with no retry and a
+  1500 s cap. It stands up
   its own board worker, plays six scenarios through it, and its S1 scoring
   spray retries until a fresh world actually scores — measured at 524 s,
   735 s, 886 s and once past 900 s on identical code. Sharing a shard meant
   that variance decided another shard's fate, and a retry meant doubling a
-  15-minute run.
+  15-minute run. Keeping it off pull requests holds the PR budget at ~15 min;
+  the board protocol it exercises is also covered by the workers job's unit
+  and protocol tests, which DO run on every PR.
 - **A driver that stands up its own worker must not leak it.** Killing the
   npx wrapper leaves `workerd` holding the port, and the next attempt then
   binds nothing, silently talks to the PREVIOUS attempt's worker and inherits
