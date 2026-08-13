@@ -64,7 +64,11 @@ pair_up() {
 kill_host_await_lobby() {  # $1 = round name
   echo "== SIGKILL the host (dirty loss, room code stays live)"
   kill -9 $PA 2>/dev/null
-  wait_log "$OUT/joiner-$1.log" "auto-rejoining room" 30 || {
+  # 60 s, not 30: this is the THIRD pairing this process has assembled, and on
+  # a loaded runner the auto-rejoin marker arrived late enough to time out on
+  # the held-fire round while the first two rounds passed with room to spare
+  # (2026-08-13). The wait returns the instant the line lands.
+  wait_log "$OUT/joiner-$1.log" "auto-rejoining room" 60 || {
     kill $PB; exit 1; }
   sleep 3   # let the rejoin lobby settle on the WAITING screen
   alive $PB joiner-$1

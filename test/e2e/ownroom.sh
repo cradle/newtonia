@@ -13,6 +13,18 @@ fi
 . "$(dirname "$0")/lib.sh"
 relay_check
 
+# Shut the LAN door for this run. Both instances live on one box, so the host
+# beacons and the joiner sees a LAN row — and since the one-box clipboard race
+# was fixed (lanclip.sh) the lobby deliberately HOLDS a clipboard code while
+# LAN rows are present ("own-room code on clipboard held - lan rows first").
+# That precedence is correct and lanclip.sh guards it; it just makes the
+# clipboard probe unreachable here, which is the ONLY door this driver is
+# about. lan_visible=0 (lan_hidden.sh's pref) leaves the probe as the only way
+# in, restoring the scenario this driver was written for.
+PREFDIR="$OUT/xdg/cc.gfm/newtonia"
+mkdir -p "$PREFDIR"
+printf 'lan_visible=0\n' > "$PREFDIR/preferences.ini"
+
 PA=$(launch host); sleep 3
 A=$(newtonia_windows | head -1)
 key $A Return; sleep 1; key $A s; key $A Return; sleep 1; key $A Return

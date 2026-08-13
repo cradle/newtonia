@@ -45,8 +45,13 @@ grep -aq "TEST forcing remote player out" "$OUT/host.log" || {
   echo "KILL HOOK DID NOT FIRE"; kill $PA $PB; exit 1; }
 # The death has to replicate host->joiner and the joiner has to arm its
 # spectate countdown; poll instead of a fixed sleep so a slow relay round
-# trip doesn't false-fail (returns the instant it arms).
-for i in $(seq 1 10); do
+# trip doesn't false-fail (returns the instant it arms). Ten seconds was
+# enough on a quiet box and not on a loaded CI runner, where it failed twice
+# in a shard whose other drivers were also running long (rejoinexit 159 s
+# against its usual 60). Thirty, matching the kill-hook poll above: this
+# loop costs nothing when the arm lands early, and the extra headroom is
+# only spent when the machine is actually slow.
+for i in $(seq 1 30); do
   grep -aq "spectate armed" "$OUT/joiner.log" && break; sleep 1
 done
 grep -aq "spectate armed" "$OUT/joiner.log" || {

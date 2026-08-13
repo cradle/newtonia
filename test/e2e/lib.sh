@@ -58,8 +58,10 @@ launch() {
 # alive PID NAME: exit the driver if the process died (139 = SIGSEGV)
 alive() { kill -0 "$1" 2>/dev/null || { echo "DEAD: $2"; exit 1; }; }
 
-# key WINDOW KEY: one keypress with settle time
-key() { xdotool key --window "$1" "$2"; sleep 0.35; }
+# key WINDOW KEY: one keypress with settle time. KEY_SETTLE tunes the pause
+# for slower rigs (a dropped menu keystroke does not fail loudly — it shifts
+# the rest of the sequence onto the wrong rows).
+key() { xdotool key --window "$1" "$2"; sleep "${KEY_SETTLE:-0.35}"; }
 
 # shot WINDOW NAME: screenshot to $OUT/NAME.png (xwd, not import — an
 # `import -window root` capture is black under Xvfb once GL is up)
@@ -67,6 +69,23 @@ shot() {
   xdotool windowraise "$1"; sleep 0.5
   xwd -id "$1" -out "$OUT/$2.xwd" 2>/dev/null &&
     convert "$OUT/$2.xwd" "$OUT/$2.png" && rm -f "$OUT/$2.xwd"
+}
+
+# frame_delta FILE1 FILE2: how many pixels differ between two screenshots.
+#
+# A byte comparison answers "are these identical", which is the wrong question
+# across machines: it cannot tell a world that is still playing (tens of
+# thousands of pixels) from a rasteriser that painted one edge differently
+# (a handful). Prints a count; a missing/unreadable file prints a huge number
+# so callers fail rather than pass on nothing.
+frame_delta() {
+  local n
+  [ -s "$1" ] && [ -s "$2" ] || { echo 999999999; return; }
+  n=$(compare -metric AE "$1" "$2" null: 2>&1 | tr -d '\r' | awk '{print $1}')
+  case "$n" in
+    ''|*[!0-9.]*) echo 999999999 ;;
+    *)            printf '%.0f\n' "$n" ;;
+  esac
 }
 
 # newtonia_windows: window ids of all game instances, oldest first
@@ -121,6 +140,89 @@ host_room_code() {
     [ -n "$code" ] && break
   done
   echo "$code"
+}
+
+# wait_for_menu LOGNAME: block until that instance reports it is on the menu.
+#
+# The fixed "sleep 2 after launch, then start typing" that most drivers use is
+# fine for a first pairing on a warm box. It is NOT fine for a driver's second
+# or third pairing: the previous instances are still being reaped, the new
+# process reaches its window later, and its FIRST Return is swallowed. Nothing
+# complains — the whole nav sequence just shifts one keystroke, so nav_host
+# picks NEW GAME instead of ONLINE and the driver waits out its 30 s poll for a
+# room code that was never going to appear ("NO ROOM CODE", with the log
+# showing "Presence: Level 1" — a menu-shaped failure wearing a relay's
+# clothes; identity.sh/identity_legacy.sh phase B, 2026-08-12).
+#
+# Presence::set_menu logs one line per state change, unconditionally, so the
+# menu becoming ready is directly observable rather than assumed.
+wait_for_menu() {
+  local i
+  for i in $(seq 1 30); do
+    grep -aq "Presence: In the Menu" "$OUT/$1.log" && return 0
+    sleep 1
+  done
+  echo "instance '$1' never reached the menu"
+  return 1
+}
+
+# fresh_menu_state: clear everything that adds a ROW to the main menu.
+#
+# lib.sh guarantees fresh prefs per DRIVER, and nav_host/nav_join encode the
+# fresh-prefs row layout (NEW GAME, ONLINE, ...). A driver that runs SEVERAL
+# pairings in one process breaks that guarantee itself: the first pairing
+# hosts a game and is then SIGTERMed, which leaves a resume ticket behind —
+# so the next pairing's menu opens with "RESUME HOSTING <CODE>" on top, every
+# row below it shifts down one, and nav_host's single `s` lands on NEW GAME.
+# The driver then reports "NO ROOM CODE" while its host log shows
+# "Presence: Level 1 Co-Op": a relay-shaped symptom with a menu-shaped cause,
+# and invisible without a screenshot of the row list (identity.sh and
+# identity_legacy.sh, both phase B, 2026-08-12). A savegame does the same
+# thing via CONTINUE.
+#
+# Call this before each pairing in a multi-pairing driver.
+fresh_menu_state() {
+  local dir="$XDG_DATA_HOME/cc.gfm/newtonia"
+  rm -f "$dir/savegame.dat"          # CONTINUE
+  rm -f "$dir/netplay_resume.dat"    # RESUME HOSTING (net_resume.cpp)
+  rm -f "$dir/online_savegame.dat"   # its paired world (savegame.cpp)
+}
+
+# skip_to_generation WINDOW LOGNAME TARGET: drive the host to generation
+# TARGET with the skip-level key, and CONFIRM it got there.
+#
+# The obvious loop — press n TARGET times — lands short whenever Xvfb drops a
+# keystroke under load, and the failure surfaces nowhere near its cause: a
+# press lost on the way to gen 9 reads as "joiner never replicated the
+# pulsar", i.e. exactly like a netplay bug. Two of three retried drivers in
+# the first CI shard run failed this way (2026-08-12).
+#
+# The generation is only observable through the host's 10 s snapshot
+# telemetry (`net: slot #N gen=G`), so the correction waits for a FRESH slot
+# line before topping up — reading a stale one would press n again and
+# overshoot the level the driver wants to sit on.
+skip_to_generation() {
+  local w=$1 log=$2 target=$3 i gen tries
+  for i in $(seq 1 "$target"); do key "$w" n; sleep 3; done
+  # Read the generation from Presence, not from the snapshot telemetry.
+  #
+  # Presence::set_level logs "Presence: Level <generation+1>" through
+  # std::endl, so it is FLUSHED the moment the level changes. The netplay
+  # telemetry ("net: slot #N gen=G") only appears every 10 s and rides a
+  # block-buffered stream, so on CI it was routinely unreadable — the helper
+  # either gave up ("host never reached generation 9") or pressed blindly and
+  # still landed short ("joiner never replicated hazard kind 0"). Presence is
+  # observable immediately, so the correction below actually converges.
+  for tries in 1 2 3 4 5 6 7 8; do
+    gen=$(grep -a "Presence: Level " "$OUT/$log.log" | tail -1 |
+          sed 's/.*Presence: Level \([0-9]*\).*/\1/')
+    [ -n "$gen" ] || { echo "== skip: no level line yet from '$log'"; sleep 2; continue; }
+    gen=$((gen - 1))
+    [ "$gen" -ge "$target" ] && return 0
+    echo "== skip correction: at generation $gen, want $target"
+    for i in $(seq 1 $((target - gen))); do key "$w" n; sleep 3; done
+  done
+  return 1
 }
 
 # ---- N-seat room helpers (FOURPLAYER.md B6) ----

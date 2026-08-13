@@ -443,6 +443,7 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 | `.github/workflows/linux.yml` | Linux executable (netplay + headless loopback self-test) |
 | `.github/workflows/windows.yml` | Windows executable (netplay: MinGW-static libdatachannel + self-test — the compile gate for deploy-steam's Windows build) |
 | `.github/workflows/web.yml` | WebAssembly + GitHub Pages deploy (master/main only) |
+| `.github/workflows/e2e.yml` | The headless e2e suite (TESTING.md §4) + both worker suites: one build job, then six shards (`test/e2e/ci_shard.sh`, which also runs locally) each booting their own local relay. ~15 min wall for ~58 min of serial driver time; drivers run one at a time inside a shard, since concurrent netplay drivers break each other's timing assertions. `leaderboard.sh` is the one exception — its own shard, master pushes only, no retry (measured 524-900+ s on identical code) |
 | `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware. One of the two canaries this repo keeps green now that Xbox work is deferred to the private repo |
 | `.github/workflows/xbox-console-smoke.yml` | Compile-only check of the `_GAMING_XBOX` console paths with MSVC under `WINAPI_FAMILY_GAMES` (no GDKX/NDA material; GDK-only headers stubbed in `xbox/smoke_stubs/`) |
 

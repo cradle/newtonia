@@ -49,12 +49,8 @@ alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; exit 1; }
 
 echo "== host skips to generation 9 (the pulsar introduction)"
-for g in $(seq 1 9); do
-  key $A n
-  sleep 3
-  alive $PA host || exit 1
-  alive $PB joiner || exit 1
-done
+skip_to_generation $A host 9 || { echo "FAIL: host never reached generation 9"; exit 1; }
+alive $PA host; alive $PB joiner
 # Hold on gen 9 so the pulsar replicates to the joiner.
 sleep 4
 grep -aq "hazard replica spawned (kind 0)" "$OUT/joiner.log" || {

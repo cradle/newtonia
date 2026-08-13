@@ -1,0 +1,322 @@
+name: E2E
+
+# The headless end-to-end suite (TESTING.md section 4) on every PR and every
+# push to master. Until now these drivers ran only locally/by-agent, which is
+# how replay_menu.sh came to walk into the LEADERBOARD row for weeks without
+# anyone noticing.
+#
+# Shape: build ONCE, then fan the drivers out over shards (test/e2e/ci_shard.sh
+# owns the lists, so the same split runs locally). The suite is ~58 min of
+# wall time serially, measured driver by driver on a 4-vCPU box on 2026-08-12;
+# six shards bring that to ~11 min, and the whole workflow lands around 15.
+# Public repo, so the extra jobs cost minutes we are not billed for — the only
+# budget being spent here is wall clock.
+#
+# Drivers run one at a time WITHIN a shard on purpose: four netplay drivers at
+# once on 4 vCPU lost a shock bolt in one of them (it passes alone in 54s).
+# Parallelism goes across shards, where nothing shares a CPU or a relay.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push supersedes the old run: 6 shards of a stale commit is exactly the
+# waste this cancel exists for.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The worker suites are seconds and gate deploy-signal/deploy-board today —
+  # running them per PR just moves that feedback earlier.
+  workers:
+    name: Worker tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # global WebSocket client (the protocol tests use it)
+
+      - name: Signal unit tests
+        working-directory: signal
+        run: |
+          node test/rate_key_test.mjs
+          node test/origin_test.mjs
+          node test/turn_budget_test.mjs
+          node test/secret_test.mjs
+          node test/steam_verify_test.mjs
+          node test/play_games_verify_test.mjs
+          node test/game_center_verify_test.mjs
+
+      - name: Signal protocol tests (wrangler dev --local)
+        working-directory: signal
+        run: |
+          npx wrangler@4 dev --local --port 8787 --var FAKE_VERIFY:1 \
+              --var RATE_HOST_LIMIT:200 --var RATE_JOIN_LIMIT:500 \
+              > wrangler-dev.log 2>&1 &
+          DEV_PID=$!
+          for i in $(seq 1 60); do
+            curl -s -o /dev/null http://127.0.0.1:8787/ && break
+            kill -0 $DEV_PID 2>/dev/null || { echo "wrangler dev died:"; cat wrangler-dev.log; exit 1; }
+            sleep 1
+          done
+          node test/reclaim_test.js
+          node test/pv_replay_test.mjs
+          node test/identity_test.js
+          node test/capacity_test.mjs
+          node test/relay_isolation_test.mjs
+          node test/jid_buffer_test.mjs
+          node test/identity_fanout_test.mjs
+          node test/grace_broadcast_test.mjs
+          node test/host_close_broadcast_test.mjs
+          node test/offer_pv_test.mjs
+          kill $DEV_PID
+
+      - name: Board unit tests
+        working-directory: board
+        run: |
+          node test/validate_test.mjs
+          node test/identity_gate_test.mjs
+          node test/retention_test.mjs
+          node test/budget_test.mjs
+          node test/snapshot_guard_test.mjs
+
+      - name: Board protocol test (wrangler dev --local)
+        working-directory: board
+        run: |
+          npx wrangler@4 dev --local --port 8788 --persist-to .wrangler-proto \
+            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500 \
+            --var CANONICAL_SEASONS_ONLY:0 > wrangler-dev.log 2>&1 &
+          DEV_PID=$!
+          for i in $(seq 1 60); do
+            curl -s http://127.0.0.1:8788/ | grep -q newtonia-board && break
+            kill -0 $DEV_PID 2>/dev/null || { echo "wrangler dev died:"; cat wrangler-dev.log; exit 1; }
+            sleep 1
+          done
+          node test/board_test.mjs
+          kill $DEV_PID
+
+  # One build for every shard. Same recipe as linux.yml, plus a cache for the
+  # libdatachannel prefix (~70s of the ~3 min).
+  build:
+    name: Build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try sudo apt-get update
+          try sudo apt-get install -y \
+            libsdl2-dev \
+            freeglut3-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libssl-dev \
+            libxi-dev \
+            cmake
+
+      - name: Build SDL2_mixer (WAV + MP3 only)
+        run: |
+          git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          cmake -S SDL2_mixer -B SDL2_mixer/build \
+            -DSDL2MIXER_WAV=ON \
+            -DSDL2MIXER_MP3=ON \
+            -DSDL2MIXER_FLAC=OFF \
+            -DSDL2MIXER_VORBIS=OFF \
+            -DSDL2MIXER_OPUS=OFF \
+            -DSDL2MIXER_MOD=OFF \
+            -DSDL2MIXER_MIDI=OFF \
+            -DSDL2MIXER_WAVPACK=OFF \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DSDL2MIXER_SAMPLES=OFF
+          cmake --build SDL2_mixer/build --parallel
+          sudo cmake --install SDL2_mixer/build
+
+      # Keyed on the build script AND the patch: a libdatachannel bump or a
+      # patch edit must not be served a stale prefix (the patch is what puts
+      # caCertificatePemFile in the headers — CLAUDE.md).
+      - name: Cache libdatachannel prefix
+        id: ldc-cache
+        uses: actions/cache@v4
+        with:
+          path: netplay-libs
+          key: ldc-${{ runner.os }}-${{ hashFiles('build_netplay_deps.sh', 'patches/libdatachannel-ws-ca-cert.patch') }}
+
+      - name: Build libdatachannel (netplay)
+        if: steps.ldc-cache.outputs.cache-hit != 'true'
+        run: ./build_netplay_deps.sh
+
+      - name: Build
+        run: |
+          SRCS=$(find . -name "*.cpp" \
+            -not -path "./android/*" \
+            -not -path "./test/*" \
+            -not -path "./.git/*")
+          g++ -O2 -Wall -std=c++11 \
+            -DNEWTONIA_NET_RTC -I./netplay-libs/include \
+            $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
+            -o newtonia $SRCS \
+            -lglut -lGL -lGLU -lX11 -lXi \
+            -lSDL2_mixer $(sdl2-config --static-libs) \
+            -L./netplay-libs/lib -ldatachannel \
+            -Wl,-rpath,'$ORIGIN' -Wl,-rpath,"$PWD/netplay-libs/lib"
+
+      # The drivers run ./newtonia from the repo root, so the shared lib rides
+      # next to it under the exact SONAME the binary asks for ($ORIGIN rpath).
+      - name: Stage the binary
+        run: |
+          mkdir -p e2e-bin
+          cp newtonia e2e-bin/
+          soname=$(objdump -p newtonia | awk '/NEEDED.*datachannel/{print $2}')
+          cp -L "netplay-libs/lib/$soname" e2e-bin/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-e2e-bin
+          path: e2e-bin/
+          retention-days: 1
+
+  e2e:
+    name: e2e (${{ matrix.shard }})
+    needs: build
+    runs-on: ubuntu-22.04
+    # Comfortably above the worst shard seen (~15 min) plus its retries; the
+    # per-driver cap in ci_shard.sh is what actually bounds a wedged run.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - solo-replay
+          - solo-misc
+          - lobby-and-lan
+          - netplay-core
+          - netplay-resilience
+          - seats-and-soak
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # npx wrangler, for the shard's local relay
+
+      # Runtime libs (the binary links SDL2 and GLUT dynamically), the input/
+      # capture tools the drivers drive real windows with, and mesa's software
+      # rasteriser — without libgl1-mesa-dri there is no GL under Xvfb at all.
+      - name: Install runtime + driver tooling
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try sudo apt-get update
+          try sudo apt-get install -y \
+            libsdl2-2.0-0 \
+            freeglut3 \
+            libglu1-mesa \
+            libgl1-mesa-dri \
+            libxi6 \
+            xvfb \
+            xdotool \
+            x11-apps \
+            imagemagick \
+            xclip \
+            ffmpeg
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: newtonia-e2e-bin
+
+      - name: Restore the binary
+        run: |
+          chmod +x newtonia
+          ldd newtonia | grep datachannel
+
+      - name: Run shard
+        env:
+          NEWTONIA_CI_OUT: ${{ runner.temp }}/ci-out
+        run: test/e2e/ci_shard.sh ${{ matrix.shard }}
+
+      # Logs, screenshots and per-driver output dirs — the drivers' own
+      # evidence, which is the only way to read a headless failure after the
+      # fact. Kept short: these runs are chatty.
+      - name: Upload driver output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.shard }}-output
+          path: ${{ runner.temp }}/ci-out
+          retention-days: 7
+
+  # leaderboard.sh runs on master pushes, NOT on pull requests.
+  #
+  # It is the suite's long pole and a variable one: the same code measured
+  # 524 s, 735 s, 886 s and once past 900 s. On a PR that variance is the
+  # difference between a 15-minute answer and a 25-minute one, for a driver
+  # whose subject — the board worker's submit/place/retry protocol — is
+  # already unit- and protocol-tested in the workers job. It still gates
+  # master, so a regression is caught before release, just not on every push
+  # to a branch.
+  leaderboard:
+    name: e2e (leaderboard, master only)
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # npx wrangler, for the board worker it stands up
+
+      - name: Install runtime + driver tooling
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try sudo apt-get update
+          try sudo apt-get install -y \
+            libsdl2-2.0-0 \
+            freeglut3 \
+            libglu1-mesa \
+            libgl1-mesa-dri \
+            libxi6 \
+            xvfb \
+            xdotool \
+            x11-apps \
+            imagemagick
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: newtonia-e2e-bin
+
+      - name: Restore the binary
+        run: |
+          chmod +x newtonia
+          ldd newtonia | grep datachannel
+
+      - name: Run shard
+        env:
+          NEWTONIA_CI_OUT: ${{ runner.temp }}/ci-out
+        run: test/e2e/ci_shard.sh leaderboard
+
+      - name: Upload driver output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-leaderboard-output
+          path: ${{ runner.temp }}/ci-out
+          retention-days: 7

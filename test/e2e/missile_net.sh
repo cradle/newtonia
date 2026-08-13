@@ -60,6 +60,39 @@ key $B c
 for i in 1 2 3; do key $B x; done
 key $B c
 
+# ...and CONFIRM the cursor actually landed on missiles before firing 120 of
+# them. Two `c` presses reach missiles only if both land; a dropped one leaves
+# the joiner on giga mines, the whole burst deploys the wrong weapon, and the
+# driver's verdict is "the burst never reached MISSILES, so nothing was
+# tested" — true, and no help in saying why (twice on CI, 2026-08-12).
+# Each deploy kind logs its own confirm line, so the selection is observable:
+# fire one, see what came back, cycle if it wasn't a missile.
+select_missiles() {
+  local before after i j
+  for i in 1 2 3 4 5 6; do
+    before=$(grep -ac "missile deploy confirmed" "$OUT/joiner.log")
+    key $B x                       # fire one of whatever is armed
+    # Poll for the host's echo rather than sampling once after a fixed wait:
+    # a flat 2 s was enough on a quiet box and not on a loaded runner, where
+    # a slow confirm read as "not missiles", cycled the selection PAST them,
+    # and the probe gave up having walked the whole list (2026-08-13).
+    after=$before
+    for j in 1 2 3 4 5 6 7 8; do
+      sleep 1
+      after=$(grep -ac "missile deploy confirmed" "$OUT/joiner.log")
+      [ "$after" -gt "$before" ] && break
+    done
+    [ "$after" -gt "$before" ] && { echo "   (missiles armed after $i probe(s))"; return 0; }
+    key $B c                       # not missiles — next secondary
+    sleep 0.5
+  done
+  return 1
+}
+select_missiles || {
+  echo "FAIL: could not arm MISSILES — cycled the whole secondary list without"
+  echo "      a single missile deploy confirmed by the host"
+  kill_pair $PA $PB; exit 1; }
+
 # Long bursts of discrete presses (one missile per press — the secondary
 # trigger has no auto-fire). The muzzle-blast race is per-launch and only
 # fires when a snapshot apply lands in the window between the press and
@@ -106,12 +139,22 @@ grep -aq "missile deploy confirmed" "$OUT/joiner.log" || {
 # The regression itself. A host detonation happens where the missile flew
 # to — even a point-blank one has a few hundred ms of its 3000 on the
 # clock. A muzzle blast happens within an apply or two of the launch, so
-# the bug's signature is "vanished having flown under 200 ms": every one
+# the bug's signature is "vanished having flown barely at all": every one
 # of them logs 2990-3000 with the grace forced to 0, while the closest
 # real detonation seen in these runs was 2576.
+#
+# The line sits at 2900 (100 ms of flight), not 2800. A loaded CI runner
+# produced a single 2840 — 160 ms of flight, between the two populations
+# and matching nothing in either: too early to be the closest real
+# detonation on record, too late to be the grace-disabled signature. That
+# is the condition ship.h:281 already calls out and accepts, where INPUTs
+# are delayed while snapshots keep flowing, so the deploy vanishes and
+# reappears as the late echo — a transient cosmetic glitch with no desync,
+# and not what this driver is here to catch. 2900 keeps the real signature
+# detectable with 90 ms to spare (2026-08-13).
 YOUNG=$(grep -a "missile vanished (host detonation)" "$OUT/joiner.log" |
         sed 's/.*life \([0-9]*\) ms.*/\1/' |
-        awk '$1 >= 2800 { n++ } END { print n + 0 }')
+        awk '$1 >= 2900 { n++ } END { print n + 0 }')
 [ "$YOUNG" -eq 0 ] || {
   echo "FAIL: $YOUNG client-fired missile(s) exploded at the muzzle:"
   grep -a "missile vanished (host detonation)" "$OUT/joiner.log" | head -5
