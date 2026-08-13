@@ -223,9 +223,31 @@ sleep 3.5                                     # ...and wait out the countdown:
 # twice. Fire TWICE at every position (then advance), because single pulls
 # flaked when Xvfb dropped keypresses. Then every secondary (x fires the
 # selection; nova mints its ring).
-for i in $(seq 1 40); do key "$W" space; key "$W" space; key "$W" q; done
+# WALK UNTIL THE RECORDING PROVES IT, don't count positions. The fixed walk
+# above was a bet that 40 presses would step past lance before anything went
+# wrong, and it lost both attempts of run 31677010795 — once on lance, once on
+# shock, which is the tell that nothing was broken, only unlucky. What rewinds
+# it is a DEATH: NEWTONIA_ALL_WEAPONS re-grants on respawn and puts the
+# selection back on shock, so a death at press 30 leaves 10 presses to cross a
+# 25-entry list. The recorder logs every effect it writes (NET_LOG, flushed),
+# so the walk can just watch its own recording and stop when lance and shock
+# are both in it — early on a good run (shorter recording, and this is played
+# back at 1x below), and with double the old headroom on a bad one.
+for i in $(seq 1 80); do
+  key "$W" space; key "$W" space; key "$W" q
+  if [ $((i % 5)) = 0 ] &&
+     grep -q "effect lance recorded" "$OUT/rec4.log" &&
+     grep -q "effect shock recorded" "$OUT/rec4.log"; then
+    echo "S6: lance+shock recorded after $i positions"
+    break
+  fi
+done
 sleep 1
-for i in $(seq 1 5); do key "$W" c; key "$W" x; sleep 0.3; done
+# Same for the nova ring: fire secondaries until one is on the record.
+for i in $(seq 1 20); do
+  key "$W" c; key "$W" x; sleep 0.3
+  grep -q "effect ring recorded" "$OUT/rec4.log" && { echo "S6: ring recorded after $i secondaries"; break; }
+done
 sleep 2
 key "$W" Escape; sleep 2
 stop_hard $P
