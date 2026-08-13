@@ -68,12 +68,20 @@ key $B c
 # Each deploy kind logs its own confirm line, so the selection is observable:
 # fire one, see what came back, cycle if it wasn't a missile.
 select_missiles() {
-  local before after i
+  local before after i j
   for i in 1 2 3 4 5 6; do
     before=$(grep -ac "missile deploy confirmed" "$OUT/joiner.log")
     key $B x                       # fire one of whatever is armed
-    sleep 2
-    after=$(grep -ac "missile deploy confirmed" "$OUT/joiner.log")
+    # Poll for the host's echo rather than sampling once after a fixed wait:
+    # a flat 2 s was enough on a quiet box and not on a loaded runner, where
+    # a slow confirm read as "not missiles", cycled the selection PAST them,
+    # and the probe gave up having walked the whole list (2026-08-13).
+    after=$before
+    for j in 1 2 3 4 5 6 7 8; do
+      sleep 1
+      after=$(grep -ac "missile deploy confirmed" "$OUT/joiner.log")
+      [ "$after" -gt "$before" ] && break
+    done
     [ "$after" -gt "$before" ] && { echo "   (missiles armed after $i probe(s))"; return 0; }
     key $B c                       # not missiles — next secondary
     sleep 0.5
