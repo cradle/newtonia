@@ -647,6 +647,10 @@ void NetLobby::confirm() {
     // Not gated on seated_ any more: the policy row is up before anyone
     // arrives, which is exactly when a host would set it. START itself
     // no-ops on an empty room (waiting_room_start).
+    if (host_row_kind(host_row_selected()) == HostRowExit) {
+      leave_to_menu();  // the band is a real row here, so confirm answers it
+      return;
+    }
     if (host_row_kind(host_row_selected()) == HostRowAnon) {
       // Two-state row: confirm toggles it, same as left/right (the in-game
       // roster's twin answers all three too).
@@ -1290,32 +1294,39 @@ void NetLobby::waiting_room_update(int delta) {
 // Peers, then START (only with someone seated), then the policy row. One
 // definition feeds the draw, the ladder and the tap hit-test.
 int NetLobby::host_row_count() const {
-  return (int)seated_.size() + (seated_.empty() ? 0 : 1) + 1;
+  return (int)seated_.size() + (seated_.empty() ? 0 : 1) + 2;
 }
 int NetLobby::host_start_row() const {
   return seated_.empty() ? -1 : (int)seated_.size();
 }
-int NetLobby::host_anon_row() const { return host_row_count() - 1; }
+int NetLobby::host_anon_row() const { return host_row_count() - 2; }
+int NetLobby::host_exit_row() const { return host_row_count() - 1; }
 
 NetLobby::HostRow NetLobby::host_row_kind(int row) const {
   if (row < (int)seated_.size()) return HostRowPeer;
   if (row == host_start_row()) return HostRowStart;
-  return HostRowAnon;
+  if (row == host_anon_row()) return HostRowAnon;
+  return HostRowExit;
 }
 
 // The selection in drawn order. host_sel_ is the peer index (-1 off the
 // peers), and host_anon_sel_ picks between the two trailing rows.
 int NetLobby::host_row_selected() const {
   if (host_sel_ >= 0 && host_sel_ < (int)seated_.size()) return host_sel_;
-  if (host_anon_sel_ || host_start_row() < 0) return host_anon_row();
-  return host_start_row();
+  if (host_tail_sel_ > 0) {
+    int row = host_anon_row() + host_tail_sel_ - 1;
+    return row < host_row_count() ? row : host_row_count() - 1;
+  }
+  return host_start_row() < 0 ? host_anon_row() : host_start_row();
 }
 
 void NetLobby::host_row_select(int row) {
   if (row < 0) row = 0;
   if (row >= host_row_count()) row = host_row_count() - 1;
-  host_sel_ = host_row_kind(row) == HostRowPeer ? row : -1;
-  host_anon_sel_ = host_row_kind(row) == HostRowAnon;
+  HostRow kind = host_row_kind(row);
+  host_sel_ = kind == HostRowPeer ? row : -1;
+  // 0 = START (the resting row), 1 = the policy row, 2 = the exit band.
+  host_tail_sel_ = kind == HostRowAnon ? 1 : (kind == HostRowExit ? 2 : 0);
   host_kick_armed_ = -1;  // moving off a row disarms it
   host_ban_ = false;      // ...and the next row opens on the softer action
 }
@@ -2438,10 +2449,12 @@ void NetLobby::draw() {
             // With a peer picked the row itself says what the keys do
             // ("< KICK >" / "[CONFIRM KICK]"), so this line only has to
             // keep the way out visible.
-            lines.push_back(
-                host_row_kind(sel_row) == HostRowStart
-                    ? Typer::cursored("ENTER - START GAME", true)
-                    : (host_sel_ >= 0 ? "ESC - BACK" : "ENTER - START GAME"));
+            // A menu option, named for what it does — no key spelled out
+            // and no swapping to a hint about some other row. The cursor
+            // says which one confirm answers; that is the whole grammar of
+            // every other list in the game.
+            lines.push_back(Typer::cursored(
+                "START GAME", host_row_kind(sel_row) == HostRowStart));
           }
           // Who may fill the seats that are still empty — the host's call,
           // so it lives with the room, and its twin is the in-game roster's
@@ -2855,7 +2868,12 @@ void NetLobby::draw() {
   bool band_armed =
       (screen_ == Choose && selection_ == 2) ||
       (rejoin_mode_ && screen_ == RoomJoining &&
-       !(lan_rejoin_browsing() && lan_sel_ >= 0));
+       !(lan_rejoin_browsing() && lan_sel_ >= 0)) ||
+      // ...and the waiting room, whose ladder walks down onto it: a drawn
+      // row the cursor cannot reach is a row that looks broken (field,
+      // 2026-08-13). Esc still leaves from anywhere on the screen.
+      (screen_ == RoomHost && waiting_room() &&
+       host_row_kind(host_row_selected()) == HostRowExit);
   TapBand::return_to_menu.draw(
       is_touch_mode()
           ? Typer::cursored("RETURN TO MENU", true).c_str()

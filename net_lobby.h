@@ -185,14 +185,20 @@ private:
   // ladder walks THIS, and host_sel_ is the peer index it maps back to (-1
   // on the two trailing rows) — the drawn order and the selection cannot
   // disagree, which is how the cursor ended up walking backwards before.
-  enum HostRow { HostRowPeer, HostRowStart, HostRowAnon };
+  // ...then BACK TO MENU, which is the shared exit BAND rather than a line
+  // in the list — but it is drawn on this screen, so the ladder has to
+  // reach it (a drawn row the cursor walks past reads as broken).
+  enum HostRow { HostRowPeer, HostRowStart, HostRowAnon, HostRowExit };
   int host_row_count() const;
   int host_start_row() const;  // -1 when nobody is seated
   int host_anon_row() const;
+  int host_exit_row() const;
   HostRow host_row_kind(int row) const;
   int host_row_selected() const;      // current row in drawn order
   void host_row_select(int row);      // ...and move to one (clamped)
-  bool host_anon_sel_ = false;        // the policy row, not START, is picked
+  // Which of the trailing rows holds the highlight when no peer does:
+  // 0 = START (the resting row), 1 = the policy row, 2 = the exit band.
+  int host_tail_sel_ = 0;
   int host_kick_armed_ = -1;
   // Which removal the highlighted row offers: false = KICK (they may come
   // back with the room code), true = BAN (their next handshake is refused).
