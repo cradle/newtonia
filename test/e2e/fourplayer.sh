@@ -70,7 +70,15 @@ wait_for_save() {
 
 rm -f "$PREF_DIR/savegame.dat"
 
+# Clear the log BEFORE each launch, not via the child's own `>` truncate:
+# the child is backgrounded, so the parent's wait_for_menu grep can run
+# before the child has even opened the file — and match the PREVIOUS
+# launch's "In the Menu" line (or, on a local run with NEWTONIA_TEST_OUT
+# unset, a line from an earlier invocation surviving in /tmp). The Returns
+# then land before the menu exists, the exact flake the log wait fixed.
+
 # 1. 4P grid runs and survives a level skip
+rm -f "$GAMELOG"
 NEWTONIA_BETA=1 NEWTONIA_START_PLAYERS=4 ./newtonia > "$GAMELOG" 2>&1 & PID=$!
 newgame; alive "4P start"
 sleep 3; alive "4P running"
@@ -80,20 +88,21 @@ stop "4P save"
 wait_for_save || fail "no 4P save written"
 
 # 2. plain relaunch resumes the 4P save via CONTINUE
+rm -f "$GAMELOG"
 ./newtonia > "$GAMELOG" 2>&1 & PID=$!
 newgame; alive "4P resume"
 sleep 2; alive "4P resumed running"
 stop "4P resume shutdown"
 
 # 3. 3P grid (free-cell minimap path)
-rm -f "$PREF_DIR/savegame.dat"
+rm -f "$PREF_DIR/savegame.dat" "$GAMELOG"
 NEWTONIA_BETA=1 NEWTONIA_START_PLAYERS=3 ./newtonia > "$GAMELOG" 2>&1 & PID=$!
 newgame; alive "3P start"
 sleep 3; alive "3P running"
 stop "3P"
 
 # 4. Enter joins P2 once; a third Enter is refused (cap)
-rm -f "$PREF_DIR/savegame.dat"
+rm -f "$PREF_DIR/savegame.dat" "$GAMELOG"
 ./newtonia > "$GAMELOG" 2>&1 & PID=$!
 newgame; alive "2P base"
 xdotool key --window $W Return; sleep 2; alive "after P2 join"
