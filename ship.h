@@ -278,6 +278,15 @@ class Ship : public CompositeObject {
     // late echo. Accepted: the alternative (pausing the count when
     // INPUTs aren't being acked) needs wire changes for a transient
     // cosmetic glitch with no desync — the host stays authoritative.
+    //
+    // That case has now been OBSERVED, not just reasoned about: on a
+    // loaded 4-vCPU CI runner (2026-08-13) missile_net.sh caught one
+    // client-fired missile vanishing 160 ms after launch — too early to
+    // be any real detonation the driver has on record (closest: 424 ms),
+    // too late to be the grace-disabled signature (0-10 ms). One in ~120
+    // launches, under load the e2e suite deliberately applies. If the
+    // glitch is ever reported from the field rather than from CI, this
+    // constant — or the acked-INPUT pause above — is where to start.
     static const uint8_t NET_DEPLOY_GRACE = 5;
     // Net client: a replicated missile vanished mid-flight — the host saw
     // it hit something. Blast + explosion sound at its last position.
