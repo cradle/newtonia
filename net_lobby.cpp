@@ -643,12 +643,26 @@ void NetLobby::confirm() {
     } else {
       set_status("THE CODE IS 5 LETTERS");
     }
-  } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
-    if (host_sel_ >= 0 && host_sel_ < (int)seated_.size()) {
-      // A peer row is picked: first confirm arms, second kicks. START is
-      // still on this same key with no row picked, which is why arming
-      // exists at all.
-      if (host_kick_armed_ == host_sel_) host_kick_selected();
+  } else if (screen_ == RoomHost && waiting_room()) {
+    // Not gated on seated_ any more: the policy row is up before anyone
+    // arrives, which is exactly when a host would set it. START itself
+    // no-ops on an empty room (waiting_room_start).
+    if (host_row_kind(host_row_selected()) == HostRowExit) {
+      leave_to_menu();  // the band is a real row here, so confirm answers it
+      return;
+    }
+    if (host_row_kind(host_row_selected()) == HostRowAnon) {
+      // Two-state row: confirm toggles it, same as left/right (the in-game
+      // roster's twin answers all three too).
+      g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
+      NET_LOG("[lobby] allow anonymous players: %s\n",
+              g_prefs.allow_anonymous ? "YES" : "NO");
+      save_preferences();  // a hosting policy should outlive the session
+    } else if (host_sel_ >= 0 && host_sel_ < (int)seated_.size()) {
+      // A peer row is picked: first confirm arms, second performs whichever
+      // removal left/right settled on. START is still on this same key with
+      // no row picked, which is why arming exists at all.
+      if (host_kick_armed_ == host_sel_) host_kick_selected(host_ban_);
       else host_kick_armed_ = host_sel_;
     } else {
       // PB-D6: the room screen's first-ever confirm — START GAME with
@@ -1175,9 +1189,38 @@ void NetLobby::waiting_room_update(int delta) {
         drop_pending(key, "banned");
         continue;
       }
+      // Host policy: no anonymous players (Preferences::allow_anonymous, the
+      // ALLOW ANONYMOUS PLAYERS row on this screen and the in-game roster).
+      // Same enforcement point as the ban, for the same reason — this Ready
+      // is where the handshake first says who answered.
+      //
+      // The worker's verdict is ASYNC and often lands after the handshake,
+      // so an attested player would otherwise be refused for arriving too
+      // fast. Give the attestation a grace window before judging: a peer
+      // with no verdict yet is left mid-handshake and re-examined next tick
+      // (LAN joiners have no worker at all — jid-less, and this policy is
+      // about strangers from a room code, so they pass).
+      std::string cand_jid = pj.lan ? std::string() : it->first;
+      if (!g_prefs.allow_anonymous && !cand_jid.empty()) {
+        std::map<std::string, NetIdentity>::const_iterator at =
+            jid_attested_.find(cand_jid);
+        bool anon = at == jid_attested_.end() ||
+                    net_identity_anonymous(at->second);
+        if (anon) {
+          pj.anon_wait_ms += delta;
+          if (pj.anon_wait_ms < ANON_ATTEST_GRACE_MS) { ++it; continue; }
+          NET_LOG("[lobby] waiting room: refusing anonymous pilot on seat %d\n",
+                  pj.seat);
+          set_status("ANONYMOUS PLAYERS ARE BLOCKED");
+          std::string key = it->first;
+          ++it;
+          drop_pending(key, "anonymous");
+          continue;
+        }
+      }
       SeatedPeer sp;
       sp.session = pj.session;
-      sp.jid = pj.lan ? std::string() : it->first;
+      sp.jid = cand_jid;
       sp.seat = pj.seat;
       if (!sp.jid.empty()) {
         std::map<std::string, NetIdentity>::const_iterator at =
@@ -1238,12 +1281,75 @@ void NetLobby::waiting_room_update(int delta) {
 // through the ordinary join path — then drop the session and free the
 // seat, which next_free_seat() re-offers to the next arrival.
 //
-// Not a ban: a kicked player with the room code can join again. This
-// clears a wedged or unwanted peer out of the room.
-void NetLobby::host_kick_selected() {
+// KICK and BAN are two actions (left/right on the row): a kick clears a
+// wedged or unwanted peer out and lets them join again with the room code,
+// a ban also refuses their next handshake. See GLGame::net_kick_peer, the
+// mid-game twin.
+// Can the seated peer on this row be BANNED, or only kicked? Only a
+// worker-attested name makes a ban durable (net_identity_bannable) — the
+// waiting room's twin of GLGame::roster_row_can_ban. The attestation is
+// whatever was captured for this seat, falling back to the live session's
+// folded identity for a peer attested after it sat down.
+// ---- waiting-room row geometry (see net_lobby.h) ----
+// Peers, then START (only with someone seated), then the policy row. One
+// definition feeds the draw, the ladder and the tap hit-test.
+int NetLobby::host_row_count() const {
+  return (int)seated_.size() + (seated_.empty() ? 0 : 1) + 2;
+}
+int NetLobby::host_start_row() const {
+  return seated_.empty() ? -1 : (int)seated_.size();
+}
+int NetLobby::host_anon_row() const { return host_row_count() - 2; }
+int NetLobby::host_exit_row() const { return host_row_count() - 1; }
+
+NetLobby::HostRow NetLobby::host_row_kind(int row) const {
+  if (row < (int)seated_.size()) return HostRowPeer;
+  if (row == host_start_row()) return HostRowStart;
+  if (row == host_anon_row()) return HostRowAnon;
+  return HostRowExit;
+}
+
+// The selection in drawn order. host_sel_ is the peer index (-1 off the
+// peers), and host_anon_sel_ picks between the two trailing rows.
+int NetLobby::host_row_selected() const {
+  if (host_sel_ >= 0 && host_sel_ < (int)seated_.size()) return host_sel_;
+  if (host_tail_sel_ > 0) {
+    int row = host_anon_row() + host_tail_sel_ - 1;
+    return row < host_row_count() ? row : host_row_count() - 1;
+  }
+  return host_start_row() < 0 ? host_anon_row() : host_start_row();
+}
+
+void NetLobby::host_row_select(int row) {
+  if (row < 0) row = 0;
+  if (row >= host_row_count()) row = host_row_count() - 1;
+  HostRow kind = host_row_kind(row);
+  host_sel_ = kind == HostRowPeer ? row : -1;
+  // 0 = START (the resting row), 1 = the policy row, 2 = the exit band.
+  host_tail_sel_ = kind == HostRowAnon ? 1 : (kind == HostRowExit ? 2 : 0);
+  host_kick_armed_ = -1;  // moving off a row disarms it
+  host_ban_ = false;      // ...and the next row opens on the softer action
+}
+
+bool NetLobby::host_row_can_ban(int row) const {
+  if (row < 0 || row >= (int)seated_.size()) return false;
+  const SeatedPeer &sp = seated_[row];
+  if (!net_identity_anonymous(sp.attested)) return true;
+  // Late attestation, same fallback the row's NAME uses: sp.attested is the
+  // seating-time capture, and the worker's verdict often lands after the
+  // handshake. Deliberately NOT the session's peer_identity() — that is the
+  // peer's own HELLO claim, which is exactly what a ban must not key on.
+  if (sp.jid.empty()) return false;
+  std::map<std::string, NetIdentity>::const_iterator it =
+      jid_attested_.find(sp.jid);
+  return it != jid_attested_.end() && !net_identity_anonymous(it->second);
+}
+
+void NetLobby::host_kick_selected(bool ban) {
   if (host_sel_ < 0 || host_sel_ >= (int)seated_.size()) return;
   SeatedPeer &sp = seated_[host_sel_];
-  NET_LOG("[lobby] waiting room: kicking seat %d\n", sp.seat);
+  NET_LOG("[lobby] waiting room: %s seat %d\n", ban ? "banning" : "kicking",
+          sp.seat);
   // Read the identity BEFORE the session is deleted below — the ban needs
   // it, and peer_identity() through a freed session is a use-after-free.
   NetIdentity who = sp.session ? sp.session->peer_identity() : NetIdentity();
@@ -1265,13 +1371,14 @@ void NetLobby::host_kick_selected() {
   // attestation too, or a DIFFERENT arrival on a recycled row could
   // inherit the kicked player's verified name.
   if (!sp.jid.empty()) jid_attested_.erase(sp.jid);
-  // Bar them for the rest of this process: the room code is the only thing
-  // stopping them otherwise, and they already have it.
-  ban_identity(who);
+  // Ban only: bar them for the rest of this room's life — the room code is
+  // the only thing stopping them otherwise, and they already have it.
+  if (ban) ban_identity(who);
   seated_.erase(seated_.begin() + host_sel_);
   host_kick_armed_ = -1;
+  host_ban_ = false;
   host_sel_ = -1;  // back to the resting state: confirm means START again
-  set_status("PLAYER REMOVED");
+  set_status(ban ? "PLAYER BANNED" : "PLAYER REMOVED");
 }
 
 void NetLobby::waiting_room_start() {
@@ -1446,6 +1553,12 @@ void NetLobby::pump_signal(int delta) {
           att.name_trust =
               att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
           jid_attested_[ev.peer] = att;
+          // Greppable, and not just for tests: attestation now decides
+          // whether the roster offers BAN at all, so "why is there no BAN
+          // on that row" has to be answerable from a log.
+          NET_LOG("net: identity attested (joiner %s) name='%s' platform=%s(%u)\n",
+                  ev.peer.c_str(), att.name.c_str(),
+                  net_platform_label(att.platform), (unsigned)att.platform);
           if (ev.peer == paired_jid_)
             apply_peer_attestation(ev.platform, ev.text, ev.verified);
         }
@@ -2187,24 +2300,25 @@ void NetLobby::draw() {
   // can't ride the string — the draw loop needs to know which row it is.
   int verified_line = -1;
   bool blink = (currentTime / 700) % 2 == 0;
+  // Re-established below by whichever screen draws them; cleared here so a
+  // stale row can never be clicked on a screen that no longer shows it.
+  host_peer_line0_ = host_start_line_ = host_anon_line_ = -1;
 
   switch (screen_) {
     case Choose: {
+      // Two words, no gloss: HOST and JOIN say what they do, and the
+      // explanatory pair under them was two more lines to read on a screen
+      // whose whole job is one choice.
       if (is_touch_mode()) {
         // The tap targets are the screen halves (see touch_tap): spread
         // the labels apart and skip the "> " cursor — a desktop cue.
         Typer::draw_centered(0, 180, "HOST", 30);
         Typer::draw_centered(0, -120, "JOIN", 30);
         y = -280;
-        lines.push_back("HOST MAKES A ROOM CODE");
-        lines.push_back("JOIN ENTERS A FRIEND'S CODE");
       } else {
         MenuSelect::draw_row(60, "HOST", 26, selection_ == 0);
         MenuSelect::draw_row(-40, "JOIN", 26, selection_ == 1);
-        lines.push_back("");
         y = -160;
-        lines.push_back("HOST MAKES A ROOM CODE");
-        lines.push_back("JOIN ENTERS A FRIEND'S CODE");
       }
       break;
     }
@@ -2266,6 +2380,7 @@ void NetLobby::draw() {
           snprintf(buf, sizeof(buf), "WAITING FOR PLAYERS %d/%d",
                    (int)seated_.size() + 1, net_seat_cap());
           lines.push_back(blink ? buf : "");
+          host_peer_line0_ = (int)lines.size();  // where the mouse finds them
           for (const SeatedPeer &sp : seated_) {
             std::string name = sp.attested.name;
             if (name.empty() && !sp.jid.empty()) {
@@ -2289,21 +2404,69 @@ void NetLobby::draw() {
             // The highlighted row carries the shared cursor marks and says
             // what confirm does to it (these rows have no column geometry,
             // so it is Typer::cursored's string form, not draw_row).
+            // The action names the BAN, because a kick is one: the pilot is
+            // barred from this room for as long as it exists, and a label
+            // reading only KICK left the host with no sign the game could
+            // do it at all (field, 2026-08-13).
             int row = (int)(&sp - &seated_[0]);
             std::string line = buf;
-            if (host_sel_ == row) {
-              line += host_kick_armed_ == row ? "   [CONFIRM KICK]" : "   KICK";
+            bool can_ban = host_row_can_ban(row);
+            if (host_sel_ != row) {
+              // Every peer row says the actions exist — the whole reason
+              // the host could not find them. Only the CURSOR's row says
+              // which one is picked (host_ban_ describes that row alone).
+              line += can_ban ? "   KICK / BAN" : "   KICK";
+            } else {
+              // The action the row is offering, with the arrows that swap
+              // it — one row, two actions, and which one is armed is never
+              // in doubt. Kept short: a row is "PLAYER 4 - " plus a name of
+              // up to 24 glyphs before any of this.
+              const char *act = host_ban_ ? "BAN" : "KICK";
+              line += "   ";
+              if (host_kick_armed_ == row) {
+                line += "[CONFIRM ";
+                line += act;
+                line += "]";
+              } else if (can_ban) {
+                line += "< ";
+                line += act;
+                line += " >";
+              } else {
+                // No second action to swap to, so no arrows offering one.
+                line += "KICK";
+              }
               line = Typer::cursored(line, true);
             }
             lines.push_back(line);
           }
+          int sel_row = host_row_selected();
           if (!seated_.empty()) {
             lines.push_back("");
             // The start row is the resting selection, so it carries the
-            // cursor whenever no peer row is picked.
-            lines.push_back(host_sel_ < 0
-                                ? Typer::cursored("ENTER - START GAME", true)
-                                : "UP / DOWN - SELECT   ESC - BACK");
+            // cursor whenever no peer row is picked; with one picked, this
+            // line says what confirm will do to them instead.
+            host_start_line_ = (int)lines.size();
+            // With a peer picked the row itself says what the keys do
+            // ("< KICK >" / "[CONFIRM KICK]"), so this line only has to
+            // keep the way out visible.
+            // A menu option, named for what it does — no key spelled out
+            // and no swapping to a hint about some other row. The cursor
+            // says which one confirm answers; that is the whole grammar of
+            // every other list in the game.
+            lines.push_back(Typer::cursored(
+                "START GAME", host_row_kind(sel_row) == HostRowStart));
+          }
+          // Who may fill the seats that are still empty — the host's call,
+          // so it lives with the room, and its twin is the in-game roster's
+          // row of the same name. Drawn even with nobody seated: setting it
+          // BEFORE anyone arrives is the whole point.
+          host_anon_line_ = (int)lines.size();
+          {
+            std::string anon = "ALLOW ANONYMOUS PLAYERS   ";
+            anon += g_prefs.allow_anonymous ? "YES" : "NO";
+            lines.push_back(host_row_kind(sel_row) == HostRowAnon
+                                ? Typer::cursored(anon, true)
+                                : anon);
           }
         } else {
           lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
@@ -2600,7 +2763,10 @@ void NetLobby::draw() {
         lines.push_back("HOSTED BY " + badge);
       }
       lines.push_back("");
-      if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD");
+      // What the joiner is actually waiting for is the host pressing START —
+      // "THE HOST'S WORLD" described the snapshot they'd receive, which is
+      // machinery, not the thing that has to happen next.
+      if (blink) lines.push_back("WAITING FOR HOST START");
       break;
     }
     case LobbyFailed:
@@ -2628,6 +2794,28 @@ void NetLobby::draw() {
     line_h = (int)(line_h * fit);
     line_sz = (int)(sz * fit);
     if (line_sz < 10) line_sz = 10;  // never shrink past legibility
+  }
+  // What the hit-test reads (see list_row_at): the layout as DRAWN, after
+  // the fit shrink above.
+  list_origin_y_ = y;
+  list_line_h_ = line_h;
+  list_line_sz_ = line_sz;
+  list_rows_ = (int)lines.size();
+  // Published on change (NEWTONIA_NET_DEBUG): the shrink means these numbers
+  // move as the roster grows, so anything outside this file that needs to
+  // know where a row IS — a headless driver aiming a click, a field report
+  // about a mis-hit — should read them rather than re-deriving the formula
+  // and drifting from it (which is exactly how nseat_lobby_mouse.sh started
+  // clicking the wrong row when this list gained one).
+  {
+    static int last[5] = {0, 0, 0, 0, 0};
+    int now5[5] = {(int)y, line_h, line_sz, (int)lines.size(), host_start_line_};
+    if (memcmp(last, now5, sizeof last) != 0) {
+      memcpy(last, now5, sizeof last);
+      NET_LOG("[lobby] list geom origin=%d step=%d size=%d rows=%d start=%d anon=%d\n",
+              (int)y, line_h, line_sz, (int)lines.size(), host_start_line_,
+              host_anon_line_);
+    }
   }
   for (size_t i = 0; i < lines.size(); i++) {
     if (!lines[i].empty())
@@ -2680,7 +2868,12 @@ void NetLobby::draw() {
   bool band_armed =
       (screen_ == Choose && selection_ == 2) ||
       (rejoin_mode_ && screen_ == RoomJoining &&
-       !(lan_rejoin_browsing() && lan_sel_ >= 0));
+       !(lan_rejoin_browsing() && lan_sel_ >= 0)) ||
+      // ...and the waiting room, whose ladder walks down onto it: a drawn
+      // row the cursor cannot reach is a row that looks broken (field,
+      // 2026-08-13). Esc still leaves from anywhere on the screen.
+      (screen_ == RoomHost && waiting_room() &&
+       host_row_kind(host_row_selected()) == HostRowExit);
   TapBand::return_to_menu.draw(
       is_touch_mode()
           ? Typer::cursored("RETURN TO MENU", true).c_str()
@@ -2851,13 +3044,31 @@ void NetLobby::nav_input(unsigned char key) {
     // selected", which is where the rejoin wait sits until a host is picked.
     if (MenuSelect::move_within(key, lan_sel_, -1, lan_rows_shown() - 1))
       return;
-  } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
-    // Same off-the-top rule as the LAN list: -1 is "no peer picked", where
-    // confirm still means START GAME.
-    if (MenuSelect::move_within(key, host_sel_, -1,
-                                (int)seated_.size() - 1)) {
-      host_kick_armed_ = -1;  // moving off a row disarms it
+  } else if (screen_ == RoomHost && waiting_room()) {
+    // Walk the rows in DRAWN order (peers, START, the policy row) and map
+    // back: stepping the raw peer index ran the cursor backwards, because
+    // the trailing rows are drawn UNDERNEATH the peers — down off START
+    // jumped to the top peer (field, 2026-08-13).
+    int visual = host_row_selected();
+    if (MenuSelect::move(key, visual, host_row_count())) {
+      host_row_select(visual);
       return;
+    }
+    if (MenuSelect::is_left(key) || MenuSelect::is_right(key)) {
+      if (host_row_kind(visual) == HostRowAnon) {
+        g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
+        NET_LOG("[lobby] allow anonymous players: %s\n",
+                g_prefs.allow_anonymous ? "YES" : "NO");
+        save_preferences();
+        return;
+      }
+      // Left/right on a peer row chooses KICK or BAN (the mid-game roster's
+      // twin, GLGame::roster_nav) — BAN only where a ban would hold.
+      if (host_sel_ >= 0) {
+        host_ban_ = MenuSelect::is_right(key) && host_row_can_ban(host_sel_);
+        host_kick_armed_ = -1;  // changing the action disarms
+        return;
+      }
     }
   }
   switch (key) {
@@ -3077,9 +3288,25 @@ void NetLobby::controller(SDL_Event event) {
   if (k) nav_input(k);
 }
 
+// Which row of the drawn text list a tap at normalized ny landed on, or -1
+// past either end. Row i is anchored at origin - i*step with its glyphs
+// hanging ~2*size below, so the band a row owns is the step centred on that
+// ink — rows tile the list with no dead gaps between them.
+int NetLobby::list_row_at(float ny) const {
+  if (list_line_h_ <= 0 || list_rows_ <= 0) return -1;
+  float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+  float rel = (list_origin_y_ - list_line_sz_) - vy;  // 0 at row 0's mid-line
+  int i = (int)floorf(rel / (float)list_line_h_ + 0.5f);
+  if (i < 0 || i >= list_rows_) return -1;
+  return i;
+}
+
 void NetLobby::touch_tap(float nx, float ny) {
-  // Bottom strip on every screen = RETURN TO MENU.
-  if (TapBand::return_to_menu.contains(nx, ny)) {
+  // Bottom strip on every screen = RETURN TO MENU. for_pointer() is what
+  // keeps a MOUSE click honest: the band runs to the bottom edge with a
+  // finger's padding, which off touch made the lowest ~19% of the window
+  // an exit — clicking below the roster left the room (field, 2026-08-13).
+  if (TapBand::return_to_menu.for_pointer().contains(nx, ny)) {
     // A rejoin lobby arrives mid-fight, and on touch the in-game fire
     // zone overlaps this strip — a fire-mash tail landing just after the
     // hand-off would abandon the recoverable rejoin (the touch twin of
@@ -3154,6 +3381,49 @@ void NetLobby::touch_tap(float nx, float ny) {
           kStartBand.contains(nx, ny)) {
         waiting_room_start();
         break;
+      }
+      // Mouse / Deck pointer: the DRAWN roster rows are the buttons. The
+      // touch band above is undrawn off touch, so this screen answered no
+      // click at all — "ENTER - START GAME" read as a button and wasn't
+      // one (field, 2026-08-13). Rows come from list_row_at, i.e. the
+      // geometry the draw just recorded, so they can't drift as the list
+      // shrinks to fit.
+      if (!is_touch_mode() && waiting_room()) {
+        int row = list_row_at(ny);
+        int peers = (int)seated_.size();
+        if (host_peer_line0_ >= 0 && row >= host_peer_line0_ &&
+            row < host_peer_line0_ + peers) {
+          // Click to pick, click again to arm, once more to remove — the
+          // mouse spelling of the keyboard's select-then-two-confirms, so
+          // one stray click still can't end anyone's game.
+          int sel = row - host_peer_line0_;
+          if (host_sel_ != sel) {
+            host_sel_ = sel;
+            host_kick_armed_ = -1;
+          } else {
+            confirm();
+          }
+          break;
+        }
+        if (host_anon_line_ >= 0 && row == host_anon_line_) {
+          host_row_select(host_anon_row());
+          g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
+          NET_LOG("[lobby] allow anonymous players: %s\n",
+                  g_prefs.allow_anonymous ? "YES" : "NO");
+          save_preferences();
+          break;
+        }
+        if (host_start_line_ >= 0 && row == host_start_line_) {
+          // With a peer picked this line says BACK, not START (see draw) —
+          // so the click that lands on it means what it reads.
+          if (host_sel_ >= 0) {
+            host_sel_ = -1;
+            host_kick_armed_ = -1;
+          } else {
+            waiting_room_start();
+          }
+          break;
+        }
       }
       if (kShareBand.contains(nx, ny) && !room_code_.empty() &&
           net_share_available())

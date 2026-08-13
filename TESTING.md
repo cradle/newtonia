@@ -368,9 +368,14 @@ test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # ("host bye - no rejoin"), then no auto-rejoin, no crash.
                      # Menu exit, not SIGTERM: a SIGTERM'd process exits before
                      # libdatachannel flushes the BYE (measured at 2P and 4P)
-test/e2e/nseat_kick.sh # O3 host kick (SEATS>=3, default 3): the host pauses,
-                     # opens PLAYERS, arms and confirms a kick on the last
-                     # seat. Asserts the peer is TOLD ("kicked by the host"),
+test/e2e/nseat_kick.sh # O3 host BAN (SEATS>=3, default 3): the host pauses,
+                     # opens PLAYERS, presses right to swap the row's action
+                     # from KICK to BAN, then arms and confirms on the last
+                     # seat. SELF-HOSTS a FAKE_VERIFY relay (:8789, the
+                     # identity_attested.sh pattern): BAN is only offered on
+                     # a peer whose NAME the worker attested, and the shared
+                     # dev relay attests nobody, so without it the row would
+                     # show KICK alone and the right-arrow would do nothing. Asserts the peer is TOLD ("kicked by the host"),
                      # does NOT rejoin — sliced from the kick notice forward,
                      # since a kicked client goes quiet and its ORIGINAL
                      # "bootstrap adopted" otherwise sits in the tail and
@@ -388,11 +393,38 @@ test/e2e/nseat_lobby_kick.sh # O3 host kick, LOBBY half — a different code
                      # kick from. Asserts the goodbye reaches a joiner still
                      # on the connecting screen ("removed from the room by
                      # the host" — that loop used to drop everything that
-                     # wasn't a snapshot chunk), the ban refuses a fresh
-                     # process under the same pilot name, and START GAME
-                     # still works right after: the kicked session is handed
+                     # wasn't a snapshot chunk), that a plain KICK is NOT a
+                     # ban — a fresh process under the same pilot name is
+                     # seated again, the half nseat_kick.sh's ban mirrors —
+                     # and that START GAME still works right after: the
+                     # kicked session is handed
                      # to a drain that closes it ~600 ms later, so starting
                      # inside that window is the case that leaked it
+test/e2e/nseat_anon.sh # O3 admission policy: the host sets ALLOW ANONYMOUS
+                     # PLAYERS to NO from the waiting room's own row, then a
+                     # NAMED pilot (attested by this driver's own FAKE_VERIFY
+                     # relay on :8790) must be seated while a NAMELESS one is
+                     # refused ("refusing anonymous pilot") and takes no seat.
+                     # Also covers the grace window: the worker's verdict is
+                     # async and normally lands AFTER the handshake, so a
+                     # naive check would refuse the named pilot too
+test/e2e/nseat_lobby_mouse.sh # the host waiting room under a MOUSE. A
+                     # 4-seat room with one joiner keeps the screen up, then:
+                     # a click low on the window must NOT leave (the exit
+                     # band's finger geometry made the bottom fifth an exit),
+                     # a click on the ALLOW ANONYMOUS PLAYERS row must toggle
+                     # it (and not start the game), and a click on the drawn
+                     # "ENTER - START GAME" row must
+                     # start the game (off touch the screen had no hit-test
+                     # at all). NOTE the driver raises the host window before
+                     # clicking: every instance opens at (0,0) at the same
+                     # size with no window manager, so without it the pointer
+                     # hits the JOINER and the asserts pass for the wrong
+                     # reason (they did). Row positions are READ from the
+                     # game's "[lobby] list geom" line (NEWTONIA_NET_DEBUG),
+                     # not mirrored: the list shrinks to fit as it grows, and
+                     # a hardcoded copy aimed at the wrong row the moment the
+                     # policy row was added — it clicked that instead of START
 test/e2e/nseat_soak.sh # B6 N-seat generation soak (SOAK_GENS, default 15):
                      # per-gen liveness on every instance, all-hands bursts
                      # every 5th gen, telemetry-advance + no-drop asserts

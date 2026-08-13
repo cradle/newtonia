@@ -157,6 +157,11 @@ static float menu_band_lift() { return (float)(600 - menu_half_height()); }
 static TapBand menu_exit_band() {
   return TapBand::return_to_menu.lifted(menu_band_lift());
 }
+// The same band for the hit-test: off touch a mouse gets the glyph box
+// rather than the finger-sized strip that runs to the screen edge (see
+// TapBand::for_pointer — the lobby's twin of this ate clicks well below
+// the text). The DRAW keeps the band above, so the label never moves.
+static TapBand menu_exit_hit() { return menu_exit_band().for_pointer(); }
 
 // Options/replays row-band geometry — shared by the draw and the tap
 // hit-test so a tap always lands on the row it appears on. Touch rows fill
@@ -1164,7 +1169,7 @@ void Menu::touch_tap(float nx, float ny) {
     // end; the bottom strip exits (and persists via close_options) on both
     // layouts — the band is drawn on desktop too, where its zone sits well
     // below the deeper desktop rows (rows end ~-285, band reach tops ~-370).
-    if (menu_exit_band().contains(nx, ny)) { close_options(); return; }
+    if (menu_exit_hit().contains(nx, ny)) { close_options(); return; }
     int row = is_touch_mode()
                   ? touch_opt_row_at(ny, opt_row_count())
                   : opt_row_at(ny, opt_row_count(), desk_opt_top(),
@@ -1176,7 +1181,7 @@ void Menu::touch_tap(float nx, float ny) {
     return;
   }
   if (board_mode_) {
-    if (menu_exit_band().contains(nx, ny)) { close_board(); return; }
+    if (menu_exit_hit().contains(nx, ny)) { close_board(); return; }
     // Same fixed slots the draw uses (board_entry_y — the TapBand rule).
     float ty = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
     // The range line doubles as the touch pager: left half pages up,
@@ -1199,7 +1204,7 @@ void Menu::touch_tap(float nx, float ny) {
     return;
   }
   if (replays_mode_) {
-    if (menu_exit_band().contains(nx, ny)) { replays_mode_ = false; return; }
+    if (menu_exit_hit().contains(nx, ny)) { replays_mode_ = false; return; }
     int row = is_touch_mode()
                   ? touch_opt_row_at(ny, (int)replay_rows_.size())
                   : opt_row_at(ny, (int)replay_rows_.size(), desk_opt_top(),

@@ -1329,6 +1329,15 @@ bool GLGame::roster_row_is_peer(int row) const {
   return false;
 }
 
+// Can this row's pilot be BANNED, or only kicked? Only a worker-attested
+// name makes a ban durable — see net_identity_bannable. Everything else
+// (a legacy peer, a badge-only backend, an unverified claim) gets KICK
+// alone rather than a button that quietly does less than it says.
+bool GLGame::roster_row_can_ban(int row) const {
+  const NetPeer *p = const_cast<GLGame *>(this)->roster_peer_at(row);
+  return p && !net_identity_anonymous(p->identity);
+}
+
 // The peer occupying a roster row, or null.
 GLGame::NetPeer *GLGame::roster_peer_at(int row) {
   GLShip *gs = seat_ship_at(players, row);
@@ -1341,9 +1350,20 @@ GLGame::NetPeer *GLGame::roster_peer_at(int row) {
 int GLGame::roster_row_count() const {
   int seats = (int)players->size();
   // Online the ADD row would be a lie — seats fill from the room, not from
-  // this machine — so the host's list is exactly the seats.
-  if (net_mode_ != NetOff) return seats;
+  // this machine — so the host's list is the seats plus the one thing that
+  // IS the host's to decide: who is allowed to take the empty ones.
+  if (net_mode_ != NetOff) return seats + (roster_has_anon_row() ? 1 : 0);
   return seats < MAX_PLAYERS ? seats + 1 : seats;
+}
+
+// The ALLOW ANONYMOUS PLAYERS row: the host's admission policy, so it shows
+// for the host only. Its lobby twin is the waiting room's row of the same
+// name — one preference (Preferences::allow_anonymous), settable wherever
+// the host is standing when they think of it.
+bool GLGame::roster_has_anon_row() const { return net_mode_ == NetHost; }
+
+bool GLGame::roster_row_is_anon(int row) const {
+  return roster_has_anon_row() && row == (int)players->size();
 }
 
 GLGame::SeatInput GLGame::roster_seat_input(int seat) const {
@@ -1439,14 +1459,41 @@ void GLGame::roster_apply(int row, const SeatInput &in) {
 }
 
 void GLGame::roster_nav(unsigned char key) {
-  // Host rows: confirm ARMS the kick, a second confirm on the same row
-  // does it. Ending someone's game is not something a stray Enter — the
-  // key that opened this screen — should be able to do.
+  // Host rows: left/right picks WHICH removal (kick, which they can come
+  // back from, or ban, which they can't) — the same left/right that cycles
+  // a local seat's input, on rows where rebinding is meaningless. Confirm
+  // then ARMS it and a second confirm on the same row does it: ending
+  // someone's game is not something a stray Enter — the key that opened
+  // this screen — should be able to do.
+  // The policy row: left/right and confirm all mean the same thing on a
+  // two-state row, so answer all three rather than making the host guess
+  // which one this screen wanted.
+  if (roster_row_is_anon(roster_selection_)) {
+    if (MenuSelect::is_left(key) || MenuSelect::is_right(key) ||
+        MenuSelect::is_confirm(key)) {
+      g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
+      NET_LOG("net: allow anonymous players: %s\n",
+              g_prefs.allow_anonymous ? "YES" : "NO");
+      save_preferences();  // a hosting policy should outlive the session
+      return;
+    }
+  }
+  if (roster_row_is_peer(roster_selection_) &&
+      (MenuSelect::is_left(key) || MenuSelect::is_right(key))) {
+    // BAN only where a ban would mean something (net_identity_bannable):
+    // on a peer whose name the worker never vouched for, the key is their
+    // own say-so and they can walk back in under another one. The row
+    // draws KICK alone there, and this keeps the state matching the draw.
+    roster_ban_ = MenuSelect::is_right(key) &&
+                  roster_row_can_ban(roster_selection_);
+    roster_kick_armed_ = -1;  // changing the action disarms
+    return;
+  }
   if (MenuSelect::is_confirm(key) && roster_row_is_peer(roster_selection_)) {
     if (roster_kick_armed_ == roster_selection_) {
       NetPeer *p = roster_peer_at(roster_selection_);
       roster_kick_armed_ = -1;
-      if (p) net_kick_peer(*p);
+      if (p) net_kick_peer(*p, roster_ban_);
     } else {
       roster_kick_armed_ = roster_selection_;
     }
@@ -1462,10 +1509,11 @@ void GLGame::roster_nav(unsigned char key) {
   }
   if (MenuSelect::move(key, roster_selection_, roster_row_count())) {
     roster_kick_armed_ = -1;  // moving off a row disarms it
+    roster_ban_ = false;      // ...and the next row opens on the softer one
     return;
   }
   // Input re-binding is a LOCAL-seat idea: online the seats belong to
-  // peers and the only action is KICK.
+  // peers and the only actions are KICK and BAN (handled above).
   if (net_mode_ != NetOff) return;
   if (!MenuSelect::is_left(key) && !MenuSelect::is_right(key)) return;
   std::vector<SeatInput> options = roster_input_options();
@@ -2975,12 +3023,15 @@ void GLGame::net_host_signal_maintain(int delta) {
 // already knows how to free a seat: park frees the hull and opens the
 // door, so the seat is immediately available to whoever joins next.
 //
-// Deliberately NOT a ban: a kicked player holding the room code can join
-// again. This removes a wedged or unwanted peer; keeping someone out is a
-// different feature, and this is a co-op game played with friends.
-void GLGame::net_kick_peer(NetPeer &p) {
+// KICK and BAN are two actions, not one (the host picks with left/right on
+// the row). A kick removes a wedged or unwanted peer and lets them come
+// back — the ordinary case in a co-op game played with friends, where the
+// fix for someone stuck at the wrong seat should not also be a punishment.
+// A ban additionally refuses their next handshake. Everything else about
+// the two is identical, which is why this is one function with a flag.
+void GLGame::net_kick_peer(NetPeer &p, bool ban) {
   if (net_mode_ != NetHost) return;
-  NET_LOG("net: kicking player %d\n", (int)p.seat);
+  NET_LOG("net: %s player %d\n", ban ? "banning" : "kicking", (int)p.seat);
   if (p.session) {
     net_send_event_to(p, Net::EV_KICKED);
     // The session is NOT dropped here — see net_kick_close_ms_. The peer
@@ -2990,19 +3041,21 @@ void GLGame::net_kick_peer(NetPeer &p) {
     net_kick_close_ms_ = 600;
     net_kick_close_seat_ = p.seat;
   }
-  // Bar them from coming back. The event above stops a well-behaved
-  // client, but the room code is in their hands and nothing else would
-  // refuse a fresh join. Identity-keyed (see NetLobby::ban_identity):
-  // a nameless peer can't be banned, only kicked.
+  // Ban only: bar them from coming back. The event above stops a
+  // well-behaved client either way, but the room code is in their hands and
+  // nothing else would refuse a fresh join. Identity-keyed (see
+  // NetLobby::ban_identity): a nameless peer can't be banned, only kicked.
   //
   // BOTH the folded identity and the raw HELLO claim: p.identity carries
   // the worker's attestation folded over it, while enforcement can only
   // ever see the claim (that is all a fresh handshake has at the moment
   // it must decide). Banning only the attested form silently fails to
   // match wherever the two differ, and the peer walks back in.
-  if (p.session) NetLobby::ban_identity(p.session->peer_identity());
-  NetLobby::ban_identity(p.identity);
-  if (!p.attested.name.empty()) NetLobby::ban_identity(p.attested);
+  if (ban) {
+    if (p.session) NetLobby::ban_identity(p.session->peer_identity());
+    NetLobby::ban_identity(p.identity);
+    if (!p.attested.name.empty()) NetLobby::ban_identity(p.attested);
+  }
   // Park frees the hull and opens the rejoin door (the seat becomes
   // available). The session dies on the timer above — parking alone
   // would leave a kicked peer connected and frozen.
@@ -3292,6 +3345,21 @@ void GLGame::net_host_rejoin_session_update(int delta) {
         dp->attested = NetIdentity();
         net_drop_session(*dp);
         net_rehost_offer_sent_ = false;  // re-arm the door for someone else
+        return;
+      }
+      // Host policy: no anonymous players (Preferences::allow_anonymous —
+      // the ALLOW ANONYMOUS PLAYERS row on the roster and in the lobby).
+      // The door's twin of the waiting room's check. dp->attested is what
+      // the worker said about the socket that answered, so an unattested
+      // NAME here means nobody vouched for them; unlike the lobby there is
+      // no grace timer, because the door re-offers on the very next tick
+      // and a genuine player's next attempt carries its attestation.
+      if (!g_prefs.allow_anonymous && !dp->jid.empty() &&
+          net_identity_anonymous(dp->attested)) {
+        NET_LOG("net: refusing anonymous pilot at the rejoin door\n");
+        dp->attested = NetIdentity();
+        net_drop_session(*dp);
+        net_rehost_offer_sent_ = false;
         return;
       }
       // Rejoin-by-identity: the WELCOME may have promised a DIFFERENT

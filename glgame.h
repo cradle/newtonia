@@ -246,12 +246,24 @@ private:
     }
   };
   bool roster_available() const;   // offline OR host, non-touch
-  // Online-host rows: a remote pilot (KICK) rather than a local seat.
+  // Online-host rows: a remote pilot (KICK / BAN) rather than a local seat.
   // (roster_peer_at is declared with the other NetPeer members, below.)
   bool roster_row_is_peer(int row) const;
-  // Kick needs a deliberate second press — one stray confirm should not
+  // ...and whether BAN is on offer there (a worker-attested name; see
+  // net_identity_anonymous). False leaves KICK as the row's only action.
+  bool roster_row_can_ban(int row) const;
+  // The trailing ALLOW ANONYMOUS PLAYERS row (host only) — the admission
+  // policy the empty seats are filled under. Its twin is the lobby waiting
+  // room's row of the same name; both write Preferences::allow_anonymous.
+  bool roster_has_anon_row() const;
+  bool roster_row_is_anon(int row) const;
+  // Removing needs a deliberate second press — one stray confirm should not
   // end someone's game. -1 = nothing armed; otherwise the armed row.
   int roster_kick_armed_ = -1;
+  // Which removal the highlighted peer row is offering: false = KICK (they
+  // may rejoin), true = BAN (they may not). Left/right picks it, and it
+  // resets to the softer one whenever the highlight moves.
+  bool roster_ban_ = false;
   bool roster_open() const { return roster_active_ && !running &&
                                     roster_available(); }
   // Rows: one per seat, plus a trailing ADD row while under MAX_PLAYERS.
@@ -558,8 +570,19 @@ private:
     return door;
   }
   NetPeer *net_handshaking_lost_peer() const {
-    for (NetPeer *p : net_peers_)
+    for (NetPeer *p : net_peers_) {
+      // A seat mid-KICK is lost and STILL holds its session — deliberately,
+      // so the goodbye reaches the wire before the transport dies
+      // (net_kick_close_ms_). That is not a rejoin in flight, and the door
+      // must not read it as one: its session is already Ready, so the very
+      // next tick "completed" the adoption — unparking the hull we had just
+      // frozen and announcing "PLAYER N RECONNECTED" about the player we
+      // had just removed (field, 2026-08-13). The drain runs ahead of the
+      // pause gate, so this exclusion always ends.
+      if (net_kick_close_ms_ > 0 && (int)p->seat == (int)net_kick_close_seat_)
+        continue;
       if (p->lost && p->session) return p;
+    }
     return nullptr;
   }
   // Display context for the peer identity (net_identity.h): a room-code
@@ -950,7 +973,10 @@ private:
   // channel with the goodbye still queued in it.
   void net_host_rejoin_park_peer(NetPeer &p, bool keep_session = false);
   // Host: remove a peer and free its seat (the roster's KICK action).
-  void net_kick_peer(NetPeer &p);
+  // Remove a peer: ban=false lets them rejoin with the room code, ban=true
+  // refuses their next handshake for this room's lifetime. Two actions on
+  // the roster row (left/right), one code path.
+  void net_kick_peer(NetPeer &p, bool ban);
   // ms left before a kicked peer's session is torn down. The EV_KICKED
   // has to actually reach the wire first: NetSession::update() returns
   // immediately for a Ready session, so there is no "pump then close" —

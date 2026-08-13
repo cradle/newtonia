@@ -622,40 +622,66 @@ void Overlay::seat_roster(const GLGame *glgame) {
   int seats = (int)glgame->players->size();
   for (int i = 0; i < rows; i++) {
     char label[80];
-    if (i >= seats) {
+    if (glgame->roster_row_is_anon(i)) {
+      // Who may take the seats that are still empty. Checked before the
+      // ADD row: online there is no ADD row, and this one sits where it
+      // would have been.
+      snprintf(label, sizeof label, "ALLOW ANONYMOUS PLAYERS   %s",
+               g_prefs.allow_anonymous ? "YES" : "NO");
+    } else if (i >= seats) {
       snprintf(label, sizeof label, "ADD PLAYER %d", i + 1);
     } else if (glgame->roster_row_is_peer(i)) {
       // A remote pilot: name them (their badge, else the role label) and
       // say what confirm will do — armed rows say it twice as loudly,
       // because the next press ends their game.
+      // No fallback name here: the row ALREADY opens with "PLAYER n", and
+      // the unnamed-pilot fallback is that same role label — so an
+      // unattested peer (the common online case) read "PLAYER 2   PLAYER 2"
+      // (field, 2026-08-13). An empty name just leaves the seat label
+      // standing on its own, which is all it was ever saying.
       const GLGame::NetPeer *p =
           const_cast<GLGame *>(glgame)->roster_peer_at(i);
       std::string who = p ? net_identity_name_or(p->identity, "",
                                                  glgame->net_id_ctx())
                           : std::string();
-      char seat_txt[24];
-      if (who.empty()) {
-        snprintf(seat_txt, sizeof seat_txt, "PLAYER %d", i + 1);
-        who = seat_txt;
-      }
-      snprintf(label, sizeof label, "PLAYER %d   %s   %s", i + 1, who.c_str(),
-               glgame->roster_kick_armed_ == i ? "[CONFIRM KICK]" : "KICK");
+      // The action this row is offering, with the arrows that swap it —
+      // one row, two actions (kick, which they can come back from, and
+      // ban, which they can't), and which one is armed is never in doubt.
+      // Kept short: the row already carries a name of up to 24 glyphs.
+      // BAN is only on offer where a ban would hold (a worker-attested
+      // name): elsewhere the row says KICK alone, with no arrows, because
+      // there is no second action to swap to.
+      bool can_ban = glgame->roster_row_can_ban(i);
+      const char *act = glgame->roster_ban_ ? "BAN" : "KICK";
+      char action[24];
+      if (glgame->roster_selection_ != i)
+        // Not the cursor's row: name the actions without claiming either is
+        // picked. roster_ban_ belongs to the HIGHLIGHTED row, so rendering
+        // it here put "< BAN >" on rows nobody had chosen.
+        snprintf(action, sizeof action, can_ban ? "KICK / BAN" : "KICK");
+      else if (glgame->roster_kick_armed_ == i)
+        snprintf(action, sizeof action, "[CONFIRM %s]", act);
+      else if (can_ban)
+        snprintf(action, sizeof action, "< %s >", act);
+      else
+        snprintf(action, sizeof action, "KICK");
+      if (who.empty())
+        snprintf(label, sizeof label, "PLAYER %d   %s", i + 1, action);
+      else
+        snprintf(label, sizeof label, "PLAYER %d   %s   %s", i + 1,
+                 who.c_str(), action);
     } else {
       snprintf(label, sizeof label, "PLAYER %d   %s", i + 1,
                glgame->roster_seat_label(i).c_str());
     }
     MenuSelect::draw_row(90 - i * 44, label, 13, glgame->roster_selection_ == i);
   }
-  // The footer describes what confirm does on the SELECTED row, not what the
-  // screen is for. Row 0 is the host's own seat and a lost/parked seat has
-  // nobody left to remove, so on those rows confirm merely closes the screen —
-  // advertising a kick there is a promise the button doesn't keep.
-  if (hosting && glgame->roster_row_is_peer(glgame->roster_selection_)) {
-    Typer::draw_centered(0, -120, "ENTER   KICK THIS PLAYER (TWICE TO CONFIRM)", 8);
-    Typer::draw_centered(0, -145, "THEIR SEAT REOPENS FOR ANYONE WITH THE ROOM CODE", 8);
-  } else if (hosting) {
-    Typer::draw_centered(0, -120, "UP / DOWN   PICK A PLAYER TO REMOVE", 8);
-  } else {
+  // Online rows carry their own grammar and get NO footer: "< KICK >" shows
+  // the arrows that swap the action and "[CONFIRM ...]" shows the press that
+  // performs it, so a line underneath spelling out the keys was a third
+  // statement of what two labels already said. The offline keeps its two —
+  // input cycling and press-to-claim have nothing on the row to show them.
+  if (!hosting) {
     Typer::draw_centered(0, -120, "LEFT / RIGHT   CHANGE INPUT", 8);
     Typer::draw_centered(0, -145, "UNUSED PAD: PRESS ANY BUTTON TO TAKE THIS SEAT", 8);
   }

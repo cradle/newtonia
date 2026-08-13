@@ -384,3 +384,8 @@ bool net_identity_verified(const NetIdentity &id, NetIdentityCtx ctx) {
   (void)ctx;  // an offline session has nothing attested; see net_identity.h
   return id.attested();
 }
+
+bool net_identity_anonymous(const NetIdentity &id) {
+  // The NAME specifically, not id.attested() — see net_identity.h.
+  return !(id.name_trust == NET_TRUST_ATTESTED && !id.name.empty());
+}
