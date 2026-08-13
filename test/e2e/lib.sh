@@ -202,29 +202,22 @@ fresh_menu_state() {
 # line before topping up — reading a stale one would press n again and
 # overshoot the level the driver wants to sit on.
 skip_to_generation() {
-  local w=$1 log=$2 target=$3 i gen before now tries
+  local w=$1 log=$2 target=$3 i gen tries
   for i in $(seq 1 "$target"); do key "$w" n; sleep 3; done
-  for tries in 1 2 3; do
-    before=$(grep -ac "slot #" "$OUT/$log.log")
-    for i in $(seq 1 15); do
-      now=$(grep -ac "slot #" "$OUT/$log.log")
-      [ "$now" -gt "$before" ] && break
-      sleep 1
-    done
-    gen=$(grep -a "slot #" "$OUT/$log.log" | tail -1 |
-          sed 's/.*gen=\([0-9]*\).*/\1/')
-    # No telemetry to read: the game's stdout is a FILE here, so its lines are
-    # block-buffered and a slot line can sit unflushed past this window. That
-    # makes the generation unobservable, not wrong — failing on it turns a
-    # missing diagnostic into a missing pulsar ("host never reached generation
-    # 9", twice, where the blind presses had probably worked; 2026-08-12).
-    # Press a few extra times as insurance against a dropped key and let the
-    # driver's real assertion — did the object replicate — decide.
-    if [ -z "$gen" ]; then
-      echo "== skip: no generation telemetry yet; pressing 2 extra and continuing"
-      for i in 1 2; do key "$w" n; sleep 3; done
-      return 0
-    fi
+  # Read the generation from Presence, not from the snapshot telemetry.
+  #
+  # Presence::set_level logs "Presence: Level <generation+1>" through
+  # std::endl, so it is FLUSHED the moment the level changes. The netplay
+  # telemetry ("net: slot #N gen=G") only appears every 10 s and rides a
+  # block-buffered stream, so on CI it was routinely unreadable — the helper
+  # either gave up ("host never reached generation 9") or pressed blindly and
+  # still landed short ("joiner never replicated hazard kind 0"). Presence is
+  # observable immediately, so the correction below actually converges.
+  for tries in 1 2 3 4 5 6 7 8; do
+    gen=$(grep -a "Presence: Level " "$OUT/$log.log" | tail -1 |
+          sed 's/.*Presence: Level \([0-9]*\).*/\1/')
+    [ -n "$gen" ] || { echo "== skip: no level line yet from '$log'"; sleep 2; continue; }
+    gen=$((gen - 1))
     [ "$gen" -ge "$target" ] && return 0
     echo "== skip correction: at generation $gen, want $target"
     for i in $(seq 1 $((target - gen))); do key "$w" n; sleep 3; done
