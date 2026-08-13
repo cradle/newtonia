@@ -38,6 +38,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <utility>
 
 using namespace std;
 
@@ -573,13 +574,13 @@ private:
     for (NetPeer *p : net_peers_) {
       // A seat mid-KICK is lost and STILL holds its session — deliberately,
       // so the goodbye reaches the wire before the transport dies
-      // (net_kick_close_ms_). That is not a rejoin in flight, and the door
+      // (net_kick_closing_). That is not a rejoin in flight, and the door
       // must not read it as one: its session is already Ready, so the very
       // next tick "completed" the adoption — unparking the hull we had just
       // frozen and announcing "PLAYER N RECONNECTED" about the player we
       // had just removed (field, 2026-08-13). The drain runs ahead of the
       // pause gate, so this exclusion always ends.
-      if (net_kick_close_ms_ > 0 && (int)p->seat == (int)net_kick_close_seat_)
+      if (net_kick_draining((int)p->seat))
         continue;
       if (p->lost && p->session) return p;
     }
@@ -977,17 +978,26 @@ private:
   // refuses their next handshake for this room's lifetime. Two actions on
   // the roster row (left/right), one code path.
   void net_kick_peer(NetPeer &p, bool ban);
-  // ms left before a kicked peer's session is torn down. The EV_KICKED
-  // has to actually reach the wire first: NetSession::update() returns
-  // immediately for a Ready session, so there is no "pump then close" —
-  // deleting the transport on the next statement can destroy the channel
-  // with the message still queued in SCTP, and the peer would see a bare
-  // disconnect and rejoin, which is precisely what the event prevents.
-  int net_kick_close_ms_ = 0;
-  // ...and WHICH seat it belongs to. A bare lost && parked && session
-  // predicate is exactly net_handshaking_lost_peer(): it would also match
-  // another seat's in-flight rejoin and delete that innocent handshake.
-  uint8_t net_kick_close_seat_ = 0;
+  // Seats whose kicked session is draining, each with the ms left before it
+  // is torn down. The EV_KICKED has to actually reach the wire first:
+  // NetSession::update() returns immediately for a Ready session, so there
+  // is no "pump then close" — deleting the transport on the next statement
+  // can destroy the channel with the message still queued in SCTP, and the
+  // peer would see a bare disconnect and rejoin, which is precisely what
+  // the event prevents. Keyed by SEAT: a bare lost && parked && session
+  // predicate is exactly net_handshaking_lost_peer(), so it would also
+  // match another seat's in-flight rejoin and delete that innocent
+  // handshake. A LIST, not one slot (NetLobby::closing_ is the waiting
+  // room's twin): the roster stays open after a kick precisely so the host
+  // can remove two peers back to back, and a second kick inside the first
+  // one's 600 ms window used to overwrite the slot — seat one's exclusion
+  // above ended early and the rejoin door adopted the peer just kicked.
+  std::vector<std::pair<uint8_t, int>> net_kick_closing_;
+  bool net_kick_draining(int seat) const {
+    for (const std::pair<uint8_t, int> &k : net_kick_closing_)
+      if ((int)k.first == seat) return true;
+    return false;
+  }
   // The peer occupying a roster row, or null (declared here: NetPeer is
   // defined below the roster block).
   NetPeer *roster_peer_at(int row);

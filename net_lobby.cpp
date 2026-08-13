@@ -3395,11 +3395,16 @@ void NetLobby::touch_tap(float nx, float ny) {
             row < host_peer_line0_ + peers) {
           // Click to pick, click again to arm, once more to remove — the
           // mouse spelling of the keyboard's select-then-two-confirms, so
-          // one stray click still can't end anyone's game.
+          // one stray click still can't end anyone's game. Through
+          // host_row_select, NOT a bare host_sel_ write: moving the
+          // highlight must reset host_ban_ to KICK (or a BAN armed on an
+          // attested row rode a click onto a row that only offers KICK,
+          // where host_row_can_ban never gets asked) and clear a stale
+          // host_tail_sel_ (or the kick's reset to -1 resolved the next
+          // confirm through the old tail row — BACK TO MENU).
           int sel = row - host_peer_line0_;
-          if (host_sel_ != sel) {
-            host_sel_ = sel;
-            host_kick_armed_ = -1;
+          if (host_row_selected() != sel) {
+            host_row_select(sel);
           } else {
             confirm();
           }
@@ -3414,14 +3419,14 @@ void NetLobby::touch_tap(float nx, float ny) {
           break;
         }
         if (host_start_line_ >= 0 && row == host_start_line_) {
-          // With a peer picked this line says BACK, not START (see draw) —
-          // so the click that lands on it means what it reads.
-          if (host_sel_ >= 0) {
-            host_sel_ = -1;
-            host_kick_armed_ = -1;
-          } else {
-            waiting_room_start();
-          }
+          // The line always reads START GAME (see draw), so the click that
+          // lands on it means what it reads — peer picked or not. It used
+          // to deselect instead, back when the draw swapped this line to
+          // "ESC - BACK" with a peer picked; the label stopped swapping and
+          // the click has to follow. Select the row first: that clears an
+          // armed removal and its BAN flag on the way (host_row_select).
+          host_row_select(host_start_row());
+          waiting_room_start();
           break;
         }
       }
