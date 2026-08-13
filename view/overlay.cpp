@@ -638,8 +638,16 @@ void Overlay::seat_roster(const GLGame *glgame) {
         snprintf(seat_txt, sizeof seat_txt, "PLAYER %d", i + 1);
         who = seat_txt;
       }
+      // The action names the BAN, because a kick IS one — the pilot is
+      // barred from this room for as long as it lives. A label reading
+      // only KICK left the host with no sign the game could do it at all
+      // (field, 2026-08-13).
+      // The armed label stays SHORTER than the resting one: the row already
+      // carries a name of up to 24 glyphs, and the footer under the list
+      // spells the action out in full.
       snprintf(label, sizeof label, "PLAYER %d   %s   %s", i + 1, who.c_str(),
-               glgame->roster_kick_armed_ == i ? "[CONFIRM KICK]" : "KICK");
+               glgame->roster_kick_armed_ == i ? "[CONFIRM KICK]"
+                                               : "KICK + BAN");
     } else {
       snprintf(label, sizeof label, "PLAYER %d   %s", i + 1,
                glgame->roster_seat_label(i).c_str());
@@ -651,8 +659,11 @@ void Overlay::seat_roster(const GLGame *glgame) {
   // nobody left to remove, so on those rows confirm merely closes the screen —
   // advertising a kick there is a promise the button doesn't keep.
   if (hosting && glgame->roster_row_is_peer(glgame->roster_selection_)) {
-    Typer::draw_centered(0, -120, "ENTER   KICK THIS PLAYER (TWICE TO CONFIRM)", 8);
-    Typer::draw_centered(0, -145, "THEIR SEAT REOPENS FOR ANYONE WITH THE ROOM CODE", 8);
+    Typer::draw_centered(0, -120, "ENTER   REMOVE THIS PLAYER (TWICE TO CONFIRM)", 8);
+    // Say both halves: they can't come back, but the seat isn't lost. The
+    // old wording said only the second, which read as "they can rejoin".
+    // Dash, not a semicolon: Typer has no ';' glyph, so it drew as a gap.
+    Typer::draw_centered(0, -145, "BANNED FOR THIS ROOM - THE SEAT REOPENS FOR ANYONE ELSE", 8);
   } else if (hosting) {
     Typer::draw_centered(0, -120, "UP / DOWN   PICK A PLAYER TO REMOVE", 8);
   } else {

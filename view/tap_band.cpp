@@ -1,5 +1,6 @@
 #include "tap_band.h"
 
+#include "../gl_compat.h"  // is_touch_mode
 #include "../typer.h"
 
 const TapBand TapBand::return_to_menu(0.5f, -420, 13, 50.0f, false, true);
@@ -23,6 +24,14 @@ float TapBand::bottom_lift() {
 
 TapBand TapBand::lifted(float dy) const {
   return TapBand(nx, y + dy, size, pad, to_top, to_bottom, nx_min, nx_max);
+}
+
+TapBand TapBand::for_pointer() const {
+  if (is_touch_mode()) return *this;
+  // A mouse lands where it is pointed: no finger pad, and no edge run —
+  // an edge band exists so a thumb near the bezel still counts, which is
+  // not a thing a cursor does.
+  return TapBand(nx, y, size, 6.0f, false, false, nx_min, nx_max);
 }
 
 void TapBand::draw(const char *text, int time) const {

@@ -173,6 +173,16 @@ private:
   int host_sel_ = -1;
   int host_kick_armed_ = -1;
   void host_kick_selected();
+  // Geometry of the centred text list the last draw() laid out, and where
+  // the waiting room's rows landed in it (-1 = not on screen). RECORDED by
+  // the draw, not re-derived: the list shrinks its step and size to fit
+  // once the roster grows, so a second copy of that arithmetic would drift
+  // exactly when the room is full. list_row_at maps a click back to a row
+  // — the TapBand rule for a list whose geometry is dynamic.
+  float list_origin_y_ = 0.0f;
+  int list_line_h_ = 0, list_line_sz_ = 0, list_rows_ = 0;
+  int host_peer_line0_ = -1, host_start_line_ = -1;
+  int list_row_at(float ny) const;
   // Kicked sessions waiting for their goodbye to leave before the
   // transport is destroyed (ms left). See host_kick_selected.
   std::vector<std::pair<NetSession *, int>> closing_;

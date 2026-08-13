@@ -393,6 +393,17 @@ test/e2e/nseat_lobby_kick.sh # O3 host kick, LOBBY half — a different code
                      # still works right after: the kicked session is handed
                      # to a drain that closes it ~600 ms later, so starting
                      # inside that window is the case that leaked it
+test/e2e/nseat_lobby_mouse.sh # the host waiting room under a MOUSE. A
+                     # 4-seat room with one joiner keeps the screen up, then:
+                     # a click low on the window must NOT leave (the exit
+                     # band's finger geometry made the bottom fifth an exit),
+                     # and a click on the drawn "ENTER - START GAME" row must
+                     # start the game (off touch the screen had no hit-test
+                     # at all). NOTE the driver raises the host window before
+                     # clicking: every instance opens at (0,0) at the same
+                     # size with no window manager, so without it the pointer
+                     # hits the JOINER and the asserts pass for the wrong
+                     # reason (they did)
 test/e2e/nseat_soak.sh # B6 N-seat generation soak (SOAK_GENS, default 15):
                      # per-gen liveness on every instance, all-hands bursts
                      # every 5th gen, telemetry-advance + no-drop asserts

@@ -59,6 +59,16 @@ struct TapBand {
   // two sites.
   static float bottom_lift();
   TapBand lifted(float dy) const;
+
+  // The same band sized for the pointer actually in use. A finger needs the
+  // pad and the run to the screen edge; a mouse cursor needs neither, and
+  // paying for a finger with a mouse is what made the bottom ~19% of the
+  // lobby window a menu exit — an idle click low on the screen left the
+  // room (field, 2026-08-13). Off touch this tightens to the glyph box
+  // plus a hairline; on touch it is the band unchanged. Hit-test only:
+  // the drawn text never moves, so the tap zone stays a subset of the ink
+  // it belongs to.
+  TapBand for_pointer() const;
 };
 
 #endif

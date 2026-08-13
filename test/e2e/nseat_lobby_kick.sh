@@ -54,10 +54,10 @@ done
 
 echo "== host: pick the seat-3 row in the waiting room and kick it"
 HW=${ROOM_WINS[0]}
-# The list holds only the peers (the host has no row here) and rests at -1,
-# the START GAME row: two steps down lands on joiner2.
-xdotool key --window "$HW" s; sleep 0.4
-xdotool key --window "$HW" s; sleep 0.4
+# The list holds only the peers (the host has no row here) and rests on the
+# START GAME row, which is drawn UNDERNEATH them — so UP walks into the list
+# from the bottom and one step lands on the last joiner, seat 3.
+xdotool key --window "$HW" w; sleep 0.4
 xdotool key --window "$HW" Return; sleep 0.5   # arm
 xdotool key --window "$HW" Return; sleep 1.5   # confirm
 ok=

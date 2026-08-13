@@ -2187,24 +2187,25 @@ void NetLobby::draw() {
   // can't ride the string — the draw loop needs to know which row it is.
   int verified_line = -1;
   bool blink = (currentTime / 700) % 2 == 0;
+  // Re-established below by whichever screen draws them; cleared here so a
+  // stale row can never be clicked on a screen that no longer shows it.
+  host_peer_line0_ = host_start_line_ = -1;
 
   switch (screen_) {
     case Choose: {
+      // Two words, no gloss: HOST and JOIN say what they do, and the
+      // explanatory pair under them was two more lines to read on a screen
+      // whose whole job is one choice.
       if (is_touch_mode()) {
         // The tap targets are the screen halves (see touch_tap): spread
         // the labels apart and skip the "> " cursor — a desktop cue.
         Typer::draw_centered(0, 180, "HOST", 30);
         Typer::draw_centered(0, -120, "JOIN", 30);
         y = -280;
-        lines.push_back("HOST MAKES A ROOM CODE");
-        lines.push_back("JOIN ENTERS A FRIEND'S CODE");
       } else {
         MenuSelect::draw_row(60, "HOST", 26, selection_ == 0);
         MenuSelect::draw_row(-40, "JOIN", 26, selection_ == 1);
-        lines.push_back("");
         y = -160;
-        lines.push_back("HOST MAKES A ROOM CODE");
-        lines.push_back("JOIN ENTERS A FRIEND'S CODE");
       }
       break;
     }
@@ -2266,6 +2267,7 @@ void NetLobby::draw() {
           snprintf(buf, sizeof(buf), "WAITING FOR PLAYERS %d/%d",
                    (int)seated_.size() + 1, net_seat_cap());
           lines.push_back(blink ? buf : "");
+          host_peer_line0_ = (int)lines.size();  // where the mouse finds them
           for (const SeatedPeer &sp : seated_) {
             std::string name = sp.attested.name;
             if (name.empty() && !sp.jid.empty()) {
@@ -2289,10 +2291,18 @@ void NetLobby::draw() {
             // The highlighted row carries the shared cursor marks and says
             // what confirm does to it (these rows have no column geometry,
             // so it is Typer::cursored's string form, not draw_row).
+            // The action names the BAN, because a kick is one: the pilot is
+            // barred from this room for as long as it exists, and a label
+            // reading only KICK left the host with no sign the game could
+            // do it at all (field, 2026-08-13).
             int row = (int)(&sp - &seated_[0]);
             std::string line = buf;
             if (host_sel_ == row) {
-              line += host_kick_armed_ == row ? "   [CONFIRM KICK]" : "   KICK";
+              // The armed label stays SHORTER than the resting one: a row
+              // is "PLAYER 4 - " + a name of up to 24 glyphs + this, and at
+              // this size the line is already near the window's width.
+              line += host_kick_armed_ == row ? "   [CONFIRM KICK]"
+                                              : "   KICK + BAN";
               line = Typer::cursored(line, true);
             }
             lines.push_back(line);
@@ -2300,10 +2310,12 @@ void NetLobby::draw() {
           if (!seated_.empty()) {
             lines.push_back("");
             // The start row is the resting selection, so it carries the
-            // cursor whenever no peer row is picked.
+            // cursor whenever no peer row is picked; with one picked, this
+            // line says what confirm will do to them instead.
+            host_start_line_ = (int)lines.size();
             lines.push_back(host_sel_ < 0
                                 ? Typer::cursored("ENTER - START GAME", true)
-                                : "UP / DOWN - SELECT   ESC - BACK");
+                                : "ENTER TWICE - KICK + BAN   ESC - BACK");
           }
         } else {
           lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
@@ -2629,6 +2641,12 @@ void NetLobby::draw() {
     line_sz = (int)(sz * fit);
     if (line_sz < 10) line_sz = 10;  // never shrink past legibility
   }
+  // What the hit-test reads (see list_row_at): the layout as DRAWN, after
+  // the fit shrink above.
+  list_origin_y_ = y;
+  list_line_h_ = line_h;
+  list_line_sz_ = line_sz;
+  list_rows_ = (int)lines.size();
   for (size_t i = 0; i < lines.size(); i++) {
     if (!lines[i].empty())
       Typer::draw_centered_verified(0, y - (int)i * line_h, lines[i].c_str(),
@@ -2852,10 +2870,16 @@ void NetLobby::nav_input(unsigned char key) {
     if (MenuSelect::move_within(key, lan_sel_, -1, lan_rows_shown() - 1))
       return;
   } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
-    // Same off-the-top rule as the LAN list: -1 is "no peer picked", where
-    // confirm still means START GAME.
-    if (MenuSelect::move_within(key, host_sel_, -1,
-                                (int)seated_.size() - 1)) {
+    // -1 is "no peer picked", where confirm still means START GAME. But
+    // that row is drawn UNDERNEATH the peers, so stepping the raw index
+    // ran the cursor backwards: down off START jumped to the TOP peer and
+    // up walked toward the bottom of the screen (field, 2026-08-13).
+    // Move in DRAWN order instead — peers 0..n-1 top-down, START last —
+    // and map back, so the cursor goes where the key points.
+    int n = (int)seated_.size();
+    int visual = host_sel_ < 0 ? n : host_sel_;
+    if (MenuSelect::move(key, visual, n + 1)) {
+      host_sel_ = visual >= n ? -1 : visual;
       host_kick_armed_ = -1;  // moving off a row disarms it
       return;
     }
@@ -3077,9 +3101,25 @@ void NetLobby::controller(SDL_Event event) {
   if (k) nav_input(k);
 }
 
+// Which row of the drawn text list a tap at normalized ny landed on, or -1
+// past either end. Row i is anchored at origin - i*step with its glyphs
+// hanging ~2*size below, so the band a row owns is the step centred on that
+// ink — rows tile the list with no dead gaps between them.
+int NetLobby::list_row_at(float ny) const {
+  if (list_line_h_ <= 0 || list_rows_ <= 0) return -1;
+  float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+  float rel = (list_origin_y_ - list_line_sz_) - vy;  // 0 at row 0's mid-line
+  int i = (int)floorf(rel / (float)list_line_h_ + 0.5f);
+  if (i < 0 || i >= list_rows_) return -1;
+  return i;
+}
+
 void NetLobby::touch_tap(float nx, float ny) {
-  // Bottom strip on every screen = RETURN TO MENU.
-  if (TapBand::return_to_menu.contains(nx, ny)) {
+  // Bottom strip on every screen = RETURN TO MENU. for_pointer() is what
+  // keeps a MOUSE click honest: the band runs to the bottom edge with a
+  // finger's padding, which off touch made the lowest ~19% of the window
+  // an exit — clicking below the roster left the room (field, 2026-08-13).
+  if (TapBand::return_to_menu.for_pointer().contains(nx, ny)) {
     // A rejoin lobby arrives mid-fight, and on touch the in-game fire
     // zone overlaps this strip — a fire-mash tail landing just after the
     // hand-off would abandon the recoverable rejoin (the touch twin of
@@ -3154,6 +3194,41 @@ void NetLobby::touch_tap(float nx, float ny) {
           kStartBand.contains(nx, ny)) {
         waiting_room_start();
         break;
+      }
+      // Mouse / Deck pointer: the DRAWN roster rows are the buttons. The
+      // touch band above is undrawn off touch, so this screen answered no
+      // click at all — "ENTER - START GAME" read as a button and wasn't
+      // one (field, 2026-08-13). Rows come from list_row_at, i.e. the
+      // geometry the draw just recorded, so they can't drift as the list
+      // shrinks to fit.
+      if (!is_touch_mode() && waiting_room()) {
+        int row = list_row_at(ny);
+        int peers = (int)seated_.size();
+        if (host_peer_line0_ >= 0 && row >= host_peer_line0_ &&
+            row < host_peer_line0_ + peers) {
+          // Click to pick, click again to arm, once more to remove — the
+          // mouse spelling of the keyboard's select-then-two-confirms, so
+          // one stray click still can't end anyone's game.
+          int sel = row - host_peer_line0_;
+          if (host_sel_ != sel) {
+            host_sel_ = sel;
+            host_kick_armed_ = -1;
+          } else {
+            confirm();
+          }
+          break;
+        }
+        if (host_start_line_ >= 0 && row == host_start_line_) {
+          // With a peer picked this line says BACK, not START (see draw) —
+          // so the click that lands on it means what it reads.
+          if (host_sel_ >= 0) {
+            host_sel_ = -1;
+            host_kick_armed_ = -1;
+          } else {
+            waiting_room_start();
+          }
+          break;
+        }
       }
       if (kShareBand.contains(nx, ny) && !room_code_.empty() &&
           net_share_available())
