@@ -2332,10 +2332,12 @@ void NetLobby::draw() {
             // cursor whenever no peer row is picked; with one picked, this
             // line says what confirm will do to them instead.
             host_start_line_ = (int)lines.size();
-            lines.push_back(
-                host_sel_ < 0
-                    ? Typer::cursored("ENTER - START GAME", true)
-                    : "LEFT/RIGHT - KICK OR BAN   ENTER TWICE   ESC - BACK");
+            // With a peer picked the row itself says what the keys do
+            // ("< KICK >" / "[CONFIRM KICK]"), so this line only has to
+            // keep the way out visible.
+            lines.push_back(host_sel_ < 0
+                                ? Typer::cursored("ENTER - START GAME", true)
+                                : "ESC - BACK");
           }
         } else {
           lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
