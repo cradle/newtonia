@@ -40,6 +40,13 @@ static float s_safe_inset[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 // disconnect overlay's "PRESS FIRE FOR MENU" at y=-130.
 static const int PAUSE_ROW_SZ = 13, PAUSE_ROW_Y0 = -42, PAUSE_ROW_GAP = 38;
 
+// The always-on "ROOM <code>" line: its size and its y anchor as a fraction
+// of the FULL-window half-height. One definition, because the banner is not
+// the only thing that needs it — the centre-column countdowns underneath
+// have to know where it ends (room_line_drop).
+static const float ROOM_LINE_SZ = 18.0f;
+static const float ROOM_LINE_Y = 0.67f;
+
 void Overlay::set_safe_insets(float top, float bottom, float left, float right) {
   s_safe_inset[0] = top;
   s_safe_inset[1] = bottom;
@@ -201,9 +208,10 @@ void Overlay::net_overlays(const GLGame *glgame) {
   // disconnect first. Drawn at the same spot the loss notice used to put
   // it, so nothing moves when a player actually does leave — that branch
   // no longer draws its own copy.
-  bool show_room = !all_game_over && !glgame->net_room_code_.empty() &&
-                   glgame->net_mode_ != GLGame::NetOff &&
-                   glgame->net_mode_ != GLGame::NetReplay;
+  // room_line_shown() also answers this for the countdowns below it, which
+  // step down out of its way (room_line_drop) — one condition, so the space
+  // can't be reserved by one and used by the other.
+  bool show_room = room_line_shown(glgame);
 
   if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
       !glgame->net_any_peer_lost() && !show_room)
@@ -226,7 +234,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
 
   if (show_room) {
     std::string room = "ROOM " + glgame->net_room_code_;
-    Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
+    Typer::draw_centered(0, vh * ROOM_LINE_Y, room.c_str(), ROOM_LINE_SZ);
   }
 
   if (all_game_over) {
@@ -661,11 +669,56 @@ void Overlay::level(const GLGame *glgame, const GLShip *glship) {
   Typer::draw_centered(0, top_hud_y(glgame), buf, 12 * hud_fit(glgame));
 }
 
+// Is the always-on room line on screen? Shared by the banner itself and by
+// the indicators that have to keep out of its way, so the two can't disagree
+// about whether the space above them is taken.
+bool Overlay::room_line_shown(const GLGame *glgame) {
+  return !glgame->net_room_code_.empty() &&
+         glgame->net_mode_ != GLGame::NetOff &&
+         glgame->net_mode_ != GLGame::NetReplay &&
+         !glgame->all_players_out();
+}
+
+// How far the centre-column countdowns (god mode, time slow) start BELOW
+// their usual top-anchored spot, so they clear the room line.
+//
+// The room line is drawn ONCE over the whole window, centred, while these
+// hang off each VIEWPORT's own top — two coordinate spaces that only collide
+// where a viewport owns the window's centre column. That is every
+// single-column layout: 1P, and the portrait 2P strips. With two columns the
+// line sits on the seam, ~180 units of text against a 400-unit half
+// viewport, so it never reaches either cell's centre and nothing moves.
+//
+// Field report: online 1P, where the time-slow label drew straight through
+// "ROOM XXXXX" and the god-mode seconds clipped its top.
+float Overlay::room_line_drop(const GLGame *glgame) {
+  if (!room_line_shown(glgame) || glgame->num_x_viewports() > 1) return 0.0f;
+  float H = Typer::scaled_window_height;       // full-window half-height
+  int ny = glgame->num_y_viewports();
+  float line_y = ROOM_LINE_Y * H;              // in full-window coords
+  // Which viewport row the line lands in, and where that row's centre is:
+  // row r spans full-y [H - 2H(r+1)/ny, H - 2H r/ny]. Subtracting the centre
+  // converts the line into that viewport's own coords. Both strips get the
+  // same drop — one shared banner, one shared layout.
+  int row = (int)((H - line_y) * ny / (2.0f * H));
+  if (row < 0) row = 0;
+  if (row > ny - 1) row = ny - 1;
+  float row_centre = H - H * (2 * row + 1) / ny;
+  float bottom = (line_y - row_centre) - 2.0f * ROOM_LINE_SZ;  // ink's floor
+  float f = hud_fit(glgame);
+  float first = top_hud_y(glgame) - 62 * f;    // the god-mode label's anchor
+  float drop = first - (bottom - 10.0f);       // ...plus a gap
+  return drop > 0.0f ? drop : 0.0f;
+}
+
 void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
   int remaining = glship->ship->god_mode_time_remaining();
   if(remaining <= 0) return;
   float f = hud_fit(glgame);
-  float base_y = top_hud_y(glgame);
+  // One drop for the whole stack, not a per-line nudge: shifting the block
+  // as a unit keeps the god-mode/time-slow spacing that stops THOSE two
+  // overlapping when both run at once.
+  float base_y = top_hud_y(glgame) - room_line_drop(glgame);
   Typer::draw_centered(0, base_y - 62 * f, "God mode", 10 * f);
   Typer::draw_centered(0, base_y - 100 * f, remaining / 1000, 10 * f);
 }
@@ -678,7 +731,7 @@ void Overlay::time_slow(const GLGame *glgame, const GLShip *glship) {
   int remaining = glgame->time_slow_wall_ms_remaining();
   if(remaining <= 0) return;
   float f = hud_fit(glgame);
-  float base_y = top_hud_y(glgame);
+  float base_y = top_hud_y(glgame) - room_line_drop(glgame);
   Typer::draw_centered(0, base_y - 137 * f, "Time slow", 10 * f);
   Typer::draw_centered(0, base_y - 175 * f, (remaining + 999) / 1000, 10 * f);
 }

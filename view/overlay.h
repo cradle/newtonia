@@ -65,6 +65,12 @@ private:
   static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame, const GLShip *glship);
   static void level(const GLGame *glgame, const GLShip *glship);
+  // The always-on "ROOM <code>" line, and how far the centre-column
+  // countdowns under it start below their usual anchor to clear it. The
+  // line is one FULL-WINDOW banner and they are per-viewport, so they only
+  // meet where a viewport owns the window's centre column.
+  static bool room_line_shown(const GLGame *glgame);
+  static float room_line_drop(const GLGame *glgame);
   static void god_mode(const GLGame *glgame, const GLShip *glship);
   static void time_slow(const GLGame *glgame, const GLShip *glship);
   static void edge_indicators(const GLGame *glgame, const GLShip *glship);
