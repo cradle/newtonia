@@ -54,7 +54,7 @@ pair_up() {
   CODE=$(host_room_code host-$NAME)
   [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
   echo "room code: $CODE"
-  nav_join $B "$CODE"
+  nav_join $B "$CODE" "joiner-$NAME"
   echo "== waiting for connect"; sleep 15
   alive $PA host-$NAME; alive $PB joiner-$NAME
   grep -aq "bootstrap adopted" "$OUT/joiner-$NAME.log" || {

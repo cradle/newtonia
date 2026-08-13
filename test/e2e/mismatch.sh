@@ -24,8 +24,7 @@ echo "fake old-build room: $CODE"
 
 PB=$(launch joiner); sleep 3
 B=$(newtonia_windows | head -1)
-key $B Return; sleep 1; key $B s; key $B Return; sleep 1; key $B s; key $B Return; sleep 1
-for c in $(echo "$CODE" | grep -o .); do key $B "$c"; done
+nav_join $B "$CODE" joiner
 sleep 5
 alive $PB joiner
 shot $B mismatch-screen

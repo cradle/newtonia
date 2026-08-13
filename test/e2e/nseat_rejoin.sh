@@ -45,7 +45,7 @@ PR=$(launch rejoiner)
 sleep 4
 WR=$(new_window_since "$BEFORE")
 [ -n "$WR" ] || { echo "NO REJOINER WINDOW"; kill "$PR" 2>/dev/null; room_kill_all; exit 1; }
-nav_join "$WR" "$ROOM_CODE"
+nav_join "$WR" "$ROOM_CODE" rejoiner
 REJOINED=
 for i in $(seq 1 45); do
   grep -aq "player 3 rejoined" "$OUT/host.log" && { REJOINED=1; break; }

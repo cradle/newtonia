@@ -699,6 +699,20 @@ rules (hard-won; the rest are in CLAUDE.md's headless-testing section):
 - **Menu navigation assumes fresh prefs** (lib.sh guarantees this): attract
   `Return`, then rows are NEW GAME / ONLINE — `s`,`Return` opens the lobby.
   A save file would add CONTINUE and shift the rows.
+- **Never type the room code yourself — call `nav_join WIN CODE LOGNAME`.**
+  The host auto-copies its join link to the clipboard, and both instances
+  share ONE X clipboard under the driver's single Xvfb, so the JOIN screen's
+  clipboard auto-join normally fires before a character is typed. Typing
+  anyway delivers those five characters to the RUNNING GAME as gameplay
+  keys, and the room-code alphabet overlaps the bindings (it already
+  excludes `F` for fullscreen, but keeps `p` pause, `q` next weapon, `x`
+  mine, `c` next secondary, `w`/`a`/`d` flight, `g` friendly fire). Both
+  failures of shock_hazards_net in the first master run of e2e.yml were one
+  such keystroke: `VPK84`'s `p` paused the shared game, so the host sat at
+  generation 0 for 308 s, and `9NYQ3`'s `q` cycled the joiner off SHOCK, so
+  it spent the firing rounds on the base gun. `nav_join` waits for the
+  auto-join and types only if it never came (mismatch.sh's node stand-in
+  owns no clipboard, so that path is still exercised).
 - **Skip-level (`n`) starts the next generation immediately** — no 5 s
   countdown; time your sleeps accordingly.
 - Wrap ad-hoc runs in a hard `timeout` — a hung client can keep `xvfb-run`

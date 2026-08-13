@@ -35,7 +35,7 @@ nav_host $A
 CODE=$(host_room_code host)
 [ -n "$CODE" ] || fail "no room code"
 echo "room code: $CODE"
-nav_join $B "$CODE"
+nav_join $B "$CODE" joiner
 echo "== waiting for connect + play"; sleep 18
 alive $PA host; alive $PB joiner
 

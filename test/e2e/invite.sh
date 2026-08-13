@@ -9,12 +9,6 @@ fi
 . "$(dirname "$0")/lib.sh"
 relay_check
 
-join_with_code() { local W=$1 CODE=$2 c
-  key $W Return; sleep 1; key $W s; key $W Return; sleep 1
-  key $W s; key $W Return; sleep 1
-  for c in $(echo "$CODE" | grep -o .); do key $W "$c"; done
-}
-
 PA=$(launch host); sleep 2
 PB=$(launch joiner); sleep 4
 WINS=$(newtonia_windows)
@@ -25,7 +19,7 @@ key $A Return; sleep 1; key $A s; key $A Return; sleep 1; key $A Return
 CODE=$(host_room_code host)
 [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
 echo "room code: $CODE"
-join_with_code $B "$CODE"
+nav_join $B "$CODE" joiner
 echo "== waiting for connect"; sleep 18
 alive $PA host; alive $PB joiner
 

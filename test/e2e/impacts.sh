@@ -20,8 +20,7 @@ key $A Return; sleep 1; key $A s; key $A Return; sleep 1; key $A Return
 CODE=$(host_room_code host)
 [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
 echo "room code: $CODE"
-key $B Return; sleep 1; key $B s; key $B Return; sleep 1; key $B s; key $B Return; sleep 1
-for c in $(echo "$CODE" | grep -o .); do key $B "$c"; done
+nav_join $B "$CODE" joiner
 sleep 18; alive $PA host; alive $PB joiner
 
 for n in 1 2 3; do key $A n; sleep 4; done

@@ -42,7 +42,7 @@ for i in 1 2; do
   sleep 4
   ROOM_WINS[$i]=$(new_window_since "$before")
   [ -n "${ROOM_WINS[$i]}" ] || room_fail "NO WINDOW FOR joiner$i" "joiner$i"
-  nav_join "${ROOM_WINS[$i]}" "$ROOM_CODE"
+  nav_join "${ROOM_WINS[$i]}" "$ROOM_CODE" "joiner$i"
   ok=
   for _ in $(seq 1 40); do
     grep -aq "seat $((i + 1)) filled" "$OUT/host.log" && { ok=1; break; }
@@ -82,7 +82,7 @@ BAN_PID=$(launch banned NEWTONIA_NET_NAME=PILOT2)
 sleep 4
 BAN_WIN=$(new_window_since "$before")
 [ -n "$BAN_WIN" ] || room_fail "NO WINDOW FOR THE BANNED RETRY" banned
-nav_join "$BAN_WIN" "$ROOM_CODE"
+nav_join "$BAN_WIN" "$ROOM_CODE" banned
 ok=
 for _ in $(seq 1 30); do
   grep -aq "refusing banned pilot" "$OUT/host.log" && { ok=1; break; }
