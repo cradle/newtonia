@@ -570,8 +570,19 @@ private:
     return door;
   }
   NetPeer *net_handshaking_lost_peer() const {
-    for (NetPeer *p : net_peers_)
+    for (NetPeer *p : net_peers_) {
+      // A seat mid-KICK is lost and STILL holds its session — deliberately,
+      // so the goodbye reaches the wire before the transport dies
+      // (net_kick_close_ms_). That is not a rejoin in flight, and the door
+      // must not read it as one: its session is already Ready, so the very
+      // next tick "completed" the adoption — unparking the hull we had just
+      // frozen and announcing "PLAYER N RECONNECTED" about the player we
+      // had just removed (field, 2026-08-13). The drain runs ahead of the
+      // pause gate, so this exclusion always ends.
+      if (net_kick_close_ms_ > 0 && (int)p->seat == (int)net_kick_close_seat_)
+        continue;
       if (p->lost && p->session) return p;
+    }
     return nullptr;
   }
   // Display context for the peer identity (net_identity.h): a room-code

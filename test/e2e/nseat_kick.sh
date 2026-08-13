@@ -129,5 +129,42 @@ grep -aq "seat $VICTIM_SEAT filled" <(sed -n '/banning player/,$p' "$OUT/host.lo
   room_fail "BANNED PILOT GOT A SEAT" host
 kill "$BAN_PID" 2>/dev/null
 
+# ---- the plain KICK, on the bystander -------------------------------------
+# Not a duplicate of the ban above: on THIS path nothing intercepts the
+# kicked peer, and that is where the door bug lived. A kicked peer keeps its
+# session for ~600 ms so the goodbye can reach the wire, which leaves it
+# looking exactly like a rejoin in flight — lost, parked, holding a READY
+# session. The door adopted it on the very next tick: unparking the hull just
+# frozen and announcing "PLAYER N RECONNECTED" about the player just removed
+# (field, 2026-08-13). The ban case hid this, because the door's banned-pilot
+# check happened to drop the session first.
+echo "== a plain KICK on the bystander"
+# The ban above left the game PAUSED with the roster still open (removing a
+# player doesn't close the screen — a host may want to remove two). So back
+# out to the pause menu, which is still sitting on PLAYERS, and re-enter:
+# that re-entry resets the roster highlight to row 0.
+xdotool key --window "$HW" Escape; sleep 0.6   # roster -> pause menu
+xdotool key --window "$HW" Return; sleep 0.8   # PLAYERS -> roster, row 0
+xdotool key --window "$HW" s; sleep 0.4        # row 0 (host) -> seat 2
+xdotool key --window "$HW" Return; sleep 0.5   # arm (KICK, no right press)
+xdotool key --window "$HW" Return; sleep 1.5   # confirm
+ok=
+for _ in $(seq 1 20); do
+  grep -aq "kicking player 2" "$OUT/host.log" && { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "HOST NEVER KICKED SEAT 2" host
+ok=
+for _ in $(seq 1 20); do
+  grep -aq "kicked by the host" "$OUT/joiner$BYSTANDER.log" && { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "KICKED BYSTANDER NEVER GOT THE EVENT" "joiner$BYSTANDER"
+
+echo "== and the host must not announce them as RECONNECTED"
+sleep 4   # well past the goodbye drain, where the false adoption fired
+awk '/kicking player 2/{f=1} f' "$OUT/host.log" | grep -aq "RECONNECTED" &&
+  room_fail "HOST ANNOUNCED THE KICKED PEER AS RECONNECTED" host
+
 room_kill_all
-echo "NSEAT-KICK-OK (seats=$SEATS, kicked seat $VICTIM_SEAT, ban enforced)"
+echo "NSEAT-KICK-OK (seats=$SEATS, banned seat $VICTIM_SEAT, kicked seat 2)"
