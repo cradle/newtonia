@@ -119,12 +119,16 @@ nav_host() {
   key "$1" Return; sleep 1; key "$1" s; key "$1" Return; sleep 1; key "$1" Return
 }
 
-# join_count LOGNAME: how many times that instance has begun joining a room.
-# A COUNT, not a flag: the rejoin drivers join several times in one log, so
-# "has it joined" has to mean "since I last looked".
+# join_count LOGNAME: how many times that instance has left the code screen
+# with a join under way — by code (the clipboard auto-join and typing both
+# log it) or by the manual invite blob, which is the same clipboard pickup
+# taking the no-relay path. A COUNT, not a flag: the rejoin drivers join
+# several times in one log, so "has it joined" has to mean "since I last
+# looked".
 join_count() {
   local n
-  n=$(grep -ac "\[lobby\] joining room" "$OUT/$1.log" 2>/dev/null)
+  n=$(grep -acE "\[lobby\] (joining room|manual invite found)" \
+        "$OUT/$1.log" 2>/dev/null)
   [ -n "$n" ] || n=0
   echo "$n"
 }
@@ -153,12 +157,19 @@ join_count() {
 # So: give the auto-join a moment to declare itself, and type only if it never
 # came. LOGNAME is required — without it the wait cannot be observed, and a
 # silent fallback to typing is exactly the bug.
+#
+# The 6 s window is generous on purpose. The clipboard read is not local: SDL
+# asks the HOST process to hand over the selection, so the wait is really "how
+# long until the host services an X request", which on a loaded CI runner
+# rendering through llvmpipe is not the sub-second it is on a dev box. Waiting
+# too long costs nothing anyone waits on — only mismatch.sh, whose node
+# stand-in owns no clipboard, ever pays the full window.
 nav_join() {
   local w=$1 code=$2 log=$3 c i before
   before=$(join_count "$log")
   key "$w" Return; sleep 1; key "$w" s; key "$w" Return; sleep 1
   key "$w" s; key "$w" Return; sleep 1
-  for i in $(seq 1 6); do
+  for i in $(seq 1 12); do
     if [ "$(join_count "$log")" -gt "$before" ]; then
       echo "== $log auto-joined from the clipboard (code not typed)"
       return 0
