@@ -1439,14 +1439,23 @@ void GLGame::roster_apply(int row, const SeatInput &in) {
 }
 
 void GLGame::roster_nav(unsigned char key) {
-  // Host rows: confirm ARMS the kick, a second confirm on the same row
-  // does it. Ending someone's game is not something a stray Enter — the
-  // key that opened this screen — should be able to do.
+  // Host rows: left/right picks WHICH removal (kick, which they can come
+  // back from, or ban, which they can't) — the same left/right that cycles
+  // a local seat's input, on rows where rebinding is meaningless. Confirm
+  // then ARMS it and a second confirm on the same row does it: ending
+  // someone's game is not something a stray Enter — the key that opened
+  // this screen — should be able to do.
+  if (roster_row_is_peer(roster_selection_) &&
+      (MenuSelect::is_left(key) || MenuSelect::is_right(key))) {
+    roster_ban_ = MenuSelect::is_right(key);
+    roster_kick_armed_ = -1;  // changing the action disarms
+    return;
+  }
   if (MenuSelect::is_confirm(key) && roster_row_is_peer(roster_selection_)) {
     if (roster_kick_armed_ == roster_selection_) {
       NetPeer *p = roster_peer_at(roster_selection_);
       roster_kick_armed_ = -1;
-      if (p) net_kick_peer(*p);
+      if (p) net_kick_peer(*p, roster_ban_);
     } else {
       roster_kick_armed_ = roster_selection_;
     }
@@ -1462,10 +1471,11 @@ void GLGame::roster_nav(unsigned char key) {
   }
   if (MenuSelect::move(key, roster_selection_, roster_row_count())) {
     roster_kick_armed_ = -1;  // moving off a row disarms it
+    roster_ban_ = false;      // ...and the next row opens on the softer one
     return;
   }
   // Input re-binding is a LOCAL-seat idea: online the seats belong to
-  // peers and the only action is KICK.
+  // peers and the only actions are KICK and BAN (handled above).
   if (net_mode_ != NetOff) return;
   if (!MenuSelect::is_left(key) && !MenuSelect::is_right(key)) return;
   std::vector<SeatInput> options = roster_input_options();
@@ -2975,12 +2985,15 @@ void GLGame::net_host_signal_maintain(int delta) {
 // already knows how to free a seat: park frees the hull and opens the
 // door, so the seat is immediately available to whoever joins next.
 //
-// Deliberately NOT a ban: a kicked player holding the room code can join
-// again. This removes a wedged or unwanted peer; keeping someone out is a
-// different feature, and this is a co-op game played with friends.
-void GLGame::net_kick_peer(NetPeer &p) {
+// KICK and BAN are two actions, not one (the host picks with left/right on
+// the row). A kick removes a wedged or unwanted peer and lets them come
+// back — the ordinary case in a co-op game played with friends, where the
+// fix for someone stuck at the wrong seat should not also be a punishment.
+// A ban additionally refuses their next handshake. Everything else about
+// the two is identical, which is why this is one function with a flag.
+void GLGame::net_kick_peer(NetPeer &p, bool ban) {
   if (net_mode_ != NetHost) return;
-  NET_LOG("net: kicking player %d\n", (int)p.seat);
+  NET_LOG("net: %s player %d\n", ban ? "banning" : "kicking", (int)p.seat);
   if (p.session) {
     net_send_event_to(p, Net::EV_KICKED);
     // The session is NOT dropped here — see net_kick_close_ms_. The peer
@@ -2990,19 +3003,21 @@ void GLGame::net_kick_peer(NetPeer &p) {
     net_kick_close_ms_ = 600;
     net_kick_close_seat_ = p.seat;
   }
-  // Bar them from coming back. The event above stops a well-behaved
-  // client, but the room code is in their hands and nothing else would
-  // refuse a fresh join. Identity-keyed (see NetLobby::ban_identity):
-  // a nameless peer can't be banned, only kicked.
+  // Ban only: bar them from coming back. The event above stops a
+  // well-behaved client either way, but the room code is in their hands and
+  // nothing else would refuse a fresh join. Identity-keyed (see
+  // NetLobby::ban_identity): a nameless peer can't be banned, only kicked.
   //
   // BOTH the folded identity and the raw HELLO claim: p.identity carries
   // the worker's attestation folded over it, while enforcement can only
   // ever see the claim (that is all a fresh handshake has at the moment
   // it must decide). Banning only the attested form silently fails to
   // match wherever the two differ, and the peer walks back in.
-  if (p.session) NetLobby::ban_identity(p.session->peer_identity());
-  NetLobby::ban_identity(p.identity);
-  if (!p.attested.name.empty()) NetLobby::ban_identity(p.attested);
+  if (ban) {
+    if (p.session) NetLobby::ban_identity(p.session->peer_identity());
+    NetLobby::ban_identity(p.identity);
+    if (!p.attested.name.empty()) NetLobby::ban_identity(p.attested);
+  }
   // Park frees the hull and opens the rejoin door (the seat becomes
   // available). The session dies on the timer above — parking alone
   // would leave a kicked peer connected and frozen.

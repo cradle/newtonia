@@ -637,7 +637,7 @@ sketch here proposed — one geometry, one ladder, two contexts:
 
 - **Mid-game**: the pause menu's PLAYERS row now opens for the HOST as
   well as offline (`roster_available()`); remote rows name the pilot and
-  carry KICK instead of the local rebind, and the ADD row is dropped
+  carry KICK / BAN instead of the local rebind, and the ADD row is dropped
   (online seats fill from the room, not from this machine).
 - **Lobby**: the waiting room's roster rows gained a selection that
   rests at -1 — where confirm still means START GAME, unchanged — and
@@ -655,20 +655,30 @@ sketch here proposed — one geometry, one ladder, two contexts:
   own card — "REMOVED FROM THE GAME", because "the host left" would be a
   lie and would send them back to the room code.
 
-**Bans too** (added on request, same PR): a kick bars that pilot for the
-host process's lifetime — `NetLobby::ban_identity`, keyed on case-folded
-name + platform, because a jid is minted per socket and the room code is
-already in their hands. Enforced at the two points where a handshake
-first says WHO answered: the waiting room refuses to seat a banned
-Ready, and the mid-game rejoin door drops the adoption and re-offers,
-leaving the seat parked for whoever it belongs to. A NAMELESS peer can
-be kicked but not banned (nothing to key on, and matching on platform
-alone would bar every desktop player). Hosting a NEW room clears the
-list; rejoining/resuming an existing one keeps it.
+**Ban as a SECOND action** (added on request, then split from the kick on
+a second request, 2026-08-13): the row offers both, picked with the same
+left/right that cycles a local seat's input — meaningless on a peer row,
+so it was free. A **kick** removes them and lets them come back with the
+room code, which is the ordinary case: the fix for a joiner stuck at the
+wrong seat should not also be a punishment. A **ban** additionally bars
+that pilot for the host process's lifetime — `NetLobby::ban_identity`,
+keyed on case-folded name + platform, because a jid is minted per socket
+and the room code is already in their hands. Enforced at the two points
+where a handshake first says WHO answered: the waiting room refuses to
+seat a banned Ready, and the mid-game rejoin door drops the adoption and
+re-offers, leaving the seat parked for whoever it belongs to. A NAMELESS
+peer can be kicked but not banned (nothing to key on, and matching on
+platform alone would bar every desktop player). Hosting a NEW room clears
+the list; rejoining/resuming an existing one keeps it. KICK is the
+default on every row and the highlight resets to it, so the harsher
+action is always a deliberate press.
 
-Verified by `test/e2e/nseat_kick.sh` against a local relay: 3-seat room,
-host kicks seat 3, the kicked peer is TOLD (not merely dropped), does
-not rejoin, and the host and the bystanding peer play on.
+Verified against a local relay by a driver per action: `nseat_kick.sh`
+(mid-game) bans seat 3 — the peer is TOLD, does not rejoin, a fresh
+process under its name is refused, and the host and bystander play on —
+and `nseat_lobby_kick.sh` (lobby) kicks seat 3 and proves the softer
+action is really softer: the same pilot re-enters the room afterwards.
+`nseat_lobby_mouse.sh` covers the same screen under a pointer.
 
 ### O4 — N>1 rejoin ICE-flap wait (B5 known limit)
 

@@ -246,12 +246,16 @@ private:
     }
   };
   bool roster_available() const;   // offline OR host, non-touch
-  // Online-host rows: a remote pilot (KICK) rather than a local seat.
+  // Online-host rows: a remote pilot (KICK / BAN) rather than a local seat.
   // (roster_peer_at is declared with the other NetPeer members, below.)
   bool roster_row_is_peer(int row) const;
-  // Kick needs a deliberate second press — one stray confirm should not
+  // Removing needs a deliberate second press — one stray confirm should not
   // end someone's game. -1 = nothing armed; otherwise the armed row.
   int roster_kick_armed_ = -1;
+  // Which removal the highlighted peer row is offering: false = KICK (they
+  // may rejoin), true = BAN (they may not). Left/right picks it, and it
+  // resets to the softer one whenever the highlight moves.
+  bool roster_ban_ = false;
   bool roster_open() const { return roster_active_ && !running &&
                                     roster_available(); }
   // Rows: one per seat, plus a trailing ADD row while under MAX_PLAYERS.
@@ -950,7 +954,10 @@ private:
   // channel with the goodbye still queued in it.
   void net_host_rejoin_park_peer(NetPeer &p, bool keep_session = false);
   // Host: remove a peer and free its seat (the roster's KICK action).
-  void net_kick_peer(NetPeer &p);
+  // Remove a peer: ban=false lets them rejoin with the room code, ban=true
+  // refuses their next handshake for this room's lifetime. Two actions on
+  // the roster row (left/right), one code path.
+  void net_kick_peer(NetPeer &p, bool ban);
   // ms left before a kicked peer's session is torn down. The EV_KICKED
   // has to actually reach the wire first: NetSession::update() returns
   // immediately for a Ready session, so there is no "pump then close" —

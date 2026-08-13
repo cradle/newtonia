@@ -172,7 +172,11 @@ private:
   // must not end someone's game, and Enter is also the start key.
   int host_sel_ = -1;
   int host_kick_armed_ = -1;
-  void host_kick_selected();
+  // Which removal the highlighted row offers: false = KICK (they may come
+  // back with the room code), true = BAN (their next handshake is refused).
+  // Left/right picks it; moving the highlight resets to the softer one.
+  bool host_ban_ = false;
+  void host_kick_selected(bool ban);
   // Geometry of the centred text list the last draw() laid out, and where
   // the waiting room's rows landed in it (-1 = not on screen). RECORDED by
   // the draw, not re-derived: the list shrinks its step and size to fit

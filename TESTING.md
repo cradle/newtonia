@@ -368,8 +368,9 @@ test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # ("host bye - no rejoin"), then no auto-rejoin, no crash.
                      # Menu exit, not SIGTERM: a SIGTERM'd process exits before
                      # libdatachannel flushes the BYE (measured at 2P and 4P)
-test/e2e/nseat_kick.sh # O3 host kick (SEATS>=3, default 3): the host pauses,
-                     # opens PLAYERS, arms and confirms a kick on the last
+test/e2e/nseat_kick.sh # O3 host BAN (SEATS>=3, default 3): the host pauses,
+                     # opens PLAYERS, presses right to swap the row's action
+                     # from KICK to BAN, then arms and confirms on the last
                      # seat. Asserts the peer is TOLD ("kicked by the host"),
                      # does NOT rejoin — sliced from the kick notice forward,
                      # since a kicked client goes quiet and its ORIGINAL
@@ -388,9 +389,11 @@ test/e2e/nseat_lobby_kick.sh # O3 host kick, LOBBY half — a different code
                      # kick from. Asserts the goodbye reaches a joiner still
                      # on the connecting screen ("removed from the room by
                      # the host" — that loop used to drop everything that
-                     # wasn't a snapshot chunk), the ban refuses a fresh
-                     # process under the same pilot name, and START GAME
-                     # still works right after: the kicked session is handed
+                     # wasn't a snapshot chunk), that a plain KICK is NOT a
+                     # ban — a fresh process under the same pilot name is
+                     # seated again, the half nseat_kick.sh's ban mirrors —
+                     # and that START GAME still works right after: the
+                     # kicked session is handed
                      # to a drain that closes it ~600 ms later, so starting
                      # inside that window is the case that leaked it
 test/e2e/nseat_lobby_mouse.sh # the host waiting room under a MOUSE. A

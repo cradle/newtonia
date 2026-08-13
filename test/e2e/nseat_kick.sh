@@ -1,6 +1,8 @@
 #!/bin/bash
 # Host kick (FOURPLAYER.md O3), mid-game half: a 3-seat room, then the host
-# opens the pause roster and removes seat 3.
+# opens the pause roster and BANS seat 3 (right on the row swaps the action
+# from KICK, which they could come back from, to BAN, which they cannot —
+# nseat_lobby_kick.sh covers the kick side).
 #
 # What it proves, in the order the failures would bite:
 #   1. the kicked peer is TOLD (EV_KICKED) rather than just dropped — a bare
@@ -29,7 +31,7 @@ VICTIM=$((SEATS - 1))          # last joiner index -> seat $SEATS
 VICTIM_SEAT=$SEATS
 BYSTANDER=1                    # joiner1, seat 2
 
-echo "== host: pause -> PLAYERS -> select seat $VICTIM_SEAT -> kick"
+echo "== host: pause -> PLAYERS -> select seat $VICTIM_SEAT -> ban"
 HW=${ROOM_WINS[0]}
 xdotool key --window "$HW" p; sleep 1          # pause
 xdotool key --window "$HW" s; sleep 0.4        # RESUME -> PLAYERS
@@ -38,15 +40,16 @@ xdotool key --window "$HW" Return; sleep 0.8   # open the roster
 for _ in $(seq 1 $((VICTIM_SEAT - 1))); do
   xdotool key --window "$HW" s; sleep 0.3
 done
+xdotool key --window "$HW" d; sleep 0.4        # KICK -> BAN
 xdotool key --window "$HW" Return; sleep 0.5   # arm
-xdotool key --window "$HW" Return; sleep 1.5   # confirm the kick
+xdotool key --window "$HW" Return; sleep 1.5   # confirm
 
 ok=
 for _ in $(seq 1 20); do
-  grep -aq "kicking player $VICTIM_SEAT" "$OUT/host.log" && { ok=1; break; }
+  grep -aq "banning player $VICTIM_SEAT" "$OUT/host.log" && { ok=1; break; }
   sleep 1
 done
-[ -n "$ok" ] || room_fail "HOST NEVER KICKED SEAT $VICTIM_SEAT" host
+[ -n "$ok" ] || room_fail "HOST NEVER BANNED SEAT $VICTIM_SEAT" host
 
 echo "== the kicked peer must be told, not merely dropped"
 ok=
@@ -93,7 +96,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 [ -n "$ok" ] || room_fail "BANNED PILOT WAS NOT REFUSED" host
-grep -aq "seat $VICTIM_SEAT filled" <(sed -n '/kicking player/,$p' "$OUT/host.log") &&
+grep -aq "seat $VICTIM_SEAT filled" <(sed -n '/banning player/,$p' "$OUT/host.log") &&
   room_fail "BANNED PILOT GOT A SEAT" host
 kill "$BAN_PID" 2>/dev/null
 

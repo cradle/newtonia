@@ -645,10 +645,10 @@ void NetLobby::confirm() {
     }
   } else if (screen_ == RoomHost && waiting_room() && !seated_.empty()) {
     if (host_sel_ >= 0 && host_sel_ < (int)seated_.size()) {
-      // A peer row is picked: first confirm arms, second kicks. START is
-      // still on this same key with no row picked, which is why arming
-      // exists at all.
-      if (host_kick_armed_ == host_sel_) host_kick_selected();
+      // A peer row is picked: first confirm arms, second performs whichever
+      // removal left/right settled on. START is still on this same key with
+      // no row picked, which is why arming exists at all.
+      if (host_kick_armed_ == host_sel_) host_kick_selected(host_ban_);
       else host_kick_armed_ = host_sel_;
     } else {
       // PB-D6: the room screen's first-ever confirm — START GAME with
@@ -1238,12 +1238,15 @@ void NetLobby::waiting_room_update(int delta) {
 // through the ordinary join path — then drop the session and free the
 // seat, which next_free_seat() re-offers to the next arrival.
 //
-// Not a ban: a kicked player with the room code can join again. This
-// clears a wedged or unwanted peer out of the room.
-void NetLobby::host_kick_selected() {
+// KICK and BAN are two actions (left/right on the row): a kick clears a
+// wedged or unwanted peer out and lets them join again with the room code,
+// a ban also refuses their next handshake. See GLGame::net_kick_peer, the
+// mid-game twin.
+void NetLobby::host_kick_selected(bool ban) {
   if (host_sel_ < 0 || host_sel_ >= (int)seated_.size()) return;
   SeatedPeer &sp = seated_[host_sel_];
-  NET_LOG("[lobby] waiting room: kicking seat %d\n", sp.seat);
+  NET_LOG("[lobby] waiting room: %s seat %d\n", ban ? "banning" : "kicking",
+          sp.seat);
   // Read the identity BEFORE the session is deleted below — the ban needs
   // it, and peer_identity() through a freed session is a use-after-free.
   NetIdentity who = sp.session ? sp.session->peer_identity() : NetIdentity();
@@ -1265,13 +1268,14 @@ void NetLobby::host_kick_selected() {
   // attestation too, or a DIFFERENT arrival on a recycled row could
   // inherit the kicked player's verified name.
   if (!sp.jid.empty()) jid_attested_.erase(sp.jid);
-  // Bar them for the rest of this process: the room code is the only thing
-  // stopping them otherwise, and they already have it.
-  ban_identity(who);
+  // Ban only: bar them for the rest of this room's life — the room code is
+  // the only thing stopping them otherwise, and they already have it.
+  if (ban) ban_identity(who);
   seated_.erase(seated_.begin() + host_sel_);
   host_kick_armed_ = -1;
+  host_ban_ = false;
   host_sel_ = -1;  // back to the resting state: confirm means START again
-  set_status("PLAYER REMOVED");
+  set_status(ban ? "PLAYER BANNED" : "PLAYER REMOVED");
 }
 
 void NetLobby::waiting_room_start() {
@@ -2297,12 +2301,27 @@ void NetLobby::draw() {
             // do it at all (field, 2026-08-13).
             int row = (int)(&sp - &seated_[0]);
             std::string line = buf;
-            if (host_sel_ == row) {
-              // The armed label stays SHORTER than the resting one: a row
-              // is "PLAYER 4 - " + a name of up to 24 glyphs + this, and at
-              // this size the line is already near the window's width.
-              line += host_kick_armed_ == row ? "   [CONFIRM KICK]"
-                                              : "   KICK + BAN";
+            if (host_sel_ != row) {
+              // Every peer row says the actions exist — the whole reason
+              // the host could not find them. Only the CURSOR's row says
+              // which one is picked (host_ban_ describes that row alone).
+              line += "   KICK / BAN";
+            } else {
+              // The action the row is offering, with the arrows that swap
+              // it — one row, two actions, and which one is armed is never
+              // in doubt. Kept short: a row is "PLAYER 4 - " plus a name of
+              // up to 24 glyphs before any of this.
+              const char *act = host_ban_ ? "BAN" : "KICK";
+              line += "   ";
+              if (host_kick_armed_ == row) {
+                line += "[CONFIRM ";
+                line += act;
+                line += "]";
+              } else {
+                line += "< ";
+                line += act;
+                line += " >";
+              }
               line = Typer::cursored(line, true);
             }
             lines.push_back(line);
@@ -2313,9 +2332,10 @@ void NetLobby::draw() {
             // cursor whenever no peer row is picked; with one picked, this
             // line says what confirm will do to them instead.
             host_start_line_ = (int)lines.size();
-            lines.push_back(host_sel_ < 0
-                                ? Typer::cursored("ENTER - START GAME", true)
-                                : "ENTER TWICE - KICK + BAN   ESC - BACK");
+            lines.push_back(
+                host_sel_ < 0
+                    ? Typer::cursored("ENTER - START GAME", true)
+                    : "LEFT/RIGHT - KICK OR BAN   ENTER TWICE   ESC - BACK");
           }
         } else {
           lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
@@ -2881,6 +2901,15 @@ void NetLobby::nav_input(unsigned char key) {
     if (MenuSelect::move(key, visual, n + 1)) {
       host_sel_ = visual >= n ? -1 : visual;
       host_kick_armed_ = -1;  // moving off a row disarms it
+      host_ban_ = false;      // ...and the next row opens on the softer one
+      return;
+    }
+    // Left/right on a picked row chooses KICK or BAN (the mid-game roster's
+    // twin, GLGame::roster_nav). Nothing else claims these keys here.
+    if (host_sel_ >= 0 &&
+        (MenuSelect::is_left(key) || MenuSelect::is_right(key))) {
+      host_ban_ = MenuSelect::is_right(key);
+      host_kick_armed_ = -1;  // changing the action disarms
       return;
     }
   }
