@@ -916,7 +916,21 @@ numbers came with, all of them load-bearing:
   process tree down.
 - **Each driver gets one retry**, and a driver that needed it is reported as
   `FLAKY … (passed on retry)` — a creeping flake stays visible rather than
-  being laundered by the green tick.
+  being laundered by the green tick. `leaderboard.sh` is the exception: it
+  runs alone in its own shard, with no retry and a 1500 s cap. It stands up
+  its own board worker, plays six scenarios through it, and its S1 scoring
+  spray retries until a fresh world actually scores — measured at 524 s,
+  735 s, 886 s and once past 900 s on identical code. Sharing a shard meant
+  that variance decided another shard's fate, and a retry meant doubling a
+  15-minute run.
+- **A driver that stands up its own worker must not leak it.** Killing the
+  npx wrapper leaves `workerd` holding the port, and the next attempt then
+  binds nothing, silently talks to the PREVIOUS attempt's worker and inherits
+  its database — leaderboard.sh's retry found the first attempt's rows
+  already on the board. `ci_shard.sh` clears driver-owned workers between
+  attempts, sparing the relay by PROCESS TREE (wrangler runs two workerd
+  processes and only one carries the port, so matching on the port killed the
+  relay and cascaded "no signal relay" through seven drivers).
 - `turnexpiry.sh` is **not** in any shard: it needs real Cloudflare TURN
   credentials and UDP egress (§4). The web drivers (§8) are not either — they
   need an emcc build and playwright.

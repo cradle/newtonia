@@ -22,13 +22,19 @@ cd "$ROOT" || exit 1
 # ~9-11 min each, so the whole suite lands in about the time of one shard.
 # turnexpiry.sh is deliberately absent — it needs real Cloudflare TURN
 # credentials and UDP egress, so no runner can host it (TESTING.md).
-SHARDS="solo-replay solo-misc lobby-and-lan netplay-core netplay-resilience seats-and-soak"
+SHARDS="solo-replay solo-misc leaderboard lobby-and-lan netplay-core netplay-resilience seats-and-soak"
 
 shard_drivers() {
   case "$1" in
     solo-replay)  echo "replay_keyframe replay_menu fourplayer replay replay_playback" ;;
-    solo-misc)    echo "lan replay_failures video leaderboard identity_attested
-                        identity_tick" ;;
+    solo-misc)    echo "lan replay_failures video identity_attested identity_tick" ;;
+    # leaderboard.sh alone: it stands up its own board worker and plays six
+    # scenarios through it, two of them needing a dedicated worker of their
+    # own, and its S1 scoring spray retries until a fresh world actually
+    # scores — measured 524 s, 735 s, 886 s and once past 900 s on the same
+    # code. Sharing a shard meant its variance decided that shard's fate;
+    # alone it costs only its own wall clock, in parallel with the rest.
+    leaderboard)  echo "leaderboard" ;;
     lobby-and-lan) echo "lan_hidden lanclip lanrejoin lanrename byecard lankeep
                          ownroom mismatch policy identity identity_legacy pairstart fly" ;;
     netplay-core) echo "room weapons_net missile_net shock_net shock_hazards_net
@@ -47,7 +53,7 @@ shard_drivers() {
 # — stand up their own worker on their own port with its own flags.
 shard_needs_relay() {
   case "$1" in
-    solo-replay|solo-misc) return 1 ;;
+    solo-replay|solo-misc|leaderboard) return 1 ;;
     *) return 0 ;;
   esac
 }
@@ -160,9 +166,20 @@ ensure_relay() {
 # needs the retry is reported WITH the reason its first attempt failed, so a
 # creeping flake stays visible — and diagnosable — instead of being laundered
 # by the green tick.
+# Drivers that do NOT get a retry: a second attempt would double a run already
+# measured past 15 minutes, and this one's failures have so far been its own
+# leftover state rather than the dropped keystroke a retry exists for.
+driver_attempts() {
+  case "$1" in
+    leaderboard) echo 1 ;;
+    *)           echo 2 ;;
+  esac
+}
+
 run_driver() {
-  local d=$1 attempt rc start elapsed
-  for attempt in 1 2; do
+  local d=$1 attempt rc start elapsed last
+  last=$(driver_attempts "$d")
+  for attempt in $(seq 1 "$last"); do
     start=$(date +%s)
     ( export NEWTONIA_TEST_OUT="$OUTDIR/$d.$attempt"
       mkdir -p "$NEWTONIA_TEST_OUT"
@@ -183,14 +200,15 @@ run_driver() {
     # 124 is timeout(1) killing a wedged driver — worth naming, since its log
     # ends mid-step rather than with a verdict.
     [ "$rc" = 124 ] && echo "  .. $d TIMED OUT after $(driver_timeout "$d")s"
-    [ "$attempt" = 1 ] && echo "  .. $d failed in ${elapsed}s (rc=$rc), retrying"
+    [ "$attempt" = "$last" ] || echo "  .. $d failed in ${elapsed}s (rc=$rc), retrying"
     kill_driver_workers   # a leftover worker would serve the retry stale state
     ensure_relay          # ...and the cleanup must not cost the shard its relay
   done
   printf '  FAIL   %-22s %4ss (rc=%s)\n' "$d" "$elapsed" "$rc"
-  driver_reason "$OUTDIR/$d.attempt1.log" | sed 's/^/         first attempt: /'
+  [ "$last" = 1 ] || driver_reason "$OUTDIR/$d.attempt1.log" |
+    sed 's/^/         first attempt: /'
   echo "  ---- $d, last attempt (xdotool noise filtered) ----"
-  driver_log "$OUTDIR/$d.attempt2.log" | tail -40 | sed 's/^/  | /'
+  driver_log "$OUTDIR/$d.attempt$last.log" | tail -40 | sed 's/^/  | /'
   echo "  ----"
   FAILED="$FAILED $d"
   return 1
@@ -223,7 +241,7 @@ DRIVER_TIMEOUT="${DRIVER_TIMEOUT:-480}"
 # that was simply not finished (2026-08-12).
 driver_timeout() {
   case "$1" in
-    leaderboard) echo 900 ;;
+    leaderboard) echo 1500 ;;
     *)           echo "$DRIVER_TIMEOUT" ;;
   esac
 }

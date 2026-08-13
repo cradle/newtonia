@@ -200,6 +200,7 @@ jobs:
         shard:
           - solo-replay
           - solo-misc
+          - leaderboard
           - lobby-and-lan
           - netplay-core
           - netplay-resilience
