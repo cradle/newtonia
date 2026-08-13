@@ -115,14 +115,44 @@ driver_reason() { driver_log "$1" | grep -aE "FAIL|FATAL|DEAD|MISSING|NO " | hea
 # place and S1 failed with "never placed" — the retry poisoned by the very
 # attempt it was meant to redo (2026-08-12). The shard relay is identified by
 # its port and deliberately spared; everything else wrangler-shaped goes.
+# The relay is spared by PROCESS TREE, not by matching its port in a command
+# line: `wrangler dev` spawns TWO workerd processes and only one of them
+# carries --socket-addr=...:8787, so a port match killed the other and took
+# the relay down with it — every driver after the first cleanup then failed
+# with "no signal relay" (2026-08-12, the fix's own first CI run).
+relay_tree() {
+  [ -n "$RELAY_PID" ] || return 0
+  local out="$RELAY_PID" frontier="$RELAY_PID" next p c
+  while [ -n "$frontier" ]; do
+    next=""
+    for p in $frontier; do
+      for c in $(pgrep -P "$p" 2>/dev/null); do next="$next $c"; out="$out $c"; done
+    done
+    frontier="$next"
+  done
+  echo "$out"
+}
+
 kill_driver_workers() {
-  local p args
+  local p spare
+  spare=" $(relay_tree) "
   for p in $(pgrep -x workerd 2>/dev/null) $(pgrep -f 'wrangler[-]dist' 2>/dev/null); do
-    args=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
-    case "$args" in *8787*) continue ;; esac   # the shard's own relay
+    case "$spare" in *" $p "*) continue ;; esac
     kill -9 "$p" 2>/dev/null
   done
   return 0
+}
+
+# ...and if the relay went down anyway — killed here, crashed, or wedged — put
+# it back rather than letting every remaining driver in the shard fail with
+# "no signal relay". Cheap: one HTTP probe between attempts.
+ensure_relay() {
+  shard_needs_relay "$CURRENT_SHARD" || return 0
+  [ -n "$RELAY_PID" ] || return 0
+  curl -s --max-time 2 http://127.0.0.1:8787/ | grep -q newtonia-signal && return 0
+  echo "  (relay is gone — restarting it)"
+  RELAY_PID=""
+  start_relay
 }
 
 # A driver gets one retry: these drive real windows through a software GL
@@ -155,6 +185,7 @@ run_driver() {
     [ "$rc" = 124 ] && echo "  .. $d TIMED OUT after $(driver_timeout "$d")s"
     [ "$attempt" = 1 ] && echo "  .. $d failed in ${elapsed}s (rc=$rc), retrying"
     kill_driver_workers   # a leftover worker would serve the retry stale state
+    ensure_relay          # ...and the cleanup must not cost the shard its relay
   done
   printf '  FAIL   %-22s %4ss (rc=%s)\n' "$d" "$elapsed" "$rc"
   driver_reason "$OUTDIR/$d.attempt1.log" | sed 's/^/         first attempt: /'
@@ -165,8 +196,10 @@ run_driver() {
   return 1
 }
 
+CURRENT_SHARD=""
 run_shard() {
   local shard=$1 d drivers
+  CURRENT_SHARD="$shard"
   drivers=$(shard_drivers "$shard") || { echo "unknown shard: $shard"; exit 2; }
   echo "== shard $shard"
   shard_needs_relay "$shard" && [ -z "$RELAY_PID" ] && start_relay
