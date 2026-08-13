@@ -16,8 +16,21 @@ fi
 relay_check
 
 # Joiner out at 20 s (post-connect), revive applied at 75 s.
+#
+# NEWTONIA_ALL_WEAPONS on the HOST is what makes the drop below reliable
+# rather than a coin flip. The roll is 10% per ASTEROID DEATH, so the driver
+# needs kills, and the base gun fires one blind bullet per tap into a sparse
+# field: measured 3 passes in 4 runs on an idle box (2026-08-13), and two
+# failures in a row on a CI runner — a driver that reports a revive
+# regression three times out of four. The grant leaves SHOCK selected, whose
+# bolt seeks a target and chains onward through everything it kills, so a
+# tap is worth several deaths instead of a coin toss on one. Weapons are
+# host-owned and replicate, so granting here stocks both ships
+# (missile_net.sh does the same); the cheat flag only suppresses
+# achievements and lifetime stats, and the drop gate below is per-death and
+# weapon-blind.
 PA=$(NEWTONIA_NET_TEST_KILL_MS=20000 NEWTONIA_NET_TEST_KILL_WHO=remote \
-     NEWTONIA_NET_TEST_REVIVE_MS=90000 launch host)
+     NEWTONIA_NET_TEST_REVIVE_MS=90000 NEWTONIA_ALL_WEAPONS=1 launch host)
 sleep 2
 PB=$(launch joiner)
 sleep 4
@@ -57,9 +70,17 @@ grep -aq "spectate armed" "$OUT/joiner.log" || {
   echo "FAIL: joiner never armed spectate"; kill $PA $PB; exit 1; }
 
 # Gen 0 can be nearly empty by now (the joiner's death took rocks with it) —
-# skip two levels for a denser field. The rebuild's respawn is gated on
-# alive||lives>0, so it does NOT resurrect the fully-out joiner.
-key $A n; sleep 3; key $A n; sleep 3
+# skip to a denser field. The rebuild's respawn is gated on alive||lives>0,
+# so it does NOT resurrect the fully-out joiner.
+#
+# Generation 4, through the helper, not two blind `n` presses: the asteroid
+# count grows per generation while the world grows by 50 units, so each
+# level is materially denser than the last, and blind spray needs density
+# more than it needs time. skip_to_generation also CONFIRMS the arrival —
+# a dropped keystroke here used to land the spray in a near-empty gen 1 and
+# report it as a missing revive drop.
+skip_to_generation $A host 4 || {
+  echo "FAIL: host never reached generation 4"; kill $PA $PB; exit 1; }
 
 # Host spin-fires into the rocks: rotation held while TAPPING fire (the
 # level-0 gun is semi-auto — holding space is a single shot), spraying the
