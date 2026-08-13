@@ -13,6 +13,9 @@
 # lands AFTER the handshake, so a naive check would refuse the named pilot
 # too (that is why PendingJoiner::anon_wait_ms exists).
 set -u
+if [ -z "${DISPLAY:-}" ]; then
+  exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
+fi
 cd "$(dirname "$0")"
 
 PORT="${ANON_RELAY_PORT:-8790}"

@@ -14,6 +14,9 @@
 # A 4-seat room with one joiner never auto-starts, which is what keeps the
 # waiting room on screen to click at.
 set -u
+if [ -z "${DISPLAY:-}" ]; then
+  exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
+fi
 cd "$(dirname "$0")"
 . ./lib.sh
 

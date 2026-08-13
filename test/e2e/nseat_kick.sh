@@ -14,6 +14,9 @@
 #
 # SEATS defaults to 3: two peers, so there is a bystander to check.
 set -u
+if [ -z "${DISPLAY:-}" ]; then
+  exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
+fi
 cd "$(dirname "$0")"
 
 # BAN is only OFFERED on a peer whose name the worker attested — a claimed
