@@ -2750,7 +2750,10 @@ void NetLobby::draw() {
         lines.push_back("HOSTED BY " + badge);
       }
       lines.push_back("");
-      if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD");
+      // What the joiner is actually waiting for is the host pressing START —
+      // "THE HOST'S WORLD" described the snapshot they'd receive, which is
+      // machinery, not the thing that has to happen next.
+      if (blink) lines.push_back("WAITING FOR HOST START");
       break;
     }
     case LobbyFailed:
