@@ -1024,6 +1024,17 @@ numbers came with, all of them load-bearing:
 - `turnexpiry.sh` is **not** in any shard: it needs real Cloudflare TURN
   credentials and UDP egress (§4). The web drivers (§8) are not either — they
   need an emcc build and playwright.
+- **A driver in no shard is a FATAL, not a gap.** `ci_shard.sh` checks that
+  every `test/e2e/*.sh` appears in a shard list or in its `UNSHARDED` roster
+  (each entry with the reason it is deliberately absent) before running
+  anything. The lint exists because the gap happened: the four kick/ban
+  drivers (`nseat_kick`, `nseat_anon`, `nseat_lobby_kick`,
+  `nseat_lobby_mouse`) shipped present in the tree but listed nowhere, so no
+  CI job ever ran them. They now live in `seats-and-soak` (the two that
+  self-host a FAKE_VERIFY relay) and `lobby-and-lan` (the two that use the
+  shard relay); those shards' 2026-08-12 wall-time balance predates the
+  additions, so rebalance from fresh measurements if either starts crowding
+  its neighbours.
 
 ## 7. Hardware-only checks
 

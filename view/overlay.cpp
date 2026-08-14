@@ -92,6 +92,7 @@ static float hud_fit(const GLGame *glgame) {
   return viewport_is_grid_cell(glgame) ? 0.75f : 1.0f;
 }
 
+
 // Full-screen text layered over the online game view (one full-screen
 // pass, not per-viewport): the 2 s generation banner (replaces the offline
 // Intro state) and the CONNECTION LOST / rejoin card. Overlay is a friend
@@ -353,7 +354,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
     if (glgame->net_banner_header_)
       Typer::draw_centered(0, vh * 0.80f, glgame->net_banner_text_.c_str(), 20);
     else
-      Typer::draw_centered(0, vh * 0.55f, glgame->net_banner_text_.c_str(), 22);
+      // banner_spot_y, not a bare vh*0.55: with the countdown stack
+      // dropped under the room line, the generation banner overprinted
+      // the god-mode seconds at the old fixed spot.
+      Typer::draw_centered(0, banner_spot_y(glgame),
+                           glgame->net_banner_text_.c_str(), 22);
   } else if (glgame->net_any_peer_lost() &&
              glgame->net_mode_ == GLGame::NetHost) {
     // Play-on partial loss (post-B7, PB-D7): a seat dropped but the game
@@ -386,8 +391,15 @@ void Overlay::net_overlays(const GLGame *glgame) {
                                   role, glgame->net_id_ctx_for_seat(low_seat)) +
              " DISCONNECTED";
     }
-    Typer::draw_centered(0, vh * 0.55f, head.c_str(), 20);
-    if (glgame->net_signal_) {
+    // The same banner-spot rule as the generation banner: with the
+    // countdown stack dropped this header's old fixed vh*0.55 sat on the
+    // god-mode seconds — and this notice is PERSISTENT, not a 2 s flash.
+    Typer::draw_centered(0, banner_spot_y(glgame), head.c_str(), 20);
+    if (glgame->net_signal_ && !show_room) {
+      // Only when the always-on room line is NOT already up (it nearly
+      // always is here — a worker session has a code and the game plays
+      // on): a second copy of the same line duplicated it, and with the
+      // countdowns dropped this spot sits on the time-slow rows.
       std::string room = "ROOM " + glgame->net_room_code_;
       Typer::draw_centered(0, vh * 0.44f, room.c_str(), 18);
     }
@@ -735,6 +747,22 @@ float Overlay::room_line_drop(const GLGame *glgame) {
   float first = top_hud_y(glgame) - 62 * f;    // the god-mode label's anchor
   float drop = first - (bottom - 10.0f);       // ...plus a gap
   return drop > 0.0f ? drop : 0.0f;
+}
+
+// Where the centre "banner spot" text goes — the generation banner and the
+// partial-loss header, one at a time (the banner slot is single and the
+// partial-loss notice only draws with no banner up). Normally vh*0.55,
+// proven for live gameplay text and clear of the top-anchored countdowns.
+// But the room_line_drop above lands the countdown stack exactly in that
+// band — the dropped god-mode seconds sit INSIDE the banner's ink — so
+// while the drop is active the spot moves up to the header spot instead
+// (vh*0.80, the JOINED/DISCONNECTED headers' position, above the room
+// line), which is free in both states for as long as this text shows.
+// Asking room_line_drop keeps this the countdowns' own condition: the two
+// can't disagree about who owns the band.
+float Overlay::banner_spot_y(const GLGame *glgame) {
+  float vh = Typer::scaled_window_height;
+  return room_line_drop(glgame) > 0.0f ? vh * 0.80f : vh * 0.55f;
 }
 
 void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {

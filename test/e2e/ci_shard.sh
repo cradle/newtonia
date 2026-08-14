@@ -36,15 +36,41 @@ shard_drivers() {
     # alone it costs only its own wall clock, in parallel with the rest.
     leaderboard)  echo "leaderboard" ;;
     lobby-and-lan) echo "lan_hidden lanclip lanrejoin lanrename byecard lankeep
-                         ownroom mismatch policy identity identity_legacy pairstart fly" ;;
+                         ownroom mismatch policy identity identity_legacy pairstart fly
+                         nseat_lobby_kick nseat_lobby_mouse" ;;
     netplay-core) echo "room weapons_net missile_net shock_net shock_hazards_net
                         hazards_net timeslow_net impacts replay_online" ;;
     netplay-resilience) echo "rejoin rejoinexit hiccup blackout invite hostresume
                               spectate spectate_disconnect revive" ;;
     seats-and-soak) echo "nseat nseat_rejoin nseat_gameover nseat_swap nseat_soak
-                          gensoak" ;;
+                          gensoak nseat_kick nseat_anon" ;;
     *) return 1 ;;
   esac
+}
+
+# Every driver in test/e2e/ must appear in a shard above, or be named here
+# with the reason it deliberately is not. This is the inverse of run_shard's
+# MISSING check, and it exists because the gap it closes actually happened:
+# the four kick/ban drivers shipped present in the tree but listed in no
+# shard, so no CI job ever ran them.
+#   turnexpiry: real Cloudflare TURN credentials + UDP egress (see above)
+#   threeseat / threeseat_rejoin / fourseat: wrappers that re-run the nseat
+#     drivers with a different SEATS (see driver_env below)
+UNSHARDED="turnexpiry threeseat threeseat_rejoin fourseat"
+
+check_shard_coverage() {
+  local s d name all missing=""
+  all=" $(for s in $SHARDS; do shard_drivers "$s"; done | tr '\n' ' ') $UNSHARDED "
+  for d in "$ROOT"/test/e2e/*.sh; do
+    name=$(basename "$d" .sh)
+    case "$name" in lib|ci_shard) continue ;; esac
+    case "$all" in *" $name "*) ;; *) missing="$missing $name" ;; esac
+  done
+  [ -z "$missing" ] || {
+    echo "FATAL: driver(s) in no shard:$missing"
+    echo "       add each to a shard list or to UNSHARDED with a reason"
+    exit 1
+  }
 }
 
 # Shards whose drivers need the shared local relay. The solo shards do not:
@@ -69,6 +95,14 @@ driver_env() {
 }
 
 RELAY_PID=""
+# workerd/wrangler processes already running when this script started are
+# someone else's — TESTING.md advertises running the shards locally, where a
+# developer may have their own :8787 relay (test/e2e/lib.sh tells them to
+# keep one up) or an unrelated project's wrangler. Recorded once, spared
+# from every sweep below: the cleanup used to assume it owned every workerd
+# on the machine and kill -9'd a developer's relay mid-shard.
+PREEXISTING_WORKERS=" $(pgrep -x workerd 2>/dev/null | tr '\n' ' ')$(pgrep -f 'wrangler[-]dist' 2>/dev/null | tr '\n' ' ')"
+
 start_relay() {
   # A PLAIN relay: identity.sh asserts that an unattested claim stays
   # unattested, so FAKE_VERIFY here would fail it (and it is the only flavour
@@ -77,6 +111,18 @@ start_relay() {
   # CF-Connecting-IP, so every socket shares the key "local" and production's
   # 10 host-creates / 10 min would refuse a shard's later drivers as
   # "rate-limited" — which reads exactly like a protocol bug.
+  #
+  # Refuse a squatted port instead of adopting it: the readiness probe below
+  # only greps for newtonia-signal, so a developer's own :8787 relay would
+  # pass it while OUR npx died on the bind — the shard then ran on a relay
+  # of the wrong flavour (FAKE_VERIFY fails identity.sh; production limits
+  # read as protocol bugs) and the cleanup later killed it out from under
+  # them. The /dev/tcp probe answers "is anything listening", response or no.
+  if (exec 3<>/dev/tcp/127.0.0.1/8787) 2>/dev/null; then
+    echo "FATAL: something else is already listening on :8787 — stop it first"
+    echo "       (this script boots and owns its own relay)"
+    exit 1
+  fi
   echo "== starting local signal relay on :8787"
   ( cd "$ROOT/signal" && rm -rf .wrangler &&
     exec npx wrangler@4 dev --local --port 8787 \
@@ -95,9 +141,16 @@ stop_relay() {
   [ -n "$RELAY_PID" ] || return 0
   # Killing the npx wrapper leaves workerd holding :8787, and the next boot
   # then dies with "Address already in use" — take the whole tree down.
-  pkill -P "$RELAY_PID" 2>/dev/null
-  kill "$RELAY_PID" 2>/dev/null
-  pkill -x workerd 2>/dev/null
+  # OUR tree only (relay_tree), not a blanket `pkill -x workerd`: a locally
+  # running developer's workerd is not ours to kill (PREEXISTING_WORKERS).
+  # TERM first, then KILL: a wedged workerd that shrugs off the TERM would
+  # keep the socket through ensure_relay's restart, and the new relay would
+  # die on the bind exactly like the un-killed case this function fixes.
+  local tree p
+  tree=$(relay_tree)
+  for p in $tree; do kill "$p" 2>/dev/null; done
+  sleep 1
+  for p in $tree; do kill -9 "$p" 2>/dev/null; done
   RELAY_PID=""
 }
 trap stop_relay EXIT
@@ -141,7 +194,9 @@ relay_tree() {
 
 kill_driver_workers() {
   local p spare
-  spare=" $(relay_tree) "
+  # Spare the shard relay's tree AND anything that predates this script —
+  # only what a driver stood up mid-shard is ours to sweep.
+  spare=" $(relay_tree) $PREEXISTING_WORKERS "
   for p in $(pgrep -x workerd 2>/dev/null) $(pgrep -f 'wrangler[-]dist' 2>/dev/null); do
     case "$spare" in *" $p "*) continue ;; esac
     kill -9 "$p" 2>/dev/null
@@ -157,7 +212,13 @@ ensure_relay() {
   [ -n "$RELAY_PID" ] || return 0
   curl -s --max-time 2 http://127.0.0.1:8787/ | grep -q newtonia-signal && return 0
   echo "  (relay is gone — restarting it)"
-  RELAY_PID=""
+  # Tear the old tree down FIRST. Two of the three cases this function
+  # exists for — wedged-but-listening, and healthy but slow past one 2 s
+  # probe on a loaded runner — leave the old workerd holding :8787, and
+  # start_relay cannot bind through it: clearing RELAY_PID and restarting
+  # used to burn the 90 s wait, FATAL, and exit the whole shard mid-list,
+  # turning one missed probe into every remaining driver unrun.
+  stop_relay
   start_relay
 }
 
@@ -254,9 +315,11 @@ case "${1:-}" in
   ""|-h|--help) echo "usage: $0 <shard|all|list>"; echo "shards: $SHARDS"; exit 2 ;;
   list)         echo "$SHARDS"; exit 0 ;;
   all)          [ -x "$ROOT/newtonia" ] || { echo "FATAL: build first (make -j)"; exit 1; }
+                check_shard_coverage
                 echo "logs: $OUTDIR"
                 for s in $SHARDS; do run_shard "$s"; done ;;
   *)            [ -x "$ROOT/newtonia" ] || { echo "FATAL: build first (make -j)"; exit 1; }
+                check_shard_coverage
                 echo "logs: $OUTDIR"
                 run_shard "$1" ;;
 esac

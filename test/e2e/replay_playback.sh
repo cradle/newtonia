@@ -135,8 +135,12 @@ key "$W" p; sleep 2
 shot "$W" play-resumed
 # The mirror image of the freeze check, and it needs the same tolerance: on a
 # rig where a still frame can differ by a few pixels, "not byte-identical" is
-# not evidence that playback resumed.
-D=$(frame_delta "$OUT/play-pause2.png" "$OUT/play-resumed.png")
+# not evidence that playback resumed. Unlike the freeze checks above, this
+# one asserts MOTION, where frame_delta's unreadable-file sentinel points the
+# wrong way (999999999 -gt tolerance = pass) — so a bad screenshot must fail
+# here on the status instead of certifying a resume nobody saw.
+D=$(frame_delta "$OUT/play-pause2.png" "$OUT/play-resumed.png") \
+  || fail "S2: unpause screenshots unreadable (shot failed?)"
 echo "S2: unpause delta ${D}px"
 [ "$D" -gt "$FREEZE_TOL" ] || fail "S2: unpause did not resume playback (${D}px changed)"
 wait_log play1 "replay: playback finished" $(( DUR_MS / 1000 + 15 )) \
@@ -254,11 +258,19 @@ stop_hard $P
 FX=$(field "$RDIR/current.nrp" effects)
 echo "recorded $FX effect records"
 [ "${FX:-0}" -ge 3 ] || fail "S6: expected lance+shock+nova effects, got ${FX:-0}"
+# Budget the 1x playback from the recording's own length (S2's rule), not a
+# constant: the walk above can legitimately run to its caps on an unlucky
+# run — deaths rewind the selection — and that worst case records longer
+# than the old fixed 120 s wait, which then reported a healthy playback as
+# "never finished".
+FX_DUR_MS=$(field "$RDIR/current.nrp" duration_ms)
+echo "S6: recording is $(( ${FX_DUR_MS:-0} / 1000 ))s"
 
 P=$(NEWTONIA_REPLAY_PLAY=current "$ROOT/newtonia" > "$OUT/play-fx.log" 2>&1 & echo $!)
 sleep 2; W=$(win)
 wait_log play-fx "replay: playback started" 10 || fail "S6: playback never started"
-wait_log play-fx "playback finished" 120 || fail "S6: playback never finished"
+wait_log play-fx "playback finished" $(( ${FX_DUR_MS:-120000} / 1000 + 15 )) \
+  || fail "S6: playback never finished"
 grep -q "lance pulse received" "$OUT/play-fx.log" || fail "S6: lance flash never played back"
 grep -q "shock bolt received" "$OUT/play-fx.log"  || fail "S6: shock arc never played back"
 grep -q "replay ring" "$OUT/play-fx.log"          || fail "S6: nova/giga ring never played back"

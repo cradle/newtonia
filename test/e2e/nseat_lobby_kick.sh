@@ -16,6 +16,9 @@
 #      drain that closes it a few hundred ms later, and starting inside that
 #      window hands the room to the game with the drain still holding it.
 set -u
+if [ -z "${DISPLAY:-}" ]; then
+  exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
+fi
 cd "$(dirname "$0")"
 . ./lib.sh
 

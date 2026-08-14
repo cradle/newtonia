@@ -3034,12 +3034,12 @@ void GLGame::net_kick_peer(NetPeer &p, bool ban) {
   NET_LOG("net: %s player %d\n", ban ? "banning" : "kicking", (int)p.seat);
   if (p.session) {
     net_send_event_to(p, Net::EV_KICKED);
-    // The session is NOT dropped here — see net_kick_close_ms_. The peer
+    // The session is NOT dropped here — see net_kick_closing_. The peer
     // is parked below (seat freed, hull frozen, sim ignores it), and the
     // transport is torn down a few ticks later once the goodbye has had
-    // time to leave.
-    net_kick_close_ms_ = 600;
-    net_kick_close_seat_ = p.seat;
+    // time to leave. Appended, not assigned: a second kick inside this
+    // window must not steal the first victim's drain slot.
+    net_kick_closing_.push_back(std::make_pair(p.seat, 600));
   }
   // Ban only: bar them from coming back. The event above stops a
   // well-behaved client either way, but the room code is in their hands and
@@ -7705,6 +7705,11 @@ void GLGame::tick(int delta) {
   {
     static int test_kill_ms[2] = {-2, -2};
     static int test_kill_who[2] = {1, 1};  // 0 local, 1 remote, 2 all, <0 seat
+    // A bad WHO spec parks the slot here: no firing path — timer OR file —
+    // may use it. Distinct from every live code (force_out would read an
+    // unknown positive as "everyone", the exact quiet misfire the
+    // validation exists to prevent).
+    static const int kTestKillDisabled = 3;
     if (test_kill_ms[0] == -2) {
       const char *ms_var[2] = {"NEWTONIA_NET_TEST_KILL_MS",
                                "NEWTONIA_NET_TEST_KILL2_MS"};
@@ -7731,6 +7736,11 @@ void GLGame::tick(int delta) {
             NET_LOG("net: TEST bad KILL WHO '%s' - firing disabled\n",
                     w.c_str());
             test_kill_ms[k] = -1;
+            // ...and the WHO itself: the file trigger below fires
+            // test_kill_who[0] without consulting the timer, so zeroing
+            // only the ms left it firing the DEFAULT (remote) — not what
+            // the driver named, and not disabled either.
+            test_kill_who[k] = kTestKillDisabled;
           }
         } else {
           test_kill_who[k] = 1;
@@ -7738,6 +7748,7 @@ void GLGame::tick(int delta) {
       }
     }
     auto force_out = [&](int who) {
+      if (who == kTestKillDisabled) return;  // parked by a bad WHO spec
       if (who < 0)
         NET_LOG("net: TEST forcing seat %d out of lives\n", -who);
       else
@@ -7779,7 +7790,12 @@ void GLGame::tick(int delta) {
     if (test_kill_file_state == -2) {
       const char *f = getenv("NEWTONIA_NET_TEST_KILL_FILE");
       test_kill_file = f ? f : "";
-      test_kill_file_state = test_kill_file.empty() ? -1 : 1;
+      // A bad KILL_WHO disables this trigger too (the parse above already
+      // logged it): it fires test_kill_who[0], and arming it anyway would
+      // kill the default target instead of the seat the driver named.
+      test_kill_file_state =
+          (test_kill_file.empty() || test_kill_who[0] == kTestKillDisabled)
+              ? -1 : 1;
     }
     if (test_kill_file_state == 1) {
       test_kill_file_poll -= delta;
@@ -7905,19 +7921,21 @@ void GLGame::tick(int delta) {
     // net_ping_tick skip session-less/lost peers themselves).
     net_host_poll();
     // A kicked peer's goodbye needs a moment on the wire before its
-    // transport goes (see net_kick_close_ms_). The seat is already parked
+    // transport goes (see net_kick_closing_). The seat is already parked
     // and free, so this only delays the teardown, nothing the game waits
     // on. Matched by SEAT, not by `lost && parked && session` — that
     // predicate is exactly net_handshaking_lost_peer(), so it would also
     // delete another seat's in-flight rejoin that happened to complete
-    // inside this window.
-    if (net_kick_close_ms_ > 0) {
-      net_kick_close_ms_ -= delta;
-      if (net_kick_close_ms_ <= 0) {
-        net_kick_close_ms_ = 0;
-        NetPeer *pk = net_peer_by_seat((int)net_kick_close_seat_);
+    // inside this window. One entry per kicked seat (the lobby drain's
+    // loop, NetLobby::pump_signal's closing_ sweep, is the twin).
+    for (size_t ki = 0; ki < net_kick_closing_.size();) {
+      net_kick_closing_[ki].second -= delta;
+      if (net_kick_closing_[ki].second <= 0) {
+        NetPeer *pk = net_peer_by_seat((int)net_kick_closing_[ki].first);
         if (pk && pk->lost && pk->parked && pk->session) net_drop_session(*pk);
-        net_kick_close_seat_ = 0;
+        net_kick_closing_.erase(net_kick_closing_.begin() + ki);
+      } else {
+        ki++;
       }
     }
     net_ping_tick(delta);

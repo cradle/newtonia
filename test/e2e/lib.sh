@@ -77,13 +77,16 @@ shot() {
 # across machines: it cannot tell a world that is still playing (tens of
 # thousands of pixels) from a rasteriser that painted one edge differently
 # (a handful). Prints a count; a missing/unreadable file prints a huge number
-# so callers fail rather than pass on nothing.
+# AND returns nonzero. The huge number fails a "still frozen?" check (-le)
+# on its own, but it PASSES a "did it move?" check (-gt) — so a caller
+# asserting motion must ALSO check the status (`D=$(frame_delta a b) ||
+# fail`), or a failed screenshot certifies motion that never happened.
 frame_delta() {
   local n
-  [ -s "$1" ] && [ -s "$2" ] || { echo 999999999; return; }
+  [ -s "$1" ] && [ -s "$2" ] || { echo 999999999; return 1; }
   n=$(compare -metric AE "$1" "$2" null: 2>&1 | tr -d '\r' | awk '{print $1}')
   case "$n" in
-    ''|*[!0-9.]*) echo 999999999 ;;
+    ''|*[!0-9.]*) echo 999999999; return 1 ;;
     *)            printf '%.0f\n' "$n" ;;
   esac
 }
