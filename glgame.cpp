@@ -1351,9 +1351,20 @@ int GLGame::roster_row_count() const {
   int seats = (int)players->size();
   // Online the ADD row would be a lie — seats fill from the room, not from
   // this machine — so the host's list is the seats plus the one thing that
-  // IS the host's to decide: who is allowed to take the empty ones.
-  if (net_mode_ != NetOff) return seats + (roster_has_anon_row() ? 1 : 0);
-  return seats < MAX_PLAYERS ? seats + 1 : seats;
+  // IS the host's to decide: who is allowed to take the empty ones. Every
+  // layout ends with the exit row (see roster_row_is_exit).
+  if (net_mode_ != NetOff)
+    return seats + (roster_has_anon_row() ? 1 : 0) + 1;
+  return (seats < MAX_PLAYERS ? seats + 1 : seats) + 1;
+}
+
+// The trailing BACK row. The screen used to end in an "ESC BACK" hint: a
+// key spelled out under a list whose every other row is picked with the
+// cursor, and the only way out the cursor could not reach. It is a row now,
+// doing what Esc does — step back to the pause menu (which is where the
+// game's own RETURN TO MENU lives, one row away). Esc still works.
+bool GLGame::roster_row_is_exit(int row) const {
+  return row == roster_row_count() - 1;
 }
 
 // The ALLOW ANONYMOUS PLAYERS row: the host's admission policy, so it shows

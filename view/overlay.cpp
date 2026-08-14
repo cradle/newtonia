@@ -634,7 +634,10 @@ void Overlay::seat_roster(const GLGame *glgame) {
   int seats = (int)glgame->players->size();
   for (int i = 0; i < rows; i++) {
     char label[80];
-    if (glgame->roster_row_is_anon(i)) {
+    if (glgame->roster_row_is_exit(i)) {
+      // The way out, as a row — see GLGame::roster_row_is_exit.
+      snprintf(label, sizeof label, "BACK");
+    } else if (glgame->roster_row_is_anon(i)) {
       // Who may take the seats that are still empty. Checked before the
       // ADD row: online there is no ADD row, and this one sits where it
       // would have been.
@@ -694,10 +697,16 @@ void Overlay::seat_roster(const GLGame *glgame) {
   // statement of what two labels already said. The offline keeps its two —
   // input cycling and press-to-claim have nothing on the row to show them.
   if (!hosting) {
-    Typer::draw_centered(0, -120, "LEFT / RIGHT   CHANGE INPUT", 8);
-    Typer::draw_centered(0, -145, "UNUSED PAD: PRESS ANY BUTTON TO TAKE THIS SEAT", 8);
+    // Anchored under the LAST row, not at a fixed y: the list grew by the
+    // exit row, and a fixed anchor would print these through it at four
+    // seats. One definition of the row pitch, used by both.
+    float below = 90 - (rows - 1) * 44 - 45;
+    Typer::draw_centered(0, below, "LEFT / RIGHT   CHANGE INPUT", 8);
+    Typer::draw_centered(0, below - 25, "UNUSED PAD: PRESS ANY BUTTON TO TAKE THIS SEAT", 8);
   }
-  Typer::draw_centered(0, -170, "ESC   BACK", 8);
+  // (No "ESC BACK" line: the exit is the last ROW now — a key spelled out
+  // under a list whose every other row is picked with the cursor was the
+  // one way out the cursor could not reach. Esc still steps back.)
 }
 
 

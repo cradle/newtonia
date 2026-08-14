@@ -258,6 +258,9 @@ private:
   // room's row of the same name; both write Preferences::allow_anonymous.
   bool roster_has_anon_row() const;
   bool roster_row_is_anon(int row) const;
+  // The trailing BACK row — the way out as a selectable row rather than an
+  // "ESC BACK" hint the cursor could not reach.
+  bool roster_row_is_exit(int row) const;
   // Removing needs a deliberate second press — one stray confirm should not
   // end someone's game. -1 = nothing armed; otherwise the armed row.
   int roster_kick_armed_ = -1;
