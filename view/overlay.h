@@ -71,6 +71,9 @@ private:
   // meet where a viewport owns the window's centre column.
   static bool room_line_shown(const GLGame *glgame);
   static float room_line_drop(const GLGame *glgame);
+  // Where the centre banner-spot text goes: vh*0.55 normally, the header
+  // spot while room_line_drop has the countdowns occupying that band.
+  static float banner_spot_y(const GLGame *glgame);
   static void god_mode(const GLGame *glgame, const GLShip *glship);
   static void time_slow(const GLGame *glgame, const GLShip *glship);
   static void edge_indicators(const GLGame *glgame, const GLShip *glship);
