@@ -29,7 +29,10 @@ export NEWTONIA_SIGNAL_URL="ws://127.0.0.1:$PORT/ws"
   exec npx wrangler@4 dev --local --port "$PORT" --var FAKE_VERIFY:1 ) \
   > /tmp/tick_wrangler.log 2>&1 &
 WPID=$!
-trap 'kill $WPID 2>/dev/null' EXIT
+# kill_tree, not a bare kill: TERMing the npx wrapper leaves its node/
+# workerd children orphaned and holding the port (lib.sh). The plain-kill
+# fallback covers an exit before lib.sh is sourced (the relay-died path).
+trap 'kill_tree $WPID 2>/dev/null || kill $WPID 2>/dev/null' EXIT
 echo "== starting FAKE_VERIFY relay on :$PORT (pid $WPID)"
 for i in $(seq 1 90); do
   curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break

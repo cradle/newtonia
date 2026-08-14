@@ -153,7 +153,13 @@ stop_relay() {
   for p in $tree; do kill -9 "$p" 2>/dev/null; done
   RELAY_PID=""
 }
-trap stop_relay EXIT
+# Reap driver-owned workers too, not just our relay: kill_driver_workers
+# only runs between FAILED attempts, so a PASSING self-hosting driver that
+# leaked its wrangler tree (they trap kill_tree now, but a SIGKILLed or
+# future driver may not) would otherwise outlive the whole shard on a dev
+# machine — the old blanket `pkill -x workerd` used to hide this. Workers
+# first, while RELAY_PID still identifies the relay tree to spare.
+trap 'kill_driver_workers; stop_relay' EXIT
 
 # xdotool prints "XGetInputFocus returned the focused window of 1" for every
 # single keystroke, so an unfiltered tail of a driver log is 25 lines of that
