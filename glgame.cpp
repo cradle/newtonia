@@ -7705,6 +7705,11 @@ void GLGame::tick(int delta) {
   {
     static int test_kill_ms[2] = {-2, -2};
     static int test_kill_who[2] = {1, 1};  // 0 local, 1 remote, 2 all, <0 seat
+    // A bad WHO spec parks the slot here: no firing path — timer OR file —
+    // may use it. Distinct from every live code (force_out would read an
+    // unknown positive as "everyone", the exact quiet misfire the
+    // validation exists to prevent).
+    static const int kTestKillDisabled = 3;
     if (test_kill_ms[0] == -2) {
       const char *ms_var[2] = {"NEWTONIA_NET_TEST_KILL_MS",
                                "NEWTONIA_NET_TEST_KILL2_MS"};
@@ -7731,6 +7736,11 @@ void GLGame::tick(int delta) {
             NET_LOG("net: TEST bad KILL WHO '%s' - firing disabled\n",
                     w.c_str());
             test_kill_ms[k] = -1;
+            // ...and the WHO itself: the file trigger below fires
+            // test_kill_who[0] without consulting the timer, so zeroing
+            // only the ms left it firing the DEFAULT (remote) — not what
+            // the driver named, and not disabled either.
+            test_kill_who[k] = kTestKillDisabled;
           }
         } else {
           test_kill_who[k] = 1;
@@ -7738,6 +7748,7 @@ void GLGame::tick(int delta) {
       }
     }
     auto force_out = [&](int who) {
+      if (who == kTestKillDisabled) return;  // parked by a bad WHO spec
       if (who < 0)
         NET_LOG("net: TEST forcing seat %d out of lives\n", -who);
       else
@@ -7779,7 +7790,12 @@ void GLGame::tick(int delta) {
     if (test_kill_file_state == -2) {
       const char *f = getenv("NEWTONIA_NET_TEST_KILL_FILE");
       test_kill_file = f ? f : "";
-      test_kill_file_state = test_kill_file.empty() ? -1 : 1;
+      // A bad KILL_WHO disables this trigger too (the parse above already
+      // logged it): it fires test_kill_who[0], and arming it anyway would
+      // kill the default target instead of the seat the driver named.
+      test_kill_file_state =
+          (test_kill_file.empty() || test_kill_who[0] == kTestKillDisabled)
+              ? -1 : 1;
     }
     if (test_kill_file_state == 1) {
       test_kill_file_poll -= delta;
