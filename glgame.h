@@ -287,12 +287,12 @@ private:
   int roster_selection_ = 0;
   // True when the pause menu is on screen AND owns navigation input. Touch
   // is excluded: it draws no cursor anywhere and already has both actions
-  // (the pause button resumes, the RETURN TO MENU band leaves).
+  // (the pause button resumes, the EXIT TO MENU band leaves).
   bool pause_menu_active() const;
-  // A replay offers RETURN TO MENU from two different cards — see the
+  // A replay offers EXIT TO MENU from two different cards — see the
   // definition in glgame.cpp.
   bool replay_exit_offered() const;
-  // RESUME / RETURN TO MENU ladder in logical keys, shared by the keyboard
+  // RESUME / EXIT TO MENU ladder in logical keys, shared by the keyboard
   // and pad paths — the Menu::nav_input pattern, one decision path per
   // screen.
   void pause_nav(unsigned char key);
@@ -302,7 +302,7 @@ private:
   bool pad_may_command(SDL_JoystickID which) const;
   // Every screen whose only move is "leave" — the GAME OVER card, the
   // terminal disconnect card, a finished replay — draws the shared
-  // RETURN TO MENU row, so all of them answer like a menu: confirm
+  // EXIT TO MENU row, so all of them answer like a menu: confirm
   // (fire/Enter/A/Start/RT) or back (Esc/B/Back), and nothing else. Taking
   // ANY key, as they each used to, meant a stray press ate the score
   // screen. Takes a key already through nav_key/nav_key_from_controller.
@@ -846,7 +846,7 @@ private:
   // exits — so pause_menu_active() refuses too, or the pause menu draws
   // live-looking rows over input the card is swallowing (the host pausing
   // and then leaving handed the client a highlighted RESUME and a second
-  // RETURN TO MENU that answered nothing; field, 2026-08-07). One
+  // EXIT TO MENU that answered nothing; field, 2026-08-07). One
   // predicate for the input handlers and the overlay — net_overlays keys
   // its host-notice branch off it too — like pause_menu_active itself.
   bool net_card_owns_input() const {

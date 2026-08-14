@@ -1162,7 +1162,7 @@ void GLGame::toggle_pause(bool broadcast) {
   if (running && all_players_out()) return;
   running = !running;
   // The pause menu always opens on RESUME: leaving the highlight where the
-  // last pause left it would put RETURN TO MENU under a reflexive confirm.
+  // last pause left it would put EXIT TO MENU under a reflexive confirm.
   // The roster closes with the pause screen for the same reason — every
   // pause opens on the same screen, however the last one ended.
   if (!running) pause_selection_ = PAUSE_RESUME;
@@ -1208,7 +1208,7 @@ void GLGame::toggle_pause(bool broadcast) {
 // (REPLAY ENDED — an abandoned run, or one whose tail never made it to
 // disk). Only the first used to answer a confirm, so Enter on a REPLAY
 // ENDED card did nothing at all and Esc was the sole way out — a row that
-// says RETURN TO MENU and ignores Enter (field, 2026-07-29). Nothing needs
+// says EXIT TO MENU and ignores Enter (field, 2026-07-29). Nothing needs
 // protecting once the records are exhausted: the world is frozen and
 // there is nothing left to watch.
 bool GLGame::replay_exit_offered() const {
@@ -1227,15 +1227,15 @@ bool GLGame::pause_menu_active() const {
   // Nothing left to resume — the GAME OVER card owns the screen.
   if (all_players_out()) return false;
   // The connection-lost card owns input (keyboard_up/controller return
-  // before the pause ladder, answering only the card's own RETURN TO MENU
+  // before the pause ladder, answering only the card's own EXIT TO MENU
   // row), so the menu must not be drawn under it. Without this, the host
   // pausing and then leaving showed the client a highlighted RESUME over
-  // a second RETURN TO MENU, and neither answered (field, 2026-08-07).
+  // a second EXIT TO MENU, and neither answered (field, 2026-08-07).
   if (net_card_owns_input()) return false;
   // A paused REPLAY gets the menu too. It used to be excluded — "a replay's
   // pause is a playback control, not a menu" — but the overlay draws the
   // two rows from `!running` alone, so a paused replay showed RESUME
-  // highlighted and RETURN TO MENU under it and answered neither: only ESC
+  // highlighted and EXIT TO MENU under it and answered neither: only ESC
   // did anything (field, 2026-07-29). Drawn and interactive have to agree,
   // and both rows mean something here — the recording resumes, or you leave
   // it. `pause_nav`'s exit is safe: `save_progress` no-ops for any net mode
@@ -1362,7 +1362,7 @@ int GLGame::roster_row_count() const {
 // key spelled out under a list whose every other row is picked with the
 // cursor, and the only way out the cursor could not reach. It is a row now,
 // doing what Esc does — step back to the pause menu (which is where the
-// game's own RETURN TO MENU lives, one row away). Esc still works.
+// game's own EXIT TO MENU lives, one row away). Esc still works.
 bool GLGame::roster_row_is_exit(int row) const {
   return row == roster_row_count() - 1;
 }
@@ -1575,7 +1575,7 @@ bool GLGame::pad_may_command(SDL_JoystickID which) const {
 
 bool GLGame::back_pressed() {
   // Online, back is not a quit — same rule as the Esc key and pad BACK:
-  // it opens the pause screen (touch keeps its RETURN TO MENU band, the
+  // it opens the pause screen (touch keeps its EXIT TO MENU band, the
   // cursor platforms their pause menu) and closes it again, and leaving
   // is the deliberate pick on that screen. Offline and at game over the
   // old direct exit stands.
@@ -10371,7 +10371,7 @@ void GLGame::controller(SDL_Event event) {
       // auto-save, and banked an unfinished run's score, which the
       // keyboard path never did (field, 2026-08-08). And like that key,
       // online BACK opens/closes the pause menu instead of tearing down
-      // the room — the exit is the menu's RETURN TO MENU row.
+      // the room — the exit is the menu's EXIT TO MENU row.
       if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
           !all_players_out()) {
         toggle_pause();
@@ -10476,7 +10476,7 @@ bool GLGame::exit_band_showing() const {
 
 void GLGame::touch_tap(float nx, float ny) {
   if (!is_touch_mode()) return;
-  // Leaderboard prompt on the GAME OVER card: a tap on the RETURN TO MENU
+  // Leaderboard prompt on the GAME OVER card: a tap on the EXIT TO MENU
   // band still LEAVES (it is drawn under the prompt), and only taps
   // elsewhere answer YES (left half) / NO (right half) — the New-game
   // confirm's grammar. The arm delay (board_nav) rejects a tap already in
@@ -10502,7 +10502,7 @@ void GLGame::touch_tap(float nx, float ny) {
   }
   if (board_phase_ == BoardUploading && !exit_band().contains(nx, ny))
     return;
-  // The bottom strip is the RETURN TO MENU band the overlay labels (the
+  // The bottom strip is the EXIT TO MENU band the overlay labels (the
   // shared TapBand). It exits to the menu from every state that has no
   // other touch exit: GAME OVER, the pause screen, and — online — a
   // local ship that's fully out while the peer plays on.
@@ -11021,7 +11021,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       }
       return;
     }
-    // The disconnect card carries a RETURN TO MENU row, so it answers like
+    // The disconnect card carries a EXIT TO MENU row, so it answers like
     // every other menu: confirm activates the row, back leaves outright,
     // and nothing else does anything. Fire IS a confirm, so the touch
     // card's "TAP FIRE FOR MENU" still reads true. Only a key whose DOWN
@@ -11044,7 +11044,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   // gameplay/cheat key can touch the recorded world. After the recording's
   // game over, any key exits (mirrors the offline game-over flow).
   if (net_mode_ == NetReplay) {
-    // The finished-replay card draws the shared RETURN TO MENU row, so it
+    // The finished-replay card draws the shared EXIT TO MENU row, so it
     // answers like one; the menu key stays a direct shortcut mid-playback.
     if (key == (unsigned char)gk.menu ||
         (replay_exit_offered() && is_exit_key(nav_key(key)))) {
@@ -11167,7 +11167,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
     return;
   }
-  // The GAME OVER screen draws the shared RETURN TO MENU row, so it answers
+  // The GAME OVER screen draws the shared EXIT TO MENU row, so it answers
   // like one: confirm or back, never "any key" — a stray press used to eat
   // the score screen. The short delay still stops the last shoot input from
   // skipping it. The menu key keeps its own path below.
@@ -11192,9 +11192,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == (unsigned char)gk.menu) {
     // Online, Esc is not a quit: leaving mid-game tears down or abandons a
     // room other people are in, so the exit must be a chosen row, not a
-    // reflex key. Esc opens the pause menu (RESUME / RETURN TO MENU) and,
+    // reflex key. Esc opens the pause menu (RESUME / EXIT TO MENU) and,
     // with the menu already up, backs out of it — resume — like Esc on
-    // every other screen; RETURN TO MENU is the deliberate way out. Game
+    // every other screen; EXIT TO MENU is the deliberate way out. Game
     // over falls through: nothing is left to pause (toggle_pause would
     // refuse anyway) and Esc keeps meaning leave.
     if ((net_mode_ == NetHost || net_mode_ == NetClient) &&

@@ -165,7 +165,7 @@ void Overlay::replay_hud(const GLGame *glgame) {
     // would put it ABOVE the transport strip in portrait, inverting the
     // stack. to_bottom still carries its tap region to the screen edge.
     TapBand::return_to_menu.lifted(lift).draw(
-        Typer::cursored("RETURN TO MENU", true).c_str(), now);
+        Typer::cursored("EXIT TO MENU", true).c_str(), now);
   } else {
     bool has_ctrl = false;
     int nc = SDL_NumJoysticks();
@@ -187,7 +187,7 @@ void Overlay::replay_hud(const GLGame *glgame) {
     // The exit affordance every other end-state uses; touch has the band
     // above (replay_hud draws it unconditionally).
     if (!is_touch_mode())
-      MenuSelect::draw_row(-100, "RETURN TO MENU", 16, true);
+      MenuSelect::draw_row(-100, "EXIT TO MENU", 16, true);
   }
 }
 
@@ -244,17 +244,17 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // screen. One shared card for both roles; the 3 s guard in the input
     // handlers still stops a mid-fight trigger from skipping it.
     // When a leaderboard flow is live, board_prompt() owns the ENTIRE
-    // game-over card (heading + prompt/result + its own RETURN TO MENU
+    // game-over card (heading + prompt/result + its own EXIT TO MENU
     // row), in every mode — so this online card cedes it completely to
     // avoid drawing GAME OVER (and the row) twice.
     if (glgame->board_phase_ != GLGame::BoardOff) return;
     Typer::draw_centered(0, 60, "GAME OVER", 34);
     // Every screen whose only move is "leave" says so the same way: the
-    // shared RETURN TO MENU row, answered by confirm or back. Touch draws
+    // shared EXIT TO MENU row, answered by confirm or back. Touch draws
     // no cursor and already has the tap band under this card (title_text
     // shows it whenever the game is over), so the row would just repeat it.
     if (!is_touch_mode())
-      MenuSelect::draw_row(-80, "RETURN TO MENU", 16, true);
+      MenuSelect::draw_row(-80, "EXIT TO MENU", 16, true);
     return;
   }
 
@@ -310,7 +310,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // agree): the terminal card's shared row, same spot. Touch draws no
     // cursor and has the exit band instead.
     if (!is_touch_mode())
-      MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
+      MenuSelect::draw_row(-130, "EXIT TO MENU", 16, true);
   } else if (glgame->net_all_peers_lost()) {
     if (glgame->net_kicked_) {
       // Checked before the BYE wording (a kick sets both): the player was
@@ -334,7 +334,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
       Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     }
     // y=-130: clear of where the pause overlay's menu rows sit (RESUME at
-    // -42, RETURN TO MENU at -80, glyphs reaching ~-106). Those rows are
+    // -42, EXIT TO MENU at -80, glyphs reaching ~-106). Those rows are
     // never drawn beside this card any more — pause_menu_active() refuses
     // while the card owns input, so a loss landing on a paused game keeps
     // the "Paused" heading but not the menu under it (the host pausing and
@@ -346,7 +346,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // alert. Touch draws no cursor and takes the tap band instead, which
     // title_text now shows on a lost link like it does at game over.
     if (!is_touch_mode())
-      MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
+      MenuSelect::draw_row(-130, "EXIT TO MENU", 16, true);
   } else if (glgame->net_banner_ms_ > 0) {
     // A header banner ("<NAME> RECONNECTED") takes the DISCONNECTED
     // header's exact position and size, so the notice swaps in place
@@ -576,7 +576,7 @@ void Overlay::paused(const GLGame *glgame) {
   Typer::draw_centered(0, 30, "Paused", 25);
   if(is_touch_mode()) {
     // Touch has no cursor on any screen: the pause button resumes and the
-    // RETURN TO MENU band below leaves.
+    // EXIT TO MENU band below leaves.
     Typer::draw_centered(0, -40, "press play to resume", 8);
     return;
   }
@@ -591,7 +591,7 @@ void Overlay::paused(const GLGame *glgame) {
   // pause_row_count/pause_row_at, so they can't disagree about what row 1 is.
   int rows = glgame->pause_row_count();
   for (int i = 0; i < rows; i++) {
-    const char *label = "RETURN TO MENU";
+    const char *label = "EXIT TO MENU";
     switch (glgame->pause_row_at(i)) {
       case GLGame::PAUSE_RESUME:  label = "RESUME"; break;
       case GLGame::PAUSE_PLAYERS: label = "PLAYERS"; break;
@@ -892,7 +892,7 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
 void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (!glgame->net_active()) return;
-  // Bottom rows like the SPECTATING hint, clear of the touch RETURN TO MENU
+  // Bottom rows like the SPECTATING hint, clear of the touch EXIT TO MENU
   // band and the title-safe margin; hoisted whenever that band is up —
   // spectating (the camera is on the peer, exactly when the tag matters
   // most), but also the touch pause / game-over / connection-lost states:
@@ -900,7 +900,7 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   // vhb+168 (-432..-454) would print straight through it. The hoist must
   // clear the WHOLE band, not just its label: the band's glyph box tops
   // out ~-370 (anchor -420, size 13, pad 50, to_bottom below), and the old
-  // +175 spot printed the badge exactly on the band's RETURN TO MENU text
+  // +175 spot printed the badge exactly on the band's EXIT TO MENU text
   // (field: iPhone, 2026-07-24). +255 sits above the band's reach with air
   // to spare (portrait's vhb+215 re-anchor stays clear too).
   float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
@@ -1004,7 +1004,7 @@ void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
     Typer::draw_centered(0, 120, "GAME OVER", 30);
     Typer::draw_centered(0, 20, buf, 18);
   } else if (glgame->is_spectating()) {
-    // Bottom of the viewport, clear of the touch RETURN TO MENU band.
+    // Bottom of the viewport, clear of the touch EXIT TO MENU band.
     float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
     Typer::draw_centered(0, vhb + 130, "SPECTATING", 16);
   }
@@ -1021,7 +1021,7 @@ void Overlay::board_prompt(const GLGame *glgame) {
   // From here on this overlay OWNS the whole game-over card in every mode
   // (net_overlays and the offline respawn/title cards all stand down while
   // board_phase_ is active), so it draws its own GAME OVER heading and its
-  // own RETURN TO MENU row — everything on ONE spaced layout, no collision
+  // own EXIT TO MENU row — everything on ONE spaced layout, no collision
   // with the per-mode cards.
   glViewport(0, 0, glgame->window.x(), glgame->window.y());
   float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
@@ -1070,7 +1070,7 @@ void Overlay::board_prompt(const GLGame *glgame) {
                          11);
     return;
   }
-  // Terminal phases: a result line, then the RETURN TO MENU row (this
+  // Terminal phases: a result line, then the EXIT TO MENU row (this
   // overlay owns it now — the per-mode cards have stood down).
   if (glgame->board_phase_ == GLGame::BoardPlaced) {
     char line[48];
@@ -1089,10 +1089,10 @@ void Overlay::board_prompt(const GLGame *glgame) {
     else if (r == "connection") msg = "UPLOAD FAILED - CONNECTION";
     Typer::draw_centered(0, 40, msg, 14);
   }
-  // Touch already has the RETURN TO MENU tap band under the card (title_text
+  // Touch already has the EXIT TO MENU tap band under the card (title_text
   // draws it whenever the game is over); desktop/controller get the row.
   if (!touch)
-    MenuSelect::draw_row(-60, "RETURN TO MENU", 16, true);
+    MenuSelect::draw_row(-60, "EXIT TO MENU", 16, true);
 }
 
 // Human-readable name of a bound key for HUD hints (F-keys arrive as
@@ -1193,9 +1193,9 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       // 60 over the row at -80): draw_respawn_timer's 20x viewport puts
       // "GameOver" at y 80..0 and the score at -20..-60 in this space, so
       // -100 clears both. Suppressed while a leaderboard flow owns the
-      // card (board_prompt draws its own heading + RETURN TO MENU row).
+      // card (board_prompt draws its own heading + EXIT TO MENU row).
       if (glgame->board_phase_ == GLGame::BoardOff)
-        MenuSelect::draw_row(-100, "RETURN TO MENU", 16, true);
+        MenuSelect::draw_row(-100, "EXIT TO MENU", 16, true);
     }
   } else {
     // Keep these clear of the bottom edge: Typer glyphs extend ~2x the
@@ -1240,7 +1240,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // exit_band_showing() is that rule, shared with the badge rows' hoist.
   if(glgame->exit_band_showing())
     glgame->exit_band().draw(
-        Typer::cursored("RETURN TO MENU", true).c_str(),
+        Typer::cursored("EXIT TO MENU", true).c_str(),
         glgame->current_time);
 }
 

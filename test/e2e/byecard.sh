@@ -1,7 +1,7 @@
 #!/bin/bash
 # The terminal disconnect card answers like a menu, not like any key.
 # A hosts over LAN, B joins, then A leaves to the menu — a deliberate BYE,
-# so B has nothing to rejoin and gets the RETURN TO MENU card. Verdict:
+# so B has nothing to rejoin and gets the EXIT TO MENU card. Verdict:
 # a plain movement key must NOT drop B out of the game, and a confirm
 # must. Prints BYECARD-E2E-OK on success.
 set -u
@@ -37,7 +37,7 @@ wait_log "$OUT/joiner.log" "bootstrap adopted" 25 || { kill $PA $PB; exit 1; }
 echo "== paired up over LAN"
 
 # The host leaves deliberately: online Esc opens the pause menu (pausing
-# the joiner too), and RETURN TO MENU sends the BYE and closes the room,
+# the joiner too), and EXIT TO MENU sends the BYE and closes the room,
 # so the joiner's card is the terminal one (no auto-rejoin). s clamps past
 # the end — three presses land the last row of the host's 3-row menu.
 key $WA Escape; sleep 1

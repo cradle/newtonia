@@ -29,7 +29,7 @@ alive $PA host
 
 echo "== host quits via the pause menu (teardown clears the join)"
 # The loss auto-paused the host awaiting the rejoin, so the pause menu is
-# ALREADY up — Esc would resume, not quit. Navigate to RETURN TO MENU
+# ALREADY up — Esc would resume, not quit. Navigate to EXIT TO MENU
 # (s clamps past the end of the 3-row menu).
 key $A s; key $A s; key $A s; key $A Return; sleep 3
 alive $PA host

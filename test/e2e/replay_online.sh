@@ -134,7 +134,7 @@ echo "joiner deltas $JOIN_D1 -> $JOIN_D2, host deltas $HOST_D1 -> $HOST_D2"
 
 echo "===== S3: clean abandons -> patched headers, files left for the sweep"
 # Online, Esc is not a quit: it opens the shared pause menu (pausing BOTH
-# sides), and the deliberate exit is its RETURN TO MENU row. s clamps past
+# sides), and the deliberate exit is its EXIT TO MENU row. s clamps past
 # the end, so three presses land the last row on the joiner's 2-row menu
 # and the host's 3-row (PLAYERS) menu alike.
 key $B Escape; sleep 1

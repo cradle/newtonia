@@ -6,9 +6,9 @@
 # every click in the bottom fifth of the window and left the room.
 #
 # Asserts, in the order the failures bit:
-#   1. a click low on the screen, well under the RETURN TO MENU text, does
+#   1. a click low on the screen, well under the EXIT TO MENU text, does
 #      NOT leave (the room is still up afterwards);
-#   2. a click on the drawn RETURN TO MENU text still does;
+#   2. a click on the drawn EXIT TO MENU text still does;
 #   3. a click on the "ENTER - START GAME" row starts the game.
 #
 # A 4-seat room with one joiner never auto-starts, which is what keeps the
