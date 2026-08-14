@@ -7832,6 +7832,36 @@ void GLGame::tick(int delta) {
         revive_fallen_partner(NULL);
       }
     }
+    // ...and the FILE spelling of the same hook (the KILL_FILE pattern):
+    // the phase before the revive has no fixed length — revive.sh sprays
+    // until the drop actually LANDS — so a timer generous enough for the
+    // slow case parked the host in a dense gen-4 field for ~50 s in the
+    // fast one, where it was rammed out of its own lives and the timed
+    // revive arrived to a finished game (CI, 2026-08-14; blind defensive
+    // fire did not save it — gen 4 fields include invisible rocks). The
+    // driver touches the file the moment the drop lands instead. Fires
+    // once; polled 4x/s and only while the var is set.
+    static std::string test_revive_file;
+    static int test_revive_file_state = -2;  // -2 unread, -1 off, 1 armed
+    static int test_revive_file_poll = 0;
+    if (test_revive_file_state == -2) {
+      const char *f = getenv("NEWTONIA_NET_TEST_REVIVE_FILE");
+      test_revive_file = f ? f : "";
+      test_revive_file_state = test_revive_file.empty() ? -1 : 1;
+    }
+    if (test_revive_file_state == 1) {
+      test_revive_file_poll -= delta;
+      if (test_revive_file_poll <= 0) {
+        test_revive_file_poll = 250;
+        FILE *fp = fopen(test_revive_file.c_str(), "rb");
+        if (fp) {
+          fclose(fp);
+          test_revive_file_state = -1;
+          NET_LOG("net: TEST applying revive\n");
+          revive_fallen_partner(NULL);
+        }
+      }
+    }
     // Spawn a real RevivePickup on a LIVING player so the ordinary
     // collision/collection path runs — the full field flow, minus the
     // random drop roll. NEWTONIA_NET_TEST_REVIVE_DROP_DIST offsets the
