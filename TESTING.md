@@ -344,8 +344,10 @@ test/e2e/missile_net.sh # client-fired deploys (host launches with
                      # secondary presses like it queues primary ones.
 test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
 test/e2e/fourplayer.sh # local 3-4P (FOURPLAYER.md): grid runs, Enter-join cap, 4P save/resume
-                     # + the NEWTONIA_NET_TEST_REVIVE_MS payload hook -> the
-                     # fallen joiner leaves spectate and respawns, no GAME OVER
+                     # + the NEWTONIA_NET_TEST_REVIVE_FILE payload hook (touch
+                     # -> revive; the timed _MS twin remains for staggered
+                     # setups) -> the fallen joiner leaves spectate and
+                     # respawns, no GAME OVER
 test/e2e/gensoak.sh  # late-gen soak: host skips online to gen 25 (black hole,
                      # mini-station, gen-20 station/enemies, world growth) with
                      # per-gen liveness + no-drop + clean-log asserts
@@ -648,7 +650,9 @@ clean log.
 `_WHO` also takes `seatN` (a specific seat, by its wire seat number), and a
 SECOND firing exists — `NEWTONIA_NET_TEST_KILL2_MS`/`_WHO2` — so a driver can
 **stagger** deaths. That is what makes the revive queue testable: pair it with
-`NEWTONIA_NET_TEST_REVIVE_MS` and check the `revive - player N respawning
+`NEWTONIA_NET_TEST_REVIVE_MS` (or `NEWTONIA_NET_TEST_REVIVE_FILE`, the
+touch-a-file spelling revive.sh uses so the revive fires the moment its drop
+lands instead of after a fixed idle wait) and check the `revive - player N respawning
 (out order M)` log line. Emptying seat 3 before seat 2 and then reviving must
 name player 3 — whoever has been out longest, not the lowest seat (a
 simultaneous wipe stamps seats in order, so it can't tell the two rules

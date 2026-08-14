@@ -4,7 +4,7 @@
 # spin-fires into the rocks — while a partner is fully out, every asteroid
 # kill rolls 10% for a REVIVE pickup (one in the world at a time), so a
 # spray burst must produce "revive pickup dropped". Then the
-# NEWTONIA_NET_TEST_REVIVE_MS hook applies the revive payload (the
+# NEWTONIA_NET_TEST_REVIVE_FILE hook applies the revive payload (the
 # collection effect without blind-navigating onto a pickup): the joiner's
 # ship gets its last life back, its spectate ends, and no GAME OVER shows.
 # Prints REVIVE-E2E-OK on success. See TESTING.md.
@@ -15,7 +15,7 @@ fi
 . "$(dirname "$0")/lib.sh"
 relay_check
 
-# Joiner out at 20 s (post-connect), revive applied at 75 s.
+# Joiner out at 20 s (post-connect), revive applied when the driver says so.
 #
 # NEWTONIA_ALL_WEAPONS on the HOST is what makes the drop below reliable
 # rather than a coin flip. The roll is 10% per ASTEROID DEATH, so the driver
@@ -29,8 +29,17 @@ relay_check
 # (missile_net.sh does the same); the cheat flag only suppresses
 # achievements and lifetime stats, and the drop gate below is per-death and
 # weapon-blind.
+# The revive fires on a FILE touch, not a timer: the spray below runs until
+# the drop actually lands, so its length has no fixed bound — and a timer
+# generous enough for the slow case (the old 90 s) parked the host in a
+# dense gen-4 field for ~50 s in the fast one, where it was rammed out of
+# its OWN lives and the timed revive arrived to a finished game (both CI
+# attempts, 2026-08-14; blind defensive fire didn't save it — gen 4 fields
+# include invisible rocks). Touching the file the moment the drop lands
+# shrinks the exposed idle window to under a second.
+REVIVE_GO="$OUT/revive.go"; rm -f "$REVIVE_GO"
 PA=$(NEWTONIA_NET_TEST_KILL_MS=20000 NEWTONIA_NET_TEST_KILL_WHO=remote \
-     NEWTONIA_NET_TEST_REVIVE_MS=90000 NEWTONIA_ALL_WEAPONS=1 launch host)
+     NEWTONIA_NET_TEST_REVIVE_FILE="$REVIVE_GO" NEWTONIA_ALL_WEAPONS=1 launch host)
 sleep 2
 PB=$(launch joiner)
 sleep 4
@@ -105,8 +114,9 @@ grep -aq "revive pickup dropped" "$OUT/host.log" && DROPPED=1
 # repeat across generations. The in-world cap is the inline pickup-list
 # scan in the drop gate — structurally per-kill, same pickup list.)
 
-echo "== waiting for the revive hook (90 s mark)"
-for i in $(seq 1 70); do
+echo "== triggering the revive hook"
+touch "$REVIVE_GO"
+for i in $(seq 1 30); do
   grep -aq "TEST applying revive" "$OUT/host.log" && break; sleep 1
 done
 grep -aq "TEST applying revive" "$OUT/host.log" || {
@@ -118,12 +128,18 @@ grep -aq "revive - player .* respawning" "$OUT/host.log" || {
 # own ship, respawn countdown, then the alive-transition) and NO GAME OVER.
 echo "== joiner should leave spectate"
 for i in $(seq 1 15); do
-  grep -aq "spectate ended" "$OUT/joiner.log" && break; sleep 1
+  grep -aq "spectate ended" "$OUT/joiner.log" && break
+  grep -aq "game over" "$OUT/joiner.log" && break   # fail fast, named below
+  sleep 1
 done
+# Game over outranks the spectate check as a diagnosis: it is how "the host
+# died waiting" presents on the joiner, and reporting it as a spectate
+# failure sent the investigation to the wrong end of the link.
+grep -aq "game over" "$OUT/joiner.log" && {
+  echo "FAIL: game ended before the revive took effect (host out of lives?)"
+  kill $PA $PB; exit 1; }
 grep -aq "spectate ended" "$OUT/joiner.log" || {
   echo "FAIL: joiner never left spectate after the revive"; kill $PA $PB; exit 1; }
-grep -aq "game over" "$OUT/joiner.log" && {
-  echo "FAIL: joiner hit game over across the revive"; kill $PA $PB; exit 1; }
 sleep 6   # respawn countdown runs out; ship comes back via alive-transition
 alive $PA host; alive $PB joiner
 shot $B revive-joiner; shot $A revive-host
