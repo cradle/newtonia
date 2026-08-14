@@ -341,7 +341,7 @@ exists) and the confirm dispatch moved from "last row = options" to
 explicit `options_row_index()`/`replays_row_index()` helpers. The list
 screen follows the options screen's layout grammar: desktop shows a cursor
 row per file with SCORE / LEVEL / date columns, touch reuses the options
-band geometry (tap a run to watch it, RETURN TO MENU band exits), and the
+band geometry (tap a run to watch it, EXIT TO MENU band exits), and the
 shared nav translator gives the controller w/s/confirm/back for free.
 `scan_replays()` re-reads the three headers on every menu build and list
 open, so the rows always match disk; a file the build can't parse renders
@@ -350,7 +350,7 @@ underneath (rotated/deleted) rescans instead of crashing. Selecting a row
 hands the state to `start_replay_playback` (R2); Esc from playback lands
 back on the menu. Exit criteria enforced by `test/e2e/replay_menu.sh`.
 Playback gained on-screen controls: touch gets real tap targets (SLOWER |
-PAUSE/RESUME | FASTER stacked above the labeled RETURN TO MENU band, the
+PAUSE/RESUME | FASTER stacked above the labeled EXIT TO MENU band, the
 TapBand one-definition rule), desktop/controller a dim hint line above the
 timeline built from the live bindings ("P PAUSE  =/- SPEED  ESC MENU" /
 "START PAUSE  B MENU"). The whole touch stack — watermark, timeline, the

@@ -74,7 +74,7 @@ static bool room_is_dead(const std::string &code) {
 static bool s_join_force_relay = false;
 
 // Lobby tap bands — one definition each for the drawn label AND the
-// touch hit-test (view/tap_band.h). The bottom RETURN TO MENU strip is
+// touch hit-test (view/tap_band.h). The bottom EXIT TO MENU strip is
 // the shared TapBand::return_to_menu.
 // CodeEntry: the soft keyboard buries the bottom exit strip, so the way
 // out lives top-right beside the hoisted header.
@@ -2484,7 +2484,7 @@ void NetLobby::draw() {
       if (is_touch_mode()) {
         // The soft keyboard covers the lower half of the screen — stack
         // the heading, code and hint in the top half under the hoisted
-        // header, with generous spacing. The RETURN TO MENU band at the
+        // header, with generous spacing. The EXIT TO MENU band at the
         // bottom is under the keyboard here, so the exit lives in the TOP
         // RIGHT instead (see touch_tap) — the centre of the top strip is
         // the ONLINE CO-OP header.
@@ -2582,7 +2582,7 @@ void NetLobby::draw() {
           // walking down off the grid's last row highlights them, A
           // joins, B backs out (see controller()).
           // Between the picker's second row (bottoms ~ -248) and the
-          // RETURN TO MENU band text at -420.
+          // EXIT TO MENU band text at -420.
           const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
           int show = lan_rows_shown();
           if (show > 0) {
@@ -2824,7 +2824,7 @@ void NetLobby::draw() {
   }
 
   // (The joiner waiting screens used to add a CANCEL band above the
-  // return band; both exits stacked read as clutter — RETURN TO MENU is
+  // return band; both exits stacked read as clutter — EXIT TO MENU is
   // the one universal exit, and an empty join screen is two taps away.)
 
   // The rejoin wait's persistent heading + countdown already say
@@ -2876,7 +2876,7 @@ void NetLobby::draw() {
        host_row_kind(host_row_selected()) == HostRowExit);
   TapBand::return_to_menu.draw(
       is_touch_mode()
-          ? Typer::cursored("RETURN TO MENU", true).c_str()
+          ? Typer::cursored("EXIT TO MENU", true).c_str()
           : Typer::cursored("BACK TO MENU", band_armed).c_str(),
       currentTime);
 }
@@ -3302,7 +3302,7 @@ int NetLobby::list_row_at(float ny) const {
 }
 
 void NetLobby::touch_tap(float nx, float ny) {
-  // Bottom strip on every screen = RETURN TO MENU. for_pointer() is what
+  // Bottom strip on every screen = EXIT TO MENU. for_pointer() is what
   // keeps a MOUSE click honest: the band runs to the bottom edge with a
   // finger's padding, which off touch made the lowest ~19% of the window
   // an exit — clicking below the roster left the room (field, 2026-08-13).

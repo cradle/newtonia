@@ -1307,7 +1307,7 @@ reproducible with the Xvfb pattern from §4:
 - **REPLAY ENDED (records ran out, no game over).** Record a run and
   ABANDON it (Esc to menu) so the file ends without a death, then play it
   back (`NEWTONIA_REPLAY_PLAY=current`) and outrun the recording. The card
-  draws RETURN TO MENU; ENTER must return to the menu, not only ESC. Verify
+  draws EXIT TO MENU; ENTER must return to the menu, not only ESC. Verify
   by screenshot — the process stays alive either way, so liveness proves
   nothing here.
 - **Crash artifact header.** Play across a level boundary (a flush), then

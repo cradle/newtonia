@@ -78,8 +78,11 @@ grep -aq "RX watchdog" "$OUT/host2.log" && fail "spurious RX watchdog after paus
 
 # Quit to menu = deliberate teardown: the room is closed and both resume
 # files deleted (a bare app exit deliberately KEEPS them — an accidental
-# window close stays resumable like a crash).
-key $A Escape; sleep 3
+# window close stays resumable like a crash). Online Esc opens the pause
+# menu rather than quitting; EXIT TO MENU is the quit (s clamps, so
+# three presses land the last row).
+key $A Escape; sleep 1
+key $A s; key $A s; key $A s; key $A Return; sleep 3
 [ ! -f "$PREF_A/netplay_resume.dat" ] || fail "ticket survived quit-to-menu"
 [ ! -f "$PREF_A/online_savegame.dat" ] || fail "online save survived quit-to-menu"
 

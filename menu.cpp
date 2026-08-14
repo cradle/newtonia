@@ -165,7 +165,7 @@ static TapBand menu_exit_hit() { return menu_exit_band().for_pointer(); }
 
 // Options/replays row-band geometry — shared by the draw and the tap
 // hit-test so a tap always lands on the row it appears on. Touch rows fill
-// the band above the RETURN TO MENU strip; desktop rows run deeper (no exit
+// the band above the EXIT TO MENU strip; desktop rows run deeper (no exit
 // strip below) — and desktop taps are real input too: the Steam Deck's
 // touchscreen reaches the desktop build as pointer clicks (glut.cpp
 // forwards them as taps), so the desktop layout needs the same
@@ -618,7 +618,7 @@ void Menu::draw() {
     // MenuSelect::is_back, not a rebindable binding, and the row reads as
     // an action now, not a hint.
     menu_exit_band().draw(
-        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+        touch ? Typer::cursored("EXIT TO MENU", true).c_str()
               : Typer::cursored("BACK TO MENU",
                                 board_sel_ == board_entry_count() - 1)
                     .c_str(),
@@ -672,7 +672,7 @@ void Menu::draw() {
     // row (index == replay_rows_.size()), so keyboard/controller can walk
     // onto it and confirm out; Esc still exits from anywhere.
     menu_exit_band().draw(
-        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+        touch ? Typer::cursored("EXIT TO MENU", true).c_str()
               : Typer::cursored("BACK TO MENU",
                                 replay_sel_ == (int)replay_rows_.size())
                     .c_str(),
@@ -771,7 +771,7 @@ void Menu::draw() {
     // opt_row_count()); confirm on it closes, confirm on an option row
     // cycles that value (matching the touch tap).
     menu_exit_band().draw(
-        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+        touch ? Typer::cursored("EXIT TO MENU", true).c_str()
               : Typer::cursored("BACK TO MENU",
                                 active_row_ == opt_row_count())
                     .c_str(),

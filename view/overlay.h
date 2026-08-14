@@ -29,13 +29,13 @@ public:
   // leaderboard case, and its game-over card is not net_overlays. No-op
   // unless board_phase_ is active. When it owns the lower half (a live
   // prompt or an upload in flight, GLGame::board_prompt_active()) the
-  // GAME OVER cards suppress their own RETURN TO MENU row.
+  // GAME OVER cards suppress their own EXIT TO MENU row.
   static void board_prompt(const GLGame *glgame);
   // Replay playback chrome (REPLAY.md R2, one full-screen pass): REPLAY
   // watermark (+ speed when not 1x), elapsed/total timeline, the flashing
   // exit hint once the recording ends short of a game over.
   static void replay_hud(const GLGame *glgame);
-  // Pause title + RESUME/RETURN TO MENU menu. One full-window pass like
+  // Pause title + RESUME/EXIT TO MENU menu. One full-window pass like
   // net_overlays — one pause state, one cursor, one menu on screen, not a
   // copy per split-screen cell. Called from GLGame::draw, not draw().
   static void paused(const GLGame *glgame);
