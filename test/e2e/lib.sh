@@ -91,6 +91,28 @@ frame_delta() {
   esac
 }
 
+# kill_tree PID: take PID and every descendant down (TERM, then KILL).
+# For the workers a driver stands up for itself: killing just the npx
+# wrapper leaves the node/workerd children orphaned and holding the port
+# (the ci_shard.sh lesson — its relay teardown walks the tree for the same
+# reason). ci_shard's kill_driver_workers only sweeps between FAILED
+# attempts, so a passing driver's own EXIT trap is what keeps a local run
+# clean; in CI the leak only survived to the runner's orphan cleanup.
+kill_tree() {
+  local out="$1" frontier="$1" next p c
+  while [ -n "$frontier" ]; do
+    next=""
+    for p in $frontier; do
+      for c in $(pgrep -P "$p" 2>/dev/null); do next="$next $c"; out="$out $c"; done
+    done
+    frontier="$next"
+  done
+  for p in $out; do kill "$p" 2>/dev/null; done
+  sleep 0.5
+  for p in $out; do kill -9 "$p" 2>/dev/null; done
+  return 0
+}
+
 # newtonia_windows: window ids of all game instances, oldest first
 newtonia_windows() { xdotool search --name Newtonia | sort -n; }
 

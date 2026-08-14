@@ -54,7 +54,9 @@ done
 
 P=""
 REJECT_PID=""   # S5's dedicated reject-first worker
-trap 'kill -9 $P 2>/dev/null; [ -n "$WRANGLER_PID" ] && kill $WRANGLER_PID 2>/dev/null; [ -n "$REJECT_PID" ] && kill $REJECT_PID 2>/dev/null' EXIT
+# kill_tree, not a bare kill, for the workers: TERMing the npx wrapper
+# leaves its node/workerd children orphaned and holding the port (lib.sh).
+trap 'kill -9 $P 2>/dev/null; [ -n "$WRANGLER_PID" ] && kill_tree $WRANGLER_PID; [ -n "$REJECT_PID" ] && kill_tree $REJECT_PID' EXIT
 
 use_home() {
   export XDG_DATA_HOME="$OUT/xdg-$1"
