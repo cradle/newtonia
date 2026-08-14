@@ -1574,6 +1574,16 @@ bool GLGame::pad_may_command(SDL_JoystickID which) const {
 }
 
 bool GLGame::back_pressed() {
+  // Online, back is not a quit — same rule as the Esc key and pad BACK:
+  // it opens the pause screen (touch keeps its RETURN TO MENU band, the
+  // cursor platforms their pause menu) and closes it again, and leaving
+  // is the deliberate pick on that screen. Offline and at game over the
+  // old direct exit stands.
+  if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
+      !all_players_out()) {
+    toggle_pause();
+    return true;
+  }
   save_progress();
   request_state_change(new Menu());
   return true;
@@ -10359,9 +10369,16 @@ void GLGame::controller(SDL_Event event) {
       // first, then hand over. This used to bank only the HIGH SCORE: a
       // BACK during live play threw away all progress since the last
       // auto-save, and banked an unfinished run's score, which the
-      // keyboard path never did (field, 2026-08-08).
-      save_progress();
-      request_state_change(new Menu());
+      // keyboard path never did (field, 2026-08-08). And like that key,
+      // online BACK opens/closes the pause menu instead of tearing down
+      // the room — the exit is the menu's RETURN TO MENU row.
+      if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
+          !all_players_out()) {
+        toggle_pause();
+      } else {
+        save_progress();
+        request_state_change(new Menu());
+      }
     }
   }
 
@@ -11173,6 +11190,18 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
   if (key == (unsigned char)gk.menu) {
+    // Online, Esc is not a quit: leaving mid-game tears down or abandons a
+    // room other people are in, so the exit must be a chosen row, not a
+    // reflex key. Esc opens the pause menu (RESUME / RETURN TO MENU) and,
+    // with the menu already up, backs out of it — resume — like Esc on
+    // every other screen; RETURN TO MENU is the deliberate way out. Game
+    // over falls through: nothing is left to pause (toggle_pause would
+    // refuse anyway) and Esc keeps meaning leave.
+    if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
+        !all_players_out()) {
+      toggle_pause();
+      return;
+    }
     save_progress();
     request_state_change(new Menu());
   }
