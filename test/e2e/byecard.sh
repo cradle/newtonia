@@ -36,9 +36,12 @@ key $WB Down; key $WB Return
 wait_log "$OUT/joiner.log" "bootstrap adopted" 25 || { kill $PA $PB; exit 1; }
 echo "== paired up over LAN"
 
-# The host leaves deliberately: Esc from the game sends BYE and closes the
-# room, so the joiner's card is the terminal one (no auto-rejoin).
-key $WA Escape
+# The host leaves deliberately: online Esc opens the pause menu (pausing
+# the joiner too), and RETURN TO MENU sends the BYE and closes the room,
+# so the joiner's card is the terminal one (no auto-rejoin). s clamps past
+# the end — three presses land the last row of the host's 3-row menu.
+key $WA Escape; sleep 1
+key $WA s; key $WA s; key $WA s; key $WA Return
 sleep 4
 alive $PB joiner
 shot $WB byecard-card

@@ -27,8 +27,11 @@ echo "== SIGKILL joiner -> host should advertise joinable"
 kill -9 $PB; sleep 14
 alive $PA host
 
-echo "== host presses Esc -> return to menu (teardown clears the join)"
-key $A Escape; sleep 3
+echo "== host quits via the pause menu (teardown clears the join)"
+# The loss auto-paused the host awaiting the rejoin, so the pause menu is
+# ALREADY up — Esc would resume, not quit. Navigate to RETURN TO MENU
+# (s clamps past the end of the 3-row menu).
+key $A s; key $A s; key $A s; key $A Return; sleep 3
 alive $PA host
 
 kill $PA 2>/dev/null; wait $PA 2>/dev/null

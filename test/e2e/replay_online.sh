@@ -133,10 +133,18 @@ echo "joiner deltas $JOIN_D1 -> $JOIN_D2, host deltas $HOST_D1 -> $HOST_D2"
 [ "$HOST_D2" -gt "$HOST_D1" ] || { echo "HOST FILE DID NOT GROW"; exit 1; }
 
 echo "===== S3: clean abandons -> patched headers, files left for the sweep"
-key $B Escape; sleep 3
-kill -0 $PB 2>/dev/null || { echo "joiner died on Esc"; exit 1; }
-key $A Escape; sleep 3
-kill -0 $PA 2>/dev/null || { echo "host died on Esc"; exit 1; }
+# Online, Esc is not a quit: it opens the shared pause menu (pausing BOTH
+# sides), and the deliberate exit is its RETURN TO MENU row. s clamps past
+# the end, so three presses land the last row on the joiner's 2-row menu
+# and the host's 3-row (PLAYERS) menu alike.
+key $B Escape; sleep 1
+key $B s; key $B s; key $B s; key $B Return; sleep 3
+kill -0 $PB 2>/dev/null || { echo "joiner died on menu exit"; exit 1; }
+# The joiner's Esc already paused the host, and losing its last live peer
+# KEEPS that pause (the rejoin latch) — the menu is already up, so no Esc
+# here (with the menu open Esc means resume): navigate straight down.
+key $A s; key $A s; key $A s; key $A Return; sleep 3
+kill -0 $PA 2>/dev/null || { echo "host died on menu exit"; exit 1; }
 kill -9 $PA $PB 2>/dev/null; sleep 1
 
 for F in "$HOST_NRP" "$JOIN_NRP"; do
