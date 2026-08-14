@@ -626,7 +626,18 @@ export class Room {
     if (url.pathname === "/join") {
       // Joining is allowed while the host is in grace too: the joiner
       // waits and the reclaimed host's fresh offer is relayed on arrival.
-      if (!this.alive(now))
+      //
+      // Tombstone FIRST, before any socket-liveness heuristic: ws.close()
+      // is async, so the host socket expire("host-closed") just closed can
+      // linger in getWebSockets() for a beat — alive() then read a
+      // deliberately closed room as live and ACCEPTED the joiner into it,
+      // where they sat in silence (no host, no offer, and no err ever
+      // sent). The host said it left; no lingering socket outranks that.
+      // A fresh /host on the code resets closed, so this refuses nothing
+      // legitimately re-hosted. Caught by host_close_broadcast_test.mjs's
+      // late join, which lost this race twice in five runs on the loaded
+      // CI runners (2026-08-14) while passing everywhere locally.
+      if (this.r.closed || !this.alive(now))
         return this.reject_ws(this.r.closed ? "host-closed" : "no-such-room");
       if (this.joinerWss().length >= MAX_JOINERS)
         return this.reject_ws("room-full");
