@@ -57,6 +57,23 @@ done
 [ -n "$LOST" ] || room_fail "SEAT 3 LOSS NEVER DETECTED" host
 echo "seat 3 lost, door open"
 
+# Every remaining instance starts BEFORE the corpse exists. From the
+# moment the flapper dies, the corpse is racing its own ICE timeout and
+# the positive assertion has to reach it first; a process launch plus its
+# window wait is ~8 s of that budget each, spent here instead where it
+# costs nothing. (If the race is lost anyway the re-arm count below says
+# so, rather than the run blaming the code.)
+BEFORE=$(newtonia_windows)
+PS=$(launch stranger NEWTONIA_NET_NAME=PILOT9)
+sleep 4
+WS=$(new_window_since "$BEFORE")
+[ -n "$WS" ] || { echo "NO STRANGER WINDOW"; kill "$PS" 2>/dev/null; room_kill_all; exit 1; }
+BEFORE=$(newtonia_windows)
+PR=$(launch rejoiner NEWTONIA_NET_NAME=PILOT2)
+sleep 4
+WR=$(new_window_since "$BEFORE")
+[ -n "$WR" ] || { echo "NO REJOINER WINDOW"; kill "$PR" "$PS" 2>/dev/null; room_kill_all; exit 1; }
+
 # --- the flap: answer, then die -------------------------------------------
 BEFORE=$(newtonia_windows)
 PF=$(launch flapper NEWTONIA_NET_NAME=PILOT2 NEWTONIA_NET_TEST_FLAP=1)
@@ -80,22 +97,6 @@ sleep 3
 room_alive
 echo "flapper died with its answer on the wire"
 
-# Both remaining instances start NOW, before either joins. The corpse is
-# racing its own ICE timeout from the moment it forms, and every second
-# spent launching a process and waiting for its window is a second of that
-# budget: with the rejoiner already sitting in the menu, the positive
-# phase below costs a nav and nothing else. (`reopened for rejoin` count
-# is the tell if the race is lost anyway — see the check below.)
-BEFORE=$(newtonia_windows)
-PS=$(launch stranger NEWTONIA_NET_NAME=PILOT9)
-sleep 4
-WS=$(new_window_since "$BEFORE")
-[ -n "$WS" ] || { echo "NO STRANGER WINDOW"; kill "$PS" 2>/dev/null; room_kill_all; exit 1; }
-BEFORE=$(newtonia_windows)
-PR=$(launch rejoiner NEWTONIA_NET_NAME=PILOT2)
-sleep 4
-WR=$(new_window_since "$BEFORE")
-[ -n "$WR" ] || { echo "NO REJOINER WINDOW"; kill "$PR" "$PS" 2>/dev/null; room_kill_all; exit 1; }
 REARMS=$(grep -ac "reopened for rejoin" "$OUT/host.log")
 
 # --- NEGATIVE: a stranger must not disturb the stale handshake ------------

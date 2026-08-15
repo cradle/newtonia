@@ -799,13 +799,17 @@ compare:
    extra test, the same pilot's relay join would tear down their own
    healthy LAN handshake. A relay join is evidence about relay adoptions
    only.
-4. Require the adoption to be **stale by the clock** before identity is
-   even consulted: `hs->adopt_ms >= FLAP_MIN_ADOPT_MS` (5 s). A
-   handshake that works completes in well under a second, so age
-   separates "in progress" from "never going to finish" without
-   trusting anything a peer says. This is what keeps step 3's
-   claim-level match from being a denial of service — see the security
-   note below.
+4. Establish the adoption is actually DEAD before identity is even
+   consulted, and ask the transport rather than a clock:
+   `!transport->connected() && adopt_ms >= FLAP_MIN_ADOPT_MS` (8 s).
+   A clock alone cannot tell a corpse from a slow success — `adopt_ms`
+   covers ICE and DTLS, and a strict room adds up to `ADMIT_WAIT_MS` of
+   AdmitWait on top, so a healthy TURN rejoin sits at five to eight
+   seconds routinely. A corpse cannot fake `connected()`: its ICE never
+   completes, and everything slow-but-real happens on the far side of
+   that flag. The age is only a backstop for a link still honestly
+   negotiating. This pair is what keeps step 3's claim-level match from
+   being a denial of service — see the security note below.
 5. Anything else — either socket still nameless, or a different pilot —
    changes nothing and waits out the ICE timeout exactly as today. The
    fix can only make this faster, never slower.
@@ -823,10 +827,10 @@ caught it.** "The worst a spoofer achieves is what the ICE timeout does
 anyway" is true of a DEAD handshake and false of a healthy one: with no
 other test, anyone holding the room code could claim the rejoining
 pilot's name and kill their working attempt, repeatedly — a denial of
-service the game does not have today. The age gate (step 4) is the
-answer: a liar can only reach a handshake that had already stopped
-making progress, which is exactly the case this feature exists to clear
-up. The claim decides WHO, the clock decides WHETHER.
+service the game does not have today. The liveness gate (step 4) is the
+answer: a liar can only reach a socket that never connected and has had
+long enough to, which is exactly the case this feature exists to clear
+up. The claim decides WHO; the transport decides WHETHER.
 
 **What it does not fix.** Rejoiners queued behind a legitimately slow
 handshake still wait — the door serves one parked seat at a time. That

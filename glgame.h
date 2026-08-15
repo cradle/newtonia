@@ -480,6 +480,13 @@ private:
     // B5: this peer's once-per-loss park ran (hull frozen, session
     // dropped, attestation cleared). Cleared when its rejoin completes.
     bool parked = false;
+    // The CLAIM the answering socket announced, captured when its answer
+    // was adopted — the unattested twin of `attested` above, and taken
+    // here for the same reason: so the flap resolver does not depend on
+    // net_jid_claimed_ still holding the entry. That map is bounded and
+    // clears wholesale when it fills, which in a busy room would have
+    // silently switched the resolver off with nothing in the log.
+    NetIdentity adopt_claim;
     // How long the door adoption on this peer has been handshaking
     // (ms, reset at every adoption). The flap resolver's staleness test:
     // a handshake that completes takes well under a second on any path
@@ -754,7 +761,10 @@ private:
   // How long an adoption must have been handshaking before the resolver
   // will consider it stale. See net_host_rejoin_flap_check — this is the
   // guard that keeps a claimed name from becoming a denial of service.
-  static const int FLAP_MIN_ADOPT_MS = 5000;
+  // Backstop only — NetTransport::connected() is the real test (see
+  // net_host_rejoin_flap_check). Sized for a connection still honestly
+  // negotiating: relayed candidates over a bad link, not a corpse.
+  static const int FLAP_MIN_ADOPT_MS = 8000;
   void net_host_rejoin_flap_check(int delta);
   void net_set_peer_jid(const std::string &jid) {
     net_peer_jid_ = jid;
