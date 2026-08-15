@@ -2884,6 +2884,21 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
       // = the pre-multi-join worker, which only ever relayed the paired
       // joiner's identity.
       if (ev.verified) {
+        NetIdentity att;
+        att.platform = ev.platform;
+        att.platform_trust = NET_TRUST_ATTESTED;
+        att.name = net_sanitize_name(ev.text);
+        att.name_trust =
+            att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+        // Bank it by jid FIRST (see net_jid_attested_): a verdict that
+        // beats the door's answer belongs to a peer that does not own its
+        // jid yet, and dropping it is what the admission gate would read
+        // as an anonymous pilot. Bounded — these are worth seconds, so a
+        // pathological pile of unanswered announces is simply discarded.
+        if (!ev.peer.empty()) {
+          if (net_jid_attested_.size() > 16) net_jid_attested_.clear();
+          net_jid_attested_[ev.peer] = att;
+        }
         // B5: the stamp picks WHICH peer's badge this is — match it over
         // the roster's jids (each set at its adoption). An empty stamp is
         // the pre-multi-join worker, which only ever relays the single
@@ -2896,12 +2911,6 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
             if (p->jid == ev.peer) { tp = p; break; }
         }
         if (tp) {
-          NetIdentity att;
-          att.platform = ev.platform;
-          att.platform_trust = NET_TRUST_ATTESTED;
-          att.name = net_sanitize_name(ev.text);
-          att.name_trust =
-              att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
           // Keep the raw attestation too: the rejoin-Ready refresh replaces
           // the peer's identity with the claim-only wire parse and re-folds
           // this copy so the badge survives the handshake.
@@ -3243,6 +3252,23 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // for the front peer only.
       dp->jid = ev.peer;
       if (dp == net_peer()) net_peer_jid_ = ev.peer;
+      // The seat now owns this jid, so any verdict that arrived before it
+      // did is deliverable (net_jid_attested_). Onto `attested` only —
+      // NEVER onto dp->identity, which is the parked seat's remembered
+      // pilot and what the seat resolver matches the HELLO claim against.
+      // Drained on consume; a later re-attestation reaches the peer by jid
+      // through the ordinary fold.
+      {
+        std::map<std::string, NetIdentity>::iterator ait =
+            net_jid_attested_.find(ev.peer);
+        if (ait != net_jid_attested_.end()) {
+          dp->attested = ait->second;
+          NET_LOG("net: identity attested before the answer - applied to "
+                  "seat %d (name='%s')\n",
+                  (int)dp->seat, ait->second.name.c_str());
+          net_jid_attested_.erase(ait);
+        }
+      }
       // B5, N>1: the LAN beacon still open is serving THIS seat's blob —
       // a different seat's rejoiner completing it now would be adopted
       // onto the wrong slot. The relay won this seat; close the LAN door

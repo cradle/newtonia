@@ -699,6 +699,19 @@ private:
   // room now admitting extra joiners, an unmatched announce is a THIRD
   // party whose badge must not overwrite the paired peer's.
   std::string net_peer_jid_;
+  // Attestations that arrived before any peer owned their jid — a transient
+  // cache, drained when the rejoin door records the answering jid.
+  //
+  // The per-peer fold above can only reach a peer whose jid is already
+  // known, and a rejoiner's jid is not recorded until its ANSWER reaches
+  // the door. The worker's verdict (announce, then a ~300 ms verify) often
+  // beats that, and such a stamp used to be dropped as "a third party".
+  // That was harmless while attestation was display-only — the adoption's
+  // re-fold caught up — but the admission gate reads `attested`, so a
+  // dropped verdict now reads as an anonymous pilot and the held WELCOME
+  // times out on someone the worker had already vouched for.
+  // NetLobby::jid_attested_ is the waiting room's twin.
+  std::map<std::string, NetIdentity> net_jid_attested_;
   void net_set_peer_jid(const std::string &jid) {
     net_peer_jid_ = jid;
     if (!net_peers_.empty()) net_peers_.front()->jid = jid;

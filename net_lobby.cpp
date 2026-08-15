@@ -2205,6 +2205,20 @@ void NetLobby::tick(int delta) {
           // reason it is refused inside the handshake: without a reason on
           // the wire this landed in the Failed branch below and told the
           // player their firewall was blocking the game.
+          //
+          // NOT terminal, unlike the two refusals around it. This one is
+          // produced by a TIMEOUT (AdmitWait expiring, net_session.cpp), so
+          // it can mean "nobody vouched for you" OR "the worker's verdict
+          // lost a race it will probably win next time" — the host cannot
+          // tell those apart, since both are the same empty attestation.
+          // An auto-rejoin therefore gets its bounded retry back (the same
+          // 60 s budget the transport-failure path below uses): before this
+          // refusal existed the bare close landed there and retried, and a
+          // slow platform verify must not turn a transient drop into a
+          // permanent lockout. A first-time joiner has no rejoin budget, so
+          // they fall through to the honest headline immediately.
+          if (rejoin_retry_after_session_loss("host requires a verified account"))
+            break;
           fail_headline_ = "HOST BLOCKS ANONYMOUS PLAYERS";
           set_status("A VERIFIED ACCOUNT IS REQUIRED", 2 * STATUS_SHOW_MS);
         } else if (session_->reject_reason() == NetSession::RejectBanned) {
