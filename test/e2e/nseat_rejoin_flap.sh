@@ -80,29 +80,44 @@ sleep 3
 room_alive
 echo "flapper died with its answer on the wire"
 
-# --- NEGATIVE: a stranger must not disturb the stale handshake ------------
-# PILOT9 matches no parked seat, so the resolver returns "unknown" and the
-# host must sit on its hands. Killed again straight after: an unaddressed
-# rejoin offer goes to the oldest connected joiner, so a squatter left in
-# the room could answer the door meant for PILOT2 and take seat 3.
+# Both remaining instances start NOW, before either joins. The corpse is
+# racing its own ICE timeout from the moment it forms, and every second
+# spent launching a process and waiting for its window is a second of that
+# budget: with the rejoiner already sitting in the menu, the positive
+# phase below costs a nav and nothing else. (`reopened for rejoin` count
+# is the tell if the race is lost anyway — see the check below.)
 BEFORE=$(newtonia_windows)
 PS=$(launch stranger NEWTONIA_NET_NAME=PILOT9)
 sleep 4
 WS=$(new_window_since "$BEFORE")
 [ -n "$WS" ] || { echo "NO STRANGER WINDOW"; kill "$PS" 2>/dev/null; room_kill_all; exit 1; }
+BEFORE=$(newtonia_windows)
+PR=$(launch rejoiner NEWTONIA_NET_NAME=PILOT2)
+sleep 4
+WR=$(new_window_since "$BEFORE")
+[ -n "$WR" ] || { echo "NO REJOINER WINDOW"; kill "$PR" "$PS" 2>/dev/null; room_kill_all; exit 1; }
+REARMS=$(grep -ac "reopened for rejoin" "$OUT/host.log")
+
+# --- NEGATIVE: a stranger must not disturb the stale handshake ------------
+# PILOT9 matches no parked seat, so the resolver returns "unknown" and the
+# host must sit on its hands. Killed again straight after: an unaddressed
+# rejoin offer goes to the oldest connected joiner, so a squatter left in
+# the room could answer the door meant for PILOT2 and take seat 3.
 nav_join "$WS" "$ROOM_CODE" stranger
-sleep 8   # past NET_JOIN_IDENT_WAIT_MS (3 s) with room to spare
+sleep 6   # past NET_JOIN_IDENT_WAIT_MS (3 s) with room to spare
 grep -aq "$DROP_LINE" "$OUT/host.log" &&
   room_fail "STRANGER TORE DOWN A LIVE HANDSHAKE (O4 regression)" host
 echo "stranger ignored, handshake untouched"
 kill -9 "$PS" 2>/dev/null; wait "$PS" 2>/dev/null
 
 # --- POSITIVE: the seat's own pilot returns -------------------------------
-BEFORE=$(newtonia_windows)
-PR=$(launch rejoiner NEWTONIA_NET_NAME=PILOT2)
-sleep 4
-WR=$(new_window_since "$BEFORE")
-[ -n "$WR" ] || { echo "NO REJOINER WINDOW"; kill "$PR" 2>/dev/null; room_kill_all; exit 1; }
+# If the corpse died of its own ICE timeout while the negative phase ran,
+# the door re-armed and there is no stale adoption left to drop: the
+# positive assertion would then fail on perfectly good code. That is a lost
+# race, not a product failure, and it says so.
+if [ "$(grep -ac "reopened for rejoin" "$OUT/host.log")" -gt "$REARMS" ]; then
+  room_fail "INCONCLUSIVE: the corpse expired before the rejoiner arrived (its ICE timeout beat the test) - re-run" host
+fi
 START=$(date +%s)
 nav_join "$WR" "$ROOM_CODE" rejoiner
 REJOINED=

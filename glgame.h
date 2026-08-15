@@ -480,6 +480,13 @@ private:
     // B5: this peer's once-per-loss park ran (hull frozen, session
     // dropped, attestation cleared). Cleared when its rejoin completes.
     bool parked = false;
+    // How long the door adoption on this peer has been handshaking
+    // (ms, reset at every adoption). The flap resolver's staleness test:
+    // a handshake that completes takes well under a second on any path
+    // that works, so age is what separates "in progress" from "never
+    // going to finish" WITHOUT trusting anything a peer says about
+    // itself. See net_host_rejoin_flap_check.
+    int adopt_ms = 0;
     // ---- Host input pipeline for this peer's INPUT stream ----
     uint32_t last_input_seq = 0;
     bool have_input = false;  // first INPUT initialises the counters
@@ -732,13 +739,22 @@ private:
     it = net_jid_claimed_.find(jid);
     return it != net_jid_claimed_.end() ? it->second : NetIdentity();
   }
-  // O4: a join seen while a door adoption is mid-handshake, held until we
-  // learn whose it is. The identity frame lands a round-trip behind the
-  // join (and a verified upgrade later still), so the decision waits —
-  // the same reason NetSession::AdmitWait holds a WELCOME.
-  std::string net_pending_join_jid_;
-  int net_pending_join_ms_ = 0;
+  // O4: joins seen while a door adoption is mid-handshake, each held
+  // until we learn whose it is (jid -> ms of patience left). The identity
+  // frame lands a round-trip behind the join, and a verified upgrade
+  // later still, so the decision waits — the same reason
+  // NetSession::AdmitWait holds a WELCOME.
+  //
+  // A map and not a single slot: two joins inside the window are ordinary
+  // (a stranger browsing while the seat's own pilot returns), and with
+  // one slot the second silently evicted the first — leaving the fix
+  // inert in exactly the busy room it was written for.
+  std::map<std::string, int> net_pending_joins_;
   static const int NET_JOIN_IDENT_WAIT_MS = 3000;
+  // How long an adoption must have been handshaking before the resolver
+  // will consider it stale. See net_host_rejoin_flap_check — this is the
+  // guard that keeps a claimed name from becoming a denial of service.
+  static const int FLAP_MIN_ADOPT_MS = 5000;
   void net_host_rejoin_flap_check(int delta);
   void net_set_peer_jid(const std::string &jid) {
     net_peer_jid_ = jid;

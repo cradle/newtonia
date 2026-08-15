@@ -799,21 +799,34 @@ compare:
    extra test, the same pilot's relay join would tear down their own
    healthy LAN handshake. A relay join is evidence about relay adoptions
    only.
-4. Anything else — no identity, a nameless peer, an ambiguous match
-   (the resolver returns 0 for two parked seats with the same name), or
-   a different seat's pilot — changes nothing and waits out the ICE
-   timeout exactly as today. The fix can only make this faster, never
-   slower, which is what makes it safe to land without field proof.
+4. Require the adoption to be **stale by the clock** before identity is
+   even consulted: `hs->adopt_ms >= FLAP_MIN_ADOPT_MS` (5 s). A
+   handshake that works completes in well under a second, so age
+   separates "in progress" from "never going to finish" without
+   trusting anything a peer says. This is what keeps step 3's
+   claim-level match from being a denial of service — see the security
+   note below.
+5. Anything else — either socket still nameless, or a different pilot —
+   changes nothing and waits out the ICE timeout exactly as today. The
+   fix can only make this faster, never slower.
 
 **Matching on a CLAIM is correct here, and the contrast with BAN is the
 argument.** A ban keys on attested identity only, because a ban DENIES
 someone and a claimed name is a self-report. This decision denies
 nobody: it tears down a half-open handshake on a seat that is already
-lost, and the worst a spoofer achieves is restarting an honest
-rejoiner's in-flight attempt — which is precisely what the 30 s timeout
-does today, unprompted. Attestation would buy nothing and would switch
-the fix off in every unattested room. Say so in the code; a reviewer
-will (rightly) ask why this one takes a claim.
+lost. Attestation would buy little here and would switch the fix off in
+every unattested room. Say so in the code; a reviewer will (rightly) ask
+why this one takes a claim.
+
+**But the first version of that argument was too generous, and review
+caught it.** "The worst a spoofer achieves is what the ICE timeout does
+anyway" is true of a DEAD handshake and false of a healthy one: with no
+other test, anyone holding the room code could claim the rejoining
+pilot's name and kill their working attempt, repeatedly — a denial of
+service the game does not have today. The age gate (step 4) is the
+answer: a liar can only reach a handshake that had already stopped
+making progress, which is exactly the case this feature exists to clear
+up. The claim decides WHO, the clock decides WHETHER.
 
 **What it does not fix.** Rejoiners queued behind a legitimately slow
 handshake still wait — the door serves one parked seat at a time. That

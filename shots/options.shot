@@ -1,7 +1,16 @@
-# The desktop OPTIONS screen — the D9 flat row list, at its longest.
-# Attract -> main menu -> down onto OPTIONS -> open. On a netplay build the
-# list is 15 rows (P1-P4 x sensitivity/smoothing/camera, star density,
-# record replays, leaderboard upload); netless drops the leaderboard row.
+# The desktop OPTIONS screen — the D9 flat row list.
+#
+# Attract -> main menu -> down onto OPTIONS -> open. The single `key down`
+# assumes the NETLESS build the shots README tells you to make
+# (`make NETPLAY=0`), whose menu is NEW GAME / OPTIONS: a netplay build
+# inserts ONLINE between them (menu.cpp draw order) and this scene would
+# render the online chooser instead, so add a second `key down` there. A
+# save file adds CONTINUE on top and shifts it again.
+#
+# Netless also means 14 option rows, not 15 — `net_board_available()`
+# drops LEADERBOARD UPLOAD. For the 15-row worst case (what O5 was judged
+# on) force that predicate true in a local build; the ONLINE row stays
+# hidden either way, since it keys on net_available() instead.
 seed 3
 menu
 sim 1800

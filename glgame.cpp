@@ -3243,6 +3243,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_rehost_->set_remote_answer(ev.text);
       dp->session =
           new NetSession(net_rehost_, NetSession::HostRole, dp->seat);
+      dp->adopt_ms = 0;  // handshake clock (flap resolver)
       // Rejoin-by-identity: let the handshake re-map the WELCOME to the
       // parked seat whose remembered pilot the HELLO claim matches — the
       // Ready handler adopts onto the seat actually assigned.
@@ -3339,8 +3340,8 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // once the worker says.
       NetPeer *hs = net_handshaking_lost_peer();
       if (hs && !ev.peer.empty() && ev.peer != hs->jid) {
-        net_pending_join_jid_ = ev.peer;
-        net_pending_join_ms_ = NET_JOIN_IDENT_WAIT_MS;
+        if (net_pending_joins_.size() > 8) net_pending_joins_.clear();
+        net_pending_joins_[ev.peer] = NET_JOIN_IDENT_WAIT_MS;
         NET_LOG("net: peer joined (jid %s) while seat %d is mid-handshake - "
                 "identifying\n", ev.peer.c_str(), (int)hs->seat);
       }
@@ -3445,11 +3446,11 @@ int GLGame::net_rejoin_seat_for_identity(const NetIdentity &claimed) const {
 //    behaviour exactly. This can only make the flap case faster; it has no
 //    path that makes anything slower.
 void GLGame::net_host_rejoin_flap_check(int delta) {
-  if (net_pending_join_jid_.empty()) return;
+  if (net_pending_joins_.empty()) return;
   NetPeer *hs = net_handshaking_lost_peer();
-  if (!hs || hs->jid.empty() || hs->jid == net_pending_join_jid_) {
-    // Gone (resolved itself), or the adoption in flight is the LAN door's
-    // (no jid — net_install_admit_check), or this join IS that adoption.
+  if (!hs || hs->jid.empty()) {
+    // Nothing mid-handshake (it completed or timed out), or the adoption
+    // in flight is the LAN door's — no jid (net_install_admit_check).
     //
     // The LAN case is not hypothetical: both doors open on every loss, and
     // a rejoining pilot races them BOTH — its client rejoins the room over
@@ -3459,54 +3460,75 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
     // unequal to every real one, so without this the branch would drop a
     // perfectly healthy LAN handshake and call it a corpse. A relay join
     // is evidence about relay adoptions only.
-    net_pending_join_jid_.clear();
+    net_pending_joins_.clear();
     return;
   }
+  // Staleness, checked before identity and independent of it. A handshake
+  // that is going to complete does so in well under a second on any path
+  // that works at all; one still unfinished after FLAP_MIN_ADOPT_MS is not
+  // making progress. This is what keeps a claim-level identity match from
+  // becoming a denial of service: "the worst a liar achieves is what the
+  // ICE timeout does anyway" is true only of a DEAD handshake, and with no
+  // age test anyone holding the room code could name themselves after the
+  // pilot currently rejoining and kill their HEALTHY attempt, repeatedly.
+  // With it, the only window a liar can reach is one that had already
+  // stopped working — and a real flap is well past this by the time its
+  // owner has relaunched and come back. Deliberately does NOT spend the
+  // pending entries\' patience: that clock is for waiting on an identity,
+  // and burning it here would expire every join that arrived while the
+  // adoption was young, i.e. exactly the ones worth keeping.
+  if (hs->adopt_ms < FLAP_MIN_ADOPT_MS) return;
+
   // Compare PILOTS, not seats. The obvious test — "does this joiner
   // resolve to the seat the adoption is on?" — is wrong, and wrong in a
-  // way the flap driver cannot see because it parks a single seat. The
-  // door always offers the LOWEST parked seat, but the WELCOME re-maps
-  // the session onto whichever seat the claim matches
-  // (NetSession::seat_resolver_, #447): with seats 3 and 4 both parked
-  // and seat 4's pilot answering seat 3's offer — nseat_swap's exact
-  // shape — `hs` is seat 3's peer holding a handshake destined for seat
-  // 4, and seat 3's pilot then rejoining would resolve to hs->seat and
-  // tear down a perfectly healthy exchange belonging to someone else.
+  // way the flap driver cannot see, because it parks a single seat. The
+  // door always offers the LOWEST parked seat, but the WELCOME re-maps the
+  // session onto whichever seat the claim matches
+  // (NetSession::seat_resolver_, #447): with seats 3 and 4 both parked and
+  // seat 4\'s pilot answering seat 3\'s offer — nseat_swap\'s exact shape —
+  // `hs` is seat 3\'s peer holding a handshake destined for seat 4, and
+  // seat 3\'s pilot then rejoining would resolve to hs->seat and tear down
+  // a perfectly healthy exchange belonging to someone else.
   //
-  // Asking whether the SAME PILOT is on both sockets sidesteps the
-  // re-map entirely: one person cannot be two joiners, so if the socket
-  // mid-handshake and the socket that just arrived are the same pilot,
-  // the older one is a corpse no matter which seat it was going to land
-  // on. `attested` is the adoption's own copy, drained from the jid map
-  // when its answer was adopted; the jid maps are the fallback for a
-  // claim that never got promoted.
-  NetIdentity who = net_jid_identity(net_pending_join_jid_);
+  // Asking whether the SAME PILOT is on both sockets sidesteps the re-map
+  // entirely: one person cannot be two joiners, so if the socket
+  // mid-handshake and the socket that just arrived carry the same pilot,
+  // the older one is a corpse whatever seat it was going to land on.
+  // `attested` is the adoption\'s own copy, drained from the jid map when
+  // its answer was adopted; the jid maps are the fallback for a claim that
+  // was never promoted.
   NetIdentity mid = hs->attested.name.empty() ? net_jid_identity(hs->jid)
                                               : hs->attested;
-  if (!who.name.empty() && !mid.name.empty()) {
-    if (who.name == mid.name && who.platform == mid.platform) {
-      NET_LOG("net: pilot '%s' re-entered on jid %s while jid %s was still "
-              "mid-handshake - dropping the stale adoption and re-offering\n",
-              who.name.c_str(), net_pending_join_jid_.c_str(),
-              hs->jid.c_str());
-      // The abandoned attempt's attestation goes with its session, as on
-      // every other path that drops one: the re-entering joiner
-      // re-announces on its fresh socket and re-attests through the worker.
-      hs->attested = NetIdentity();
-      net_drop_session(*hs);
-      net_rehost_offer_sent_ = false;
-      net_pending_join_jid_.clear();
-      return;
+  for (std::map<std::string, int>::iterator it = net_pending_joins_.begin();
+       it != net_pending_joins_.end();) {
+    const std::string &jid = it->first;
+    NetIdentity who = net_jid_identity(jid);
+    if (!who.name.empty() && !mid.name.empty()) {
+      if (who.name == mid.name && who.platform == mid.platform) {
+        NET_LOG("net: pilot \'%s\' re-entered on jid %s while jid %s was still "
+                "mid-handshake - dropping the stale adoption and re-offering\n",
+                who.name.c_str(), jid.c_str(), hs->jid.c_str());
+        // The abandoned attempt\'s attestation goes with its session, as on
+        // every other path that drops one: the re-entering joiner
+        // re-announces on its fresh socket and re-attests through the
+        // worker.
+        hs->attested = NetIdentity();
+        net_drop_session(*hs);
+        net_rehost_offer_sent_ = false;
+        net_pending_joins_.clear();
+        return;
+      }
+      net_pending_joins_.erase(it++);  // a different pilot — leave them be
+      continue;
     }
-    net_pending_join_jid_.clear();  // a different pilot — leave them alone
-    return;
+    // One side or the other is nameless so far. Keep waiting: an attested
+    // name arrives later than a claim and comes from the platform, so it
+    // can identify a socket a claim could not. If neither ever does, the
+    // patience below hands the case back to the ICE timeout.
+    it->second -= delta;
+    if (it->second <= 0) net_pending_joins_.erase(it++);
+    else ++it;
   }
-  // One side or the other is nameless so far. Keep waiting: an attested
-  // name arrives later than a claim and comes from the platform, so it
-  // can identify a socket the claim could not. If neither ever does, the
-  // deadline below hands the case back to the ICE timeout.
-  net_pending_join_ms_ -= delta;
-  if (net_pending_join_ms_ <= 0) net_pending_join_jid_.clear();
 }
 
 void GLGame::net_install_admit_check(NetSession *s, int seat) {
@@ -3528,6 +3550,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
   // never a healthy peer's (their sessions aren't touched by the doors).
   NetPeer *dp = net_handshaking_lost_peer();
   if (dp) {
+    dp->adopt_ms += delta;
     dp->session->update(delta);
     if (dp->session->phase() == NetSession::Ready) {
       // Ready means ADMITTED: the ban list and the anonymous-players policy
@@ -3789,6 +3812,7 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
         net_lan_rehost_->set_remote_answer(sdp);
         dp->session =
             new NetSession(net_lan_rehost_, NetSession::HostRole, dp->seat);
+        dp->adopt_ms = 0;
         // Same rejoin-by-identity resolver as the relay door.
         dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
           return net_rejoin_seat_for_identity(claimed);

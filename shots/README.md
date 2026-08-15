@@ -155,7 +155,7 @@ Notes:
 |-------|-------|
 | `hero.shot` | Composed asteroid field + title captions |
 | `menu.shot` | Main menu (attract dismissed via `key enter`) |
-| `options.shot` | The desktop OPTIONS list, for legibility checks when a row is added (`key`s through the menu; the LEADERBOARD row needs a netplay build) |
+| `options.shot` | The desktop OPTIONS list, for legibility checks when a row is added. `key`s through the menu, so it assumes the netless build's row order — see the note in the scene before rendering it against a netplay build |
 | `specials.shot` | Labelled reference card of the special asteroid types |
 | `hazards.shot` | Pulsar, comet, seeker and a black hole, HUD off |
 | `lategame.shot` | Natural generation-14 chaos (station, black hole, full counts) |
