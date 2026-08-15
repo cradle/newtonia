@@ -736,13 +736,88 @@ time (lowest first), rejoiners queued behind the flapped one wait too.
 Self-recovering, never a hang — just slow. Fix direction: attach the
 rejoiner's IDENTITY to the join event so the host can match it to the
 seat whose handshake is stale — the same name+platform matching #447's
-seat resolver does at WELCOME time, applied one step earlier. That
-means a worker change (carry a claimed identity on the join
-announcement, or a client "I am rejoining as X" pre-frame) — i.e. a
-signal-protocol addition with the usual beta-worker-first deploy, so
-it is NOT a quick client-only patch. E2e to prove it: nseat_rejoin
-variant that SIGKILLs the rejoiner mid-handshake (between answer and
-connected) and asserts the second attempt seats in well under 30 s.
+seat resolver does at WELCOME time, applied one step earlier.
+
+#### Scoped 2026-08-15 — it is a client-only patch after all
+
+**The premise above is wrong, and the correction is most of the work.**
+This entry claimed the fix needs a worker change and a beta-first
+deploy. It does not: the host is ALREADY told who is on each joining
+socket. The worker broadcasts `{t:"identity", role:"joiner", from:<jid>,
+platform, name, verified}` the moment a joiner announces
+(`broadcast_identity`, worker.js:880 — `from` added by B3), the client
+parses the stamp into `ev.peer` (net_signal.cpp:272), and a rejoining
+client announces on its fresh socket for free because it rejoins through
+the LOBBY (`NetLobby::send_local_identity`, net_lobby.cpp:1104 — the
+auto-rejoin at glgame.cpp:5692 hands the room code to a new `NetLobby`).
+The host even banks it already: `net_jid_attested_[ev.peer]`
+(glgame.cpp:2898). Nothing is missing on the wire. What is missing is
+one correlation, host-side.
+
+**The design.** On `PeerJoin{from:X}` at N>1 while a stale adoption
+exists (`hs = net_handshaking_lost_peer()`), resolve X to a seat and
+compare:
+
+1. Bank CLAIMED identities by jid too, not only `ev.verified` ones — a
+   new `net_jid_claimed_` beside `net_jid_attested_`. Without this the
+   fix does nothing in a room of desktop builds, which attest nobody.
+2. Hold the join briefly (`pending_join_jid_ = X` + a deadline of ~3 s
+   on its own clock) rather than deciding on the spot: the identity
+   frame lands a round-trip after the join, and a verified upgrade later
+   still. Same shape as `AdmitWait`, same reason.
+3. When X's identity is known, `net_rejoin_seat_for_identity()`
+   (glgame.cpp:3370) maps it to a parked seat. Drop the corpse and
+   re-offer **only if that seat is `hs->seat` AND `X != hs->jid`.** The
+   jid guard is the one that is easy to miss and fatal without: an
+   attestation for the LIVE handshake's own socket arrives late and
+   routinely, and would otherwise resolve to exactly this seat and tear
+   down the healthy exchange it describes — the "AGES to reconnect"
+   regression the N=1 branch's comment is a monument to.
+4. Anything else — no identity, a nameless peer, an ambiguous match
+   (the resolver returns 0 for two parked seats with the same name), or
+   a different seat's pilot — changes nothing and waits out the ICE
+   timeout exactly as today. The fix can only make this faster, never
+   slower, which is what makes it safe to land without field proof.
+
+**Matching on a CLAIM is correct here, and the contrast with BAN is the
+argument.** A ban keys on attested identity only, because a ban DENIES
+someone and a claimed name is a self-report. This decision denies
+nobody: it tears down a half-open handshake on a seat that is already
+lost, and the worst a spoofer achieves is restarting an honest
+rejoiner's in-flight attempt — which is precisely what the 30 s timeout
+does today, unprompted. Attestation would buy nothing and would switch
+the fix off in every unattested room. Say so in the code; a reviewer
+will (rightly) ask why this one takes a claim.
+
+**What it does not fix.** Rejoiners queued behind a legitimately slow
+handshake still wait — the door serves one parked seat at a time. That
+is a separate, larger change, and it too is unblocked: the worker has
+supported **addressed offers** (`{t:"offer", sdp, to}`, worker.js:1026)
+since B3, and the lobby's waiting room already mints one transport per
+joining jid and offers it addressed (net_lobby.cpp:1458). The in-game
+rejoin door is the last unaddressed consumer (glgame.cpp:3177), so
+parallel doors are a port of a proven pattern, not an invention — the
+"the relay offer is a single unaddressed slot" rationale in
+`net_door_peer`'s comment (glgame.h:566) is stale. Worth doing only if
+queueing is ever observed to bite; the flap case above is the one with a
+field story.
+
+**Tests.** A new `nseat_rejoin_flap.sh` (4 seats): kill seat 3's client,
+let the door offer, and have the rejoiner answer and then die inside the
+handshake — a client-side test hook (`NEWTONIA_NET_TEST_FLAP=1`, exit
+right after the answer goes out) is the only way to hit that window
+deterministically. Assert the second attempt seats in well under 30 s
+and that the host logs the new drop line. Then the negative, which
+matters more: a DIFFERENT pilot joining while seat 3's handshake is in
+flight must leave it alone — that is the regression this branch could
+plausibly cause. Existing drivers that must stay green: `rejoin.sh`,
+`nseat_rejoin.sh`, `hostresume.sh`, `hiccup.sh`, `turnexpiry.sh`,
+`lankeep.sh`.
+
+**Cost.** One focused PR: ~60-100 lines across glgame.cpp/.h, one e2e
+driver, one test hook, doc updates. No worker change, no PROTO bump, no
+deploy dependency, no beta-first sequencing — the constraints that made
+this entry look expensive are gone.
 
 ### O5 — Options layout verdict (D9, decide-by-looking) — DONE (2026-08-15)
 
