@@ -153,16 +153,7 @@ private:
     bool offer_sent = false;
     int seat = 0;      // reserved when the session forms (WELCOME is fixed)
     bool lan = false;  // came through the LAN door (synthetic key, no jid)
-    // How long this joiner has waited for the worker's attestation while
-    // the host is refusing anonymous players. The verdict is async and can
-    // land after the handshake, so "not attested yet" must not be read as
-    // "anonymous" the instant the peer connects.
-    int anon_wait_ms = 0;
   };
-  // How long to wait for that verdict before judging. Generous: the cost of
-  // waiting is a joiner sitting on CONNECTING a moment longer, the cost of
-  // being hasty is refusing someone who is not anonymous at all.
-  static const int ANON_ATTEST_GRACE_MS = 4000;
   std::map<std::string, PendingJoiner> pending_;  // keyed by jid / "lan#N"
   struct SeatedPeer {
     NetSession *session;
@@ -224,6 +215,9 @@ private:
   void waiting_room_update(int delta);  // pump handshakes + seated liveness
   void waiting_room_start();          // hand every seated session to GLGame
   void drop_pending(const std::string &key, const char *why);
+  // Install admit_verdict on a joiner's session, looking its attestation up
+  // by jid on every call (it can land mid-hold). Empty jid = the LAN door.
+  void install_admit_check(NetSession *s, const std::string &jid);
   void teardown_waiting_room();       // delete everything not handed off
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
@@ -254,6 +248,27 @@ public:
   static void ban_identity(const NetIdentity &id);
   static bool identity_banned(const NetIdentity &id);
   static void clear_bans();  // hosting a NEW room starts with a clean slate
+
+  // The host's admission verdict for a peer answering either door — the ban
+  // list and the anonymous-players preference, in ONE place for the waiting
+  // room and the mid-game rejoin door, which used to carry a copy each (the
+  // lobby's with a grace timer for the async attestation, the door's with
+  // none). Installed as the NetSession admit check, so it runs inside the
+  // handshake and its refusal reaches the peer as a reason.
+  //
+  //   claimed        — the peer's own HELLO claim. What a ban keys on; a
+  //                    ban is only ever OFFERED against an attested pilot
+  //                    (host_row_can_ban), so the claim it stores is one
+  //                    the worker had already vouched for.
+  //   attested       — what the worker said about the socket that answered,
+  //                    looked up fresh on every call: the verdict is async
+  //                    and often lands DURING the hold this returns.
+  //   worker_session — false for a door with no worker behind it (LAN,
+  //                    manual invite), where attestation is structurally
+  //                    impossible and the anonymous policy cannot apply.
+  static NetSession::Admit admit_verdict(const NetIdentity &claimed,
+                                         const NetIdentity &attested,
+                                         bool worker_session);
 private:
 
   Screen screen_;

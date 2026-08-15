@@ -9,9 +9,10 @@
 # and must be refused. Against the plain :8787 dev relay nobody is attested
 # and the first half would fail for the wrong reason.
 #
-# Also proves the grace window: the worker's verdict is async and normally
-# lands AFTER the handshake, so a naive check would refuse the named pilot
-# too (that is why PendingJoiner::anon_wait_ms exists).
+# Also proves the hold: the worker's verdict is async and normally lands
+# AFTER the handshake, so a naive check would refuse the named pilot too
+# (that is why the admission gate answers AdmitWait and NetSession holds
+# the WELCOME for ADMIT_WAIT_MS instead of judging on arrival).
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -93,6 +94,19 @@ done
 [ -n "$ok" ] || room_fail "ANONYMOUS PILOT WAS NOT REFUSED" host
 grep -aq "seat 3 filled" "$OUT/host.log" &&
   room_fail "ANONYMOUS PILOT GOT A SEAT" host
+
+echo "== ...and is TOLD why"
+# The reason the refusal moved inside the handshake: it goes out as a
+# REJECT (reason 3 = RejectAnonymous, a wire value — append-only) instead
+# of a bare transport close, which the joiner could only read as a failed
+# connection. It was telling refused players their firewall was at fault.
+ok=
+for _ in $(seq 1 20); do
+  grep -aq "host refused this connection (reason 3)" "$OUT/anon.log" &&
+    { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "REFUSED PILOT WAS NOT TOLD WHY" anon
 
 room_alive
 room_kill_all

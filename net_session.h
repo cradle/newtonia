@@ -192,6 +192,34 @@ public:
     // of a ghosted CONNECTED screen). Also set locally (no wire message)
     // when the CLIENT's own policy refuses the host's identity.
     RejectNotAllowed = 2,
+    // The host refuses unattested pilots (Preferences::allow_anonymous) and
+    // nobody vouched for this one — see Admit below.
+    RejectAnonymous = 3,
+    // The host removed this pilot from the room and banned them
+    // (NetLobby::identity_banned).
+    RejectBanned = 4,
+  };
+
+  // Host admission — the room's OWN policy on who may take a seat (the ban
+  // list and the anonymous-players preference), as distinct from the
+  // platform's policy on who may talk at all (net_comms_allowed_with).
+  // Answered by the callback set_admit_check installs, between the HELLO
+  // identity parse and the WELCOME, so a refused pilot gets a reason on the
+  // wire instead of a closed transport it can only read as "could not
+  // connect". Both of the host's doors — the lobby's waiting room and the
+  // mid-game rejoin door — inherit this one chokepoint.
+  enum Admit {
+    AdmitAllow,   // seat them
+    // No attestation verdict yet. The worker verifies on the SIGNALING
+    // channel, asynchronously, and that verdict routinely lands after the
+    // p2p handshake it describes — so "not attested yet" must never be read
+    // as "anonymous" the instant a peer connects. The session holds the
+    // WELCOME and re-asks each tick for up to ADMIT_WAIT_MS, then refuses
+    // as AdmitAnonymous: waiting is what the caller asked for by answering
+    // Wait, so the verdict that never came is the one it was waiting on.
+    AdmitWait,
+    AdmitAnonymous,  // refuse: nobody vouched for this pilot
+    AdmitBanned,     // refuse: removed from this room
   };
 
   // Takes ownership of the transport (must be non-null). assign_seat (B4,
@@ -237,10 +265,26 @@ public:
     seat_resolver_ = fn;
   }
 
+  // Host admission (see Admit): consulted with the HELLO's claimed identity
+  // after the comms-policy gate and before the seat resolver, and re-asked
+  // each tick while it answers AdmitWait. Unset = AdmitAllow, which is what
+  // every worker-less door (LAN, manual invite) wants — attestation is
+  // structurally impossible there, so there is nothing to refuse on.
+  // Callers capturing `this` must clear this (or outlive the session): it is
+  // never consulted again once the phase leaves Handshaking, but a session
+  // handed off to another owner should not carry a stale closure.
+  void set_admit_check(std::function<Admit(const NetIdentity &)> fn) {
+    admit_check_ = fn;
+  }
+
   NetTransport *transport() { return transport_; }
 
 private:
   void fail() { phase_ = Failed; }
+  // Host role: run the admission gate against the parsed HELLO and either
+  // WELCOME, keep holding, or REJECT. Leaves the phase in Handshaking while
+  // it holds.
+  void resolve_admission();
 
   NetTransport *transport_;
   Role role_;
@@ -250,6 +294,13 @@ private:
   int handshake_ms_;  // time spent in Handshaking, for the timeout
   NetIdentity peer_identity_;
   std::function<int(const NetIdentity &)> seat_resolver_;  // host role, optional
+  std::function<Admit(const NetIdentity &)> admit_check_;  // host role, optional
+  // Host role: the HELLO is parsed and past the comms gate, and the WELCOME
+  // is held on the admission verdict. admit_wait_ms_ is that hold's own
+  // clock — deliberately not handshake_ms_, which times out a peer that has
+  // gone quiet, and a held peer has already said everything it will say.
+  bool hello_parsed_ = false;
+  int admit_wait_ms_ = 0;
   // Client role: the seat WELCOME assigned us. Host role: the seat our
   // WELCOME assigns the peer (the ctor's assign_seat).
   uint8_t assigned_seat_ = 2;

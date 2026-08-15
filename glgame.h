@@ -651,6 +651,14 @@ private:
   // Rejoin-by-identity (NetSession::set_seat_resolver): the parked seat
   // whose remembered pilot the claimed HELLO identity matches, or 0.
   int net_rejoin_seat_for_identity(const NetIdentity &claimed) const;
+  // Host admission at the rejoin door (NetSession::set_admit_check): the
+  // ban list + the anonymous-players policy, shared with the lobby's
+  // waiting room (NetLobby::admit_verdict) and enforced inside the
+  // handshake, so a refused pilot is told why and an attestation still in
+  // flight holds the WELCOME instead of losing a race. `seat` is the DOOR
+  // peer's — the socket the worker attested — looked up per call, since
+  // the verdict can land mid-hold.
+  void net_install_admit_check(NetSession *s, int seat);
   // Eaten-offer watchdog (see net_host_rejoin_poll): ms the door's offer
   // has sat unanswered with no handshake in flight.
   int net_rehost_offer_age_ms_ = 0;
@@ -1001,6 +1009,15 @@ private:
       if ((int)k.first == seat) return true;
     return false;
   }
+  // Sessions refused AT the rejoin door (NetSession::Rejected), draining
+  // their REJECT before teardown — the same 600 ms the kick above gets,
+  // and for the same reason: the reason byte is queued, not flushed, and
+  // deleting the session takes it with it, leaving the peer to read the
+  // close as "could not connect". Detached from the peer (unlike the
+  // kick's seat key) because the door DETACHES the session the moment it
+  // refuses and re-arms for the next attempt — the seat is live again
+  // immediately, so nothing may be keyed on it.
+  std::vector<std::pair<NetSession *, int>> net_closing_;
   // The peer occupying a roster row, or null (declared here: NetPeer is
   // defined below the roster block).
   NetPeer *roster_peer_at(int row);

@@ -876,10 +876,37 @@ claim, and `net_comms_allowed_with` treats the platform tag as a claim,
 enforcing privileges on the LOCAL account only. Preserving that
 invariant is worth more than any freshness guarantee.
 
-**What would reopen this** (in rough order of likelihood): (1) identity
-becoming a POLICY input anywhere — the moment a peer's attested platform
-or name gates something, staleness stops being cosmetic and this
-milestone is back on; (2) a platform publishing an actual revalidation
+**AMENDED 2026-08-15 — reopening condition (1) has fired, and the
+decision still stands.** `Preferences::allow_anonymous` (2026-08-13,
+FOURPLAYER.md O3) made attestation a POLICY input: a host may refuse
+peers the worker never vouched for, enforced inside the handshake
+(`NetLobby::admit_verdict`). So the paragraph above is no longer true as
+written, and this is the honest restatement of what the decline now
+rests on:
+
+- The policy reads attestation's **presence**, not its **content**. It
+  asks "did anyone vouch for this pilot", never "is this specific name
+  still valid" — the question staleness would corrupt. A verdict that
+  went stale mid-game still answers the only question being asked.
+- It is enforced **once per handshake**, at join and rejoin, which is
+  exactly the one-shot cadence attestation already has. There is no
+  window in which a re-attestation could change an admission that has
+  already happened; the peer would have to reconnect, and reconnecting
+  re-runs the gate against a fresh credential.
+- It is **opt-in and host-local** (default YES = the behaviour that
+  always existed), never a matchmaking or authority input.
+- Everything the peer's identity still DISPLAYS remains display-only,
+  which is what the residuals in this decline were about.
+
+What would now reopen it: attestation's **content** gating something
+(seat assignment, scoring, authority keyed on the attested name), a
+policy that persists a verdict ACROSS sessions rather than re-deriving
+it per handshake, or the two conditions below.
+
+**What would reopen this** (in rough order of likelihood): (1) ~~identity
+becoming a POLICY input anywhere~~ — fired; see the amendment above,
+which narrows this to attestation's content rather than its presence;
+(2) a platform publishing an actual revalidation
 requirement, most plausibly Xbox at fork-side cert; (3) a real-world
 impersonation report, which would tell us the collusion residual isn't
 theoretical. **Cheaper alternative that stays open regardless:** halving

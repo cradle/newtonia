@@ -378,6 +378,12 @@ const uint32_t BUILD_ID = 0;
 // Connected transport but no valid HELLO/WELCOME inside this window means
 // the peer is not a compatible game — give up rather than sit forever.
 const int HANDSHAKE_TIMEOUT_MS = 10000;
+// How long a held WELCOME waits for the worker's attestation before the
+// admission gate stops waiting (NetSession::AdmitWait). Generous, and well
+// inside HANDSHAKE_TIMEOUT_MS: the cost of waiting is a joiner sitting on
+// CONNECTING a moment longer, the cost of being hasty is refusing someone
+// who is not anonymous at all.
+const int ADMIT_WAIT_MS = 4000;
 
 // Test hook: send the pre-identity (short) HELLO/WELCOME so the e2e
 // mixed-version drivers (test/e2e/identity_legacy.sh) can act as an old
@@ -499,6 +505,37 @@ NetSession::~NetSession() {
   }
 }
 
+void NetSession::resolve_admission() {
+  Admit a = admit_check_ ? admit_check_(peer_identity_) : AdmitAllow;
+  if (a == AdmitWait) {
+    if (admit_wait_ms_ < ADMIT_WAIT_MS) return;  // hold, ask again next tick
+    a = AdmitAnonymous;  // the verdict never came (see Admit in the header)
+  }
+  if (a != AdmitAllow) {
+    uint8_t reason = a == AdmitBanned ? RejectBanned : RejectAnonymous;
+    // Both doors log this one line now (it used to be one per door). The
+    // wording is load-bearing — three e2e drivers grep "refusing <kind>
+    // pilot" (TESTING.md), and it is the only record of why a seat was
+    // refused once the transport is gone.
+    NET_LOG("net: refusing %s pilot at the handshake (seat %d)\n",
+            a == AdmitBanned ? "banned" : "anonymous", (int)assigned_seat_);
+    send_reject(transport_, reason);
+    reject_reason_ = reason;
+    phase_ = Rejected;
+    return;
+  }
+  // Rejoin-by-identity: the installed resolver may re-map this WELCOME to
+  // the parked seat whose remembered pilot the HELLO claim matches (see
+  // set_seat_resolver). Out-of-range/0 answers keep the ctor seat. After
+  // admission, so a refused pilot never reserves a seat.
+  if (seat_resolver_) {
+    int rs = seat_resolver_(peer_identity_);
+    if (rs >= 2 && rs <= MAX_PLAYERS) assigned_seat_ = (uint8_t)rs;
+  }
+  send_welcome(transport_, assigned_seat_);
+  phase_ = Ready;
+}
+
 void NetSession::update(int delta_ms) {
   if (phase_ == Ready || phase_ == Rejected || phase_ == Failed) return;
 
@@ -514,6 +551,15 @@ void NetSession::update(int delta_ms) {
       send_hello(transport_);
       hello_sent_ = true;
     }
+  }
+
+  // A held WELCOME: everything this peer had to say arrived with its HELLO,
+  // and admission is waiting on the worker's async attestation. Its own
+  // clock, ahead of the quiet-peer timeout below (see admit_wait_ms_).
+  if (hello_parsed_) {
+    admit_wait_ms_ += delta_ms;
+    resolve_admission();
+    return;
   }
 
   handshake_ms_ += delta_ms;
@@ -554,16 +600,12 @@ void NetSession::update(int delta_ms) {
         phase_ = Rejected;
         return;
       }
-      // Rejoin-by-identity: the installed resolver may re-map this
-      // WELCOME to the parked seat whose remembered pilot the HELLO
-      // claim matches (see set_seat_resolver). Out-of-range/0 answers
-      // keep the ctor seat.
-      if (seat_resolver_) {
-        int rs = seat_resolver_(peer_identity_);
-        if (rs >= 2 && rs <= MAX_PLAYERS) assigned_seat_ = (uint8_t)rs;
-      }
-      send_welcome(transport_, assigned_seat_);
-      phase_ = Ready;
+      // Everything the peer sends arrives here; the rest of the handshake
+      // is this side deciding. Admission (the room's own ban list and
+      // anonymous-players policy) may hold the WELCOME for a tick or more
+      // while the worker's verdict catches up — see resolve_admission.
+      hello_parsed_ = true;
+      resolve_admission();
       return;
     }
 
@@ -593,6 +635,12 @@ void NetSession::update(int delta_ms) {
 
     if (role_ == ClientRole && h.msg_type == Net::MSG_REJECT) {
       reject_reason_ = r.u8();
+      // Greppable, and the point of rejecting rather than closing: the
+      // joiner can now say WHY it was turned away instead of guessing at
+      // its own network. An unknown reason from a newer host still lands
+      // here (and renders the generic refusal).
+      NET_LOG("net: host refused this connection (reason %u)\n",
+              (unsigned)reject_reason_);
       phase_ = Rejected;
       return;
     }
