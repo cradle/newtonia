@@ -4,17 +4,12 @@ Status: **Phase A COMPLETE** (up to 4 local players live; P3/P4 join by
 controller). **Phase B COMPLETE** — B1–B7 all merged: the
 `NET_PLAYER_CAP` flip landed in #445, followed by the seat-HUD (#446)
 and rejoin-by-identity (#447) follow-ups; online rooms hold up to 4
-players. Shipping gate — **NOT YET SATISFIED as of 2026-08-11**: the
-production signal worker must carry the B3 multi-join protocol before
-any B7 client build reaches players, and only the BETA worker has it
-(deployed by the B3 master push); the latest release tag (v1.52.0,
-2026-08-08) predates B3, so production is still pre-multi-join — a
-pre-multi-join worker degrades every room to the classic single pair.
-The next `v*.*.*` release tag closes the gate by design (deploy-signal
-ships the production worker in minutes while the same tag's store
-builds take far longer to reach players). Everything still open —
-the gate, portal text, known limits, deferred decisions — is
-inventoried with pickup instructions in **§5 Outstanding work**.
+players. Shipping gate — **SATISFIED 2026-08-14**: the production
+signal worker must carry the B3 multi-join protocol before any B7
+client build reaches players, and the `v1.53.0` tag (2026-08-14, the
+first tag after B3 merged) deployed it. Everything still open —
+portal text, known limits, deferred decisions — is inventoried with
+pickup instructions in **§5 Outstanding work**.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -568,8 +563,9 @@ Sequential master-based PRs, inert until the B7 flip:
   start band's hit-test is touch-gated (desktop clicks on the room code
   must not start the game); joiner-side seat labels ("YOU ARE PLAYER
   N", the local badge fallback) read the WELCOME seat; the lobby's
-  signal-level PeerLeave flash is branch-scoped. Known limits: the host has no
-  per-seat kick/manage UI. (The single-peer badge/score-row and
+  signal-level PeerLeave flash is branch-scoped. Known limits at landing: the
+  host had no per-seat kick/manage UI — built since, see §5 O3. (The
+  single-peer badge/score-row and
   DISCONNECTED-notice seams flagged here at landing were closed in the
   follow-up seat-HUD PR: `Overlay::net_badges` draws one row per
   occupied seat in seat order with every pilot's live score, the
@@ -579,11 +575,12 @@ Sequential master-based PRs, inert until the B7 flip:
   the OTHER clients: the host shares each seat's badge identity at each
   peer's first INPUT and on attestation changes, deliberately not a
   PROTO bump — an older receiver ignores it and keeps role labels,
-  the identity-append precedent.) SHIPPING GATE (unchanged): the production
-  signal worker must carry the B3 multi-join protocol — deployed by a
-  release tag — before any B7 client build reaches players; a
-  pre-multi-join worker degrades every room to the classic single pair
-  (2P, with the LAN-door overwrite above now guarded).
+  the identity-append precedent.) SHIPPING GATE — **SATISFIED by v1.53.0
+  (2026-08-14)**: the production signal worker had to carry the B3
+  multi-join protocol — deployed by a release tag — before any B7 client
+  build reached players; a pre-multi-join worker degrades every room to
+  the classic single pair (2P, with the LAN-door overwrite above now
+  guarded).
 
 Cost check against the 3–5× Phase A estimate: B1 and B2 are each roughly
 an A3-sized PR; B3 is a worker-only project with its own test rig; B4 is
@@ -593,26 +590,26 @@ stands.
 ## 5. Outstanding work
 
 Everything left after B7 + follow-ups (#445–#448), written to be
-picked up cold. Ordered by urgency. Inventory taken 2026-08-11.
+picked up cold. Ordered by urgency. Inventory taken 2026-08-11,
+refreshed 2026-08-15.
 
-### O1 — Ship it: cut the next release tag (maintainer; BLOCKS everything 4P-online)
+**Still open: O2, O4, O5, O6.** O1 and O3 are closed; their entries
+stay below for the record.
 
-The production signal worker (`newtonia-signal`) still runs pre-B3 code:
-B3 (#440) merged 2026-08-10 and auto-deployed only the BETA worker
-(master-push → beta is the pipeline's rule); the newest tag v1.52.0 was
-cut 2026-08-08, before B3. Against a pre-multi-join worker every room
-degrades to the classic single pair — no jids means no waiting room —
-so a B7-flipped client must not reach players first.
+### O1 — Ship it: cut the next release tag — DONE (v1.53.0, 2026-08-14)
 
-The next `v*.*.*` tag closes the gate by design: deploy-signal ships
-the production worker in minutes, while the same tag's store builds
-(Steam beta branch, TestFlight, Play) take far longer to reach anyone.
-If extra margin is wanted, manually dispatch deploy-signal with
-target=production ahead of the tag. Verify after: the tag's
-deploy-signal run deployed the top-level (non-beta) config, and a
-2-client smoke against production still pairs (the protocol is
-back-compatible for 2P; the seven B3 protocol-test families cover the
-worker itself).
+Was: the production signal worker (`newtonia-signal`) still ran pre-B3
+code. B3 (#440) merged 2026-08-10 and auto-deployed only the BETA
+worker (master-push → beta is the pipeline's rule), while the newest
+tag v1.52.0 was cut 2026-08-08, before B3. Against a pre-multi-join
+worker every room degrades to the classic single pair — no jids means
+no waiting room — so a B7-flipped client must not reach players first.
+
+Closed by the `v1.53.0` tag (2026-08-14), which contains #440 and whose
+deploy-signal run shipped the top-level (non-beta) config. The gate
+worked as designed: the worker deploys in minutes while the same tag's
+store builds (Steam beta branch, TestFlight, Play) take far longer to
+reach anyone.
 
 ### O2 — `coop_clear` portal text says "2-player mode" (human-only portal edits)
 

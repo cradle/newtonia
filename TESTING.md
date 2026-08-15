@@ -815,7 +815,7 @@ game so achievements stay suppressed):
 | `NEWTONIA_FRAME_LOG=1` | Logs every frame slower than 50 ms; on desktop the line carries `draws=` (shim/Mesh draw calls) and `segs=` (thick-line segments CPU-expanded) for that frame |
 | `NEWTONIA_LINE_EMULATION=1` | Forces the thick-line quad emulation on platforms whose driver would draw wide lines natively (Android/iOS) — for A/B against the native path |
 | `NEWTONIA_TEST_SPAWN_PICKUPS=1` | Pickup-icon ring (see above) |
-| `NEWTONIA_REPLAY_ENABLE=1` | Force replay recording ON (it ships opt-in / default OFF — `Preferences::auto_record_replays`). The replay e2e drivers set this; `NEWTONIA_REPLAY_DISABLE=1` forces OFF and wins |
+| `NEWTONIA_REPLAY_ENABLE=1` | Force replay recording ON regardless of `Preferences::auto_record_replays` (which has defaulted to ON since 2026-07-28, but a pre-existing INI or the Options row can hold it off). The replay e2e drivers set this so they never depend on the pref; `NEWTONIA_REPLAY_DISABLE=1` forces OFF and wins |
 | `NEWTONIA_REPLAY_PLAY=<current\|recent\|online\|best\|last\|path>` | Boot straight into playback of that replay file (dev entry for R2; the REPLAYS menu is the real path) |
 | `NEWTONIA_REPLAY_SELFTEST=1` | Run the recorder's keyframe-ordering selftest and exit 0/1 (`replay_selftest.cpp`), before any window or GL — the same hidden-hook shape as `NEWTONIA_NET_SELFTEST`, but present in netless builds too since replays are a solo feature. Driver: `test/e2e/replay_keyframe.sh` |
 | `NEWTONIA_SAFE_INSET_TOP=N` | Forces a top display-cutout inset of N px, so the notch HUD layout (LEVEL/score/weapons shifted below the camera) is testable without cutout hardware. The real inset comes from `NewtoniaActivity`'s `DisplayCutout` on Android |
@@ -1084,7 +1084,7 @@ does. Get the eMMC device for storage, the 2 GB Go device for everything else.
 # Late-generation load (100+ asteroids is the worst case); KEYCODE_N marches
 # levels fast (works on the intro screens too). NEWTONIA_* ride intent extras
 # (see "Env vars on Android"); -S forces a fresh process that reads them.
-# Recording ships opt-in (default OFF), so the ON run must force it on.
+# Recording defaults ON, but the device's INI may hold it off — force it.
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
     --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9 --es NEWTONIA_REPLAY_ENABLE 1
 adb shell input keyevent KEYCODE_N        # ... march to a dense generation, play
