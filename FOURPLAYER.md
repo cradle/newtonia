@@ -776,13 +776,21 @@ compare:
    on its own clock) rather than deciding on the spot: the identity
    frame lands a round-trip after the join, and a verified upgrade later
    still. Same shape as `AdmitWait`, same reason.
-3. When X's identity is known, `net_rejoin_seat_for_identity()`
-   (glgame.cpp:3370) maps it to a parked seat. Drop the corpse and
-   re-offer **only if that seat is `hs->seat` AND `X != hs->jid`.** The
+3. When X's identity is known, compare it against the identity of the
+   socket already mid-handshake — **pilots, not seats.** The obvious
+   test (does X resolve to the adoption's seat?) is wrong: the door
+   always offers the LOWEST parked seat but the WELCOME re-maps the
+   session onto whichever seat the claim matches (#447), so with two
+   seats parked and the higher seat's pilot answering the lower seat's
+   offer — nseat_swap's shape — the lower seat's own pilot rejoining
+   would resolve to the adoption's seat and tear down a healthy
+   exchange belonging to someone else. One person cannot be two
+   joiners, so comparing pilots sidesteps the re-map entirely. Then
+   drop the corpse and re-offer, **only if `X != hs->jid`.** The
    jid guard is the one that is easy to miss and fatal without: an
    attestation for the LIVE handshake's own socket arrives late and
-   routinely, and would otherwise resolve to exactly this seat and tear
-   down the healthy exchange it describes — the "AGES to reconnect"
+   routinely and names exactly this pilot, so without it the branch
+   would tear down the healthy exchange that attestation describes — the "AGES to reconnect"
    regression the N=1 branch's comment is a monument to.
    **Added after the first e2e run: the adoption must HAVE a jid.** Both
    doors open on every loss (the LAN beacon comes up beside the room) and

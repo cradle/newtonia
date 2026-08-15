@@ -838,7 +838,6 @@ game so achievements stay suppressed):
 | `NEWTONIA_REPLAY_PLAY=<current\|recent\|online\|best\|last\|path>` | Boot straight into playback of that replay file (dev entry for R2; the REPLAYS menu is the real path) |
 | `NEWTONIA_REPLAY_SELFTEST=1` | Run the recorder's keyframe-ordering selftest and exit 0/1 (`replay_selftest.cpp`), before any window or GL — the same hidden-hook shape as `NEWTONIA_NET_SELFTEST`, but present in netless builds too since replays are a solo feature. Driver: `test/e2e/replay_keyframe.sh` |
 | `NEWTONIA_SAFE_INSET_TOP=N` | Forces a top display-cutout inset of N px, so the notch HUD layout (LEVEL/score/weapons shifted below the camera) is testable without cutout hardware. The real inset comes from `NewtoniaActivity`'s `DisplayCutout` on Android |
-
 | `NEWTONIA_PERF_ALWAYS=1` | Drops the perf report's 55 fps gate: the breakdown below prints every second regardless of speed. For comparing two configurations that are both fast enough to stay silent (see "Render cost" below) |
 
 Independent of any env var, the game SDL_Logs a **perf report** once per

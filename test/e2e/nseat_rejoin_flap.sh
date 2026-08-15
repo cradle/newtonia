@@ -16,6 +16,17 @@
 #     and it is exactly what this fix would do if it stopped checking who
 #     joined.
 #
+# NOT covered here, deliberately: the case where the in-flight handshake
+# belongs to a pilot heading for a DIFFERENT seat than the door offered
+# (two seats parked, the higher seat's pilot answering the lower seat's
+# offer — nseat_swap's shape). That is why the resolver compares pilots
+# rather than seats; comparing seats would tear that handshake down when
+# its own seat's pilot arrived. Reproducing it needs a handshake that
+# HANGS rather than dies — TEST_FLAP kills the socket, and a corpse is
+# not the case at issue — so it would take a second hook whose only user
+# is this one assertion. The guarantee rests on the comparison being
+# seat-independent by construction, not on a driver.
+#
 # Prints "NSEAT-REJOIN-FLAP-OK". Needs a local relay (see lib.sh).
 set -u
 if [ -z "${DISPLAY:-}" ]; then

@@ -3419,30 +3419,31 @@ int GLGame::net_rejoin_seat_for_identity(const NetIdentity &claimed) const {
 // ICE timeout — and because the door serves one seat at a time, so does
 // everyone queued behind it.
 //
-// The corpse is identifiable the moment its owner comes back: their new
-// socket announces an identity, the worker relays it stamped with the jid,
-// and #447's seat resolver already knows how to turn an identity into a
-// parked seat. Match it against the seat the stale adoption belongs to and
-// the guess becomes a fact.
+// The corpse is identifiable the moment its owner comes back: both its
+// socket and the new one announce an identity, and the worker relays each
+// stamped with its jid. One person cannot be two joiners, so if the socket
+// mid-handshake and the socket that just arrived carry the same pilot, the
+// older one is a corpse.
 //
-// Four guards, and every one of them exists to protect a HEALTHY exchange
-// from being mistaken for the corpse:
-//  - a DIFFERENT parked seat's pilot changes nothing here. Their turn comes
-//    when this adoption completes or times out (the door is serialized —
-//    see net_door_peer; serving them concurrently is a separate change).
+// Four guards, and every one exists to protect a HEALTHY exchange from
+// being mistaken for that corpse:
+//  - a DIFFERENT pilot changes nothing here. Whatever seat they are
+//    heading for, their turn comes when this adoption completes or times
+//    out (the door is serialized — see net_door_peer; serving parked seats
+//    concurrently is a separate change).
 //  - the join must be on a different jid than the adoption itself. A
 //    verified upgrade for the LIVE handshake's own socket lands late and
-//    routinely, and resolves to exactly this seat: without the jid test
-//    this branch would tear down the healthy exchange that attestation
+//    routinely, and names exactly this pilot: without the jid test this
+//    branch would tear down the healthy exchange that attestation
 //    describes, which is precisely the regression the N=1 branch's comment
 //    is a monument to.
 //  - the adoption must HAVE a jid, i.e. be the relay door's and not the
 //    LAN door's — see the empty-jid note in the body, which the first e2e
 //    run turned from a theory into a certainty.
-//  - no identity, no name, or an ambiguous match (two parked seats
-//    remembering the same pilot) falls through to the deadline and the
-//    ICE timeout — today's behaviour exactly. This can only make the flap
-//    case faster; it has no path that makes anything slower.
+//  - either socket still nameless means no comparison is possible, so the
+//    case falls through to the deadline and the ICE timeout — today's
+//    behaviour exactly. This can only make the flap case faster; it has no
+//    path that makes anything slower.
 void GLGame::net_host_rejoin_flap_check(int delta) {
   if (net_pending_join_jid_.empty()) return;
   NetPeer *hs = net_handshaking_lost_peer();
@@ -3461,13 +3462,33 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
     net_pending_join_jid_.clear();
     return;
   }
+  // Compare PILOTS, not seats. The obvious test — "does this joiner
+  // resolve to the seat the adoption is on?" — is wrong, and wrong in a
+  // way the flap driver cannot see because it parks a single seat. The
+  // door always offers the LOWEST parked seat, but the WELCOME re-maps
+  // the session onto whichever seat the claim matches
+  // (NetSession::seat_resolver_, #447): with seats 3 and 4 both parked
+  // and seat 4's pilot answering seat 3's offer — nseat_swap's exact
+  // shape — `hs` is seat 3's peer holding a handshake destined for seat
+  // 4, and seat 3's pilot then rejoining would resolve to hs->seat and
+  // tear down a perfectly healthy exchange belonging to someone else.
+  //
+  // Asking whether the SAME PILOT is on both sockets sidesteps the
+  // re-map entirely: one person cannot be two joiners, so if the socket
+  // mid-handshake and the socket that just arrived are the same pilot,
+  // the older one is a corpse no matter which seat it was going to land
+  // on. `attested` is the adoption's own copy, drained from the jid map
+  // when its answer was adopted; the jid maps are the fallback for a
+  // claim that never got promoted.
   NetIdentity who = net_jid_identity(net_pending_join_jid_);
-  if (!who.name.empty()) {
-    int seat = net_rejoin_seat_for_identity(who);
-    if (seat == (int)hs->seat) {
-      NET_LOG("net: seat %d's pilot re-entered on jid %s - dropping the "
-              "stale adoption and re-offering\n",
-              (int)hs->seat, net_pending_join_jid_.c_str());
+  NetIdentity mid = hs->attested.name.empty() ? net_jid_identity(hs->jid)
+                                              : hs->attested;
+  if (!who.name.empty() && !mid.name.empty()) {
+    if (who.name == mid.name && who.platform == mid.platform) {
+      NET_LOG("net: pilot '%s' re-entered on jid %s while jid %s was still "
+              "mid-handshake - dropping the stale adoption and re-offering\n",
+              who.name.c_str(), net_pending_join_jid_.c_str(),
+              hs->jid.c_str());
       // The abandoned attempt's attestation goes with its session, as on
       // every other path that drops one: the re-entering joiner
       // re-announces on its fresh socket and re-attests through the worker.
@@ -3477,14 +3498,13 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
       net_pending_join_jid_.clear();
       return;
     }
-    if (seat) {  // someone else's seat — not this adoption's business
-      net_pending_join_jid_.clear();
-      return;
-    }
-    // seat == 0: unknown or ambiguous. Keep waiting rather than giving up
-    // — an attested name arrives later than the claim and comes from the
-    // platform, so it can resolve where the claim could not.
+    net_pending_join_jid_.clear();  // a different pilot — leave them alone
+    return;
   }
+  // One side or the other is nameless so far. Keep waiting: an attested
+  // name arrives later than a claim and comes from the platform, so it
+  // can identify a socket the claim could not. If neither ever does, the
+  // deadline below hands the case back to the ICE timeout.
   net_pending_join_ms_ -= delta;
   if (net_pending_join_ms_ <= 0) net_pending_join_jid_.clear();
 }
