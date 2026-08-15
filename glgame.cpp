@@ -3018,6 +3018,17 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
 // instant client-loss detection — the client would not be rejoining the
 // room if its transport were alive (ICE takes ~10 s to say so).
 void GLGame::net_host_signal_maintain(int delta) {
+  // Reached only while no peer is lost, which makes it the one place that
+  // is unambiguously BETWEEN loss episodes — so it is where pending joins
+  // die. The checker's own rule handles the cases it can see, but it only
+  // runs while a seat is lost, and the last record of an episode can slip
+  // past it: a healthy adoption keeps hitting the connected() early
+  // return, then reaches Ready and the whole block stops running with the
+  // record still filed. Left there, a later episode's slow-but-honest
+  // handshake by the same pilot could match it. Clearing at this boundary
+  // (and NOT at park, which fires per seat and would discard live
+  // evidence mid-episode) is the version of the rule that holds.
+  net_pending_joins_.clear();
   net_host_signal_reclaim_tick(delta);
 
   NetSignal::Event ev;
@@ -3261,6 +3272,12 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // there, which is how it would tear down the healthy handshake of
       // whoever is.
       dp->adopt_claim = NetIdentity();
+      // The attestation resets first too, and for a reason of its own: a
+      // verified Identity for the DEAD jid can land after a drop (the
+      // peer keeps its jid until this line, and the fold matches on jid
+      // alone), so a conditional fill would leave the previous pilot's
+      // attested name for the next one to wear at the Ready re-fold.
+      dp->attested = NetIdentity();
       // Take this socket's CLAIM the same way the attestation below is
       // taken: onto the adoption, off the transient jid map. Without it
       // the resolver's "who is mid-handshake" answer lived only as long
