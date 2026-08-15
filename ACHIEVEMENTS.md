@@ -247,9 +247,15 @@ over the SDL window once it exists.
    above to re-test from scratch. **Done 2026-07-26.**
 
 **Portal text as entered in App Store Connect (2026-07-13; `coop_clear`
-2026-07-26).** Achievement
+2026-07-26, reworded 2026-08-15).** Achievement
 definitions live only in Apple's portal, so this table is the repo's copy
-of record — keep it in sync with any portal edits. Wording deviations from
+of record — keep it in sync with any portal edits. Note that Apple's copy
+lives in the achievement's **Achievement Localization** section, not on the
+achievement itself, and unlike Steam and Play an edit to a live
+localization does not go live on Save: it needs Add for Review → Submit for
+Review (standalone, no app version required, once the achievement has
+shipped with one). `coop_clear`'s reword was submitted 2026-08-15 and is in
+review; the table records what was entered. Wording deviations from
 §5 are deliberate: Myriad spells out "across all your games" to
 distinguish the lifetime count from Millennium's one-game count (the
 state-your-requirements rule), and Untouchable's earned text drops the
@@ -275,7 +281,7 @@ the earn.
 | `cc.gfm.newtonia.kills_10000_lifetime` | Myriad | Destroy 10,000 asteroids across all your games | You destroyed 10,000 asteroids across all your games | 40 |
 | `cc.gfm.newtonia.score_3m` | Megascore | Score 3,000,000 points in one game | You scored 3,000,000 points in one game | 60 |
 | `cc.gfm.newtonia.reach_level15` | Deep Space | Reach level 15 | You reached level 15 | 40 |
-| `cc.gfm.newtonia.coop_clear` | Co-Pilot | Clear a level in 2-player mode | You cleared a level in 2-player mode | 40 |
+| `cc.gfm.newtonia.coop_clear` | Co-Pilot | Clear a level in co-op mode | You cleared a level in co-op mode | 40 |
 | | | | **Total** | **940** |
 
 ### Play Games backend (`play_games_achievements.cpp` + `PlayGamesAchievements.java`)
@@ -551,7 +557,7 @@ only the description mentions where it lives.
 | no_damage_clear | Untouchable | Clear level 9 or beyond without taking damage | 100 |
 | no_secondary_level10 | Purist | Reach level 10 without using a secondary weapon | 60 |
 | weapons_7 | Full Arsenal | Fire 7 different weapon types in one game | 60 |
-| coop_clear | Co-Pilot | Clear a level in 2-player mode | 40 |
+| coop_clear | Co-Pilot | Clear a level in co-op mode | 40 |
 | kills_1000 | Millennium | Destroy 1,000 asteroids in one game | 50 |
 | kills_10000_lifetime | Myriad | Destroy 10,000 asteroids (lifetime — `stats.dat`, §4) | 40 |
 | score_3m | Megascore | Score 3,000,000 points in one game | 60 |
@@ -577,8 +583,11 @@ a netplay-era criteria revision). **Decision (2026-07): `coop_clear` is not
 defined in the Game Center / Play portals and stays unmapped in the mobile
 backends until netplay lands** — a defined-but-unearnable achievement would
 break the earnability house rule, and both stores allow adding achievements
-post-launch. The criteria ("Clear a level in 2-player mode") already covers
-netplay co-op unchanged; its points stay reserved in the Game Center budget. `enemies_10` took its GS from
+post-launch. The criteria (then "Clear a level in 2-player mode") already
+covers netplay co-op unchanged; its points stay reserved in the Game Center
+budget. (The criteria was reworded to "co-op mode" on 2026-08-15 once 4P
+made "2-player" wrong — a text change in all three portals, no change to
+the gating.) `enemies_10` took its GS from
 `station_destroyed` (200 → 160), which got easier when the station moved to
 level 15 — the fighters are part of the same content. Despite its simple
 criteria, `nova_detonated` is deceptively hard: charge pickups drop every

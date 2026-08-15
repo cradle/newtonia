@@ -593,7 +593,7 @@ Everything left after B7 + follow-ups (#445–#448), written to be
 picked up cold. Ordered by urgency. Inventory taken 2026-08-11,
 refreshed 2026-08-15.
 
-**Still open: O2, O4, O5, O6.** O1 and O3 are closed; their entries
+**Still open: O4, O5, O6.** O1, O2 and O3 are closed; their entries
 stay below for the record.
 
 ### O1 — Ship it: cut the next release tag — DONE (v1.53.0, 2026-08-14)
@@ -611,16 +611,21 @@ worked as designed: the worker deploys in minutes while the same tag's
 store builds (Steam beta branch, TestFlight, Play) take far longer to
 reach anyone.
 
-### O2 — `coop_clear` portal text says "2-player mode" (human-only portal edits)
+### O2 — `coop_clear` portal text says "2-player mode" — DONE (2026-08-15)
 
-The achievement unlocks for any clear with ≥2 players (unchanged — 4P
-clears count), but the player-facing text in all three stores reads
-"Clear a level in 2-player mode" (entered 2026-07-26): App Store
-Connect, Play Console, and Steamworks, plus the master-list rows in
-ACHIEVEMENTS.md §5 and the ASC table copy (ACHIEVEMENTS.md:278, :554).
-Reword to "co-op mode" (or "with a co-pilot") in each portal; then
-update the two ACHIEVEMENTS.md tables to match what was entered. No
-code change — the symbolic id, gating, and point values stay put.
+Was: the achievement unlocks for any clear with ≥2 players (unchanged —
+4P clears count), but the player-facing text in all three stores read
+"Clear a level in 2-player mode" (entered 2026-07-26).
+
+Reworded to **"Clear a level in co-op mode"** — a straight "2-player" →
+"co-op" substitution — in Steamworks and the Play Console (both live) and
+in App Store Connect (**submitted 2026-08-15, in review**: Apple keeps the
+copy in the achievement's Achievement Localization section and a live
+localization edit needs Add for Review → Submit for Review rather than
+going live on Save; it can go standalone, no app version). The two
+ACHIEVEMENTS.md tables (§2 ASC copy of record, §5 master list) match what
+was entered. No code change — the symbolic id, gating, and point values
+are untouched.
 
 ### O3 — Host per-seat manage/kick UI — DONE (2026-08-12)
 
