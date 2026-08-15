@@ -20,9 +20,9 @@ ship  0 0
 ship2 500 0
 ship3 0 500
 ship4 500 500
-asteroid 0 320 invisible r=120
-asteroid 500 320 invisible r=120
-asteroid 0 820 invisible r=120
-asteroid 500 820 invisible r=120
-asteroid 1400 1400 normal
+asteroid 0 320 invisible r=120 v=0,0
+asteroid 500 320 invisible r=120 v=0,0
+asteroid 0 820 invisible r=120 v=0,0
+asteroid 500 820 invisible r=120 v=0,0
+asteroid 1400 1400 normal v=0,0
 sim 20000

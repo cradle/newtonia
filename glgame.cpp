@@ -3124,6 +3124,12 @@ void GLGame::net_host_rejoin_park_peer(NetPeer &p, bool keep_session) {
   // DISCONNECTED banner still names who dropped.
   p.attested = NetIdentity();
   p.adopt_claim = NetIdentity();  // same rule for the unattested twin
+  // A new loss episode starts here, before any door can offer: whatever
+  // joins were pending belong to the room as it was, and the flap
+  // resolver must never weigh them against an adoption formed after this
+  // point. Clearing at the boundary makes that true by construction
+  // rather than by an argument about which tick runs first.
+  net_pending_joins_.clear();
   GLShip *gs = player_by_seat(p.seat);
   Ship *remote = gs ? gs->ship : NULL;
   if (remote) {
@@ -3482,12 +3488,13 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
     // perfectly healthy LAN handshake and call it a corpse. A relay join
     // is evidence about relay adoptions only.
     //
-    // With NO adoption at all the records are about nothing and go; with a
-    // LAN one they are merely irrelevant FOR NOW, and a PeerJoin fires
-    // once per socket, so discarding them would be discarding evidence
-    // that can never be recreated — the relay door may yet form an
-    // adoption these same joins explain.
-    if (!hs) net_pending_joins_.clear();
+    // Both cases discard the records, which is the whole lifetime rule:
+    // a pending join is kept only while a relay adoption it might explain
+    // is actually in flight. Anything else — no adoption, a LAN one, a
+    // later loss episode — and it is stale evidence about a room that has
+    // moved on, which is the one way this mechanism could reach a healthy
+    // handshake it knows nothing about.
+    net_pending_joins_.clear();
     return;
   }
   // Is this adoption actually dead? Ask the transport first and the clock
@@ -3564,11 +3571,12 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
         hs->adopt_claim = NetIdentity();
         net_drop_session(*hs);
         net_rehost_offer_sent_ = false;
-        // Only this record is spent. The others are evidence about joins
-        // that have not been explained yet, a PeerJoin fires once per
-        // socket, and a second flap in the same loss episode is exactly
-        // the case that would need them again.
-        net_pending_joins_.erase(it);
+        // Every record goes, not just this one: dropping the session
+        // leaves no adoption in flight, which by the rule above is
+        // exactly when they stop being evidence about anything. A second
+        // flap in the same episode re-announces on its own new socket
+        // and files a fresh record.
+        net_pending_joins_.clear();
         return;
       }
       net_pending_joins_.erase(it++);  // a different pilot — leave them be

@@ -914,18 +914,27 @@ divided by its fps. 1280×720 unless noted:
 | Natural gen 6 (68 asteroids) | 6.4 ms (157 fps) | 11.8 ms (85 fps) | 1.85× |
 | Natural gen 14 (174 asteroids) | 8.5 ms (118 fps) | 16.9 ms (59 fps) | 2.00× |
 | Synthetic, no lens on screen | 2.1 ms (475 fps) | 4.7 ms (211 fps) | 2.25× |
-| Synthetic, lens on every screen | 4.5 ms (222 fps) | 8.9 ms (112 fps) | 1.98× |
-| — of which the lens pass | 2.60 ms | 4.69 ms | 1.80× |
-| — the lens pass at 1920×1080 | 4.81 ms | 7.56 ms | 1.57× |
+| Synthetic, lens on every screen | 4.7 ms (211 fps) | 10.5 ms (95 fps) | 2.22× |
+| — of which the lens pass | 2.73 ms | 5.58 ms | 2.04× |
+| — the lens pass at 1920×1080 | 5.27 ms | 10.12 ms | 1.92× |
+
+The three synthetic rows were re-measured 2026-08-15 after review caught
+that `lens_stress.shot` left its asteroids on the constructor's random
+velocity: over a 20 s sim each lens drifted 330-500 units, far enough to
+leave a quarter-viewport, so the first pass had been sampling some
+viewports with no lens in them and understating 4P. The scene pins them
+with `v=0,0` now. The corrected figures are worse for 4P than the ones
+first reported here (2.04× not 1.80× on the lens, 1.92× not 1.57× at
+1080p) and change no conclusion.
 
 **The four-captures-per-frame worry is real in count and false in cost.**
 `WarpPass::capture` is a `glCopyTexImage2D` of the *viewport* rect
 (warp_pass.cpp:291), so four quarter-area viewports move the same pixels
 as one full-screen viewport — the pixel budget is constant in player
 count. The 1.8× that remains is per-CALL overhead, not per-pixel work,
-which is exactly what the resolution row proves: raise the resolution and
-the 4P penalty *falls* to 1.57×, because fixed overhead amortises over
-more pixels. Gating captures round-robin would therefore stagger a pass
+which is what the resolution row still shows: raise the resolution and
+the 4P penalty falls (2.04× to 1.92×), because fixed overhead amortises
+over more pixels. Gating captures round-robin would therefore stagger a pass
 that is already near-constant in viewport count, and buy that with a
 visibly stale lens. Dropped.
 
