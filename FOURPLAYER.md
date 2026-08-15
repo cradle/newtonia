@@ -871,19 +871,21 @@ Phase A shipped the simple thing: the desktop options screen is a flat
 rows), compressed automatically by `opt_row_center`. Rendered through the
 shots harness (`shots/options.shot` — attract → OPTIONS, added for this)
 at 1280×720, the Deck's 1280×800, 1024×768 (4:3) and 800×600. It is not
-cramped anywhere: 15 rows put ~50 virtual units of pitch under a size-12
-row, and the list still clears the BACK TO MENU band with air to spare.
-800×600 is the practical floor and reads fine there too.
+cramped anywhere: the band is 250..-300 (`desk_opt_top`/`desk_opt_bottom`),
+so 15 rows get ~37 virtual units of pitch under a size-12 row — a glyph is
+24 tall, which leaves about half a line of air — and the list still clears
+the BACK TO MENU band. 800×600 is the practical floor and reads fine too.
 
 Two things worth knowing before the next row is added:
 
 - **Window size doesn't enter into it.** Landscape pins
-  `Typer::scaled_window_height` to 800 and grows the *width* with aspect
-  (typer.cpp:87-96), so the row band is a fixed 350..-400 in virtual
-  units at every resolution. Pixel size only scales the whole screen —
-  there is no size at which the vertical layout gets tighter, which is
-  why the verdict generalises from four renders. Row COUNT is the only
-  vertical variable.
+  `Typer::scaled_window_height` to `original_window_height` = 600 and
+  grows the *width* with aspect (typer.cpp:87-96), so `menu_half_height()`
+  is 600 and the row band is a fixed 250..-300 in virtual units at every
+  resolution. Pixel size only scales the whole screen — there is no size
+  at which the vertical layout gets tighter, which is why the verdict
+  generalises from four renders. Row COUNT is the only vertical
+  variable.
 - **The tight axis is horizontal, and it is the name column.** The
   longest name today, `LEADERBOARD  UPLOAD`, ends 16 virtual units short
   of the step column's opening bracket — two thirds of a glyph cell. It

@@ -3245,6 +3245,14 @@ void GLGame::net_host_rejoin_poll(int delta) {
       dp->session =
           new NetSession(net_rehost_, NetSession::HostRole, dp->seat);
       dp->adopt_ms = 0;  // handshake clock (flap resolver)
+      // Reset FIRST, fill second. A peer can host several adoptions in one
+      // loss episode (a failed attempt drops the session but the seat stays
+      // parked), and a conditional fill would leave the PREVIOUS pilot's
+      // claim in place whenever the new socket has none banked — handing
+      // the flap resolver a `mid` belonging to someone who is no longer
+      // there, which is how it would tear down the healthy handshake of
+      // whoever is.
+      dp->adopt_claim = NetIdentity();
       // Take this socket's CLAIM the same way the attestation below is
       // taken: onto the adoption, off the transient jid map. Without it
       // the resolver's "who is mid-handshake" answer lived only as long
@@ -3606,6 +3614,8 @@ void GLGame::net_host_rejoin_session_update(int delta) {
           dp->jid.clear();
           rp->attested = dp->attested;
           dp->attested = NetIdentity();
+          rp->adopt_claim = dp->adopt_claim;
+          dp->adopt_claim = NetIdentity();
           // offline_paired deliberately NOT transferred: it belongs to a
           // seat's CURRENT pairing, and both seats' pairings are settled
           // below/on their own next adoption (the door peer stays parked
@@ -3757,6 +3767,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // name to be folded onto whoever completes the NEXT attempt (an
       // unverified or legacy joiner would wear it at the Ready re-fold).
       dp->attested = NetIdentity();
+      dp->adopt_claim = NetIdentity();  // same rule, same reason
       net_drop_session(*dp);
       if (net_signal_) {
         net_rehost_ = NetTransport::create();
@@ -3838,6 +3849,7 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
         dp->session =
             new NetSession(net_lan_rehost_, NetSession::HostRole, dp->seat);
         dp->adopt_ms = 0;
+        dp->adopt_claim = NetIdentity();
         // Same rejoin-by-identity resolver as the relay door.
         dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
           return net_rejoin_seat_for_identity(claimed);
