@@ -2898,6 +2898,11 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         if (!ev.peer.empty()) {
           if (net_jid_attested_.size() > 16) net_jid_attested_.clear();
           net_jid_attested_[ev.peer] = att;
+          // ...and onto a pending join waiting on this very socket, so the
+          // answer survives the cache above clearing (O4).
+          std::map<std::string, PendingJoin>::iterator pj =
+              net_pending_joins_.find(ev.peer);
+          if (pj != net_pending_joins_.end()) pj->second.ident = att;
         }
         // B5: the stamp picks WHICH peer's badge this is — match it over
         // the roster's jids (each set at its adoption). An empty stamp is
@@ -2958,6 +2963,13 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         cl.name_trust = cl.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_CLAIMED;
         if (net_jid_claimed_.size() > 16) net_jid_claimed_.clear();
         net_jid_claimed_[ev.peer] = cl;
+        std::map<std::string, PendingJoin>::iterator pj =
+            net_pending_joins_.find(ev.peer);
+        // A verified upgrade lands later and overwrites this, which is the
+        // order we want: the claim answers "who" early, the attestation
+        // answers it better.
+        if (pj != net_pending_joins_.end() && pj->second.ident.name.empty())
+          pj->second.ident = cl;
       }
       return NetSigHandled;
     case NetSignal::Event::Closed:
@@ -3580,9 +3592,14 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
   // (`attested` drained from the jid map, `adopt_claim` likewise), so
   // neither depends on a jid map that later overflows and clears.
   NetIdentity mid = hs->attested;
-  const bool mid_attested = !mid.name.empty();
   if (mid.name.empty()) mid = hs->adopt_claim;
   if (mid.name.empty()) mid = net_jid_identity(hs->jid);
+  // Read the TRUST, not "does it have a name". Game Center attests the
+  // ACCOUNT with no name at all by design, so a non-empty name is not the
+  // same question — and answering the wrong one would leave the
+  // like-for-like rule below switched off in rooms the design credits it
+  // to.
+  const bool mid_attested = mid.name_trust == NET_TRUST_ATTESTED;
   // One drop per seat per loss episode. The identity test below runs on
   // claims, and a claim is a self-report: someone with the room code can
   // name themselves after the pilot who is rejoining. The guards above
@@ -3607,15 +3624,15 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
       net_pending_joins_.erase(it++);
       continue;
     }
-    NetIdentity who = net_jid_identity(jid);
+    NetIdentity who = it->second.ident.name.empty() ? net_jid_identity(jid)
+                                                    : it->second.ident;
     // Like for like: an ATTESTED socket's handshake may only be judged
     // against another attestation. Where the worker vouches for names —
     // Steam, Play Games, Game Center rooms — that shuts the spoofer out
     // completely, because they cannot mint the name they would need. An
     // unattested room keeps the claim-level match, which is the only
     // thing available there and still strictly better than the timeout.
-    const bool who_attested =
-        net_jid_attested_.find(jid) != net_jid_attested_.end();
+    const bool who_attested = who.name_trust == NET_TRUST_ATTESTED;
     if (!who.name.empty() && !mid.name.empty() &&
         (!mid_attested || who_attested)) {
       if (who.name == mid.name && who.platform == mid.platform) {

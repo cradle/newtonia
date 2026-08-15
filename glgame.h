@@ -764,6 +764,13 @@ private:
   struct PendingJoin {
     int ttl_ms = 0;        // patience left while we wait to learn whose it is
     uint32_t arrival = 0;  // monotonic, for eviction order (TTLs tie)
+    // The identity, copied here the moment the worker names this socket.
+    // The jid maps are bounded caches that clear wholesale when they fill,
+    // and the ADOPTION side already keeps its own copy for that reason
+    // (NetPeer::adopt_claim); this is the same protection for the joining
+    // side, which otherwise loses the very record the resolver is waiting
+    // for and degrades to the ICE timeout with nothing logged.
+    NetIdentity ident;
   };
   std::map<std::string, PendingJoin> net_pending_joins_;
   uint32_t net_pending_join_seq_ = 0;
