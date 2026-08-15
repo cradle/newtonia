@@ -7,9 +7,9 @@ and rejoin-by-identity (#447) follow-ups; online rooms hold up to 4
 players. Shipping gate — **SATISFIED 2026-08-14**: the production
 signal worker must carry the B3 multi-join protocol before any B7
 client build reaches players, and the `v1.53.0` tag (2026-08-14, the
-first tag after B3 merged) deployed it. Everything still open —
-portal text, known limits, deferred decisions — is inventoried with
-pickup instructions in **§5 Outstanding work**.
+first tag after B3 merged) deployed it. **§5 Outstanding work** is now
+empty of open items — its entries stay as the record of what each was
+and how it closed.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -598,8 +598,8 @@ Everything left after B7 + follow-ups (#445–#448), written to be
 picked up cold. Ordered by urgency. Inventory taken 2026-08-11,
 refreshed 2026-08-15.
 
-**Still open: O4** — everything else here is closed; the entries stay
-below for the record.
+**Nothing open.** Every entry here is closed; they stay below for the
+record.
 
 ### O1 — Ship it: cut the next release tag — DONE (v1.53.0, 2026-08-14)
 
@@ -719,7 +719,7 @@ self-host a FAKE_VERIFY relay, since the plain dev relay attests nobody
 and neither BAN nor the admission rule would have anything to act on.
 `nseat_lobby_mouse.sh` covers the same screen under a pointer.
 
-### O4 — N>1 rejoin ICE-flap wait (B5 known limit)
+### O4 — N>1 rejoin ICE-flap wait (B5 known limit) — DONE (2026-08-15)
 
 A rejoiner whose reconnect attempt half-establishes and dies (network
 blip mid-ICE, app relaunched during the handshake) leaves the host
@@ -737,6 +737,17 @@ Self-recovering, never a hang — just slow. Fix direction: attach the
 rejoiner's IDENTITY to the join event so the host can match it to the
 seat whose handshake is stale — the same name+platform matching #447's
 seat resolver does at WELCOME time, applied one step earlier.
+
+#### BUILT 2026-08-15 — client-only, as the scoping predicted
+
+Landed as scoped below, with one addition the first e2e run forced (the
+LAN guard, third bullet under "The design"). Verified by
+`test/e2e/nseat_rejoin_flap.sh` both ways: green on the fix, and on a
+control build with `net_host_rejoin_flap_check` stubbed out the same
+driver fails — seat 3's corpse lived to the ICE timeout and the rejoiner
+gave up before the host ever re-offered. Regression drivers green:
+`rejoin`, `nseat_rejoin`, `nseat_swap`, `lanrejoin`, `hostresume`,
+`lankeep`, `hiccup`.
 
 #### Scoped 2026-08-15 — it is a client-only patch after all
 
@@ -773,6 +784,13 @@ compare:
    routinely, and would otherwise resolve to exactly this seat and tear
    down the healthy exchange it describes — the "AGES to reconnect"
    regression the N=1 branch's comment is a monument to.
+   **Added after the first e2e run: the adoption must HAVE a jid.** Both
+   doors open on every loss (the LAN beacon comes up beside the room) and
+   a rejoining pilot races both roads at once; a LAN adoption carries no
+   jid, and an empty jid compares unequal to every real one. Without the
+   extra test, the same pilot's relay join would tear down their own
+   healthy LAN handshake. A relay join is evidence about relay adoptions
+   only.
 4. Anything else — no identity, a nameless peer, an ambiguous match
    (the resolver returns 0 for two parked seats with the same name), or
    a different seat's pilot — changes nothing and waits out the ICE

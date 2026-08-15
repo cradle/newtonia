@@ -42,8 +42,8 @@ shard_drivers() {
                         hazards_net timeslow_net impacts replay_online" ;;
     netplay-resilience) echo "rejoin rejoinexit hiccup blackout invite hostresume
                               spectate spectate_disconnect revive" ;;
-    seats-and-soak) echo "nseat nseat_rejoin nseat_gameover nseat_swap nseat_soak
-                          gensoak nseat_kick nseat_anon" ;;
+    seats-and-soak) echo "nseat nseat_rejoin nseat_rejoin_flap nseat_gameover
+                          nseat_swap nseat_soak gensoak nseat_kick nseat_anon" ;;
     *) return 1 ;;
   esac
 }
@@ -90,6 +90,7 @@ shard_needs_relay() {
 driver_env() {
   case "$1" in
     nseat|nseat_rejoin|nseat_gameover|nseat_swap|nseat_soak) echo "SEATS=4" ;;
+    nseat_rejoin_flap) echo "" ;;  # 4 seats always (its shape needs them)
     *) echo "" ;;
   esac
 }

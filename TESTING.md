@@ -362,6 +362,16 @@ test/e2e/nseat_rejoin.sh # B6 drop+rejoin at N seats: seat 3's client is
                      # SIGKILLed (a MIDDLE seat at 4 — non-contiguous roster),
                      # host must detect the loss, play on UNPAUSED (PB-D7),
                      # and rejoin a relaunched client back onto seat 3
+test/e2e/nseat_rejoin_flap.sh # O4 rejoin flap at 4 seats with NAMED pilots:
+                     # seat 3's pilot returns once with NEWTONIA_NET_TEST_FLAP
+                     # (die with the answer sent, leaving the host an adoption
+                     # nobody is party to), then for real. Asserts the host
+                     # identifies the returning pilot and logs "dropping the
+                     # stale adoption" — the MECHANISM, because a local relay's
+                     # ICE can give up well inside the ~30 s a real network
+                     # takes, so a timing bound alone would pass unfixed here.
+                     # Plus the negative that matters: a stranger (PILOT9)
+                     # joining mid-handshake must NOT trigger the drop
 test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # (host-only env) empties every seat; each CLIENT must
                      # observe "game over (all players out)" via replication,
@@ -652,6 +662,15 @@ defaults to `remote` (the joiner spectates the host); pass `SPECTATE_WHO=local`
 to make the host spectate the joiner. It burst-screenshots the spectator's
 window across the 5 s countdown and the hand-off; asserts SPECTATE-E2E-OK and a
 clean log.
+
+`NEWTONIA_NET_TEST_FLAP=1` (client-side, inert without it) makes a JOINER
+`_Exit(0)` the instant its answer leaves the wire — the one window an
+external `kill -9` cannot hit reliably, because on a local relay the
+handshake completes in milliseconds after that point. The host takes the
+answer, builds its adoption session, and is left holding a corpse: the O4
+flap, on demand. `_Exit` rather than `exit` deliberately — running the
+destructors would send a BYE, and a peer that says goodbye is not this case.
+Used by nseat_rejoin_flap.sh.
 
 `_WHO` also takes `seatN` (a specific seat, by its wire seat number), and a
 SECOND firing exists — `NEWTONIA_NET_TEST_KILL2_MS`/`_WHO2` — so a driver can

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -1468,6 +1469,19 @@ void NetLobby::pump_signal(int delta) {
     signal_->send_answer(transport_->local_description());
     answer_sent_ = true;
     NET_LOG("[lobby] answer sent to room %s\n", room_code_.c_str());
+    // E2e hook (FOURPLAYER.md O4): die HERE, with the answer on the wire
+    // and ICE going nowhere, which is the exact shape of a rejoin that
+    // half-establishes and flaps. The host builds its adoption session
+    // from the answer and is then left holding a corpse. `_Exit` and not
+    // exit(): running the destructors would send a courteous BYE, and a
+    // peer that says goodbye is not the case under test. Set by
+    // test/e2e/nseat_rejoin_flap.sh on one instance; no shipped build
+    // sets it.
+    if (SDL_getenv("NEWTONIA_NET_TEST_FLAP")) {
+      NET_LOG("[lobby] TEST_FLAP: dying with the answer sent\n");
+      std::fflush(nullptr);
+      std::_Exit(0);
+    }
     session_ = new NetSession(transport_, NetSession::ClientRole);
     transport_ = nullptr;
     connect_wait_ms_ = 0;

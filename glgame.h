@@ -712,6 +712,34 @@ private:
   // times out on someone the worker had already vouched for.
   // NetLobby::jid_attested_ is the waiting room's twin.
   std::map<std::string, NetIdentity> net_jid_attested_;
+  // The same by jid for UNVERIFIED claims — the flap resolver's input
+  // (FOURPLAYER.md O4), and deliberately a second map rather than a
+  // trust field on the first. Everything that DENIES someone (the ban
+  // list, allow_anonymous) reads `attested`, and must keep reading a map
+  // a peer cannot write; this one is a self-report. Its only consumer
+  // decides whether to tear down a HALF-OPEN handshake on a seat that is
+  // already lost — something the ICE timeout does by itself moments
+  // later — so a lying claim buys nothing that waiting would not, while
+  // requiring attestation here would switch the fix off in every
+  // desktop-only room (which attests nobody).
+  std::map<std::string, NetIdentity> net_jid_claimed_;
+  // Best identity known for a joining socket: the worker's verdict if it
+  // has landed, else that socket's own claim.
+  NetIdentity net_jid_identity(const std::string &jid) const {
+    std::map<std::string, NetIdentity>::const_iterator it =
+        net_jid_attested_.find(jid);
+    if (it != net_jid_attested_.end()) return it->second;
+    it = net_jid_claimed_.find(jid);
+    return it != net_jid_claimed_.end() ? it->second : NetIdentity();
+  }
+  // O4: a join seen while a door adoption is mid-handshake, held until we
+  // learn whose it is. The identity frame lands a round-trip behind the
+  // join (and a verified upgrade later still), so the decision waits —
+  // the same reason NetSession::AdmitWait holds a WELCOME.
+  std::string net_pending_join_jid_;
+  int net_pending_join_ms_ = 0;
+  static const int NET_JOIN_IDENT_WAIT_MS = 3000;
+  void net_host_rejoin_flap_check(int delta);
   void net_set_peer_jid(const std::string &jid) {
     net_peer_jid_ = jid;
     if (!net_peers_.empty()) net_peers_.front()->jid = jid;
