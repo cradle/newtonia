@@ -793,12 +793,12 @@ compare:
    would tear down the healthy exchange that attestation describes — the "AGES to reconnect"
    regression the N=1 branch's comment is a monument to.
    **Added after the first e2e run: the adoption must HAVE a jid.** Both
-   doors open on every loss (the LAN beacon comes up beside the room) and
-   a rejoining pilot races both roads at once; a LAN adoption carries no
-   jid, and an empty jid compares unequal to every real one. Without the
-   extra test, the same pilot's relay join would tear down their own
-   healthy LAN handshake. A relay join is evidence about relay adoptions
-   only.
+   doors open on every loss (the LAN beacon comes up beside the room), so
+   a LAN pairing can be mid-handshake when an unrelated relay join lands.
+   A LAN adoption carries no jid, and an empty jid compares unequal to
+   every real one, so without the extra test that relay join would tear
+   down a healthy LAN handshake. A relay join is evidence about relay
+   adoptions only.
 4. Establish the adoption is actually DEAD before identity is even
    consulted, and ask the transport rather than a clock:
    `!transport->connected() && adopt_ms >= FLAP_MIN_ADOPT_MS` (12 s).
