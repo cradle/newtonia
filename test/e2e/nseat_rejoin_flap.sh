@@ -108,7 +108,13 @@ echo "flapper died with its answer on the wire"
 # stranger arrived) from a real one.
 REARMS=$(grep -ac "reopened for rejoin" "$OUT/host.log")
 nav_join "$WS" "$ROOM_CODE" stranger
-sleep 6   # past NET_JOIN_IDENT_WAIT_MS (3 s) with room to spare
+# Long enough that the resolver has actually RUN on this record, not just
+# filed it. Its comparison loop sits behind the liveness gate
+# (FLAP_MIN_ADOPT_MS, 12 s of adoption age), so a shorter wait would let
+# "stranger ignored" pass while the host had never yet looked — a vacuous
+# negative. The corpse's own timeout is ~50 s locally, which is the budget
+# this is spending against.
+sleep 15
 grep -aq "$DROP_LINE" "$OUT/host.log" &&
   room_fail "STRANGER TORE DOWN A LIVE HANDSHAKE (O4 regression)" host
 echo "stranger ignored, handshake untouched"

@@ -801,7 +801,7 @@ compare:
    only.
 4. Establish the adoption is actually DEAD before identity is even
    consulted, and ask the transport rather than a clock:
-   `!transport->connected() && adopt_ms >= FLAP_MIN_ADOPT_MS` (8 s).
+   `!transport->connected() && adopt_ms >= FLAP_MIN_ADOPT_MS` (12 s).
    A clock alone cannot tell a corpse from a slow success — `adopt_ms`
    covers ICE and DTLS, and a strict room adds up to `ADMIT_WAIT_MS` of
    AdmitWait on top, so a healthy TURN rejoin sits at five to eight
@@ -835,14 +835,14 @@ other test, anyone holding the room code could claim the rejoining
 pilot's name and kill their working attempt, repeatedly — a denial of
 service the game does not have today. Three things answer it: the
 liveness gate (step 4) means a liar can only reach a socket that never
-connected and has had long enough to; like-for-like trust (step 5)
+connected and has had twelve seconds to; like-for-like trust (step 5)
 removes the attack entirely from rooms where the worker vouches for
 names; and the one-drop cap (step 6) bounds what is left to a single
 lost attempt rather than a loop. The claim decides WHO; the transport
 decides WHETHER. Honest residual: in an all-desktop room, where nothing
 is attested, someone with the room code can still cost a rejoining pilot
-one attempt — a handshake already eight seconds into ICE without having
-connected. That is worse than doing nothing in that one case, and it is
+one attempt — a handshake already twelve seconds into ICE without
+having connected. That is worse than doing nothing in that one case, and it is
 the price of the fix working at all where nobody is attested.
 
 **What it does not fix.** Rejoiners queued behind a legitimately slow

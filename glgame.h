@@ -761,7 +761,12 @@ private:
   // (a stranger browsing while the seat's own pilot returns), and with
   // one slot the second silently evicted the first — leaving the fix
   // inert in exactly the busy room it was written for.
-  std::map<std::string, int> net_pending_joins_;
+  struct PendingJoin {
+    int ttl_ms = 0;        // patience left while we wait to learn whose it is
+    uint32_t arrival = 0;  // monotonic, for eviction order (TTLs tie)
+  };
+  std::map<std::string, PendingJoin> net_pending_joins_;
+  uint32_t net_pending_join_seq_ = 0;
   static const int NET_JOIN_IDENT_WAIT_MS = 3000;
   // How long an adoption must have been handshaking before the resolver
   // will consider it stale. See net_host_rejoin_flap_check — this is the

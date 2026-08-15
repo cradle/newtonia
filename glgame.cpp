@@ -3386,20 +3386,28 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // once the worker says.
       NetPeer *hs = net_handshaking_lost_peer();
       if (hs && !ev.peer.empty() && ev.peer != hs->jid) {
-        // Full: evict the entry closest to expiring, not the whole map.
-        // Clearing here would be the very failure the map replaced — the
-        // record for the pilot this exists to recognise, thrown away
-        // because someone else knocked.
+        // Full: evict the oldest ARRIVAL, not the whole map. Clearing
+        // here would be the very failure the map replaced — the record
+        // for the pilot this exists to recognise, thrown away because an
+        // eighth stranger knocked. Ordered by an arrival counter and not
+        // by remaining TTL: the TTL only ticks down inside the resolver's
+        // gated loop, so entries filed before that gate opens all hold
+        // the same value, and "smallest TTL" would silently mean "first
+        // in map order" — which is lexicographic over decimal jids, where
+        // "10" precedes "2".
         if (net_pending_joins_.size() >= 8) {
-          std::map<std::string, int>::iterator oldest =
+          std::map<std::string, PendingJoin>::iterator oldest =
               net_pending_joins_.begin();
-          for (std::map<std::string, int>::iterator pit =
+          for (std::map<std::string, PendingJoin>::iterator pit =
                    net_pending_joins_.begin();
                pit != net_pending_joins_.end(); ++pit)
-            if (pit->second < oldest->second) oldest = pit;
+            if (pit->second.arrival < oldest->second.arrival) oldest = pit;
           net_pending_joins_.erase(oldest);
         }
-        net_pending_joins_[ev.peer] = NET_JOIN_IDENT_WAIT_MS;
+        PendingJoin pj;
+        pj.ttl_ms = NET_JOIN_IDENT_WAIT_MS;
+        pj.arrival = net_pending_join_seq_++;
+        net_pending_joins_[ev.peer] = pj;
         NET_LOG("net: peer joined (jid %s) while seat %d is mid-handshake - "
                 "identifying\n", ev.peer.c_str(), (int)hs->seat);
       }
@@ -3585,7 +3593,8 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
   // same episode waits out its own timeout, which is the trade: the
   // first flap is the case with a field story.
   if (hs->flap_dropped) return;
-  for (std::map<std::string, int>::iterator it = net_pending_joins_.begin();
+  for (std::map<std::string, PendingJoin>::iterator it =
+           net_pending_joins_.begin();
        it != net_pending_joins_.end();) {
     const std::string &jid = it->first;
     if (jid == hs->jid) {  // this pending join IS the adoption — never itself
@@ -3638,8 +3647,8 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
     // name arrives later than a claim and comes from the platform, so it
     // can identify a socket a claim could not. If neither ever does, the
     // patience below hands the case back to the ICE timeout.
-    it->second -= delta;
-    if (it->second <= 0) net_pending_joins_.erase(it++);
+    it->second.ttl_ms -= delta;
+    if (it->second.ttl_ms <= 0) net_pending_joins_.erase(it++);
     else ++it;
   }
 }
@@ -3930,6 +3939,11 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
             new NetSession(net_lan_rehost_, NetSession::HostRole, dp->seat);
         dp->adopt_ms = 0;
         dp->adopt_claim = NetIdentity();
+        // And the attestation, for the relay door's reason plus one of its
+        // own: nothing attests a LAN pairing, so a dropped relay attempt's
+        // verdict left here would be worn — and broadcast to every client —
+        // by whoever completes this local handshake instead.
+        dp->attested = NetIdentity();
         // Same rejoin-by-identity resolver as the relay door.
         dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
           return net_rejoin_seat_for_identity(claimed);
