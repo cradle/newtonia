@@ -271,6 +271,10 @@ The core of the phase.
   grid-correct for free, but up to 4 captures/frame when lenses are on
   multiple screens — measure on the headless driver; if it hurts, gate to
   N captures/frame round-robin (`lens_on_screen` already skips off-screen).
+  **Measured 2026-08-15 (§5 O6): it does not hurt — the capture copies the
+  VIEWPORT, so four quarter-viewports move the same pixels as one full
+  one, and the worst case costs 1.8× the 1P lens (1.57× at 1080p), not 4×.
+  The round-robin gate is dropped.**
 
 ### A4 — Gameplay N-safety sweep
 - **Unknown-pad authority (flip blocker, found in A2 review):** an opened pad
@@ -594,8 +598,8 @@ Everything left after B7 + follow-ups (#445–#448), written to be
 picked up cold. Ordered by urgency. Inventory taken 2026-08-11,
 refreshed 2026-08-15.
 
-**Still open: O4, O6.** O1, O2, O3 and O5 are closed; their entries
-stay below for the record.
+**Still open: O4** — everything else here is closed; the entries stay
+below for the record.
 
 ### O1 — Ship it: cut the next release tag — DONE (v1.53.0, 2026-08-14)
 
@@ -773,20 +777,64 @@ The 15-row case only appears on a netplay build (`net_board_available()`
 gates the LEADERBOARD UPLOAD row); the netless list is 14. These renders
 forced the row on so the worst case was the one judged.
 
-### O6 — 4P performance budget (measure before optimising)
+### O6 — 4P performance budget — DONE (2026-08-15), no action needed
 
-A 4P grid draws the world four times per frame, and WarpPass (the
-invisible-asteroid lens) can capture the viewport up to four times per
-frame when lenses sit on multiple screens (glgame.cpp:8500 reads the
-live viewport rect, so it is grid-correct but not gated). Nobody has
-measured this on weak hardware. Do: run the headless driver's frame
-timing (the video-render path gives deterministic per-frame numbers) at
-1P vs 4P on generations ≥4 (invisible asteroids present), and on a
-low-end box or a capped-clock VM if available. If WarpPass dominates,
-the planned mitigation is round-robin capture gating — N captures per
-frame, `lens_on_screen` already skips off-screen lenses — sketched in
-A3. If the base 4× draw dominates, that's a bigger conversation
-(culling is already per-viewport; mesh uploads are shared).
+Verdict: **4P costs about 2× a 1P frame, not 4×, and WarpPass does not
+multiply by viewport count. A3's round-robin capture gating is ruled
+out — it would be the wrong fix.**
+
+Measured with the shots harness (it runs a real render loop, one draw
+per 16 ms sim step) plus `NEWTONIA_PERF_ALWAYS=1`, a new hook that drops
+`perf_report`'s 55 fps gate so the breakdown prints when both
+configurations are fast (TESTING.md). Per-frame ms = the line's ms/sec
+divided by its fps. 1280×720 unless noted:
+
+| Scene | 1P | 4P | 4P/1P |
+|---|---|---|---|
+| Natural gen 6 (68 asteroids) | 6.4 ms (157 fps) | 11.8 ms (85 fps) | 1.85× |
+| Natural gen 14 (174 asteroids) | 8.5 ms (118 fps) | 16.9 ms (59 fps) | 2.00× |
+| Synthetic, no lens on screen | 2.1 ms (475 fps) | 4.7 ms (211 fps) | 2.25× |
+| Synthetic, lens on every screen | 4.5 ms (222 fps) | 8.9 ms (112 fps) | 1.98× |
+| — of which the lens pass | 2.60 ms | 4.69 ms | 1.80× |
+| — the lens pass at 1920×1080 | 4.81 ms | 7.56 ms | 1.57× |
+
+**The four-captures-per-frame worry is real in count and false in cost.**
+`WarpPass::capture` is a `glCopyTexImage2D` of the *viewport* rect
+(warp_pass.cpp:291), so four quarter-area viewports move the same pixels
+as one full-screen viewport — the pixel budget is constant in player
+count. The 1.8× that remains is per-CALL overhead, not per-pixel work,
+which is exactly what the resolution row proves: raise the resolution and
+the 4P penalty *falls* to 1.57×, because fixed overhead amortises over
+more pixels. Gating captures round-robin would therefore stagger a pass
+that is already near-constant in viewport count, and buy that with a
+visibly stale lens. Dropped.
+
+**Nothing else dominates either.** The base 4× draw lands at ~2×:
+per-viewport culling and quarter-area rasterisation pay for half of the
+naive cost. The largest single line item at 4P is per-viewport geometry
+submission (`objs` + `stars`), which is the "bigger conversation" branch
+— but 2× the frame for 4× the players needs no conversation.
+
+Two caveats on the numbers. They come from **llvmpipe** (software
+rasterisation under Xvfb), which inflates fill-bound work — the lens
+pass — relative to geometry, so "the lens is 60-75% of the frame" is a
+software-renderer statement that a real GPU will not reproduce. What
+*does* generalise is the structural result (lens cost is sub-linear in
+viewport count, because the pixels are constant) and the ~2× geometry
+scaling, which is CPU/driver-side. And this box is not weak hardware —
+but a software rasteriser at 59 fps for natural gen-14 4P is a
+reassuring floor, not a worrying one.
+
+**Follow-up candidate, not opened as work:** the capture uses
+`glCopyTexImage2D`, which redefines the texture (reallocating storage)
+on every call — four times a frame at 4P. `glCopyTexSubImage2D` into a
+texture sized once would keep the pixels and drop the reallocation, and
+is the obvious first move if anyone ever profiles this on real hardware
+and finds the lens hot. It is a WarpPass improvement at every player
+count, which is the point: the lens pass is not a 4P problem.
+
+Reproduce: `shots/lens_stress.shot` (and `sed 's/players 4/players 1/'`
+for its twin) — recipe in TESTING.md §"Render cost (1P vs 4P)".
 
 ### Accepted as-is (documented so nobody re-opens them by accident)
 

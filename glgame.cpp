@@ -7669,7 +7669,15 @@ void GLGame::perf_report() {
   // Below ~55 fps: say where the second went. tick+draw are CPU-side
   // (sim + GL submission); the remainder is swap/present (GPU-bound or
   // vsync). One line per second at most, only while slow.
-  if (perf_frames_ * 1000 < (int)span * 55) {
+  //
+  // NEWTONIA_PERF_ALWAYS=1 drops the gate and reports every second
+  // regardless. The gate is right for the field — a line only when
+  // something is wrong — but it makes the breakdown unavailable exactly
+  // when you want to compare two configurations that are BOTH fast
+  // enough (1P vs 4P on a dev box, FOURPLAYER.md O6). Read once; no
+  // shipped build sets it.
+  static const bool perf_always = SDL_getenv("NEWTONIA_PERF_ALWAYS") != NULL;
+  if (perf_always || perf_frames_ * 1000 < (int)span * 55) {
     Uint64 pcf = SDL_GetPerformanceFrequency();
     SDL_Log("perf: fps=%d tick=%ums(max %u) draw=%ums(max %u) "
             "objs=%ums stars=%ums osd=%ums lens=%ums(max %u) other=%dms "
