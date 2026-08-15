@@ -810,9 +810,15 @@ compare:
    that flag. The age is only a backstop for a link still honestly
    negotiating. This pair is what keeps step 3's claim-level match from
    being a denial of service — see the security note below.
-5. Anything else — either socket still nameless, or a different pilot —
-   changes nothing and waits out the ICE timeout exactly as today. The
-   fix can only make this faster, never slower.
+5. Never let a CLAIM overrule an ATTESTED socket's handshake: if the
+   adoption's identity came from the worker, only another attestation
+   may match it. In Steam/Play/Game Center rooms that shuts a spoofer
+   out entirely, since they cannot mint the name they would need.
+6. Give up at most ONE adoption per seat per loss episode
+   (`NetPeer::flap_dropped`, cleared at park), so a liar who does get
+   through cannot loop.
+7. Anything else — either socket still nameless, or a different pilot —
+   changes nothing and waits out the ICE timeout exactly as today.
 
 **Matching on a CLAIM is correct here, and the contrast with BAN is the
 argument.** A ban keys on attested identity only, because a ban DENIES
@@ -827,10 +833,17 @@ caught it.** "The worst a spoofer achieves is what the ICE timeout does
 anyway" is true of a DEAD handshake and false of a healthy one: with no
 other test, anyone holding the room code could claim the rejoining
 pilot's name and kill their working attempt, repeatedly — a denial of
-service the game does not have today. The liveness gate (step 4) is the
-answer: a liar can only reach a socket that never connected and has had
-long enough to, which is exactly the case this feature exists to clear
-up. The claim decides WHO; the transport decides WHETHER.
+service the game does not have today. Three things answer it: the
+liveness gate (step 4) means a liar can only reach a socket that never
+connected and has had long enough to; like-for-like trust (step 5)
+removes the attack entirely from rooms where the worker vouches for
+names; and the one-drop cap (step 6) bounds what is left to a single
+lost attempt rather than a loop. The claim decides WHO; the transport
+decides WHETHER. Honest residual: in an all-desktop room, where nothing
+is attested, someone with the room code can still cost a rejoining pilot
+one attempt — a handshake already eight seconds into ICE without having
+connected. That is worse than doing nothing in that one case, and it is
+the price of the fix working at all where nobody is attested.
 
 **What it does not fix.** Rejoiners queued behind a legitimately slow
 handshake still wait — the door serves one parked seat at a time. That

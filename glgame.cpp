@@ -3124,12 +3124,14 @@ void GLGame::net_host_rejoin_park_peer(NetPeer &p, bool keep_session) {
   // DISCONNECTED banner still names who dropped.
   p.attested = NetIdentity();
   p.adopt_claim = NetIdentity();  // same rule for the unattested twin
-  // A new loss episode starts here, before any door can offer: whatever
-  // joins were pending belong to the room as it was, and the flap
-  // resolver must never weigh them against an adoption formed after this
-  // point. Clearing at the boundary makes that true by construction
-  // rather than by an argument about which tick runs first.
-  net_pending_joins_.clear();
+  // Deliberately does NOT clear net_pending_joins_. Park runs per newly
+  // lost SEAT, not once per episode, so a second seat dropping while a
+  // returning pilot's join is still being identified would wipe that
+  // record — and a PeerJoin fires once per socket, so nothing could file
+  // it again and the corpse would live out its full ICE timeout. The
+  // records' lifetime is enforced where it belongs, in
+  // net_host_rejoin_flap_check: no relay adoption in flight, no records.
+  p.flap_dropped = false;
   GLShip *gs = player_by_seat(p.seat);
   Ship *remote = gs ? gs->ship : NULL;
   if (remote) {
@@ -3541,8 +3543,19 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
   // (`attested` drained from the jid map, `adopt_claim` likewise), so
   // neither depends on a jid map that later overflows and clears.
   NetIdentity mid = hs->attested;
+  const bool mid_attested = !mid.name.empty();
   if (mid.name.empty()) mid = hs->adopt_claim;
   if (mid.name.empty()) mid = net_jid_identity(hs->jid);
+  // One drop per seat per loss episode. The identity test below runs on
+  // claims, and a claim is a self-report: someone with the room code can
+  // name themselves after the pilot who is rejoining. The guards above
+  // mean they can only reach a socket that never connected and has had
+  // eight seconds to, but "rare and slow" is not "impossible" — so cap
+  // the damage at one lost attempt instead of a loop. Cleared at park,
+  // i.e. once per loss. The cost is that a genuine SECOND flap in the
+  // same episode waits out its own timeout, which is the trade: the
+  // first flap is the case with a field story.
+  if (hs->flap_dropped) return;
   for (std::map<std::string, int>::iterator it = net_pending_joins_.begin();
        it != net_pending_joins_.end();) {
     const std::string &jid = it->first;
@@ -3557,7 +3570,16 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
       continue;
     }
     NetIdentity who = net_jid_identity(jid);
-    if (!who.name.empty() && !mid.name.empty()) {
+    // Like for like: an ATTESTED socket's handshake may only be judged
+    // against another attestation. Where the worker vouches for names —
+    // Steam, Play Games, Game Center rooms — that shuts the spoofer out
+    // completely, because they cannot mint the name they would need. An
+    // unattested room keeps the claim-level match, which is the only
+    // thing available there and still strictly better than the timeout.
+    const bool who_attested =
+        net_jid_attested_.find(jid) != net_jid_attested_.end();
+    if (!who.name.empty() && !mid.name.empty() &&
+        (!mid_attested || who_attested)) {
       if (who.name == mid.name && who.platform == mid.platform) {
         NET_LOG("net: pilot '%s' re-entered on jid %s while jid %s was still "
                 "mid-handshake (%d ms, never connected) - dropping the stale "
@@ -3569,6 +3591,7 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
         // worker.
         hs->attested = NetIdentity();
         hs->adopt_claim = NetIdentity();
+        hs->flap_dropped = true;
         net_drop_session(*hs);
         net_rehost_offer_sent_ = false;
         // Every record goes, not just this one: dropping the session

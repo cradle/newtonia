@@ -487,6 +487,11 @@ private:
     // clears wholesale when it fills, which in a busy room would have
     // silently switched the resolver off with nothing in the log.
     NetIdentity adopt_claim;
+    // This seat has already had one stale adoption dropped by the flap
+    // resolver during the current loss episode. Cleared at park. See
+    // net_host_rejoin_flap_check: the identity test runs on claims, so
+    // this is what stops a liar repeating the trick.
+    bool flap_dropped = false;
     // How long the door adoption on this peer has been handshaking
     // (ms, reset at every adoption). The flap resolver's staleness test:
     // a handshake that completes takes well under a second on any path
