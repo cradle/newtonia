@@ -1,0 +1,10 @@
+# The desktop OPTIONS screen — the D9 flat row list, at its longest.
+# Attract -> main menu -> down onto OPTIONS -> open. On a netplay build the
+# list is 15 rows (P1-P4 x sensitivity/smoothing/camera, star density,
+# record replays, leaderboard upload); netless drops the leaderboard row.
+seed 3
+menu
+sim 1800
+key enter 200
+key down 700
+key enter 1200

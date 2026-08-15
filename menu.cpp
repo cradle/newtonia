@@ -693,6 +693,15 @@ void Menu::draw() {
     // closing cursor mark clear of the widest value label. Both marks stand
     // three glyph widths off their column, and the pair spans ±470 — the
     // row block sits centred under the title like the replays list.
+    // The NAME column is the tight one, and it is tight in a way no window
+    // size reveals: these are fixed constants, so the gap is identical at
+    // every resolution and aspect. Typer's advance is 2x the size, so at
+    // size 12 the longest name today — "LEADERBOARD  UPLOAD", 19 glyphs —
+    // runs -422..+34, and the nearest step ink is the '[' of a 2-step row
+    // at 50 (STEP_CX - STEP_GAP/2 - 1.5*13). That is 16 units of daylight,
+    // two thirds of one glyph cell. A name of 20+ glyphs collides. Recheck
+    // this the way the touch layout's note below says to — count the
+    // glyphs, x24, against 50 — whenever a row is added or renamed.
     const int CURSOR_L = -470, NAME_X = -422, STEP_CX = 95, STEP_GAP = 50,
               VALUE_X = 265, CURSOR_R = 457;
 

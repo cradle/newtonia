@@ -138,13 +138,14 @@ fields → no VERSION bump (stays 17). `net_state_sane`'s `> 2` reject
 (net_session.cpp:250) stays at 2 until Phase B, deliberately: it is the online
 snapshot validator and online is still 2P.
 
-**D9 — Options screen stays a flat list.** Adding P3/P4 sensitivity/
-smoothing/camera rows takes the desktop list from 9 to 15 rows; the band
-compresses via `opt_row_center(row, n, …)` (menu.cpp:171) automatically.
-Verify legibility with the shots harness; if 15 rows is too tight, the
-fallback is collapsing the three per-player kinds into one row per player
-cycling a sub-value — but try the simple thing first. Touch table is
-untouched (single local player).
+**D9 — Options screen stays a flat list. RESOLVED 2026-08-15: it holds,
+no fallback needed.** Adding P3/P4 sensitivity/smoothing/camera rows takes
+the desktop list from 9 to 15 rows; the band compresses via
+`opt_row_center(row, n, …)` (menu.cpp:171) automatically. Verified by
+looking (`shots/options.shot`, §5 O5): 15 rows is comfortable at 1280×720,
+1280×800, 1024×768 and even 800×600. The fallback — collapsing the three
+per-player kinds into one row per player cycling a sub-value — is not
+needed and is dropped. Touch table is untouched (single local player).
 
 **D10 — One co-op leaderboard for all player counts (decided 2026-08-07).**
 Every run with `player_count >= 2` competes on the single co-op board; 3P/4P
@@ -593,7 +594,7 @@ Everything left after B7 + follow-ups (#445–#448), written to be
 picked up cold. Ordered by urgency. Inventory taken 2026-08-11,
 refreshed 2026-08-15.
 
-**Still open: O4, O5, O6.** O1, O2 and O3 are closed; their entries
+**Still open: O4, O6.** O1, O2, O3 and O5 are closed; their entries
 stay below for the record.
 
 ### O1 — Ship it: cut the next release tag — DONE (v1.53.0, 2026-08-14)
@@ -739,18 +740,38 @@ it is NOT a quick client-only patch. E2e to prove it: nseat_rejoin
 variant that SIGKILLs the rejoiner mid-handshake (between answer and
 connected) and asserts the second attempt seats in well under 30 s.
 
-### O5 — Options layout verdict (D9, decide-by-looking)
+### O5 — Options layout verdict (D9, decide-by-looking) — DONE (2026-08-15)
+
+Verdict: **the flat 15-row list is fine; D9's fallback is dropped.**
 
 Phase A shipped the simple thing: the desktop options screen is a flat
 15-row list (P1–P4 × sensitivity/smoothing/camera, plus the shared
-rows), compressed automatically by `opt_row_center`. The D9 fallback —
-collapsing each player's three rows into one row cycling a sub-value —
-was never needed structurally, but nobody has signed off the 15-row
-legibility on a small window. Do: render the options screen through the
-shots harness at typical sizes (1280×720 and the Steam Deck's 1280×800
-at minimum), look, decide. If it's fine, delete this item and mark D9
-resolved; if it's cramped, implement the fallback (menu.cpp `opt_row`
-table + the seed/commit loops).
+rows), compressed automatically by `opt_row_center`. Rendered through the
+shots harness (`shots/options.shot` — attract → OPTIONS, added for this)
+at 1280×720, the Deck's 1280×800, 1024×768 (4:3) and 800×600. It is not
+cramped anywhere: 15 rows put ~50 virtual units of pitch under a size-12
+row, and the list still clears the BACK TO MENU band with air to spare.
+800×600 is the practical floor and reads fine there too.
+
+Two things worth knowing before the next row is added:
+
+- **Window size doesn't enter into it.** Landscape pins
+  `Typer::scaled_window_height` to 800 and grows the *width* with aspect
+  (typer.cpp:87-96), so the row band is a fixed 350..-400 in virtual
+  units at every resolution. Pixel size only scales the whole screen —
+  there is no size at which the vertical layout gets tighter, which is
+  why the verdict generalises from four renders. Row COUNT is the only
+  vertical variable.
+- **The tight axis is horizontal, and it is the name column.** The
+  longest name today, `LEADERBOARD  UPLOAD`, ends 16 virtual units short
+  of the step column's opening bracket — two thirds of a glyph cell. It
+  reads fine, but a 20-glyph name would collide, and no window size would
+  show you: the columns are fixed constants. Noted in menu.cpp beside
+  them, next to the touch layout's equivalent note.
+
+The 15-row case only appears on a netplay build (`net_board_available()`
+gates the LEADERBOARD UPLOAD row); the netless list is 14. These renders
+forced the row on so the worst case was the one judged.
 
 ### O6 — 4P performance budget (measure before optimising)
 
