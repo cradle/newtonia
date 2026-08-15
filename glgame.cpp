@@ -3533,6 +3533,16 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
   for (std::map<std::string, int>::iterator it = net_pending_joins_.begin();
        it != net_pending_joins_.end();) {
     const std::string &jid = it->first;
+    if (jid == hs->jid) {  // this pending join IS the adoption — never itself
+      // Recorded against a DIFFERENT adoption (the record site checks
+      // that), but adoptions come and go while an entry waits, and one
+      // can end up owning the jid it was filed under. Re-testing here
+      // rather than trusting the record makes the invariant true where
+      // the decision is made: a socket is never evidence against itself,
+      // whatever happened in between.
+      net_pending_joins_.erase(it++);
+      continue;
+    }
     NetIdentity who = net_jid_identity(jid);
     if (!who.name.empty() && !mid.name.empty()) {
       if (who.name == mid.name && who.platform == mid.platform) {
