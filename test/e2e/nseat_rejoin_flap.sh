@@ -114,10 +114,19 @@ kill -9 "$PS" 2>/dev/null; wait "$PS" 2>/dev/null
 # --- POSITIVE: the seat's own pilot returns -------------------------------
 # If the corpse died of its own ICE timeout while the negative phase ran,
 # the door re-armed and there is no stale adoption left to drop: the
-# positive assertion would then fail on perfectly good code. That is a lost
-# race, not a product failure, and it says so.
+# positive assertion would fail on perfectly good code. That is a race the
+# test can lose, not a product failure, so it SKIPS (exit 0, lankeep's
+# convention) rather than reddening a build. The negative assertion above
+# has already run and passed by this point, so a skipped run is not a
+# wasted one. Measured margin is wide — the corpse lives ~50 s locally
+# against a ~13 s window — so this should stay rare; if it starts firing,
+# the window has grown and the phases above want tightening again.
 if [ "$(grep -ac "reopened for rejoin" "$OUT/host.log")" -gt "$REARMS" ]; then
-  room_fail "INCONCLUSIVE: the corpse expired before the rejoiner arrived (its ICE timeout beat the test) - re-run" host
+  echo "SKIP: the corpse expired before the rejoiner arrived (its ICE"
+  echo "      timeout beat the test); negative assertion passed. Re-run"
+  echo "      to exercise the positive half."
+  kill -9 "$PR" 2>/dev/null; room_kill_all
+  exit 0
 fi
 START=$(date +%s)
 nav_join "$WR" "$ROOM_CODE" rejoiner

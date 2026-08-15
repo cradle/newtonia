@@ -3481,7 +3481,13 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
     // unequal to every real one, so without this the branch would drop a
     // perfectly healthy LAN handshake and call it a corpse. A relay join
     // is evidence about relay adoptions only.
-    net_pending_joins_.clear();
+    //
+    // With NO adoption at all the records are about nothing and go; with a
+    // LAN one they are merely irrelevant FOR NOW, and a PeerJoin fires
+    // once per socket, so discarding them would be discarding evidence
+    // that can never be recreated — the relay door may yet form an
+    // adoption these same joins explain.
+    if (!hs) net_pending_joins_.clear();
     return;
   }
   // Is this adoption actually dead? Ask the transport first and the clock
@@ -3558,7 +3564,11 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
         hs->adopt_claim = NetIdentity();
         net_drop_session(*hs);
         net_rehost_offer_sent_ = false;
-        net_pending_joins_.clear();
+        // Only this record is spent. The others are evidence about joins
+        // that have not been explained yet, a PeerJoin fires once per
+        // socket, and a second flap in the same loss episode is exactly
+        // the case that would need them again.
+        net_pending_joins_.erase(it);
         return;
       }
       net_pending_joins_.erase(it++);  // a different pilot — leave them be
