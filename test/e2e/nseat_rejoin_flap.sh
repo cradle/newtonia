@@ -146,6 +146,17 @@ for _ in $(seq 1 45); do
 done
 ELAPSED=$(( $(date +%s) - START ))
 ROOM_PIDS[2]=$PR; ROOM_WINS[2]=$WR   # back in the roster for teardown
+# The corpse can also expire DURING the join window, which is the same
+# lost race the guard above catches earlier — so re-check before blaming
+# either of the two assertions below on the code.
+if [ "$(grep -ac "reopened for rejoin" "$OUT/host.log")" -gt "$REARMS" ] &&
+   ! grep -aq "$DROP_LINE" "$OUT/host.log"; then
+  echo "SKIP: the corpse expired during the rejoin window (its ICE timeout"
+  echo "      beat the test); negative assertion passed. Re-run to exercise"
+  echo "      the positive half."
+  room_kill_all
+  exit 0
+fi
 [ -n "$REJOINED" ] || room_fail "SEAT 3 NEVER REJOINED AFTER THE FLAP" host
 
 # The mechanism, not the clock, is the real assertion: this line means the

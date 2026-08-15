@@ -273,8 +273,8 @@ The core of the phase.
   N captures/frame round-robin (`lens_on_screen` already skips off-screen).
   **Measured 2026-08-15 (§5 O6): it does not hurt — the capture copies the
   VIEWPORT, so four quarter-viewports move the same pixels as one full
-  one, and the worst case costs 1.8× the 1P lens (1.57× at 1080p), not 4×.
-  The round-robin gate is dropped.**
+  one, and the worst case costs 2.04× the 1P lens (1.92× at 1080p), not
+  4×. The round-robin gate is dropped.**
 
 ### A4 — Gameplay N-safety sweep
 - **Unknown-pad authority (flip blocker, found in A2 review):** an opened pad
@@ -944,7 +944,7 @@ first reported here (2.04× not 1.80× on the lens, 1.92× not 1.57× at
 `WarpPass::capture` is a `glCopyTexImage2D` of the *viewport* rect
 (warp_pass.cpp:291), so four quarter-area viewports move the same pixels
 as one full-screen viewport — the pixel budget is constant in player
-count. The 1.8× that remains is per-CALL overhead, not per-pixel work,
+count. The 2× that remains is per-CALL overhead, not per-pixel work,
 which is what the resolution row still shows: raise the resolution and
 the 4P penalty falls (2.04× to 1.92×), because fixed overhead amortises
 over more pixels. Gating captures round-robin would therefore stagger a pass
