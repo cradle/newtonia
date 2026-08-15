@@ -97,13 +97,16 @@ sleep 3
 room_alive
 echo "flapper died with its answer on the wire"
 
-REARMS=$(grep -ac "reopened for rejoin" "$OUT/host.log")
-
 # --- NEGATIVE: a stranger must not disturb the stale handshake ------------
 # PILOT9 matches no parked seat, so the resolver returns "unknown" and the
 # host must sit on its hands. Killed again straight after: an unaddressed
 # rejoin offer goes to the oldest connected joiner, so a squatter left in
 # the room could answer the door meant for PILOT2 and take seat 3.
+#
+# Sampled HERE, immediately before the stranger joins, so the skip branch
+# below can tell a vacuous negative phase (corpse already gone when the
+# stranger arrived) from a real one.
+REARMS=$(grep -ac "reopened for rejoin" "$OUT/host.log")
 nav_join "$WS" "$ROOM_CODE" stranger
 sleep 6   # past NET_JOIN_IDENT_WAIT_MS (3 s) with room to spare
 grep -aq "$DROP_LINE" "$OUT/host.log" &&

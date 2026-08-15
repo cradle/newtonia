@@ -767,9 +767,12 @@ private:
   // will consider it stale. See net_host_rejoin_flap_check — this is the
   // guard that keeps a claimed name from becoming a denial of service.
   // Backstop only — NetTransport::connected() is the real test (see
-  // net_host_rejoin_flap_check). Sized for a connection still honestly
-  // negotiating: relayed candidates over a bad link, not a corpse.
-  static const int FLAP_MIN_ADOPT_MS = 8000;
+  // net_host_rejoin_flap_check). Sized clear of a connection still
+  // honestly negotiating: relayed candidates over a bad link can reach
+  // eight seconds by the comment's own reckoning there, so the backstop
+  // sits above that range rather than at the top of it. Still a fraction
+  // of the ~30 s the corpse would otherwise cost.
+  static const int FLAP_MIN_ADOPT_MS = 12000;
   void net_host_rejoin_flap_check(int delta);
   void net_set_peer_jid(const std::string &jid) {
     net_peer_jid_ = jid;

@@ -90,7 +90,6 @@ shard_needs_relay() {
 driver_env() {
   case "$1" in
     nseat|nseat_rejoin|nseat_gameover|nseat_swap|nseat_soak) echo "SEATS=4" ;;
-    nseat_rejoin_flap) echo "" ;;  # 4 seats always (its shape needs them)
     *) echo "" ;;
   esac
 }

@@ -3386,7 +3386,19 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // once the worker says.
       NetPeer *hs = net_handshaking_lost_peer();
       if (hs && !ev.peer.empty() && ev.peer != hs->jid) {
-        if (net_pending_joins_.size() > 8) net_pending_joins_.clear();
+        // Full: evict the entry closest to expiring, not the whole map.
+        // Clearing here would be the very failure the map replaced — the
+        // record for the pilot this exists to recognise, thrown away
+        // because someone else knocked.
+        if (net_pending_joins_.size() >= 8) {
+          std::map<std::string, int>::iterator oldest =
+              net_pending_joins_.begin();
+          for (std::map<std::string, int>::iterator pit =
+                   net_pending_joins_.begin();
+               pit != net_pending_joins_.end(); ++pit)
+            if (pit->second < oldest->second) oldest = pit;
+          net_pending_joins_.erase(oldest);
+        }
         net_pending_joins_[ev.peer] = NET_JOIN_IDENT_WAIT_MS;
         NET_LOG("net: peer joined (jid %s) while seat %d is mid-handshake - "
                 "identifying\n", ev.peer.c_str(), (int)hs->seat);
