@@ -651,6 +651,14 @@ private:
   // Rejoin-by-identity (NetSession::set_seat_resolver): the parked seat
   // whose remembered pilot the claimed HELLO identity matches, or 0.
   int net_rejoin_seat_for_identity(const NetIdentity &claimed) const;
+  // Host admission at the rejoin door (NetSession::set_admit_check): the
+  // ban list + the anonymous-players policy, shared with the lobby's
+  // waiting room (NetLobby::admit_verdict) and enforced inside the
+  // handshake, so a refused pilot is told why and an attestation still in
+  // flight holds the WELCOME instead of losing a race. `seat` is the DOOR
+  // peer's — the socket the worker attested — looked up per call, since
+  // the verdict can land mid-hold.
+  void net_install_admit_check(NetSession *s, int seat);
   // Eaten-offer watchdog (see net_host_rejoin_poll): ms the door's offer
   // has sat unanswered with no handshake in flight.
   int net_rehost_offer_age_ms_ = 0;
@@ -691,6 +699,19 @@ private:
   // room now admitting extra joiners, an unmatched announce is a THIRD
   // party whose badge must not overwrite the paired peer's.
   std::string net_peer_jid_;
+  // Attestations that arrived before any peer owned their jid — a transient
+  // cache, drained when the rejoin door records the answering jid.
+  //
+  // The per-peer fold above can only reach a peer whose jid is already
+  // known, and a rejoiner's jid is not recorded until its ANSWER reaches
+  // the door. The worker's verdict (announce, then a ~300 ms verify) often
+  // beats that, and such a stamp used to be dropped as "a third party".
+  // That was harmless while attestation was display-only — the adoption's
+  // re-fold caught up — but the admission gate reads `attested`, so a
+  // dropped verdict now reads as an anonymous pilot and the held WELCOME
+  // times out on someone the worker had already vouched for.
+  // NetLobby::jid_attested_ is the waiting room's twin.
+  std::map<std::string, NetIdentity> net_jid_attested_;
   void net_set_peer_jid(const std::string &jid) {
     net_peer_jid_ = jid;
     if (!net_peers_.empty()) net_peers_.front()->jid = jid;
@@ -1001,6 +1022,15 @@ private:
       if ((int)k.first == seat) return true;
     return false;
   }
+  // Sessions refused AT the rejoin door (NetSession::Rejected), draining
+  // their REJECT before teardown — the same 600 ms the kick above gets,
+  // and for the same reason: the reason byte is queued, not flushed, and
+  // deleting the session takes it with it, leaving the peer to read the
+  // close as "could not connect". Detached from the peer (unlike the
+  // kick's seat key) because the door DETACHES the session the moment it
+  // refuses and re-arms for the next attempt — the seat is live again
+  // immediately, so nothing may be keyed on it.
+  std::vector<std::pair<NetSession *, int>> net_closing_;
   // The peer occupying a roster row, or null (declared here: NetPeer is
   // defined below the roster block).
   NetPeer *roster_peer_at(int row);

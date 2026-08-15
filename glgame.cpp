@@ -564,6 +564,11 @@ GLGame::~GLGame() {
     delete p;
   }
   net_peers_.clear();
+  // Refusals still draining at the door (net_closing_) die with the game —
+  // their peer is being told no either way.
+  for (size_t ci = 0; ci < net_closing_.size(); ci++)
+    delete net_closing_[ci].first;
+  net_closing_.clear();
   delete net_assembler_;
   // Deliberate host teardown (quit to menu, game over): tell the relay to
   // kill the room NOW. A bare socket close would start the 2-minute
@@ -2879,6 +2884,21 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
       // = the pre-multi-join worker, which only ever relayed the paired
       // joiner's identity.
       if (ev.verified) {
+        NetIdentity att;
+        att.platform = ev.platform;
+        att.platform_trust = NET_TRUST_ATTESTED;
+        att.name = net_sanitize_name(ev.text);
+        att.name_trust =
+            att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+        // Bank it by jid FIRST (see net_jid_attested_): a verdict that
+        // beats the door's answer belongs to a peer that does not own its
+        // jid yet, and dropping it is what the admission gate would read
+        // as an anonymous pilot. Bounded — these are worth seconds, so a
+        // pathological pile of unanswered announces is simply discarded.
+        if (!ev.peer.empty()) {
+          if (net_jid_attested_.size() > 16) net_jid_attested_.clear();
+          net_jid_attested_[ev.peer] = att;
+        }
         // B5: the stamp picks WHICH peer's badge this is — match it over
         // the roster's jids (each set at its adoption). An empty stamp is
         // the pre-multi-join worker, which only ever relays the single
@@ -2891,12 +2911,6 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
             if (p->jid == ev.peer) { tp = p; break; }
         }
         if (tp) {
-          NetIdentity att;
-          att.platform = ev.platform;
-          att.platform_trust = NET_TRUST_ATTESTED;
-          att.name = net_sanitize_name(ev.text);
-          att.name_trust =
-              att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
           // Keep the raw attestation too: the rejoin-Ready refresh replaces
           // the peer's identity with the claim-only wire parse and re-folds
           // this copy so the badge survives the handshake.
@@ -3222,6 +3236,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
         return net_rejoin_seat_for_identity(claimed);
       });
+      net_install_admit_check(dp->session, (int)dp->seat);
       // A relay rejoin re-pairs through the worker: whoever this adoption
       // LANDS on loses any offline display carve-out (attestation
       // governs). Recorded on the adoption, not the door peer — the seat
@@ -3237,6 +3252,23 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // for the front peer only.
       dp->jid = ev.peer;
       if (dp == net_peer()) net_peer_jid_ = ev.peer;
+      // The seat now owns this jid, so any verdict that arrived before it
+      // did is deliverable (net_jid_attested_). Onto `attested` only —
+      // NEVER onto dp->identity, which is the parked seat's remembered
+      // pilot and what the seat resolver matches the HELLO claim against.
+      // Drained on consume; a later re-attestation reaches the peer by jid
+      // through the ordinary fold.
+      {
+        std::map<std::string, NetIdentity>::iterator ait =
+            net_jid_attested_.find(ev.peer);
+        if (ait != net_jid_attested_.end()) {
+          dp->attested = ait->second;
+          NET_LOG("net: identity attested before the answer - applied to "
+                  "seat %d (name='%s')\n",
+                  (int)dp->seat, ait->second.name.c_str());
+          net_jid_attested_.erase(ait);
+        }
+      }
       // B5, N>1: the LAN beacon still open is serving THIS seat's blob —
       // a different seat's rejoiner completing it now would be adopted
       // onto the wrong slot. The relay won this seat; close the LAN door
@@ -3349,6 +3381,20 @@ int GLGame::net_rejoin_seat_for_identity(const NetIdentity &claimed) const {
   return match;
 }
 
+void GLGame::net_install_admit_check(NetSession *s, int seat) {
+  if (!s) return;
+  s->set_admit_check([this, seat](const NetIdentity &claimed) {
+    const NetPeer *p = net_peer_by_seat(seat);
+    // The seat can't vanish under a live door, and if it somehow did the
+    // session is about to be torn down with it — don't refuse on a guess.
+    if (!p) return NetSession::AdmitAllow;
+    // p->attested is what the worker said about the socket that answered
+    // (cleared when the seat parked, so it can't be a previous pilot's),
+    // and an empty jid is the LAN door — no worker, nothing to attest.
+    return NetLobby::admit_verdict(claimed, p->attested, !p->jid.empty());
+  });
+}
+
 void GLGame::net_host_rejoin_session_update(int delta) {
   // B5: the adoption in flight is the LOST peer holding a fresh session —
   // never a healthy peer's (their sessions aren't touched by the doors).
@@ -3356,33 +3402,16 @@ void GLGame::net_host_rejoin_session_update(int delta) {
   if (dp) {
     dp->session->update(delta);
     if (dp->session->phase() == NetSession::Ready) {
-      // A banned pilot back on a fresh socket. Ready is the first moment
-      // this machine knows WHO answered the door — a jid is per-socket, so
-      // the HELLO claim inside this handshake is the only identity there
-      // is. Drop and re-offer (the Failed-branch treatment), leaving the
-      // seat parked for whoever it actually belongs to.
-      if (NetLobby::identity_banned(dp->session->peer_identity())) {
-        NET_LOG("net: refusing banned pilot at the rejoin door\n");
-        dp->attested = NetIdentity();
-        net_drop_session(*dp);
-        net_rehost_offer_sent_ = false;  // re-arm the door for someone else
-        return;
-      }
-      // Host policy: no anonymous players (Preferences::allow_anonymous —
-      // the ALLOW ANONYMOUS PLAYERS row on the roster and in the lobby).
-      // The door's twin of the waiting room's check. dp->attested is what
-      // the worker said about the socket that answered, so an unattested
-      // NAME here means nobody vouched for them; unlike the lobby there is
-      // no grace timer, because the door re-offers on the very next tick
-      // and a genuine player's next attempt carries its attestation.
-      if (!g_prefs.allow_anonymous && !dp->jid.empty() &&
-          net_identity_anonymous(dp->attested)) {
-        NET_LOG("net: refusing anonymous pilot at the rejoin door\n");
-        dp->attested = NetIdentity();
-        net_drop_session(*dp);
-        net_rehost_offer_sent_ = false;
-        return;
-      }
+      // Ready means ADMITTED: the ban list and the anonymous-players policy
+      // are enforced inside the handshake now (NetLobby::admit_verdict,
+      // installed on the session when the door forms), shared with the
+      // lobby's waiting room. The door used to check both here, after the
+      // fact — refusing with a bare transport close (no reason for the
+      // peer) and, for the anonymous check, with no grace at all: it
+      // assumed the immediate re-offer would win the race against the
+      // worker's async verdict that the first attempt had just lost. The
+      // handshake holds instead. A refusal arrives at the Rejected branch,
+      // which already drops and re-offers.
       // Rejoin-by-identity: the WELCOME may have promised a DIFFERENT
       // parked seat than the door pre-picked (peer_seat() is what the
       // resolver made it). Move the whole adoption — session, answering
@@ -3530,6 +3559,19 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       net_host_resume_persist();  // client-join checkpoint (see NETPLAY.md)
     } else if (dp->session->phase() == NetSession::Failed ||
                dp->session->phase() == NetSession::Rejected) {
+      // Refused by this room's own policy (the ban list / anonymous
+      // players — NetLobby::admit_verdict, run inside the handshake): the
+      // REJECT naming the reason is queued but unflushed, so hand the
+      // session to the drain instead of deleting it under the message.
+      // net_drop_session below then no-ops on the detached pointer, and
+      // the door re-arms this tick as it always did.
+      if (dp->session->phase() == NetSession::Rejected &&
+          dp->session->reject_reason() != 0) {
+        NET_LOG("net: rejoin door refused seat %d (reason %u)\n",
+                (int)dp->seat, (unsigned)dp->session->reject_reason());
+        net_closing_.push_back(std::make_pair(dp->session, 600));
+        dp->session = nullptr;
+      }
       // Bad handshake (wrong build?): drop it and re-open the doors for
       // another try — the relay re-offer only where a signal exists, and
       // the LAN door reset so its poll re-arms a fresh beacon next tick.
@@ -3623,6 +3665,10 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
         dp->session->set_seat_resolver([this](const NetIdentity &claimed) {
           return net_rejoin_seat_for_identity(claimed);
         });
+        // ...and the same admission gate. The LAN door clears dp->jid just
+        // below, so the anonymous policy self-disables here and only the
+        // ban list bites — the door's long-standing behaviour.
+        net_install_admit_check(dp->session, (int)dp->seat);
         // Paired through the local beacon: per-peer offline carve-out —
         // recorded on the adoption and applied at Ready to whichever seat
         // the resolver lands it on (a Failed handshake then leaves no
@@ -7987,6 +8033,16 @@ void GLGame::tick(int delta) {
         net_kick_closing_.erase(net_kick_closing_.begin() + ki);
       } else {
         ki++;
+      }
+    }
+    // The door's refusals draining (see net_closing_).
+    for (size_t ci = 0; ci < net_closing_.size();) {
+      net_closing_[ci].second -= delta;
+      if (net_closing_[ci].second <= 0) {
+        delete net_closing_[ci].first;  // closes + deletes the transport
+        net_closing_.erase(net_closing_.begin() + ci);
+      } else {
+        ci++;
       }
     }
     net_ping_tick(delta);

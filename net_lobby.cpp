@@ -254,6 +254,23 @@ void NetLobby::ban_identity(const NetIdentity &id) {
           (int)key.second);
 }
 
+NetSession::Admit NetLobby::admit_verdict(const NetIdentity &claimed,
+                                          const NetIdentity &attested,
+                                          bool worker_session) {
+  if (identity_banned(claimed)) return NetSession::AdmitBanned;
+  // A door with no worker behind it can attest nobody, and this policy is
+  // about strangers arriving on a room code — a LAN/manual peer was invited
+  // into a local room. They pass, as they always have.
+  if (g_prefs.allow_anonymous || !worker_session) return NetSession::AdmitAllow;
+  // Deliberately NOT the peer's own claim: an unattested name is a
+  // self-report, which is exactly what this policy exists to refuse.
+  // "No verdict yet" and "verdict said nothing" are the same stored state
+  // here — both are Wait, and the session's hold turns a Wait that never
+  // resolves into the refusal.
+  if (net_identity_anonymous(attested)) return NetSession::AdmitWait;
+  return NetSession::AdmitAllow;
+}
+
 bool NetLobby::identity_banned(const NetIdentity &id) {
   std::pair<std::string, uint8_t> key;
   if (!ban_key(id, key)) return false;
@@ -814,6 +831,9 @@ void NetLobby::lan_host_update(int delta) {
     lan_transport_->set_remote_answer(sdp);
     PendingJoiner pj;
     pj.session = new NetSession(lan_transport_, NetSession::HostRole, seat);
+    // LAN door: no worker jid, so the anonymous policy cannot apply — but
+    // the ban list still does, and it is the same gate that enforces it.
+    install_admit_check(pj.session, std::string());
     pj.seat = seat;
     pj.lan = true;
     pj.offer_sent = true;  // its blob went over TCP, nothing to relay
@@ -1123,6 +1143,19 @@ int NetLobby::next_free_seat() const {
   return 0;
 }
 
+void NetLobby::install_admit_check(NetSession *s, const std::string &jid) {
+  if (!s) return;
+  s->set_admit_check([this, jid](const NetIdentity &claimed) {
+    NetIdentity att;
+    if (!jid.empty()) {
+      std::map<std::string, NetIdentity>::const_iterator at =
+          jid_attested_.find(jid);
+      if (at != jid_attested_.end()) att = at->second;
+    }
+    return NetLobby::admit_verdict(claimed, att, !jid.empty());
+  });
+}
+
 void NetLobby::drop_pending(const std::string &key, const char *why) {
   std::map<std::string, PendingJoiner>::iterator it = pending_.find(key);
   if (it == pending_.end()) return;
@@ -1176,48 +1209,13 @@ void NetLobby::waiting_room_update(int delta) {
     pj.session->update(delta);
     NetSession::Phase p = pj.session->phase();
     if (p == NetSession::Ready) {
-      // Banned pilot coming back on a fresh socket: refuse the seat here,
-      // at the moment the handshake finally names them. Earlier is not
-      // possible — a jid is per-socket, so who they ARE only arrives with
-      // the HELLO claim this Ready represents.
-      if (identity_banned(pj.session->peer_identity())) {
-        NET_LOG("[lobby] waiting room: refusing banned pilot on seat %d\n",
-                pj.seat);
-        set_status("REMOVED PLAYER TRIED TO REJOIN");
-        std::string key = it->first;
-        ++it;
-        drop_pending(key, "banned");
-        continue;
-      }
-      // Host policy: no anonymous players (Preferences::allow_anonymous, the
-      // ALLOW ANONYMOUS PLAYERS row on this screen and the in-game roster).
-      // Same enforcement point as the ban, for the same reason — this Ready
-      // is where the handshake first says who answered.
-      //
-      // The worker's verdict is ASYNC and often lands after the handshake,
-      // so an attested player would otherwise be refused for arriving too
-      // fast. Give the attestation a grace window before judging: a peer
-      // with no verdict yet is left mid-handshake and re-examined next tick
-      // (LAN joiners have no worker at all — jid-less, and this policy is
-      // about strangers from a room code, so they pass).
+      // Ready now means ADMITTED: the ban list and the anonymous-players
+      // policy are enforced inside the handshake (admit_verdict, installed
+      // when the session forms), which is the only place that can tell a
+      // refused pilot WHY — a closed transport reads as "could not connect"
+      // — and the only place that can hold the WELCOME while the worker's
+      // async attestation catches up. A refusal arrives below as Rejected.
       std::string cand_jid = pj.lan ? std::string() : it->first;
-      if (!g_prefs.allow_anonymous && !cand_jid.empty()) {
-        std::map<std::string, NetIdentity>::const_iterator at =
-            jid_attested_.find(cand_jid);
-        bool anon = at == jid_attested_.end() ||
-                    net_identity_anonymous(at->second);
-        if (anon) {
-          pj.anon_wait_ms += delta;
-          if (pj.anon_wait_ms < ANON_ATTEST_GRACE_MS) { ++it; continue; }
-          NET_LOG("[lobby] waiting room: refusing anonymous pilot on seat %d\n",
-                  pj.seat);
-          set_status("ANONYMOUS PLAYERS ARE BLOCKED");
-          std::string key = it->first;
-          ++it;
-          drop_pending(key, "anonymous");
-          continue;
-        }
-      }
       SeatedPeer sp;
       sp.session = pj.session;
       sp.jid = cand_jid;
@@ -1227,6 +1225,10 @@ void NetLobby::waiting_room_update(int delta) {
             jid_attested_.find(sp.jid);
         if (at != jid_attested_.end()) sp.attested = at->second;
       }
+      // The admit closure captured this lobby, and the session outlives it
+      // (START GAME hands the seated sessions to GLGame). It is never
+      // consulted past Handshaking, but don't leave a stale `this` on it.
+      sp.session->set_admit_check(nullptr);
       seated_.push_back(sp);
       host_kick_armed_ = -1;  // a roster change disarms (see the drop path)
       NET_LOG("[lobby] waiting room: seat %d filled (%s)\n", sp.seat,
@@ -1237,7 +1239,25 @@ void NetLobby::waiting_room_update(int delta) {
       pending_.erase(it++);
       continue;
     }
-    if (p == NetSession::Rejected || p == NetSession::Failed ||
+    if (p == NetSession::Rejected) {
+      // Refused inside the handshake — the room's own policy (admit_verdict)
+      // or a version mismatch. The REJECT carrying the reason is queued but
+      // not flushed, and deleting the session here would take it with it,
+      // leaving the peer to read the close as "could not connect" — the
+      // misdiagnosis this gate exists to end. Hand it the same short drain a
+      // kick gets (see host_kick_selected).
+      uint8_t why = pj.session->reject_reason();
+      if (why == NetSession::RejectBanned)
+        set_status("REMOVED PLAYER TRIED TO REJOIN");
+      else if (why == NetSession::RejectAnonymous)
+        set_status("ANONYMOUS PLAYERS ARE BLOCKED");
+      NET_LOG("[lobby] waiting room: refused joiner %s for seat %d (reason %u)\n",
+              it->first.c_str(), pj.seat, (unsigned)why);
+      closing_.push_back(std::make_pair(pj.session, 600));
+      pending_.erase(it++);
+      continue;
+    }
+    if (p == NetSession::Failed ||
         (pj.session->transport() && pj.session->transport()->failed())) {
       std::string key = it->first;
       ++it;
@@ -1688,6 +1708,7 @@ void NetLobby::pump_signal(int delta) {
           pit->second.transport->set_remote_answer(ev.text);
           pit->second.session = new NetSession(
               pit->second.transport, NetSession::HostRole, seat);
+          install_admit_check(pit->second.session, ev.peer);
           pit->second.transport = nullptr;  // owned by the session now
           pit->second.seat = seat;
           NET_LOG("[lobby] waiting room: joiner %s handshaking for seat %d\n",
@@ -2179,6 +2200,31 @@ void NetLobby::tick(int delta) {
           // can't thrash against a refusal that will never change.
           fail_headline_ = "CANNOT PLAY WITH THAT PLAYER";
           set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
+        } else if (session_->reject_reason() == NetSession::RejectAnonymous) {
+          // The host's own room policy, not the platform's — and the whole
+          // reason it is refused inside the handshake: without a reason on
+          // the wire this landed in the Failed branch below and told the
+          // player their firewall was blocking the game.
+          //
+          // NOT terminal, unlike the two refusals around it. This one is
+          // produced by a TIMEOUT (AdmitWait expiring, net_session.cpp), so
+          // it can mean "nobody vouched for you" OR "the worker's verdict
+          // lost a race it will probably win next time" — the host cannot
+          // tell those apart, since both are the same empty attestation.
+          // An auto-rejoin therefore gets its bounded retry back (the same
+          // 60 s budget the transport-failure path below uses): before this
+          // refusal existed the bare close landed there and retried, and a
+          // slow platform verify must not turn a transient drop into a
+          // permanent lockout. A first-time joiner has no rejoin budget, so
+          // they fall through to the honest headline immediately.
+          if (rejoin_retry_after_session_loss("host requires a verified account"))
+            break;
+          fail_headline_ = "HOST BLOCKS ANONYMOUS PLAYERS";
+          set_status("A VERIFIED ACCOUNT IS REQUIRED", 2 * STATUS_SHOW_MS);
+        } else if (session_->reject_reason() == NetSession::RejectBanned) {
+          fail_headline_ = "REMOVED FROM THE GAME";
+          set_status("THE HOST BLOCKED YOU FROM THIS ROOM",
+                     2 * STATUS_SHOW_MS);
         } else {
           fail_headline_ = "HOST REFUSED THE CONNECTION";
         }

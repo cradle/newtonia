@@ -685,9 +685,19 @@ predicate, as a row on both screens — the waiting room's list and the
 in-game roster — writing one preference (`Preferences::allow_anonymous`,
 saved on change, default YES = the behaviour that always existed). NO
 refuses every unattested peer at the same two points the ban is enforced.
-The waiting room holds a joiner for `ANON_ATTEST_GRACE_MS` first: the
-worker's verdict is async and usually lands AFTER the handshake, so
-judging on arrival would refuse attested players for connecting too fast.
+Both are the same point now: `NetLobby::admit_verdict`, installed on the
+joining session as its `NetSession::set_admit_check` and answered INSIDE
+the handshake, before the WELCOME. That placement buys two things the
+after-the-fact checks could not. A refusal reaches the peer as a REJECT
+reason (`RejectAnonymous`/`RejectBanned`) instead of a closed transport,
+which the joiner could only read as "could not connect" — it was telling
+refused players their firewall was to blame. And a verdict still in
+flight HOLDS the welcome (`AdmitWait`, up to `ADMIT_WAIT_MS`) rather than
+losing a race: the worker's attestation is async and usually lands AFTER
+the handshake it describes, so judging on arrival refuses attested
+players for connecting too fast. The waiting room had a grace timer of
+its own for that; the rejoin door had none and assumed its immediate
+re-offer would win the race the first attempt had just lost.
 Strict by design — a room of desktop builds attests nobody, so turning it
 off there closes the room to everyone.
 

@@ -407,9 +407,15 @@ test/e2e/nseat_anon.sh # O3 admission policy: the host sets ALLOW ANONYMOUS
                      # NAMED pilot (attested by this driver's own FAKE_VERIFY
                      # relay on :8790) must be seated while a NAMELESS one is
                      # refused ("refusing anonymous pilot") and takes no seat.
-                     # Also covers the grace window: the worker's verdict is
+                     # Also covers the hold: the worker's verdict is
                      # async and normally lands AFTER the handshake, so a
-                     # naive check would refuse the named pilot too
+                     # naive check would refuse the named pilot too — the
+                     # admission gate answers AdmitWait and the session
+                     # holds its WELCOME instead of judging on arrival.
+                     # Last leg asserts the refused joiner is TOLD why
+                     # ("host refused this connection (reason 3)"): the
+                     # refusal is a REJECT inside the handshake, not a
+                     # transport close the joiner reads as a firewall
 test/e2e/nseat_lobby_mouse.sh # the host waiting room under a MOUSE. A
                      # 4-seat room with one joiner keeps the screen up, then:
                      # a click low on the window must NOT leave (the exit
