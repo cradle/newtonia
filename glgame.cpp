@@ -3572,6 +3572,12 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
   const NetTransport *t = hs->session->transport();
   if (!t || t->connected() || hs->adopt_ms < FLAP_MIN_ADOPT_MS) return;
 
+  // A note on who this can and cannot help. Matching needs a NAME on both
+  // sides, and Game Center relays none, so an iOS pilot's flapped rejoin
+  // is not recognised here and still costs the room the ICE timeout. That
+  // is a limitation of name-matching, not a hole: platform alone would
+  // match every other iOS peer in the room, which is worse than waiting.
+  //
   // Compare PILOTS, not seats. The obvious test — "does this joiner
   // resolve to the seat the adoption is on?" — is wrong, and wrong in a
   // way the flap driver cannot see, because it parks a single seat. The
@@ -3591,15 +3597,19 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
   // Both of the adoption's own copies are taken at adoption time
   // (`attested` drained from the jid map, `adopt_claim` likewise), so
   // neither depends on a jid map that later overflows and clears.
+  // Whether the worker vouched for this socket is a question about the
+  // ATTESTATION, and it has to be asked before the fallback chain below
+  // runs, not after. Game Center attests the ACCOUNT and relays no name
+  // (game_center_verify.js), so an attested iOS socket has an empty
+  // attested name and a CLAIMED alias sitting behind it — ask afterwards
+  // and the fallback has already replaced the attestation with the claim,
+  // and the like-for-like rule would let a liar match it.
+  const bool mid_attested =
+      hs->attested.platform_trust == NET_TRUST_ATTESTED ||
+      hs->attested.name_trust == NET_TRUST_ATTESTED;
   NetIdentity mid = hs->attested;
   if (mid.name.empty()) mid = hs->adopt_claim;
   if (mid.name.empty()) mid = net_jid_identity(hs->jid);
-  // Read the TRUST, not "does it have a name". Game Center attests the
-  // ACCOUNT with no name at all by design, so a non-empty name is not the
-  // same question — and answering the wrong one would leave the
-  // like-for-like rule below switched off in rooms the design credits it
-  // to.
-  const bool mid_attested = mid.name_trust == NET_TRUST_ATTESTED;
   // One drop per seat per loss episode. The identity test below runs on
   // claims, and a claim is a self-report: someone with the room code can
   // name themselves after the pilot who is rejoining. The guards above

@@ -812,8 +812,16 @@ compare:
    being a denial of service — see the security note below.
 5. Never let a CLAIM overrule an ATTESTED socket's handshake: if the
    adoption's identity came from the worker, only another attestation
-   may match it. In Steam/Play/Game Center rooms that shuts a spoofer
-   out entirely, since they cannot mint the name they would need.
+   may match it. In Steam and Play Games rooms that shuts a spoofer out
+   entirely, since they cannot mint the name they would need. The test
+   reads the attestation's TRUST before the name fallback runs, which
+   matters for Game Center: it attests the account and relays no name,
+   so an attested iOS socket carries a CLAIMED alias behind an empty
+   attested name, and asking afterwards would judge the claim instead.
+   The flip side is that an iOS pilot cannot be name-matched at all, so
+   O4 does not fire for them — their flapped rejoin still waits out the
+   ICE timeout. Matching on platform alone would catch every other iOS
+   peer in the room, which is worse than waiting.
 6. Give up at most ONE adoption per seat per loss episode
    (`NetPeer::flap_dropped`, cleared at park), so a liar who does get
    through cannot loop.
