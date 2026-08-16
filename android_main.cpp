@@ -400,20 +400,21 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         const bool want_net = st && st[0] == '1' && st[1] == '\0';
         const bool want_signal = ss_env && ss_env[0] == '1' && ss_env[1] == '\0';
         // Disarm BOTH before running EITHER, and read the flags above
-        // first because unsetenv invalidates those pointers. This clears
-        // the NATIVE environment, which is the re-entry this file can see;
-        // the task's base intent still holds the extras and is AMS's to
-        // own, so the recipe in TESTING.md force-stops afterwards.
+        // first because unsetenv invalidates those pointers.
         //
         // applyEnvExtras sets these process-wide, and returning from
         // SDL_main finishes the Activity without necessarily ending the
         // PROCESS — the s_running reset at the top of this function exists
         // because SDL_main is re-entered on a cached one. Left armed, the
-        // next icon tap runs a selftest and closes the app instead of
-        // starting the game, which is the literal next thing anyone does
-        // after this. Both, because whichever branch runs returns before
-        // the other is reached: disarming only its own var left the other
-        // armed when a run set both.
+        // next launch would run a selftest and close the app instead of
+        // starting the game. Both vars, because whichever branch runs
+        // returns before the other is reached.
+        //
+        // Belt and braces as it turns out: relaunching after a selftest,
+        // including from Recents where the task's retained intent could
+        // have replayed the extras, starts the game normally on a real
+        // device (TESTING.md). Kept because it costs nothing and the
+        // cached-process re-entry is the case this file can actually see.
         if (want_net || want_signal) {
             unsetenv("NEWTONIA_NET_SELFTEST");
             unsetenv("NEWTONIA_SIGNAL_SELFTEST");
