@@ -362,6 +362,16 @@ test/e2e/nseat_rejoin.sh # B6 drop+rejoin at N seats: seat 3's client is
                      # SIGKILLed (a MIDDLE seat at 4 — non-contiguous roster),
                      # host must detect the loss, play on UNPAUSED (PB-D7),
                      # and rejoin a relaunched client back onto seat 3
+test/e2e/nseat_rejoin_flap.sh # O4 rejoin flap at 4 seats with NAMED pilots:
+                     # seat 3's pilot returns once with NEWTONIA_NET_TEST_FLAP
+                     # (die with the answer sent, leaving the host an adoption
+                     # nobody is party to), then for real. Asserts the host
+                     # identifies the returning pilot and logs "dropping the
+                     # stale adoption" — the MECHANISM, because a local relay's
+                     # ICE can give up well inside the ~30 s a real network
+                     # takes, so a timing bound alone would pass unfixed here.
+                     # Plus the negative that matters: a stranger (PILOT9)
+                     # joining mid-handshake must NOT trigger the drop
 test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # (host-only env) empties every seat; each CLIENT must
                      # observe "game over (all players out)" via replication,
@@ -653,6 +663,15 @@ to make the host spectate the joiner. It burst-screenshots the spectator's
 window across the 5 s countdown and the hand-off; asserts SPECTATE-E2E-OK and a
 clean log.
 
+`NEWTONIA_NET_TEST_FLAP=1` (client-side, inert without it) makes a JOINER
+`_Exit(0)` the instant its answer leaves the wire — the one window an
+external `kill -9` cannot hit reliably, because on a local relay the
+handshake completes in milliseconds after that point. The host takes the
+answer, builds its adoption session, and is left holding a corpse: the O4
+flap, on demand. `_Exit` rather than `exit` deliberately — running the
+destructors would send a BYE, and a peer that says goodbye is not this case.
+Used by nseat_rejoin_flap.sh.
+
 `_WHO` also takes `seatN` (a specific seat, by its wire seat number), and a
 SECOND firing exists — `NEWTONIA_NET_TEST_KILL2_MS`/`_WHO2` — so a driver can
 **stagger** deaths. That is what makes the revive queue testable: pair it with
@@ -815,10 +834,11 @@ game so achievements stay suppressed):
 | `NEWTONIA_FRAME_LOG=1` | Logs every frame slower than 50 ms; on desktop the line carries `draws=` (shim/Mesh draw calls) and `segs=` (thick-line segments CPU-expanded) for that frame |
 | `NEWTONIA_LINE_EMULATION=1` | Forces the thick-line quad emulation on platforms whose driver would draw wide lines natively (Android/iOS) — for A/B against the native path |
 | `NEWTONIA_TEST_SPAWN_PICKUPS=1` | Pickup-icon ring (see above) |
-| `NEWTONIA_REPLAY_ENABLE=1` | Force replay recording ON (it ships opt-in / default OFF — `Preferences::auto_record_replays`). The replay e2e drivers set this; `NEWTONIA_REPLAY_DISABLE=1` forces OFF and wins |
+| `NEWTONIA_REPLAY_ENABLE=1` | Force replay recording ON regardless of `Preferences::auto_record_replays` (which has defaulted to ON since 2026-07-28, but a pre-existing INI or the Options row can hold it off). The replay e2e drivers set this so they never depend on the pref; `NEWTONIA_REPLAY_DISABLE=1` forces OFF and wins |
 | `NEWTONIA_REPLAY_PLAY=<current\|recent\|online\|best\|last\|path>` | Boot straight into playback of that replay file (dev entry for R2; the REPLAYS menu is the real path) |
 | `NEWTONIA_REPLAY_SELFTEST=1` | Run the recorder's keyframe-ordering selftest and exit 0/1 (`replay_selftest.cpp`), before any window or GL — the same hidden-hook shape as `NEWTONIA_NET_SELFTEST`, but present in netless builds too since replays are a solo feature. Driver: `test/e2e/replay_keyframe.sh` |
 | `NEWTONIA_SAFE_INSET_TOP=N` | Forces a top display-cutout inset of N px, so the notch HUD layout (LEVEL/score/weapons shifted below the camera) is testable without cutout hardware. The real inset comes from `NewtoniaActivity`'s `DisplayCutout` on Android |
+| `NEWTONIA_PERF_ALWAYS=1` | Drops the perf report's 55 fps gate: the breakdown below prints every second regardless of speed. For comparing two configurations that are both fast enough to stay silent (see "Render cost" below) |
 
 Independent of any env var, the game SDL_Logs a **perf report** once per
 second whenever fps drops below 55 —
@@ -830,6 +850,42 @@ capture for any "it got slow" report; it works on every platform:
 - **Desktop**: run from a terminal.
 - **Android**: `adb logcat -s SDL/APP` (filter on `perf:`).
 - **iOS**: Xcode console.
+### Render cost (1P vs 4P), headless and repeatable
+
+The shots harness is a frame-timing rig as well as a screenshot tool: it
+runs a real render loop (one `draw()` per 16 ms sim step, flat out, no
+vsync), so wall-clock fps over a fixed sim length is a like-for-like
+render-cost measurement. With `NEWTONIA_PERF_ALWAYS=1` the per-second
+breakdown prints even when nothing is slow, which is what makes an A/B
+between two fast configurations possible at all.
+
+```sh
+make NETPLAY=0                                   # any desktop build
+S=shots/lens_stress.shot                         # 4P; lens on every screen
+sed 's/players 4/players 1/' $S > /tmp/lens_1p.shot
+for f in /tmp/lens_1p.shot $S; do
+  echo "### $f"
+  env SDL_AUDIODRIVER=dummy NEWTONIA_PERF_ALWAYS=1 \
+      NEWTONIA_SHOT=/tmp/o.png NEWTONIA_SHOT_SCENE=$f \
+      NEWTONIA_SHOT_SIZE=1280x720 \
+      xvfb-run -a -s "-screen 0 1280x720x24" ./newtonia 2>&1 |
+    grep "perf: fps" | tail -3
+done
+```
+
+Reading the output: the ms figures are sums over the wall second, so
+**per-frame cost is the field divided by that line's fps** — comparing
+raw ms/sec between two runs at different frame rates is the easy mistake
+(a slower config can show a *smaller* ms/sec for a phase simply because
+it drew fewer frames). Drop the `invisible` lines from the scene for a
+no-lens baseline; `game N` + `players N` on any scene covers the natural
+worlds. Findings and the 1P-vs-4P table live in FOURPLAYER.md §5 O6.
+
+Xvfb means **llvmpipe**, i.e. software rasterisation: fill-bound work
+(the lens pass) is inflated relative to geometry, so treat absolute
+shares as a low-end-GPU stress case and trust the *ratios* between
+configurations rather than the percentages.
+
 **Worked example — the late-generation collapse (2026-07-28).** A Moto G05
 at generation 25 ran at 3-6 fps with `tick≈1070ms(max 269)` and
 `draw≈25ms`: the split named the simulation immediately, and `max` (one
@@ -1084,7 +1140,7 @@ does. Get the eMMC device for storage, the 2 GB Go device for everything else.
 # Late-generation load (100+ asteroids is the worst case); KEYCODE_N marches
 # levels fast (works on the intro screens too). NEWTONIA_* ride intent extras
 # (see "Env vars on Android"); -S forces a fresh process that reads them.
-# Recording ships opt-in (default OFF), so the ON run must force it on.
+# Recording defaults ON, but the device's INI may hold it off — force it.
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
     --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9 --es NEWTONIA_REPLAY_ENABLE 1
 adb shell input keyevent KEYCODE_N        # ... march to a dense generation, play

@@ -693,6 +693,23 @@ void Menu::draw() {
     // closing cursor mark clear of the widest value label. Both marks stand
     // three glyph widths off their column, and the pair spans ±470 — the
     // row block sits centred under the title like the replays list.
+    // The NAME column is the tight one, and it is tight in a way no window
+    // size reveals: these are fixed constants, so the gap is identical at
+    // every resolution and aspect. Typer's advance is 2x the size, so a
+    // name of N glyphs at size 12 ends at NAME_X + 24N, and it must clear
+    // the leftmost step ink — which depends on the row's STEP COUNT, the
+    // part that is easy to get wrong:
+    //   2 steps (ON/OFF, FIXED/ROTATE): digits at 70 and 120, so with the
+    //     first selected the '[' sits at 70 - 1.5*13 = 50. Room for 19
+    //     glyphs, and "LEADERBOARD  UPLOAD" is exactly 19 — 16 units of
+    //     daylight, two thirds of a cell.
+    //   5 steps (every sensitivity / smoothing / density row): the span is
+    //     centred on STEP_CX, so the first digit is at 95 - 2*50 = -5 and
+    //     its bracket at -24. Room for only 16 glyphs. The longest today
+    //     is "P1  SENSITIVITY" at 15.
+    // So: count the glyphs, multiply by 24, add -422, and check the result
+    // against -24 for a 5-step row or 50 for a 2-step one, whenever a row
+    // is added or renamed. Same discipline as the touch note below.
     const int CURSOR_L = -470, NAME_X = -422, STEP_CX = 95, STEP_GAP = 50,
               VALUE_X = 265, CURSOR_R = 457;
 

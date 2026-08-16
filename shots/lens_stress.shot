@@ -1,0 +1,28 @@
+# WarpPass worst case: an invisible asteroid parked in front of EVERY
+# ship, so each viewport must run its own capture + distortion pass.
+# Built for the 1P-vs-4P render-cost measurement (FOURPLAYER.md O6,
+# recipe in TESTING.md) rather than for looking at — `sed
+# 's/players 4/players 1/'` gives the 1P twin, and dropping the
+# `invisible` lines gives a no-lens baseline.
+#
+# `clear` strips the generated world so the lens pass is what is being
+# measured; the one normal asteroid keeps the level-clear countdown from
+# rebuilding it mid-run. Ships are 500 apart and their lenses 320 ahead —
+# far enough not to collide (a lens overlapping its ship is destroyed on
+# contact and the pass then measures nothing, which is how the first
+# version of this scene silently reported lens=0).
+seed 3
+game 6
+players 4
+clear
+camera fixed
+ship  0 0
+ship2 500 0
+ship3 0 500
+ship4 500 500
+asteroid 0 320 invisible r=120 v=0,0
+asteroid 500 320 invisible r=120 v=0,0
+asteroid 0 820 invisible r=120 v=0,0
+asteroid 500 820 invisible r=120 v=0,0
+asteroid 1400 1400 normal v=0,0
+sim 20000

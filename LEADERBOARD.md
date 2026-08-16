@@ -1026,17 +1026,26 @@ the original video under a different name, and one D1 delete fixes it.
 
 ### L7 — potential: the RECORD REPLAYS trap — NOT locked in
 Root-caused in the field 2026-08-03: the leaderboard can only offer what
-was recorded, and recording is opt-in (OFF by default — a REPLAY.md ship
-posture driven by web's IndexedDB quota). A player with the option off
-gets NO game-over prompt and NO upload row, silently — the host of a
-co-op session sat mystified while the (recording-on) phone charted.
-Diagnosis checklist that found it: empty REPLAYS menu after a game =
-nothing recorded. Possible remedies, deliberately deferred (Glenn may
-deal with it in the future): default RECORD REPLAYS to ON for native
-builds (disk is cheap, files rotate; web keeps its quota-driven opt-in),
-and/or surface the dependency — "TURN ON RECORD REPLAYS TO ENTER
-SCORES" on the LEADERBOARD screen / game-over card when recording is
-off. Until then this is a known support question.
+was recorded. A player with RECORD REPLAYS off gets NO game-over prompt
+and NO upload row, silently — the host of a co-op session sat mystified
+while the (recording-on) phone charted. Diagnosis checklist that found
+it: empty REPLAYS menu after a game = nothing recorded.
+
+**Scope correction (2026-08-15):** this entry was written as though
+recording were still opt-in, but the default had already flipped to ON
+everywhere on 2026-07-28, once the low-end field pass cleared
+(`Preferences::auto_record_replays = true`, preferences.h; REPLAY.md "To
+revisit"). So the first remedy sketched here — default it ON for native
+builds — is DONE, and web is covered too (the IndexedDB worry is handled
+by the 32 MB `Recorder::over_size_cap`, not by opting out). What remains
+is the narrow population the flip deliberately leaves alone: anyone who
+launched before it carries an explicit `auto_record_replays=0` in their
+INI and keeps it, plus anyone who turns the row off by hand.
+
+Remaining remedy, still deferred (Glenn may deal with it in the future):
+surface the dependency — "TURN ON RECORD REPLAYS TO ENTER SCORES" on the
+LEADERBOARD screen / game-over card when recording is off. Until then
+this is a known support question for pre-2026-07-28 installs.
 
 ## Open questions
 

@@ -739,7 +739,9 @@ R4's field.
 - ~~Maybe: an "Auto-record replays" toggle on the Options screen~~
   **PARTLY DONE (2026-07-22): the preference exists, the Options row does
   not.** `Preferences::auto_record_replays` (**default OFF** — opt-in ship
-  posture, 2026-07-23) is INI-backed (`auto_record_replays=1` in
+  posture, 2026-07-23; *superseded 2026-07-28, the default is now **ON** and
+  the row shipped — see "To revisit" below*) is INI-backed
+  (`auto_record_replays=1` in
   preferences.ini to opt in) and gates the recorder at game start
   (`GLGame::replay_start`); `NEWTONIA_REPLAY_ENABLE` forces it on (tests/CI,
   power users) and `NEWTONIA_REPLAY_DISABLE` forces it off (enable loses to

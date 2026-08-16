@@ -480,6 +480,25 @@ private:
     // B5: this peer's once-per-loss park ran (hull frozen, session
     // dropped, attestation cleared). Cleared when its rejoin completes.
     bool parked = false;
+    // The CLAIM the answering socket announced, captured when its answer
+    // was adopted — the unattested twin of `attested` above, and taken
+    // here for the same reason: so the flap resolver does not depend on
+    // net_jid_claimed_ still holding the entry. That map is bounded and
+    // clears wholesale when it fills, which in a busy room would have
+    // silently switched the resolver off with nothing in the log.
+    NetIdentity adopt_claim;
+    // This seat has already had one stale adoption dropped by the flap
+    // resolver during the current loss episode. Cleared at park. See
+    // net_host_rejoin_flap_check: the identity test runs on claims, so
+    // this is what stops a liar repeating the trick.
+    bool flap_dropped = false;
+    // How long the door adoption on this peer has been handshaking
+    // (ms, reset at every adoption). The flap resolver's staleness test:
+    // a handshake that completes takes well under a second on any path
+    // that works, so age is what separates "in progress" from "never
+    // going to finish" WITHOUT trusting anything a peer says about
+    // itself. See net_host_rejoin_flap_check.
+    int adopt_ms = 0;
     // ---- Host input pipeline for this peer's INPUT stream ----
     uint32_t last_input_seq = 0;
     bool have_input = false;  // first INPUT initialises the counters
@@ -712,6 +731,61 @@ private:
   // times out on someone the worker had already vouched for.
   // NetLobby::jid_attested_ is the waiting room's twin.
   std::map<std::string, NetIdentity> net_jid_attested_;
+  // The same by jid for UNVERIFIED claims — the flap resolver's input
+  // (FOURPLAYER.md O4), and deliberately a second map rather than a
+  // trust field on the first. Everything that DENIES someone (the ban
+  // list, allow_anonymous) reads `attested`, and must keep reading a map
+  // a peer cannot write; this one is a self-report. Its only consumer
+  // decides whether to tear down a HALF-OPEN handshake on a seat that is
+  // already lost — something the ICE timeout does by itself moments
+  // later — so a lying claim buys nothing that waiting would not, while
+  // requiring attestation here would switch the fix off in every
+  // desktop-only room (which attests nobody).
+  std::map<std::string, NetIdentity> net_jid_claimed_;
+  // Best identity known for a joining socket: the worker's verdict if it
+  // has landed, else that socket's own claim.
+  NetIdentity net_jid_identity(const std::string &jid) const {
+    std::map<std::string, NetIdentity>::const_iterator it =
+        net_jid_attested_.find(jid);
+    if (it != net_jid_attested_.end()) return it->second;
+    it = net_jid_claimed_.find(jid);
+    return it != net_jid_claimed_.end() ? it->second : NetIdentity();
+  }
+  // O4: joins seen while a door adoption is mid-handshake, each held
+  // until we learn whose it is (jid -> ms of patience left). The identity
+  // frame lands a round-trip behind the join, and a verified upgrade
+  // later still, so the decision waits — the same reason
+  // NetSession::AdmitWait holds a WELCOME.
+  //
+  // A map and not a single slot: two joins inside the window are ordinary
+  // (a stranger browsing while the seat's own pilot returns), and with
+  // one slot the second silently evicted the first — leaving the fix
+  // inert in exactly the busy room it was written for.
+  struct PendingJoin {
+    int ttl_ms = 0;        // patience left while we wait to learn whose it is
+    uint32_t arrival = 0;  // monotonic, for eviction order (TTLs tie)
+    // The identity, copied here the moment the worker names this socket.
+    // The jid maps are bounded caches that clear wholesale when they fill,
+    // and the ADOPTION side already keeps its own copy for that reason
+    // (NetPeer::adopt_claim); this is the same protection for the joining
+    // side, which otherwise loses the very record the resolver is waiting
+    // for and degrades to the ICE timeout with nothing logged.
+    NetIdentity ident;
+  };
+  std::map<std::string, PendingJoin> net_pending_joins_;
+  uint32_t net_pending_join_seq_ = 0;
+  static const int NET_JOIN_IDENT_WAIT_MS = 3000;
+  // How long an adoption must have been handshaking before the resolver
+  // will consider it stale. See net_host_rejoin_flap_check — this is the
+  // guard that keeps a claimed name from becoming a denial of service.
+  // Backstop only — NetTransport::connected() is the real test (see
+  // net_host_rejoin_flap_check). Sized clear of a connection still
+  // honestly negotiating: relayed candidates over a bad link can reach
+  // eight seconds by the comment's own reckoning there, so the backstop
+  // sits above that range rather than at the top of it. Still a fraction
+  // of the ~30 s the corpse would otherwise cost.
+  static const int FLAP_MIN_ADOPT_MS = 12000;
+  void net_host_rejoin_flap_check(int delta);
   void net_set_peer_jid(const std::string &jid) {
     net_peer_jid_ = jid;
     if (!net_peers_.empty()) net_peers_.front()->jid = jid;

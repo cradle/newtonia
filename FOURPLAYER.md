@@ -4,17 +4,12 @@ Status: **Phase A COMPLETE** (up to 4 local players live; P3/P4 join by
 controller). **Phase B COMPLETE** — B1–B7 all merged: the
 `NET_PLAYER_CAP` flip landed in #445, followed by the seat-HUD (#446)
 and rejoin-by-identity (#447) follow-ups; online rooms hold up to 4
-players. Shipping gate — **NOT YET SATISFIED as of 2026-08-11**: the
-production signal worker must carry the B3 multi-join protocol before
-any B7 client build reaches players, and only the BETA worker has it
-(deployed by the B3 master push); the latest release tag (v1.52.0,
-2026-08-08) predates B3, so production is still pre-multi-join — a
-pre-multi-join worker degrades every room to the classic single pair.
-The next `v*.*.*` release tag closes the gate by design (deploy-signal
-ships the production worker in minutes while the same tag's store
-builds take far longer to reach players). Everything still open —
-the gate, portal text, known limits, deferred decisions — is
-inventoried with pickup instructions in **§5 Outstanding work**.
+players. Shipping gate — **SATISFIED 2026-08-14**: the production
+signal worker must carry the B3 multi-join protocol before any B7
+client build reaches players, and the `v1.53.0` tag (2026-08-14, the
+first tag after B3 merged) deployed it. **§5 Outstanding work** is now
+empty of open items — its entries stay as the record of what each was
+and how it closed.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -143,13 +138,14 @@ fields → no VERSION bump (stays 17). `net_state_sane`'s `> 2` reject
 (net_session.cpp:250) stays at 2 until Phase B, deliberately: it is the online
 snapshot validator and online is still 2P.
 
-**D9 — Options screen stays a flat list.** Adding P3/P4 sensitivity/
-smoothing/camera rows takes the desktop list from 9 to 15 rows; the band
-compresses via `opt_row_center(row, n, …)` (menu.cpp:171) automatically.
-Verify legibility with the shots harness; if 15 rows is too tight, the
-fallback is collapsing the three per-player kinds into one row per player
-cycling a sub-value — but try the simple thing first. Touch table is
-untouched (single local player).
+**D9 — Options screen stays a flat list. RESOLVED 2026-08-15: it holds,
+no fallback needed.** Adding P3/P4 sensitivity/smoothing/camera rows takes
+the desktop list from 9 to 15 rows; the band compresses via
+`opt_row_center(row, n, …)` (menu.cpp:171) automatically. Verified by
+looking (`shots/options.shot`, §5 O5): 15 rows is comfortable at 1280×720,
+1280×800, 1024×768 and even 800×600. The fallback — collapsing the three
+per-player kinds into one row per player cycling a sub-value — is not
+needed and is dropped. Touch table is untouched (single local player).
 
 **D10 — One co-op leaderboard for all player counts (decided 2026-08-07).**
 Every run with `player_count >= 2` competes on the single co-op board; 3P/4P
@@ -275,6 +271,10 @@ The core of the phase.
   grid-correct for free, but up to 4 captures/frame when lenses are on
   multiple screens — measure on the headless driver; if it hurts, gate to
   N captures/frame round-robin (`lens_on_screen` already skips off-screen).
+  **Measured 2026-08-15 (§5 O6): it does not hurt — the capture copies the
+  VIEWPORT, so four quarter-viewports move the same pixels as one full
+  one, and the worst case costs 2.04× the 1P lens (1.92× at 1080p), not
+  4×. The round-robin gate is dropped.**
 
 ### A4 — Gameplay N-safety sweep
 - **Unknown-pad authority (flip blocker, found in A2 review):** an opened pad
@@ -568,8 +568,9 @@ Sequential master-based PRs, inert until the B7 flip:
   start band's hit-test is touch-gated (desktop clicks on the room code
   must not start the game); joiner-side seat labels ("YOU ARE PLAYER
   N", the local badge fallback) read the WELCOME seat; the lobby's
-  signal-level PeerLeave flash is branch-scoped. Known limits: the host has no
-  per-seat kick/manage UI. (The single-peer badge/score-row and
+  signal-level PeerLeave flash is branch-scoped. Known limits at landing: the
+  host had no per-seat kick/manage UI — built since, see §5 O3. (The
+  single-peer badge/score-row and
   DISCONNECTED-notice seams flagged here at landing were closed in the
   follow-up seat-HUD PR: `Overlay::net_badges` draws one row per
   occupied seat in seat order with every pilot's live score, the
@@ -579,11 +580,12 @@ Sequential master-based PRs, inert until the B7 flip:
   the OTHER clients: the host shares each seat's badge identity at each
   peer's first INPUT and on attestation changes, deliberately not a
   PROTO bump — an older receiver ignores it and keeps role labels,
-  the identity-append precedent.) SHIPPING GATE (unchanged): the production
-  signal worker must carry the B3 multi-join protocol — deployed by a
-  release tag — before any B7 client build reaches players; a
-  pre-multi-join worker degrades every room to the classic single pair
-  (2P, with the LAN-door overwrite above now guarded).
+  the identity-append precedent.) SHIPPING GATE — **SATISFIED by v1.53.0
+  (2026-08-14)**: the production signal worker had to carry the B3
+  multi-join protocol — deployed by a release tag — before any B7 client
+  build reached players; a pre-multi-join worker degrades every room to
+  the classic single pair (2P, with the LAN-door overwrite above now
+  guarded).
 
 Cost check against the 3–5× Phase A estimate: B1 and B2 are each roughly
 an A3-sized PR; B3 is a worker-only project with its own test rig; B4 is
@@ -593,37 +595,42 @@ stands.
 ## 5. Outstanding work
 
 Everything left after B7 + follow-ups (#445–#448), written to be
-picked up cold. Ordered by urgency. Inventory taken 2026-08-11.
+picked up cold. Ordered by urgency. Inventory taken 2026-08-11,
+refreshed 2026-08-15.
 
-### O1 — Ship it: cut the next release tag (maintainer; BLOCKS everything 4P-online)
+**Nothing open.** Every entry here is closed; they stay below for the
+record.
 
-The production signal worker (`newtonia-signal`) still runs pre-B3 code:
-B3 (#440) merged 2026-08-10 and auto-deployed only the BETA worker
-(master-push → beta is the pipeline's rule); the newest tag v1.52.0 was
-cut 2026-08-08, before B3. Against a pre-multi-join worker every room
-degrades to the classic single pair — no jids means no waiting room —
-so a B7-flipped client must not reach players first.
+### O1 — Ship it: cut the next release tag — DONE (v1.53.0, 2026-08-14)
 
-The next `v*.*.*` tag closes the gate by design: deploy-signal ships
-the production worker in minutes, while the same tag's store builds
-(Steam beta branch, TestFlight, Play) take far longer to reach anyone.
-If extra margin is wanted, manually dispatch deploy-signal with
-target=production ahead of the tag. Verify after: the tag's
-deploy-signal run deployed the top-level (non-beta) config, and a
-2-client smoke against production still pairs (the protocol is
-back-compatible for 2P; the seven B3 protocol-test families cover the
-worker itself).
+Was: the production signal worker (`newtonia-signal`) still ran pre-B3
+code. B3 (#440) merged 2026-08-10 and auto-deployed only the BETA
+worker (master-push → beta is the pipeline's rule), while the newest
+tag v1.52.0 was cut 2026-08-08, before B3. Against a pre-multi-join
+worker every room degrades to the classic single pair — no jids means
+no waiting room — so a B7-flipped client must not reach players first.
 
-### O2 — `coop_clear` portal text says "2-player mode" (human-only portal edits)
+Closed by the `v1.53.0` tag (2026-08-14), which contains #440 and whose
+deploy-signal run shipped the top-level (non-beta) config. The gate
+worked as designed: the worker deploys in minutes while the same tag's
+store builds (Steam beta branch, TestFlight, Play) take far longer to
+reach anyone.
 
-The achievement unlocks for any clear with ≥2 players (unchanged — 4P
-clears count), but the player-facing text in all three stores reads
-"Clear a level in 2-player mode" (entered 2026-07-26): App Store
-Connect, Play Console, and Steamworks, plus the master-list rows in
-ACHIEVEMENTS.md §5 and the ASC table copy (ACHIEVEMENTS.md:278, :554).
-Reword to "co-op mode" (or "with a co-pilot") in each portal; then
-update the two ACHIEVEMENTS.md tables to match what was entered. No
-code change — the symbolic id, gating, and point values stay put.
+### O2 — `coop_clear` portal text says "2-player mode" — DONE (2026-08-15)
+
+Was: the achievement unlocks for any clear with ≥2 players (unchanged —
+4P clears count), but the player-facing text in all three stores read
+"Clear a level in 2-player mode" (entered 2026-07-26).
+
+Reworded to **"Clear a level in co-op mode"** — a straight "2-player" →
+"co-op" substitution — in Steamworks and the Play Console (both live) and
+in App Store Connect (**submitted 2026-08-15, in review**: Apple keeps the
+copy in the achievement's Achievement Localization section and a live
+localization edit needs Add for Review → Submit for Review rather than
+going live on Save; it can go standalone, no app version). The two
+ACHIEVEMENTS.md tables (§2 ASC copy of record, §5 master list) match what
+was entered. No code change — the symbolic id, gating, and point values
+are untouched.
 
 ### O3 — Host per-seat manage/kick UI — DONE (2026-08-12)
 
@@ -712,7 +719,7 @@ self-host a FAKE_VERIFY relay, since the plain dev relay attests nobody
 and neither BAN nor the admission rule would have anything to act on.
 `nseat_lobby_mouse.sh` covers the same screen under a pointer.
 
-### O4 — N>1 rejoin ICE-flap wait (B5 known limit)
+### O4 — N>1 rejoin ICE-flap wait (B5 known limit) — DONE (2026-08-15)
 
 A rejoiner whose reconnect attempt half-establishes and dies (network
 blip mid-ICE, app relaunched during the handshake) leaves the host
@@ -729,41 +736,255 @@ time (lowest first), rejoiners queued behind the flapped one wait too.
 Self-recovering, never a hang — just slow. Fix direction: attach the
 rejoiner's IDENTITY to the join event so the host can match it to the
 seat whose handshake is stale — the same name+platform matching #447's
-seat resolver does at WELCOME time, applied one step earlier. That
-means a worker change (carry a claimed identity on the join
-announcement, or a client "I am rejoining as X" pre-frame) — i.e. a
-signal-protocol addition with the usual beta-worker-first deploy, so
-it is NOT a quick client-only patch. E2e to prove it: nseat_rejoin
-variant that SIGKILLs the rejoiner mid-handshake (between answer and
-connected) and asserts the second attempt seats in well under 30 s.
+seat resolver does at WELCOME time, applied one step earlier.
 
-### O5 — Options layout verdict (D9, decide-by-looking)
+#### BUILT 2026-08-15 — client-only, as the scoping predicted
+
+Landed as scoped below, with one addition the first e2e run forced (the
+LAN guard, third bullet under "The design"). Verified by
+`test/e2e/nseat_rejoin_flap.sh` both ways: green on the fix, and on a
+control build with `net_host_rejoin_flap_check` stubbed out the same
+driver fails — seat 3's corpse lived to the ICE timeout and the rejoiner
+gave up before the host ever re-offered. Regression drivers green:
+`rejoin`, `nseat_rejoin`, `nseat_swap`, `lanrejoin`, `hostresume`,
+`lankeep`, `hiccup`.
+
+#### Scoped 2026-08-15 — it is a client-only patch after all
+
+**The premise above is wrong, and the correction is most of the work.**
+This entry claimed the fix needs a worker change and a beta-first
+deploy. It does not: the host is ALREADY told who is on each joining
+socket. The worker broadcasts `{t:"identity", role:"joiner", from:<jid>,
+platform, name, verified}` the moment a joiner announces
+(`broadcast_identity`, worker.js:880 — `from` added by B3), the client
+parses the stamp into `ev.peer` (net_signal.cpp:272), and a rejoining
+client announces on its fresh socket for free because it rejoins through
+the LOBBY (`NetLobby::send_local_identity`, net_lobby.cpp:1104 — the
+auto-rejoin at glgame.cpp:5692 hands the room code to a new `NetLobby`).
+The host even banks it already: `net_jid_attested_[ev.peer]`
+(glgame.cpp:2898). Nothing is missing on the wire. What is missing is
+one correlation, host-side.
+
+**The design.** On `PeerJoin{from:X}` at N>1 while a stale adoption
+exists (`hs = net_handshaking_lost_peer()`), resolve X to a seat and
+compare:
+
+1. Bank CLAIMED identities by jid too, not only `ev.verified` ones — a
+   new `net_jid_claimed_` beside `net_jid_attested_`. Without this the
+   fix does nothing in a room of desktop builds, which attest nobody.
+2. Hold the join briefly (`pending_join_jid_ = X` + a deadline of ~3 s
+   on its own clock) rather than deciding on the spot: the identity
+   frame lands a round-trip after the join, and a verified upgrade later
+   still. Same shape as `AdmitWait`, same reason.
+3. When X's identity is known, compare it against the identity of the
+   socket already mid-handshake — **pilots, not seats.** The obvious
+   test (does X resolve to the adoption's seat?) is wrong: the door
+   always offers the LOWEST parked seat but the WELCOME re-maps the
+   session onto whichever seat the claim matches (#447), so with two
+   seats parked and the higher seat's pilot answering the lower seat's
+   offer — nseat_swap's shape — the lower seat's own pilot rejoining
+   would resolve to the adoption's seat and tear down a healthy
+   exchange belonging to someone else. One person cannot be two
+   joiners, so comparing pilots sidesteps the re-map entirely. Then
+   drop the corpse and re-offer, **only if `X != hs->jid`.** The
+   jid guard is the one that is easy to miss and fatal without: an
+   attestation for the LIVE handshake's own socket arrives late and
+   routinely and names exactly this pilot, so without it the branch
+   would tear down the healthy exchange that attestation describes — the "AGES to reconnect"
+   regression the N=1 branch's comment is a monument to.
+   **Added after the first e2e run: the adoption must HAVE a jid.** Both
+   doors open on every loss (the LAN beacon comes up beside the room), so
+   a LAN pairing can be mid-handshake when an unrelated relay join lands.
+   A LAN adoption carries no jid, and an empty jid compares unequal to
+   every real one, so without the extra test that relay join would tear
+   down a healthy LAN handshake. A relay join is evidence about relay
+   adoptions only.
+4. Establish the adoption is actually DEAD before identity is even
+   consulted, and ask the transport rather than a clock:
+   `!transport->connected() && adopt_ms >= FLAP_MIN_ADOPT_MS` (12 s).
+   A clock alone cannot tell a corpse from a slow success — `adopt_ms`
+   covers ICE and DTLS, and a strict room adds up to `ADMIT_WAIT_MS` of
+   AdmitWait on top, so a healthy TURN rejoin sits at five to eight
+   seconds routinely. A corpse cannot fake `connected()`: its ICE never
+   completes, and everything slow-but-real happens on the far side of
+   that flag. The age is only a backstop for a link still honestly
+   negotiating. This pair is what keeps step 3's claim-level match from
+   being a denial of service — see the security note below.
+5. Never let a CLAIM overrule an ATTESTED socket's handshake: if the
+   adoption's identity came from the worker, only another attestation
+   may match it. In Steam and Play Games rooms that shuts a spoofer out
+   entirely, since they cannot mint the name they would need. The test
+   reads the attestation's TRUST before the name fallback runs, which
+   matters for Game Center: it attests the account and relays no name,
+   so an attested iOS socket carries a CLAIMED alias behind an empty
+   attested name, and asking afterwards would judge the claim instead.
+   The flip side is that an iOS pilot cannot be name-matched at all, so
+   O4 does not fire for them — their flapped rejoin still waits out the
+   ICE timeout. Matching on platform alone would catch every other iOS
+   peer in the room, which is worse than waiting.
+6. Give up at most ONE adoption per seat per loss episode
+   (`NetPeer::flap_dropped`, cleared at park), so a liar who does get
+   through cannot loop.
+7. Anything else — either socket still nameless, or a different pilot —
+   changes nothing and waits out the ICE timeout exactly as today.
+
+**Matching on a CLAIM is correct here, and the contrast with BAN is the
+argument.** A ban keys on attested identity only, because a ban DENIES
+someone and a claimed name is a self-report. This decision denies
+nobody: it tears down a half-open handshake on a seat that is already
+lost. Attestation would buy little here and would switch the fix off in
+every unattested room. Say so in the code; a reviewer will (rightly) ask
+why this one takes a claim.
+
+**But the first version of that argument was too generous, and review
+caught it.** "The worst a spoofer achieves is what the ICE timeout does
+anyway" is true of a DEAD handshake and false of a healthy one: with no
+other test, anyone holding the room code could claim the rejoining
+pilot's name and kill their working attempt, repeatedly — a denial of
+service the game does not have today. Three things answer it: the
+liveness gate (step 4) means a liar can only reach a socket that never
+connected and has had twelve seconds to; like-for-like trust (step 5)
+removes the attack entirely from rooms where the worker vouches for
+names; and the one-drop cap (step 6) bounds what is left to a single
+lost attempt rather than a loop. The claim decides WHO; the transport
+decides WHETHER. Honest residual: in an all-desktop room, where nothing
+is attested, someone with the room code can still cost a rejoining pilot
+one attempt — a handshake already twelve seconds into ICE without
+having connected. That is worse than doing nothing in that one case, and it is
+the price of the fix working at all where nobody is attested.
+
+**What it does not fix.** Rejoiners queued behind a legitimately slow
+handshake still wait — the door serves one parked seat at a time. That
+is a separate, larger change, and it too is unblocked: the worker has
+supported **addressed offers** (`{t:"offer", sdp, to}`, worker.js:1026)
+since B3, and the lobby's waiting room already mints one transport per
+joining jid and offers it addressed (net_lobby.cpp:1458). The in-game
+rejoin door is the last unaddressed consumer (glgame.cpp:3177), so
+parallel doors are a port of a proven pattern, not an invention — the
+"the relay offer is a single unaddressed slot" rationale in
+`net_door_peer`'s comment (glgame.h:566) is stale. Worth doing only if
+queueing is ever observed to bite; the flap case above is the one with a
+field story.
+
+**Tests.** A new `nseat_rejoin_flap.sh` (4 seats): kill seat 3's client,
+let the door offer, and have the rejoiner answer and then die inside the
+handshake — a client-side test hook (`NEWTONIA_NET_TEST_FLAP=1`, exit
+right after the answer goes out) is the only way to hit that window
+deterministically. Assert the second attempt seats in well under 30 s
+and that the host logs the new drop line. Then the negative, which
+matters more: a DIFFERENT pilot joining while seat 3's handshake is in
+flight must leave it alone — that is the regression this branch could
+plausibly cause. Existing drivers that must stay green: `rejoin.sh`,
+`nseat_rejoin.sh`, `hostresume.sh`, `hiccup.sh`, `turnexpiry.sh`,
+`lankeep.sh`.
+
+**Cost.** One focused PR: ~60-100 lines across glgame.cpp/.h, one e2e
+driver, one test hook, doc updates. No worker change, no PROTO bump, no
+deploy dependency, no beta-first sequencing — the constraints that made
+this entry look expensive are gone.
+
+### O5 — Options layout verdict (D9, decide-by-looking) — DONE (2026-08-15)
+
+Verdict: **the flat 15-row list is fine; D9's fallback is dropped.**
 
 Phase A shipped the simple thing: the desktop options screen is a flat
 15-row list (P1–P4 × sensitivity/smoothing/camera, plus the shared
-rows), compressed automatically by `opt_row_center`. The D9 fallback —
-collapsing each player's three rows into one row cycling a sub-value —
-was never needed structurally, but nobody has signed off the 15-row
-legibility on a small window. Do: render the options screen through the
-shots harness at typical sizes (1280×720 and the Steam Deck's 1280×800
-at minimum), look, decide. If it's fine, delete this item and mark D9
-resolved; if it's cramped, implement the fallback (menu.cpp `opt_row`
-table + the seed/commit loops).
+rows), compressed automatically by `opt_row_center`. Rendered through the
+shots harness (`shots/options.shot` — attract → OPTIONS, added for this)
+at 1280×720, the Deck's 1280×800, 1024×768 (4:3) and 800×600. It is not
+cramped anywhere: the band is 250..-300 (`desk_opt_top`/`desk_opt_bottom`),
+so 15 rows get ~37 virtual units of pitch under a size-12 row — a glyph is
+24 tall, which leaves about half a line of air — and the list still clears
+the BACK TO MENU band. 800×600 is the practical floor and reads fine too.
 
-### O6 — 4P performance budget (measure before optimising)
+Two things worth knowing before the next row is added:
 
-A 4P grid draws the world four times per frame, and WarpPass (the
-invisible-asteroid lens) can capture the viewport up to four times per
-frame when lenses sit on multiple screens (glgame.cpp:8500 reads the
-live viewport rect, so it is grid-correct but not gated). Nobody has
-measured this on weak hardware. Do: run the headless driver's frame
-timing (the video-render path gives deterministic per-frame numbers) at
-1P vs 4P on generations ≥4 (invisible asteroids present), and on a
-low-end box or a capped-clock VM if available. If WarpPass dominates,
-the planned mitigation is round-robin capture gating — N captures per
-frame, `lens_on_screen` already skips off-screen lenses — sketched in
-A3. If the base 4× draw dominates, that's a bigger conversation
-(culling is already per-viewport; mesh uploads are shared).
+- **Window size doesn't enter into it.** Landscape pins
+  `Typer::scaled_window_height` to `original_window_height` = 600 and
+  grows the *width* with aspect (typer.cpp:87-96), so `menu_half_height()`
+  is 600 and the row band is a fixed 250..-300 in virtual units at every
+  resolution. Pixel size only scales the whole screen — there is no size
+  at which the vertical layout gets tighter, which is why the verdict
+  generalises from four renders. Row COUNT is the only vertical
+  variable.
+- **The tight axis is horizontal, and it is the name column.** The
+  longest name today, `LEADERBOARD  UPLOAD`, ends 16 virtual units short
+  of the step column's opening bracket — two thirds of a glyph cell. It
+  reads fine, but a 20-glyph name would collide, and no window size would
+  show you: the columns are fixed constants. Noted in menu.cpp beside
+  them, next to the touch layout's equivalent note.
+
+The 15-row case only appears on a netplay build (`net_board_available()`
+gates the LEADERBOARD UPLOAD row); the netless list is 14. These renders
+forced the row on so the worst case was the one judged.
+
+### O6 — 4P performance budget — DONE (2026-08-15), no action needed
+
+Verdict: **4P costs about 2× a 1P frame, not 4×, and WarpPass does not
+multiply by viewport count. A3's round-robin capture gating is ruled
+out — it would be the wrong fix.**
+
+Measured with the shots harness (it runs a real render loop, one draw
+per 16 ms sim step) plus `NEWTONIA_PERF_ALWAYS=1`, a new hook that drops
+`perf_report`'s 55 fps gate so the breakdown prints when both
+configurations are fast (TESTING.md). Per-frame ms = the line's ms/sec
+divided by its fps. 1280×720 unless noted:
+
+| Scene | 1P | 4P | 4P/1P |
+|---|---|---|---|
+| Natural gen 6 (68 asteroids) | 6.4 ms (157 fps) | 11.8 ms (85 fps) | 1.85× |
+| Natural gen 14 (174 asteroids) | 8.5 ms (118 fps) | 16.9 ms (59 fps) | 2.00× |
+| Synthetic, no lens on screen | 2.1 ms (475 fps) | 4.7 ms (211 fps) | 2.25× |
+| Synthetic, lens on every screen | 4.7 ms (211 fps) | 10.5 ms (95 fps) | 2.22× |
+| — of which the lens pass | 2.73 ms | 5.58 ms | 2.04× |
+| — the lens pass at 1920×1080 | 5.27 ms | 10.12 ms | 1.92× |
+
+The three synthetic rows were re-measured 2026-08-15 after review caught
+that `lens_stress.shot` left its asteroids on the constructor's random
+velocity: over a 20 s sim each lens drifted 330-500 units, far enough to
+leave a quarter-viewport, so the first pass had been sampling some
+viewports with no lens in them and understating 4P. The scene pins them
+with `v=0,0` now. The corrected figures are worse for 4P than the ones
+first reported here (2.04× not 1.80× on the lens, 1.92× not 1.57× at
+1080p) and change no conclusion.
+
+**The four-captures-per-frame worry is real in count and false in cost.**
+`WarpPass::capture` is a `glCopyTexImage2D` of the *viewport* rect
+(warp_pass.cpp:291), so four quarter-area viewports move the same pixels
+as one full-screen viewport — the pixel budget is constant in player
+count. The 2× that remains is per-CALL overhead, not per-pixel work,
+which is what the resolution row still shows: raise the resolution and
+the 4P penalty falls (2.04× to 1.92×), because fixed overhead amortises
+over more pixels. Gating captures round-robin would therefore stagger a pass
+that is already near-constant in viewport count, and buy that with a
+visibly stale lens. Dropped.
+
+**Nothing else dominates either.** The base 4× draw lands at ~2×:
+per-viewport culling and quarter-area rasterisation pay for half of the
+naive cost. The largest single line item at 4P is per-viewport geometry
+submission (`objs` + `stars`), which is the "bigger conversation" branch
+— but 2× the frame for 4× the players needs no conversation.
+
+Two caveats on the numbers. They come from **llvmpipe** (software
+rasterisation under Xvfb), which inflates fill-bound work — the lens
+pass — relative to geometry, so "the lens is 60-75% of the frame" is a
+software-renderer statement that a real GPU will not reproduce. What
+*does* generalise is the structural result (lens cost is sub-linear in
+viewport count, because the pixels are constant) and the ~2× geometry
+scaling, which is CPU/driver-side. And this box is not weak hardware —
+but a software rasteriser at 59 fps for natural gen-14 4P is a
+reassuring floor, not a worrying one.
+
+**Follow-up candidate, not opened as work:** the capture uses
+`glCopyTexImage2D`, which redefines the texture (reallocating storage)
+on every call — four times a frame at 4P. `glCopyTexSubImage2D` into a
+texture sized once would keep the pixels and drop the reallocation, and
+is the obvious first move if anyone ever profiles this on real hardware
+and finds the lens hot. It is a WarpPass improvement at every player
+count, which is the point: the lens pass is not a 4P problem.
+
+Reproduce: `shots/lens_stress.shot` (and `sed 's/players 4/players 1/'`
+for its twin) — recipe in TESTING.md §"Render cost (1P vs 4P)".
 
 ### Accepted as-is (documented so nobody re-opens them by accident)
 
