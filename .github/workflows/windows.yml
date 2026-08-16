@@ -125,12 +125,16 @@ jobs:
         env:
           NEWTONIA_SIGNAL_URL: wss://newtonia-signal-beta.gfmcc.workers.dev/ws
         run: |
+          # tee -a, truncated once up front: plain tee would leave only the
+          # LAST attempt, so the diagnostics below would describe one
+          # attempt while the verdict came from another.
+          : > sigtest.log
           for attempt in 1 2 3; do
             # 2>&1 matters: the PASS line is std::cout but the TLS line is
             # SDL_Log, which goes to STDERR. Capturing stdout alone makes
             # the CA grep below fail on every healthy run.
             NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe 2>&1 \
-              | tee sigtest.log || true
+              | tee -a sigtest.log || true
             grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
             echo "signal selftest attempt $attempt failed"
             [ "$attempt" -lt 3 ] && sleep 20
@@ -138,7 +142,7 @@ jobs:
           # A relay that rate-limited us fails all three attempts and would
           # otherwise read as a broken CA bundle. Say which it was.
           grep -q "rate-limited" sigtest.log &&
-            echo "NOTE: relay rate-limited this runner - not a trust-path failure"
+            echo "NOTE: the relay rate-limited at least one attempt - weigh that before reading this as a trust-path failure"
           grep -q "SIGNAL SELFTEST PASS" sigtest.log
           # The bundle must be what verified it. "no CA bundle on disk" means
           # the write failed, which on Windows degrades to unverified rather
