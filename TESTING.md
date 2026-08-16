@@ -118,8 +118,10 @@ player's machine — the gates catch a broken bundle, not a broken device.
 Run the manual pass once per platform after any change to
 `net_ca_bundle.cpp`, `net_tls.cpp`, the patch, or a libdatachannel bump:
 
-**Desktop** (`make`, `make osx`, the MSYS2 Windows build) — the selftest
-hooks live in `glut.cpp`, so they exist here and nowhere else:
+**Desktop** (`make`, `make osx`, the MSYS2 Windows build) — the hooks live
+in `glut.cpp` here; every netplay platform now has its own copy (iOS in
+`ios_main.mm`, Android in `android_main.cpp`, Xbox in `xbox_main.cpp`),
+all printing the same verdict strings:
 
 ```sh
 ./build_netplay_deps.sh            # MUST be re-run: an old prefix has no
@@ -156,8 +158,13 @@ adb logcat -c
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
     --es NEWTONIA_SIGNAL_SELFTEST 1
 adb logcat -s SDL/APP | grep -iE "selftest|net: tls"
-#   -> "SIGNAL SELFTEST PASS" and the app exits. NEWTONIA_NET_SELFTEST=1
-#      runs the TLS-free loopback the same way. Case-insensitive on
+#   -> "SIGNAL SELFTEST PASS" and the app exits, in ~20 s.
+#      NEWTONIA_NET_SELFTEST=1 runs the TLS-free loopback the same way,
+#      but budget MINUTES for a bad one: it retries 3x and each attempt
+#      waits up to 30 s per side. The screen stays black throughout —
+#      the hooks run before the window and the event loop — so let it
+#      finish rather than backing out, which would leave onDestroy
+#      waiting on the SDL thread. Case-insensitive on
 #      purpose: the verdict is upper-case but the REASON for a failure
 #      ("net_signal_selftest: error - rate-limited", "... timed out
 #      after N ms") is lower-case, and that line is the difference
