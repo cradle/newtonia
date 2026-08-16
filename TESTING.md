@@ -75,7 +75,7 @@ backends, and it is the one with a system trust store to fall back on:
 |-------|-------------|--------------|----------|
 | Linux, `make` on macOS | OpenSSL | system store **+** our bundle | ✅ `linux.yml` gate |
 | `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ `macos-dev.yml` gate (was manual 2026-08-03) |
-| Android | MbedTLS | our bundle ONLY | ✅ 2026-08-04 — manual, no selftest hook exists |
+| Android | MbedTLS | our bundle ONLY | ✅ SIGNAL selftest on a real phone 2026-08-16 (was a manual UI drive, 2026-08-04) |
 | iOS | MbedTLS | our bundle ONLY | ✅ `ios.yml` gate (simulator) |
 | Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ✅ `windows.yml` gate (was manual 2026-08-04) |
 | Xbox | MbedTLS | our bundle ONLY | ⬜ — `cradle/newtonia-xbox` owns console runtime work |
@@ -106,18 +106,25 @@ They differ in two ways worth knowing:
   TLS line is `SDL_Log`, i.e. stderr. macOS cannot grep it at all — SDL
   routes through NSLog on Apple, which reaches a terminal, not a CI pipe.
 
-What stays manual: **Android** (the env bridge is fine —
-`NewtoniaActivity.applyEnvExtras` `Os.setenv`s every `NEWTONIA_*` intent
-extra before native start — but `android_main.cpp` implements no selftest
-hook to trigger, so drive the real feature per below) and **Xbox**
-(private repo). And note a green runner proves that runner's TLS stack, not a
+What stays manual: **Android** and **Xbox** (private repo). Android now
+has the selftest hook, so its pass is a one-liner rather than a UI drive
+(below) — but it still needs a DEVICE or emulator, and `android.yml` has
+neither, so nothing runs it for you. Wiring an emulator into that
+workflow is the only way to close the row; it was not worth the boot time
+and flakiness for a check whose failure mode is a bundle regression the
+other three MbedTLS-ish gates would also catch. And note a green runner proves that runner's TLS stack, not a
 player's machine — the gates catch a broken bundle, not a broken device.
 
 Run the manual pass once per platform after any change to
 `net_ca_bundle.cpp`, `net_tls.cpp`, the patch, or a libdatachannel bump:
 
-**Desktop** (`make`, `make osx`, the MSYS2 Windows build) — the selftest
-hooks live in `glut.cpp`, so they exist here and nowhere else:
+**Desktop** (`make`, `make osx`, the MSYS2 Windows build) — the hooks live
+in `glut.cpp` here, and every NATIVE netplay platform now has its own
+copy (iOS in `ios_main.mm`, Android in `android_main.cpp`, Xbox in
+`xbox_main.cpp`), all printing the same verdict strings. Web is the
+exception by design: it ships netplay unconditionally but has no entry
+point to hang a hook on, and its `nwtest_*` exports (net_transport_web.cpp)
+serve the same purpose from the browser side:
 
 ```sh
 ./build_netplay_deps.sh            # MUST be re-run: an old prefix has no
@@ -141,13 +148,62 @@ xcrun devicectl device process launch --console --terminate-existing \
 (CI drives the same hooks on the SIMULATOR through `SIMCTL_CHILD_*` env
 vars instead — see `ios.yml`.)
 
-**Android has NO selftest hook** — `android_main.cpp` never reads those env
-vars — so drive the real feature there, which is stronger evidence anyway:
-a room code cannot appear unless the WSS handshake to the production worker
-completed.
+**Android HAS the selftests** (2026-08-16, `android_main.cpp` under
+`NEWTONIA_NET_RTC`). The SIGNAL recipe below is device-verified on a real
+phone; the loopback variant is compile-verified only, so treat its
+multi-minute warning as a prediction from the code rather than something
+anyone has sat through — reached like every other `NEWTONIA_*` var here, as
+intent extras that `NewtoniaActivity.applyEnvExtras` `Os.setenv`s before
+native start. The verdict is the LOG LINE, not the exit status: an app's
+exit code does not reach `adb`. The strings match the desktop and iOS
+hooks exactly, so one grep covers every platform.
 
 ```sh
 make android-install
+adb logcat -c
+adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    --es NEWTONIA_SIGNAL_SELFTEST 1
+# `timeout`, because a streaming logcat never returns. Raise it for the
+# loopback hook.
+timeout 60 adb logcat -s SDL/APP | grep -iE "selftest|net: tls"
+#   -> "SIGNAL SELFTEST PASS" and the app exits, in ~20 s.
+#      NEWTONIA_NET_SELFTEST=1 runs the TLS-free loopback the same way,
+#      but budget MINUTES for a bad one: it retries 3x and each attempt
+#      waits up to 30 s per side. The screen stays black throughout —
+#      the hooks run before the window and the event loop — and backing
+#      out mid-test ANRs, because SDLActivity.onDestroy joins the SDL
+#      thread from the UI thread and that thread is inside the test. Let
+#      it finish. Case-insensitive on
+#      purpose: the verdict is upper-case but the REASON for a failure
+#      ("net_signal_selftest: error - rate-limited", "... timed out
+#      after N ms") is lower-case, and that line is the difference
+#      between a throttled relay and a broken CA bundle.
+```
+
+**The app closes itself** when the test finishes (device-confirmed
+2026-08-16): `SDL_Quit()` and a plain `return` from `SDL_main`, which on
+Android ends the Activity rather than the process — SDL's
+`nativeRunMain` deliberately does not `exit()`, which is why the hook
+returns here where iOS's exits.
+
+**Re-arming: tested, does not happen.** A hook that stayed armed would
+re-run the selftest on the next launch and close the app instead of
+starting the game, so this was chased down rather than assumed.
+Device-tested 2026-08-16, both routes: `am start` with the option and
+then again without it, and — the case that could in principle have
+replayed the task's retained intent — `am start` with the option followed
+by a relaunch from RECENTS. Both start the game normally.
+
+The native side clears both vars as it reads them, which covers a cached
+process re-entering `SDL_main`; belt and braces after the above, and kept
+because it costs nothing. No force-stop is needed.
+
+Driving the real feature still works and is worth doing when you have the
+device in your hand anyway — a room code cannot appear unless the WSS
+handshake to the production worker completed, and it exercises the UI the
+selftest skips:
+
+```sh
 adb logcat -c && adb logcat -s SDL/APP | grep -E "net: tls|net: signal"
 #   ...then on the device: ONLINE -> HOST, and watch for a room code.
 #   LEADERBOARD exercises the board socket the same way.

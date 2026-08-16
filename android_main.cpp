@@ -19,6 +19,10 @@
 #include "invites.h"
 #include "world_sound.h"
 #include "view/overlay.h"
+#ifdef NEWTONIA_NET_RTC
+#include "net_signal.h"
+#include "net_transport.h"
+#endif
 
 #include <atomic>
 #include <iostream>
@@ -369,6 +373,80 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // back on, via SDL_StartTextInput.
     SDL_StopTextInput();
     SDL_Log("Audio driver in use: %s", SDL_GetCurrentAudioDriver());
+
+#ifdef NEWTONIA_NET_RTC
+    // Hidden CI/debug hooks, the Android twins of glut.cpp's. Reached the
+    // same way every other NEWTONIA_* var is on this platform:
+    //   adb shell am start -S -n org.newtonia/.NewtoniaActivity
+    //     --es NEWTONIA_SIGNAL_SELFTEST 1
+    // (one line; no continuation here — a trailing backslash would splice
+    // the next line into this comment, which -Wcomment rightly flags)
+    // (NewtoniaActivity.applyEnvExtras Os.setenvs the extras before native
+    // start, so SDL_getenv sees them.)
+    //
+    // Placed here rather than at the top of SDL_main because both need SDL
+    // up — the CA bundle is written to SDL_GetPrefPath — but before the
+    // window and GL context, which neither test needs.
+    //
+    // The VERDICT IS THE LOG LINE, not the exit status: an Android app's
+    // exit code does not reach adb, so the strings below are the contract
+    // (`adb logcat -s SDL/APP`), and they are byte-identical to the ones
+    // the desktop and iOS hooks print so one grep covers every platform.
+    // This is why the TLS pass on Android stopped being drive-the-real-
+    // -feature-and-watch (TESTING.md).
+    {
+        const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
+        const char *ss_env = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+        const bool want_net = st && st[0] == '1' && st[1] == '\0';
+        const bool want_signal = ss_env && ss_env[0] == '1' && ss_env[1] == '\0';
+        // Disarm BOTH before running EITHER, and read the flags above
+        // first because unsetenv invalidates those pointers.
+        //
+        // applyEnvExtras sets these process-wide, and returning from
+        // SDL_main finishes the Activity without necessarily ending the
+        // PROCESS — the s_running reset at the top of this function exists
+        // because SDL_main is re-entered on a cached one. Left armed, the
+        // next launch would run a selftest and close the app instead of
+        // starting the game. Both vars, because whichever branch runs
+        // returns before the other is reached.
+        //
+        // Belt and braces as it turns out: relaunching after a selftest,
+        // including from Recents where the task's retained intent could
+        // have replayed the extras, starts the game normally on a real
+        // device (TESTING.md). Kept because it costs nothing and the
+        // cached-process re-entry is the case this file can actually see.
+        if (want_net || want_signal) {
+            unsetenv("NEWTONIA_NET_SELFTEST");
+            unsetenv("NEWTONIA_SIGNAL_SELFTEST");
+        }
+        if (want_net) {
+            // Can run for MINUTES on a bad path — 3 attempts, each waiting
+            // up to 30 s a side — with no window and no event loop yet, so
+            // the screen is black and backing out ANRs: SDLActivity's
+            // onDestroy joins this thread from the UI thread, and this
+            // thread is inside the test. Acceptable for a hook no shipped
+            // launch sets, and TESTING says to let it finish; the signal
+            // hook below is the ~20 s one.
+            SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
+            bool ok = net_selftest();
+            SDL_Log("%s", ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
+            SDL_Quit();
+            return ok ? 0 : 1;
+        }
+        // The relay round trip, which on this platform is the whole TLS
+        // trust story: MbedTLS reaches no system store, so a handshake that
+        // completes proves the roots in net_ca_bundle.cpp wrote, parsed and
+        // verified Cloudflare's chain.
+        if (want_signal) {
+            load_preferences();  // net_signal_url() honours the INI override
+            SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
+            bool ok = net_signal_selftest();
+            SDL_Log("%s", ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");
+            SDL_Quit();
+            return ok ? 0 : 1;
+        }
+    }
+#endif
 
     // Request OpenGL ES 2.0 context
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
