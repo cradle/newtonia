@@ -76,7 +76,16 @@ public:
     }
     if (closed_flag_.exchange(false)) {
       ev.kind = Event::Closed;
-      ev.text.clear();
+      // Carry libdatachannel's reason if it gave one. Without this every
+      // transport failure is an indistinguishable "closed" — and the one
+      // that matters most, a CA bundle that cannot verify the relay, is a
+      // transport failure (TESTING.md's per-platform TLS pass, whose CI
+      // gates read exactly this line).
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ev.text = last_error_;
+        last_error_.clear();
+      }
       return true;
     }
     return false;
@@ -134,14 +143,20 @@ private:
     ((RtcSignal *)p)->closed_flag_ = true;
   }
 
-  static void RTC_API on_error(int, const char *, void *p) {
-    ((RtcSignal *)p)->closed_flag_ = true;
+  static void RTC_API on_error(int, const char *message, void *p) {
+    RtcSignal *self = (RtcSignal *)p;
+    if (message && *message) {
+      std::lock_guard<std::mutex> lock(self->mutex_);
+      self->last_error_ = message;
+    }
+    self->closed_flag_ = true;
   }
 
   int ws_;
   std::atomic<bool> closed_flag_;
   std::mutex mutex_;
   std::deque<std::string> inbox_;
+  std::string last_error_;  // guarded by mutex_; drained by poll()
 };
 
 }  // namespace

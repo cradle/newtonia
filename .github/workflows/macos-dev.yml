@@ -361,23 +361,25 @@ jobs:
           if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
             echo "tag build - skipping the live-relay gate (see comment)"
           else
-          # tee -a, and truncate once up front: plain tee would leave only
-          # the LAST attempt, so the diagnostics below would describe one
-          # attempt while the verdict came from another.
           : > sigtest.log
+          ok=
           for attempt in 1 2 3; do
+            : > attempt.log
             NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws \
             NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy \
-              ./Newtonia-netplay.app/Contents/MacOS/Newtonia 2>&1 | tee -a sigtest.log || true
-            grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
+              ./Newtonia-netplay.app/Contents/MacOS/Newtonia 2>&1 | tee -a attempt.log || true
+            cat attempt.log >> sigtest.log
+            grep -q "SIGNAL SELFTEST PASS" attempt.log && { ok=1; break; }
             echo "signal selftest attempt $attempt failed"
             [ "$attempt" -lt 3 ] && sleep 20
           done
-          # A relay that rate-limited us fails all three attempts and would
-          # otherwise read as a broken CA bundle. Say which it was.
-          grep -q "rate-limited" sigtest.log &&
-            echo "NOTE: the relay rate-limited at least one attempt - weigh that before reading this as a trust-path failure"
-          grep -q "SIGNAL SELFTEST PASS" sigtest.log
+          # Only on the way out — a note on a green run would warn about a
+          # failure that did not happen.
+          if [ -z "$ok" ]; then
+            grep -q "rate-limited" sigtest.log &&
+              echo "NOTE: the relay rate-limited at least one attempt - weigh that before reading this as a trust-path failure"
+          fi
+          [ -n "$ok" ]
           fi
           # No CA-line grep here, unlike windows.yml, for two reasons. SDL
           # routes its log through NSLog on Apple and is excluded from the
@@ -387,4 +389,4 @@ jobs:
           # already proves the bundle wrote, parsed and verified the chain.
           # Windows needs its grep precisely because it does NOT fail
           # closed.
-          rm -rf sigtest.log Newtonia-netplay.app
+          rm -rf sigtest.log attempt.log Newtonia-netplay.app

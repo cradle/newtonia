@@ -125,26 +125,36 @@ jobs:
         env:
           NEWTONIA_SIGNAL_URL: wss://newtonia-signal-beta.gfmcc.workers.dev/ws
         run: |
-          # tee -a, truncated once up front: plain tee would leave only the
-          # LAST attempt, so the diagnostics below would describe one
-          # attempt while the verdict came from another.
+          # Both patterns must hold in the SAME attempt, which is why each
+          # gets its own log. A cumulative one could be satisfied by two
+          # different runs — attempt 1 logging the CA line but failing the
+          # round trip, attempt 2 connecting UNVERIFIED (the bundle write
+          # can lose a file lock here) and passing — and the gate would go
+          # green on precisely the failure it exists to catch. sigtest.log
+          # accumulates anyway, but only so the diagnostics below can see
+          # the whole run.
           : > sigtest.log
+          ok=
           for attempt in 1 2 3; do
+            : > attempt.log
             # 2>&1 matters: the PASS line is std::cout but the TLS line is
-            # SDL_Log, which goes to STDERR. Capturing stdout alone makes
-            # the CA grep below fail on every healthy run.
+            # SDL_Log, which goes to STDERR.
             NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe 2>&1 \
-              | tee -a sigtest.log || true
-            grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
+              | tee -a attempt.log || true
+            cat attempt.log >> sigtest.log
+            if grep -q "SIGNAL SELFTEST PASS" attempt.log &&
+               grep -q "net: tls - verifying server certificates against" attempt.log; then
+              ok=1
+              break
+            fi
             echo "signal selftest attempt $attempt failed"
             [ "$attempt" -lt 3 ] && sleep 20
           done
-          # A relay that rate-limited us fails all three attempts and would
-          # otherwise read as a broken CA bundle. Say which it was.
-          grep -q "rate-limited" sigtest.log &&
-            echo "NOTE: the relay rate-limited at least one attempt - weigh that before reading this as a trust-path failure"
-          grep -q "SIGNAL SELFTEST PASS" sigtest.log
-          # The bundle must be what verified it. "no CA bundle on disk" means
-          # the write failed, which on Windows degrades to unverified rather
-          # than failing the handshake — the log line is the only tell.
-          grep -q "net: tls - verifying server certificates against" sigtest.log
+          # Only on the way out: a note about a rate-limited attempt on a
+          # GREEN run would be a warning about a failure that did not happen.
+          if [ -z "$ok" ]; then
+            grep -q "rate-limited" sigtest.log &&
+              echo "NOTE: the relay rate-limited at least one attempt - weigh that before reading this as a trust-path failure"
+            echo "no attempt both passed and logged a verified handshake"
+          fi
+          [ -n "$ok" ]
