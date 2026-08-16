@@ -76,7 +76,16 @@ public:
     }
     if (closed_flag_.exchange(false)) {
       ev.kind = Event::Closed;
-      ev.text.clear();
+      // Carry libdatachannel's reason if it gave one. Without this every
+      // transport failure is an indistinguishable "closed" — and the one
+      // that matters most, a CA bundle that cannot verify the relay, is a
+      // transport failure (TESTING.md's per-platform TLS pass, whose CI
+      // gates read exactly this line).
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ev.text = last_error_;
+        last_error_.clear();
+      }
       return true;
     }
     return false;
@@ -106,6 +115,21 @@ private:
     cfg.disableTlsVerification = net_tls_insecure();
     const std::string &ca = net_ca_bundle_path();
     if (!ca.empty()) cfg.caCertificatePemFile = ca.c_str();
+    // A fresh socket starts clean: these members outlive the previous
+    // one (GLGame and NetLobby reconnect on the SAME NetSignal), so a
+    // stale flag would fire a spurious Closed here and a stale reason
+    // would describe the wrong socket — a diagnostic worse than none.
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      last_error_.clear();
+      // The inbox too, and this one is not just cosmetic: a frame the dead
+      // socket queued would be parsed against the NEW room — a stale `err`
+      // condemning a code that is fine, or a stale `room` overwriting the
+      // code and token the reconnect just obtained. net_signal_web.cpp
+      // already resets on reopen; this is the RTC backend catching up.
+      inbox_.clear();
+    }
+    closed_flag_ = false;
     ws_ = rtcCreateWebSocketEx(full_url.c_str(), &cfg);
     if (ws_ < 0) {
       closed_flag_ = true;
@@ -134,14 +158,20 @@ private:
     ((RtcSignal *)p)->closed_flag_ = true;
   }
 
-  static void RTC_API on_error(int, const char *, void *p) {
-    ((RtcSignal *)p)->closed_flag_ = true;
+  static void RTC_API on_error(int, const char *message, void *p) {
+    RtcSignal *self = (RtcSignal *)p;
+    if (message && *message) {
+      std::lock_guard<std::mutex> lock(self->mutex_);
+      self->last_error_ = message;
+    }
+    self->closed_flag_ = true;
   }
 
   int ws_;
   std::atomic<bool> closed_flag_;
   std::mutex mutex_;
   std::deque<std::string> inbox_;
+  std::string last_error_;  // guarded by mutex_; drained by poll()
 };
 
 }  // namespace

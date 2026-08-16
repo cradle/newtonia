@@ -297,6 +297,7 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
 #include <SDL.h>
 
 #include <chrono>
+#include <iostream>
 #include <thread>
 
 namespace {
@@ -306,11 +307,37 @@ bool wait_event(NetSignal *s, NetSignal::Event::Kind want,
     while (s->poll(ev)) {
       if (ev.kind == want) return true;
       if (ev.kind == NetSignal::Event::Error ||
-          ev.kind == NetSignal::Event::Closed)
+          ev.kind == NetSignal::Event::Closed) {
+        // Say WHY. Without this every failure looks the same from outside:
+        // a relay that rate-limited the caller reads exactly like a broken
+        // CA bundle, which is the most alarming thing this test can report
+        // (TESTING.md, per-platform TLS pass) and the one CI cannot tell
+        // apart on its own.
+        // BOTH streams, deliberately. SDL_Log is where the net logs live
+        // and is what logcat / Console.app show for the manual mobile
+        // passes — but on Apple it goes through NSLog, which reaches a
+        // terminal and not a CI pipe, so on macOS it would be invisible to
+        // the very gate that needs it. std::cout is the stream the verdict
+        // line already uses (glut.cpp), so it is captured everywhere.
+        const char *kind =
+            ev.kind == NetSignal::Event::Error ? "error" : "closed";
+        SDL_Log("net_signal_selftest: %s%s%s", kind,
+                ev.text.empty() ? "" : " - ", ev.text.c_str());
+        std::cout << "net_signal_selftest: " << kind
+                  << (ev.text.empty() ? "" : " - ") << ev.text << std::endl;
         return false;
+      }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+  // Timed out with no error and no close — a blackholed or stalled
+  // connection. Say so for the same reason the branch above does: a FAIL
+  // with no reason is the one outcome a trust-path gate must never
+  // produce, and this is the path that reaches it in silence.
+  SDL_Log("net_signal_selftest: timed out after %d ms waiting for the relay",
+          ms);
+  std::cout << "net_signal_selftest: timed out after " << ms
+            << " ms waiting for the relay" << std::endl;
   return false;
 }
 }  // namespace

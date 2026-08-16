@@ -14,6 +14,9 @@ build
 /newtonia-arm64
 /newtonia-x86_64
 /selftest.log
+/sigtest.log
+/attempt.log
+/Newtonia-netplay.app/
 ## Glut (binaries)
 GL/
 ## SDL

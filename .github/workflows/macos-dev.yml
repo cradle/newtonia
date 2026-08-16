@@ -169,7 +169,14 @@ jobs:
           lipo -info newtonia | grep arm64 | grep -q x86_64
           lipo -info Newtonia.app/Contents/Frameworks/libdatachannel.*.dylib | grep arm64 | grep -q x86_64
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./Newtonia.app/Contents/MacOS/Newtonia
-          rm -rf Newtonia.app newtonia-arm64 newtonia-x86_64
+
+          # Renamed, not deleted: the live-relay gate is the LAST step of
+          # this job and runs from this bundle (its embedded MbedTLS dylib
+          # is the whole point — see that step), while the bundling steps
+          # below need the Newtonia.app path free for the RELEASE bundle
+          # they build there.
+          mv Newtonia.app Newtonia-netplay.app
+          rm -rf newtonia-arm64 newtonia-x86_64
           make clean
           mv newtonia-universal newtonia
 
@@ -319,3 +326,69 @@ jobs:
           name: newtonia-macos-dev
           path: newtonia-macos-dev.zip
           retention-days: 7
+
+      # LAST, deliberately. This is the only step that needs a live
+      # relay, and everything above it — signing, notarization, both
+      # artifact uploads — is work a Worker blip must not be able to
+      # discard. windows.yml orders its equivalent the same way.
+      - name: Signal self-test (WSS + TLS trust path)
+        # See windows.yml's twin: bounded work, capped against a teardown
+        # hang holding an expensive macOS runner for the 360-minute default.
+        timeout-minutes: 10
+        run: |
+          #
+          # SKIPPED ON TAG BUILDS. Unlike windows.yml this workflow is on
+          # the release path: it triggers on v*.*.* and is the only
+          # producer of the notarized macOS artifact. Running last already
+          # protects the artifacts — they are signed, notarized and
+          # uploaded above — so what the skip buys is narrower: a red tag
+          # run reads as a failed release whatever the artifacts say, and
+          # nobody should be triaging a Worker blip while cutting one. The
+          # tag's tree is a master commit that already passed this gate,
+          # so nothing ships unverified.
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            echo "tag build - skipping the live-relay gate (see comment)"
+          else
+          : > sigtest.log
+          ok=
+          for attempt in 1 2 3; do
+            : > attempt.log
+            NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy \
+              ./Newtonia-netplay.app/Contents/MacOS/Newtonia 2>&1 | tee -a attempt.log || true
+            cat attempt.log >> sigtest.log
+            grep -q "SIGNAL SELFTEST PASS" attempt.log && { ok=1; break; }
+            echo "signal selftest attempt $attempt failed"
+            # Do NOT keep retrying this one: the limiter is a 10-minute
+            # FIXED window and refused requests increment it too, so the
+            # backoff cannot outlast it and each attempt digs the next
+            # job on this IP deeper in.
+            if grep -q "rate-limited" attempt.log; then
+              echo "the relay rate-limited this runner - not retrying (10-minute fixed window)"
+              break
+            fi
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+          # Only on the way out — a note on a green run would warn about a
+          # failure that did not happen.
+          if [ -z "$ok" ]; then
+            grep -q "rate-limited" sigtest.log &&
+              echo "NOTE: rate-limited, so this run says NOTHING about the trust path - re-run it"
+          fi
+          [ -n "$ok" ]
+          fi
+          # NOTE: this gate's strength rests on the universal deps being
+          # MbedTLS, which is what build_netplay_deps.sh --universal builds
+          # (-DUSE_MBEDTLS=ON) and why the step above uses that prefix. If
+          # those deps ever move to a backend WITH a system trust store, a
+          # bare PASS stops proving the carried bundle was used and this
+          # gate needs the equivalent of windows.yml's CA-line check.
+          #
+          # No CA-line grep here, unlike windows.yml, for two reasons. SDL
+          # routes its log through NSLog on Apple and is excluded from the
+          # stderr fallback, so the line reaches a terminal and not a CI
+          # pipe (TESTING.md) — 2>&1 above is for diagnostics, not for
+          # this. And it is not needed: MbedTLS fails CLOSED, so a PASS
+          # already proves the bundle wrote, parsed and verified the chain.
+          # Windows needs its grep precisely because it does NOT fail
+          # closed.
+          rm -rf sigtest.log attempt.log Newtonia-netplay.app

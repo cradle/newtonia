@@ -101,3 +101,76 @@ jobs:
             newtonia.exe
             audio/
           retention-days: 7
+
+      # Deliberately AFTER the upload: this gate depends on a live relay,
+      # and a blip that outlasts the retries should not also throw away a
+      # perfectly good exe someone may want to download.
+      # Real WSS handshake against the relay, which on Windows is the only
+      # thing that proves the TLS trust path end to end (TESTING.md
+      # "Per-platform TLS pass"). Windows links OpenSSL, but OpenSSL cannot
+      # read the CryptoAPI store, so the carried bundle in net_ca_bundle.cpp
+      # is the WHOLE trust story here — and libdatachannel falls back to
+      # UNVERIFIED when no CA is supplied, so a failed bundle write is
+      # silent on this platform. The loopback test above involves no TLS at
+      # all and would not notice.
+      #
+      # Against the PRODUCTION relay — the baked default, no override.
+      # Beta was the obvious choice (no CI rooms in production's Durable
+      # Object state) and is the wrong one: deploy-signal auto-redeploys
+      # beta from master on any signal/** change, so a beta regression
+      # would turn this job red on unrelated PRs, and the retry cannot
+      # tell that from a broken CA bundle. ios.yml made this call already.
+      # The cost is one short-lived room per run, which the relay's TTL
+      # reclaims.
+      #
+      # Retried like ios.yml's equivalent — a blip on the Worker or the
+      # runner's egress is not a code regression, and the bundle either
+      # verifies or it does not, so a real break fails all three.
+      - name: Signal self-test (WSS + TLS trust path)
+        # Bounded: ~40 s of waits per attempt plus two 20 s backoffs, so
+        # ~3 min in the worst honest case. The cap is for a hang in
+        # libdatachannel teardown, which would otherwise hold the runner
+        # for the 360-minute default.
+        timeout-minutes: 10
+        run: |
+          # Both patterns must hold in the SAME attempt, which is why each
+          # gets its own log. A cumulative one could be satisfied by two
+          # different runs — attempt 1 logging the CA line but failing the
+          # round trip, attempt 2 connecting UNVERIFIED (the bundle write
+          # can lose a file lock here) and passing — and the gate would go
+          # green on precisely the failure it exists to catch. sigtest.log
+          # accumulates anyway, but only so the diagnostics below can see
+          # the whole run.
+          : > sigtest.log
+          ok=
+          for attempt in 1 2 3; do
+            : > attempt.log
+            # 2>&1 matters: the PASS line is std::cout but the TLS line is
+            # SDL_Log, which goes to STDERR.
+            NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe 2>&1 \
+              | tee -a attempt.log || true
+            cat attempt.log >> sigtest.log
+            if grep -q "SIGNAL SELFTEST PASS" attempt.log &&
+               grep -q "net: tls - verifying server certificates against" attempt.log; then
+              ok=1
+              break
+            fi
+            echo "signal selftest attempt $attempt failed"
+            # Do NOT keep retrying this one: the limiter is a 10-minute
+            # FIXED window and refused requests increment it too, so the
+            # backoff cannot outlast it and each attempt digs the next
+            # job on this IP deeper in.
+            if grep -q "rate-limited" attempt.log; then
+              echo "the relay rate-limited this runner - not retrying (10-minute fixed window)"
+              break
+            fi
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+          # Only on the way out: a note on a GREEN run would warn about a
+          # failure that did not happen.
+          if [ -z "$ok" ]; then
+            grep -q "rate-limited" sigtest.log &&
+              echo "NOTE: rate-limited, so this run says NOTHING about the trust path - re-run it"
+            echo "no attempt both passed and logged a verified handshake"
+          fi
+          [ -n "$ok" ]
