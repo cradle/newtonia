@@ -155,9 +155,13 @@ make android-install
 adb logcat -c
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
     --es NEWTONIA_SIGNAL_SELFTEST 1
-adb logcat -s SDL/APP | grep -E "SELFTEST|net: tls"
+adb logcat -s SDL/APP | grep -iE "selftest|net: tls"
 #   -> "SIGNAL SELFTEST PASS" and the app exits. NEWTONIA_NET_SELFTEST=1
-#      runs the TLS-free loopback the same way.
+#      runs the TLS-free loopback the same way. Case-insensitive on
+#      purpose: the verdict is upper-case but the REASON for a failure
+#      ("net_signal_selftest: error - rate-limited", "... timed out
+#      after N ms") is lower-case, and that line is the difference
+#      between a throttled relay and a broken CA bundle.
 ```
 
 Driving the real feature still works and is worth doing when you have the

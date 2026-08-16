@@ -395,6 +395,15 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     {
         const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
         if (st && st[0] == '1' && st[1] == '\0') {
+            // Disarm FIRST. applyEnvExtras sets these process-wide, and
+            // returning from SDL_main finishes the Activity without
+            // necessarily ending the PROCESS — the s_running reset at the
+            // top of this function exists because SDL_main is re-entered
+            // on a cached process. Left armed, the next icon tap would run
+            // the selftest again and close the app instead of starting the
+            // game, which is the literal next thing anyone does after this.
+            // Before the test, not after, so a crash mid-run disarms too.
+            unsetenv("NEWTONIA_NET_SELFTEST");
             SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
             bool ok = net_selftest();
             SDL_Log("%s", ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
@@ -407,6 +416,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         // verified Cloudflare's chain.
         const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
         if (ss && ss[0] == '1' && ss[1] == '\0') {
+            unsetenv("NEWTONIA_SIGNAL_SELFTEST");  // see above
             load_preferences();  // net_signal_url() honours the INI override
             SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
             bool ok = net_signal_selftest();
