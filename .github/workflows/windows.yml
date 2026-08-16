@@ -93,6 +93,39 @@ jobs:
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe | tee selftest.log
           grep -q "NET SELFTEST PASS" selftest.log
 
+      # Real WSS handshake against the relay, which on Windows is the only
+      # thing that proves the TLS trust path end to end (TESTING.md
+      # "Per-platform TLS pass"). Windows links OpenSSL, but OpenSSL cannot
+      # read the CryptoAPI store, so the carried bundle in net_ca_bundle.cpp
+      # is the WHOLE trust story here — and libdatachannel falls back to
+      # UNVERIFIED when no CA is supplied, so a failed bundle write is
+      # silent on this platform. The loopback test above involves no TLS at
+      # all and would not notice.
+      #
+      # Points at the BETA relay: the same Cloudflare chain, which is what
+      # is under test, without CI minting rooms in production's Durable
+      # Object state or spending its rate limiter.
+      #
+      # Retried like ios.yml's equivalent — a blip on the Worker or the
+      # runner's egress is not a code regression, and the bundle either
+      # verifies or it does not, so a real break fails all three.
+      - name: Signal self-test (WSS + TLS trust path)
+        env:
+          NEWTONIA_SIGNAL_URL: wss://newtonia-signal-beta.gfmcc.workers.dev/ws
+        run: |
+          for attempt in 1 2 3; do
+            NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe \
+              | tee sigtest.log || true
+            grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
+            echo "signal selftest attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+          grep -q "SIGNAL SELFTEST PASS" sigtest.log
+          # The bundle must be what verified it. "no CA bundle on disk" means
+          # the write failed, which on Windows degrades to unverified rather
+          # than failing the handshake — the log line is the only tell.
+          grep -q "net: tls - verifying server certificates against" sigtest.log
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:

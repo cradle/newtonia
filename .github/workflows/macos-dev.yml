@@ -169,6 +169,34 @@ jobs:
           lipo -info newtonia | grep arm64 | grep -q x86_64
           lipo -info Newtonia.app/Contents/Frameworks/libdatachannel.*.dylib | grep arm64 | grep -q x86_64
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./Newtonia.app/Contents/MacOS/Newtonia
+
+          # Real WSS handshake from inside the SHIPPED bundle. This build is
+          # the one that matters for TLS (TESTING.md "Per-platform TLS
+          # pass"): the universal deps are MbedTLS — Homebrew's OpenSSL is
+          # single-arch — and MbedTLS reaches no system trust store, so the
+          # roots carried in net_ca_bundle.cpp are the whole story. It also
+          # parses the bundle itself, and mbedtls_x509_crt_parse_file SKIPS
+          # certificates it dislikes instead of erroring, so a root can go
+          # missing with no complaint anywhere. A completed handshake is the
+          # only thing that proves the bundle wrote, parsed, and verified
+          # Cloudflare's real chain; the loopback test above involves no TLS.
+          #
+          # Beta relay, not production: same Cloudflare chain (the thing
+          # under test), no CI rooms in production's Durable Object state.
+          # Retried like ios.yml's equivalent, for the same reason — a
+          # Worker or egress blip is not a code regression.
+          for attempt in 1 2 3; do
+            NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws \
+            NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy \
+              ./Newtonia.app/Contents/MacOS/Newtonia | tee sigtest.log || true
+            grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
+            echo "signal selftest attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+          grep -q "SIGNAL SELFTEST PASS" sigtest.log
+          grep -q "net: tls - verifying server certificates against" sigtest.log
+          rm -f sigtest.log
+
           rm -rf Newtonia.app newtonia-arm64 newtonia-x86_64
           make clean
           mv newtonia-universal newtonia

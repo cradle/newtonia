@@ -74,17 +74,34 @@ backends, and it is the one with a system trust store to fall back on:
 | build | TLS backend | trust source | verified |
 |-------|-------------|--------------|----------|
 | Linux, `make` on macOS | OpenSSL | system store **+** our bundle | ✅ `linux.yml` gate |
-| `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ 2026-08-03 |
-| Android | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
-| iOS | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
-| Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ✅ 2026-08-04 |
+| `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ `macos-dev.yml` gate (was manual 2026-08-03) |
+| Android | MbedTLS | our bundle ONLY | ✅ 2026-08-04 — manual, no selftest hook exists |
+| iOS | MbedTLS | our bundle ONLY | ✅ `ios.yml` gate (simulator) |
+| Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ✅ `windows.yml` gate (was manual 2026-08-04) |
 | Xbox | MbedTLS | our bundle ONLY | ⬜ — `cradle/newtonia-xbox` owns console runtime work |
 
 So on four of those rows the carried roots are the *whole* trust story, and
 before LEADERBOARD.md S1 none of them had ever completed a VERIFIED
 handshake — verification was off everywhere. CI proves each platform still
 COMPILES (an unpatched libdatachannel fails on the unknown field), not that
-a real handshake succeeds. Run this once per platform after any change to
+a real handshake succeeds. **Three of those rows are now automated** (2026-08-16): `macos-dev.yml`
+runs the signal selftest from inside the shipped universal bundle,
+`windows.yml` runs it on the static exe, and `ios.yml` has run it on the
+simulator since M3-4. All three point `NEWTONIA_SIGNAL_URL` at the BETA
+worker — the same Cloudflare chain, which is the thing under test, without
+CI minting rooms in production's Durable Object state — and all three retry
+3× with a 20 s backoff, because a Worker or egress blip is not a code
+regression (ios.yml, 2026-07-17). Each also greps for the
+`verifying server certificates against` line, which on Windows is the only
+tell that the bundle wrote: libdatachannel there falls back to UNVERIFIED
+rather than failing the handshake.
+
+What stays manual: **Android** (no selftest hook — `android_main.cpp` reads
+no env vars, so drive the real feature per below) and **Xbox** (private
+repo). And note a green runner proves that runner's TLS stack, not a
+player's machine — the gates catch a broken bundle, not a broken device.
+
+Run the manual pass once per platform after any change to
 `net_ca_bundle.cpp`, `net_tls.cpp`, the patch, or a libdatachannel bump:
 
 **Desktop** (`make`, `make osx`, the MSYS2 Windows build) — the selftest
@@ -192,11 +209,13 @@ Xbox shares the MbedTLS trust path proven three times above, and console
 runtime work belongs to the private repo (CLAUDE.md) — the canaries here
 only prove it still compiles.
 
-The deploy jobs currently gate on `NEWTONIA_NET_SELFTEST` — an in-process
-loopback that involves no TLS whatever. Adding `NEWTONIA_SIGNAL_SELFTEST`
-there would automate this pass; deferred for now (it makes release builds
-depend on the production worker being reachable), so until then the manual
-pass above is the only coverage the MbedTLS platforms get.
+The deploy jobs gate on `NEWTONIA_NET_SELFTEST` — an in-process loopback
+that involves no TLS whatever — and that is deliberate: pointing a RELEASE
+build at a live relay makes shipping depend on the Worker being reachable.
+The DEV workflows carry the signal selftest instead (macos-dev, windows,
+ios above), which is where a red run costs a rerun rather than a release.
+The same recipes as the manual passes below, so a break lands on the PR
+that caused it.
 
 ## 3. Signal worker tests (node, no game build)
 
