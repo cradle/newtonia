@@ -119,9 +119,12 @@ Run the manual pass once per platform after any change to
 `net_ca_bundle.cpp`, `net_tls.cpp`, the patch, or a libdatachannel bump:
 
 **Desktop** (`make`, `make osx`, the MSYS2 Windows build) — the hooks live
-in `glut.cpp` here; every netplay platform now has its own copy (iOS in
-`ios_main.mm`, Android in `android_main.cpp`, Xbox in `xbox_main.cpp`),
-all printing the same verdict strings:
+in `glut.cpp` here, and every NATIVE netplay platform now has its own
+copy (iOS in `ios_main.mm`, Android in `android_main.cpp`, Xbox in
+`xbox_main.cpp`), all printing the same verdict strings. Web is the
+exception by design: it ships netplay unconditionally but has no entry
+point to hang a hook on, and its `nwtest_*` exports (net_transport_web.cpp)
+serve the same purpose from the browser side:
 
 ```sh
 ./build_netplay_deps.sh            # MUST be re-run: an old prefix has no

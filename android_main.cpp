@@ -377,8 +377,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
 #ifdef NEWTONIA_NET_RTC
     // Hidden CI/debug hooks, the Android twins of glut.cpp's. Reached the
     // same way every other NEWTONIA_* var is on this platform:
-    //   adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    //   adb shell am start -S -n org.newtonia/.NewtoniaActivity
     //     --es NEWTONIA_SIGNAL_SELFTEST 1
+    // (one line; no continuation here — a trailing backslash would splice
+    // the next line into this comment, which -Wcomment rightly flags)
     // (NewtoniaActivity.applyEnvExtras Os.setenvs the extras before native
     // start, so SDL_getenv sees them.)
     //
