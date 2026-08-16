@@ -163,8 +163,8 @@ make android-install
 adb logcat -c
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
     --es NEWTONIA_SIGNAL_SELFTEST 1
-# `timeout`, because a streaming logcat never returns and the force-stop
-# below is not optional — see the note. Raise it for the loopback hook.
+# `timeout`, because a streaming logcat never returns. Raise it for the
+# loopback hook. The force-stop is tidiness, not a requirement — see below.
 timeout 60 adb logcat -s SDL/APP | grep -iE "selftest|net: tls"
 adb shell am force-stop org.newtonia
 #   -> "SIGNAL SELFTEST PASS" and the app exits, in ~20 s.
@@ -187,24 +187,29 @@ Android ends the Activity rather than the process — SDL's
 `nativeRunMain` deliberately does not `exit()`, which is why the hook
 returns here where iOS's exits.
 
-**Force-stop afterwards anyway.** A clean close is not the same question
-as a clean NEXT launch. The native side clears both vars as it reads
-them, which covers the cached process re-entering `SDL_main` — but
-`am start` implies `NEW_TASK`, so that intent becomes the TASK's base
-intent, the activity is `singleTask` and not excluded from Recents, and
-the base intent belongs to ActivityManager rather than to anything the
-app can unset. Relaunch that task and `applyEnvExtras` re-arms from it,
-so the next tap runs the selftest and closes the app instead of starting
-the game. `force-stop` clears the task; `-S` on the next launch does too.
+**Re-arming: mostly ruled out, one sliver left.** A clean close is not
+the same question as a clean next launch, so this was worth chasing.
+Device-tested 2026-08-16: run with the option, then again WITHOUT it, and
+the second launch starts the game normally.
 
-**The ordinary dev loop cannot hit this**, which is why it has never bitten:
-`make android-install` force-stops and then `am start`s an explicit
-component, so it both clears the task AND supplies a fresh intent with no
-extras. Reinstalling has the same effect. The scenario that would show it
-is narrow — run a selftest, then relaunch the EXISTING install from the
-launcher icon or Recents, with no reinstall and no force-stop in between.
-Untested as of 2026-08-16; if it starts the game normally, this note is
-superstition and can go.
+Two things make that work. The native side clears both vars as it reads
+them, which covers a cached process re-entering `SDL_main`; and an
+explicit `am start` hands over a fresh intent carrying no extras. What
+neither covers is the TASK's base intent — `am start` implies `NEW_TASK`,
+the activity is `singleTask` and not excluded from Recents, and that
+intent belongs to ActivityManager, not to anything the app can unset. A
+relaunch served from it would re-run `applyEnvExtras` and re-arm.
+
+Every routine path avoids that by construction: `force-stop` clears the
+task, `-S` on the next launch does too, and `make android-install` does
+both (force-stop, then an explicit-component `am start`) — which is why
+this has never bitten anyone. The force-stop in the recipe above is
+tidiness on top of that, not a requirement.
+
+So one path remains unexercised: run a selftest, then relaunch the
+existing install by TAPPING THE ICON or Recents — no reinstall, no
+force-stop, no `am start`. If that starts the game, delete this section;
+if it re-runs the selftest, the fix is Java-side.
 
 Driving the real feature still works and is worth doing when you have the
 device in your hand anyway — a room code cannot appear unless the WSS
