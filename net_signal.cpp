@@ -297,6 +297,7 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
 #include <SDL.h>
 
 #include <chrono>
+#include <iostream>
 #include <thread>
 
 namespace {
@@ -312,9 +313,18 @@ bool wait_event(NetSignal *s, NetSignal::Event::Kind want,
         // CA bundle, which is the most alarming thing this test can report
         // (TESTING.md, per-platform TLS pass) and the one CI cannot tell
         // apart on its own.
-        SDL_Log("net_signal_selftest: %s%s%s",
-                ev.kind == NetSignal::Event::Error ? "error" : "closed",
+        // BOTH streams, deliberately. SDL_Log is where the net logs live
+        // and is what logcat / Console.app show for the manual mobile
+        // passes — but on Apple it goes through NSLog, which reaches a
+        // terminal and not a CI pipe, so on macOS it would be invisible to
+        // the very gate that needs it. std::cout is the stream the verdict
+        // line already uses (glut.cpp), so it is captured everywhere.
+        const char *kind =
+            ev.kind == NetSignal::Event::Error ? "error" : "closed";
+        SDL_Log("net_signal_selftest: %s%s%s", kind,
                 ev.text.empty() ? "" : " - ", ev.text.c_str());
+        std::cout << "net_signal_selftest: " << kind
+                  << (ev.text.empty() ? "" : " - ") << ev.text << std::endl;
         return false;
       }
     }
