@@ -114,16 +114,19 @@ jobs:
       # silent on this platform. The loopback test above involves no TLS at
       # all and would not notice.
       #
-      # Points at the BETA relay: the same Cloudflare chain, which is what
-      # is under test, without CI minting rooms in production's Durable
-      # Object state or spending its rate limiter.
+      # Against the PRODUCTION relay — the baked default, no override.
+      # Beta was the obvious choice (no CI rooms in production's Durable
+      # Object state) and is the wrong one: deploy-signal auto-redeploys
+      # beta from master on any signal/** change, so a beta regression
+      # would turn this job red on unrelated PRs, and the retry cannot
+      # tell that from a broken CA bundle. ios.yml made this call already.
+      # The cost is one short-lived room per run, which the relay's TTL
+      # reclaims.
       #
       # Retried like ios.yml's equivalent — a blip on the Worker or the
       # runner's egress is not a code regression, and the bundle either
       # verifies or it does not, so a real break fails all three.
       - name: Signal self-test (WSS + TLS trust path)
-        env:
-          NEWTONIA_SIGNAL_URL: wss://newtonia-signal-beta.gfmcc.workers.dev/ws
         run: |
           # Both patterns must hold in the SAME attempt, which is why each
           # gets its own log. A cumulative one could be satisfied by two

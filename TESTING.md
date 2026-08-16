@@ -91,10 +91,12 @@ simulator since M3-4. All three retry 3× with a 20 s backoff, because a
 Worker or egress blip is not a code regression (ios.yml, 2026-07-17).
 They differ in two ways worth knowing:
 
-- **Which relay.** The two new ones point `NEWTONIA_SIGNAL_URL` at the
-  BETA worker — the same Cloudflare chain, which is the thing under test,
-  without CI minting rooms in production's Durable Object state. `ios.yml`
-  predates that choice and still hits the baked production URL.
+- **Which relay.** All three hit the baked PRODUCTION URL. Beta looks
+  tidier — no CI rooms in production's Durable Object state — but
+  deploy-signal auto-redeploys beta from master on any `signal/**`
+  change, so a beta regression would red these jobs on unrelated PRs and
+  the retries cannot tell that from a broken CA bundle. One short-lived
+  room per run, reclaimed by the relay's TTL, is the cheaper trade.
 - **Whether a PASS is sufficient.** On the MbedTLS rows it is: they fail
   CLOSED, so a completed handshake proves the bundle wrote, parsed and
   verified. Windows does NOT fail closed — libdatachannel falls back to

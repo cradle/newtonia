@@ -115,6 +115,15 @@ private:
     cfg.disableTlsVerification = net_tls_insecure();
     const std::string &ca = net_ca_bundle_path();
     if (!ca.empty()) cfg.caCertificatePemFile = ca.c_str();
+    // A fresh socket starts clean: these members outlive the previous
+    // one (GLGame and NetLobby reconnect on the SAME NetSignal), so a
+    // stale flag would fire a spurious Closed here and a stale reason
+    // would describe the wrong socket — a diagnostic worse than none.
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      last_error_.clear();
+    }
+    closed_flag_ = false;
     ws_ = rtcCreateWebSocketEx(full_url.c_str(), &cfg);
     if (ws_ < 0) {
       closed_flag_ = true;
