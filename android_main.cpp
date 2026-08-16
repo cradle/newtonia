@@ -419,10 +419,11 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         if (want_net) {
             // Can run for MINUTES on a bad path — 3 attempts, each waiting
             // up to 30 s a side — with no window and no event loop yet, so
-            // the screen is black and a Back press would sit unread while
-            // onDestroy waits on this thread. Acceptable for a hook no
-            // shipped launch sets, and TESTING says to let it finish; the
-            // signal hook below is the ~20 s one.
+            // the screen is black and backing out ANRs: SDLActivity's
+            // onDestroy joins this thread from the UI thread, and this
+            // thread is inside the test. Acceptable for a hook no shipped
+            // launch sets, and TESTING says to let it finish; the signal
+            // hook below is the ~20 s one.
             SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
             bool ok = net_selftest();
             SDL_Log("%s", ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");

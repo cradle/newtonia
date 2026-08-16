@@ -157,15 +157,18 @@ make android-install
 adb logcat -c
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
     --es NEWTONIA_SIGNAL_SELFTEST 1
-adb logcat -s SDL/APP | grep -iE "selftest|net: tls"
-adb shell am force-stop org.newtonia   # see the note below"
+# `timeout`, because a streaming logcat never returns and the force-stop
+# below is not optional — see the note. Raise it for the loopback hook.
+timeout 60 adb logcat -s SDL/APP | grep -iE "selftest|net: tls"
+adb shell am force-stop org.newtonia
 #   -> "SIGNAL SELFTEST PASS" and the app exits, in ~20 s.
 #      NEWTONIA_NET_SELFTEST=1 runs the TLS-free loopback the same way,
 #      but budget MINUTES for a bad one: it retries 3x and each attempt
 #      waits up to 30 s per side. The screen stays black throughout —
-#      the hooks run before the window and the event loop — so let it
-#      finish rather than backing out, which would leave onDestroy
-#      waiting on the SDL thread. Case-insensitive on
+#      the hooks run before the window and the event loop — and backing
+#      out mid-test ANRs, because SDLActivity.onDestroy joins the SDL
+#      thread from the UI thread and that thread is inside the test. Let
+#      it finish. Case-insensitive on
 #      purpose: the verdict is upper-case but the REASON for a failure
 #      ("net_signal_selftest: error - rate-limited", "... timed out
 #      after N ms") is lower-case, and that line is the difference
