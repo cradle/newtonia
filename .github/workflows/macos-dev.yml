@@ -170,31 +170,11 @@ jobs:
           lipo -info Newtonia.app/Contents/Frameworks/libdatachannel.*.dylib | grep arm64 | grep -q x86_64
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./Newtonia.app/Contents/MacOS/Newtonia
 
-          # Real WSS handshake from inside the SHIPPED bundle. This build is
-          # the one that matters for TLS (TESTING.md "Per-platform TLS
-          # pass"): the universal deps are MbedTLS — Homebrew's OpenSSL is
-          # single-arch — and MbedTLS reaches no system trust store, so the
-          # roots carried in net_ca_bundle.cpp are the whole story. It also
-          # parses the bundle itself, and mbedtls_x509_crt_parse_file SKIPS
-          # certificates it dislikes instead of erroring, so a root can go
-          # missing with no complaint anywhere. A completed handshake is the
-          # only thing that proves the bundle wrote, parsed, and verified
-          # Cloudflare's real chain; the loopback test above involves no TLS.
-          #
-          # Against the PRODUCTION relay (the baked default). Beta looked
-          # tidier — no CI rooms in production's Durable Object state —
-          # but deploy-signal auto-redeploys beta from master on any
-          # signal/** change, so a beta regression would red this job on
-          # unrelated PRs and the retry could not tell that from a broken
-          # CA bundle. ios.yml settled this the same way; the cost is one
-          # short-lived room per run, reclaimed by the relay's TTL.
-          # Retried like ios.yml's equivalent — a Worker or egress blip is
-          # not a code regression.
-
-          # Renamed, not deleted: the live-relay gate at the END of this
-          # job runs from this bundle (its embedded MbedTLS dylib is the
-          # point), and the bundling steps below need the Newtonia.app
-          # path free for the RELEASE bundle they build there.
+          # Renamed, not deleted: the live-relay gate is the LAST step of
+          # this job and runs from this bundle (its embedded MbedTLS dylib
+          # is the whole point — see that step), while the bundling steps
+          # below need the Newtonia.app path free for the RELEASE bundle
+          # they build there.
           mv Newtonia.app Newtonia-netplay.app
           rm -rf newtonia-arm64 newtonia-x86_64
           make clean

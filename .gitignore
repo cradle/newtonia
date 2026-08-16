@@ -16,6 +16,7 @@ build
 /selftest.log
 /sigtest.log
 /attempt.log
+/Newtonia-netplay.app/
 ## Glut (binaries)
 GL/
 ## SDL
