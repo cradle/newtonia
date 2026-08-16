@@ -185,6 +185,18 @@ jobs:
           # under test), no CI rooms in production's Durable Object state.
           # Retried like ios.yml's equivalent, for the same reason — a
           # Worker or egress blip is not a code regression.
+          #
+          # SKIPPED ON TAG BUILDS. Unlike windows.yml this workflow is on
+          # the release path — it triggers on v*.*.* and is the only
+          # producer of the notarized macOS artifact — and everything that
+          # matters (cert import, bundling, signing, notarization) happens
+          # in the steps BELOW this one. A beta-relay blip outlasting the
+          # retries would therefore cost a release, which is exactly the
+          # trade the deploy jobs avoid by running loopback only. The tag's
+          # tree is a master commit that already passed this gate.
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            echo "tag build - skipping the live-relay gate (see comment)"
+          else
           for attempt in 1 2 3; do
             NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws \
             NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy \
@@ -193,7 +205,12 @@ jobs:
             echo "signal selftest attempt $attempt failed"
             [ "$attempt" -lt 3 ] && sleep 20
           done
+          # A relay that rate-limited us fails all three attempts and would
+          # otherwise read as a broken CA bundle. Say which it was.
+          grep -q "rate-limited" sigtest.log &&
+            echo "NOTE: relay rate-limited this runner - not a trust-path failure"
           grep -q "SIGNAL SELFTEST PASS" sigtest.log
+          fi
           # No CA-line grep here, unlike windows.yml, for two reasons. SDL
           # routes its log through NSLog on Apple and is excluded from the
           # stderr fallback, so the line reaches a terminal and not a CI

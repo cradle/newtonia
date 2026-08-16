@@ -135,6 +135,10 @@ jobs:
             echo "signal selftest attempt $attempt failed"
             [ "$attempt" -lt 3 ] && sleep 20
           done
+          # A relay that rate-limited us fails all three attempts and would
+          # otherwise read as a broken CA bundle. Say which it was.
+          grep -q "rate-limited" sigtest.log &&
+            echo "NOTE: relay rate-limited this runner - not a trust-path failure"
           grep -q "SIGNAL SELFTEST PASS" sigtest.log
           # The bundle must be what verified it. "no CA bundle on disk" means
           # the write failed, which on Windows degrades to unverified rather

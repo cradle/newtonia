@@ -104,9 +104,11 @@ They differ in two ways worth knowing:
   TLS line is `SDL_Log`, i.e. stderr. macOS cannot grep it at all — SDL
   routes through NSLog on Apple, which reaches a terminal, not a CI pipe.
 
-What stays manual: **Android** (no selftest hook — `android_main.cpp` reads
-no env vars, so drive the real feature per below) and **Xbox** (private
-repo). And note a green runner proves that runner's TLS stack, not a
+What stays manual: **Android** (the env bridge is fine —
+`NewtoniaActivity.applyEnvExtras` `Os.setenv`s every `NEWTONIA_*` intent
+extra before native start — but `android_main.cpp` implements no selftest
+hook to trigger, so drive the real feature per below) and **Xbox**
+(private repo). And note a green runner proves that runner's TLS stack, not a
 player's machine — the gates catch a broken bundle, not a broken device.
 
 Run the manual pass once per platform after any change to
@@ -221,9 +223,14 @@ The deploy jobs gate on `NEWTONIA_NET_SELFTEST` — an in-process loopback
 that involves no TLS whatever — and that is deliberate: pointing a RELEASE
 build at a live relay makes shipping depend on the Worker being reachable.
 The DEV workflows carry the signal selftest instead (macos-dev, windows,
-ios above), which is where a red run costs a rerun rather than a release.
-The same recipes as the manual passes below, so a break lands on the PR
-that caused it.
+ios above), so a break lands on the PR that caused it. One wrinkle:
+`macos-dev.yml` also triggers on `v*.*.*` and is the only producer of the
+notarized macOS artifact, so its gate SKIPS on tag builds — otherwise a
+Worker blip would cost a release, which is the very thing keeping the
+selftest out of the deploy jobs. The tag's tree is a master commit the
+gate already passed. `windows.yml` needs no such guard (no tag trigger),
+though its gate still runs after the artifact upload so a blip cannot
+discard a good exe.
 
 ## 3. Signal worker tests (node, no game build)
 
