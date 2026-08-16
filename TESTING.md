@@ -158,6 +158,7 @@ adb logcat -c
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
     --es NEWTONIA_SIGNAL_SELFTEST 1
 adb logcat -s SDL/APP | grep -iE "selftest|net: tls"
+adb shell am force-stop org.newtonia   # see the note below"
 #   -> "SIGNAL SELFTEST PASS" and the app exits, in ~20 s.
 #      NEWTONIA_NET_SELFTEST=1 runs the TLS-free loopback the same way,
 #      but budget MINUTES for a bad one: it retries 3x and each attempt
@@ -170,6 +171,15 @@ adb logcat -s SDL/APP | grep -iE "selftest|net: tls"
 #      after N ms") is lower-case, and that line is the difference
 #      between a throttled relay and a broken CA bundle.
 ```
+
+**Force-stop afterwards.** The native side clears both vars as it reads
+them, which covers the cached process re-entering `SDL_main` — but
+`am start` implies `NEW_TASK`, so that intent becomes the TASK's base
+intent, the activity is `singleTask` and not excluded from Recents, and
+the base intent belongs to ActivityManager rather than to anything the
+app can unset. Relaunch that task and `applyEnvExtras` re-arms from it,
+so the next tap runs the selftest and closes the app instead of starting
+the game. `force-stop` clears the task; `-S` on the next launch does too.
 
 Driving the real feature still works and is worth doing when you have the
 device in your hand anyway — a room code cannot appear unless the WSS

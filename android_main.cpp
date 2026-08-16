@@ -398,7 +398,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         const bool want_net = st && st[0] == '1' && st[1] == '\0';
         const bool want_signal = ss_env && ss_env[0] == '1' && ss_env[1] == '\0';
         // Disarm BOTH before running EITHER, and read the flags above
-        // first because unsetenv invalidates those pointers.
+        // first because unsetenv invalidates those pointers. This clears
+        // the NATIVE environment, which is the re-entry this file can see;
+        // the task's base intent still holds the extras and is AMS's to
+        // own, so the recipe in TESTING.md force-stops afterwards.
         //
         // applyEnvExtras sets these process-wide, and returning from
         // SDL_main finishes the Activity without necessarily ending the
