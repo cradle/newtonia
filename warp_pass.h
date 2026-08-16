@@ -38,6 +38,11 @@ private:
 #endif
 
     int tex_w_, tex_h_; // dimensions of the last captured texture
+    // Dimensions the texture STORAGE is currently allocated at. Separate
+    // from tex_w_/tex_h_ above (which record the last capture, and gate
+    // draw on one having happened) because the point is to notice when
+    // they are unchanged and skip the reallocation — see capture().
+    int alloc_w_, alloc_h_;
 
     // Shader locations
     int a_pos_;
