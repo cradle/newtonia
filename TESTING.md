@@ -197,6 +197,15 @@ app can unset. Relaunch that task and `applyEnvExtras` re-arms from it,
 so the next tap runs the selftest and closes the app instead of starting
 the game. `force-stop` clears the task; `-S` on the next launch does too.
 
+**The ordinary dev loop cannot hit this**, which is why it has never bitten:
+`make android-install` force-stops and then `am start`s an explicit
+component, so it both clears the task AND supplies a fresh intent with no
+extras. Reinstalling has the same effect. The scenario that would show it
+is narrow — run a selftest, then relaunch the EXISTING install from the
+launcher icon or Recents, with no reinstall and no force-stop in between.
+Untested as of 2026-08-16; if it starts the game normally, this note is
+superstition and can go.
+
 Driving the real feature still works and is worth doing when you have the
 device in your hand anyway — a room code cannot appear unless the WSS
 handshake to the production worker completed, and it exercises the UI the
