@@ -352,6 +352,9 @@ jobs:
       # artifact uploads — is work a Worker blip must not be able to
       # discard. windows.yml orders its equivalent the same way.
       - name: Signal self-test (WSS + TLS trust path)
+        # See windows.yml's twin: bounded work, capped against a teardown
+        # hang holding an expensive macOS runner for the 360-minute default.
+        timeout-minutes: 10
         run: |
           #
           # SKIPPED ON TAG BUILDS. Unlike windows.yml this workflow is on
@@ -385,6 +388,13 @@ jobs:
           fi
           [ -n "$ok" ]
           fi
+          # NOTE: this gate's strength rests on the universal deps being
+          # MbedTLS, which is what build_netplay_deps.sh --universal builds
+          # (-DUSE_MBEDTLS=ON) and why the step above uses that prefix. If
+          # those deps ever move to a backend WITH a system trust store, a
+          # bare PASS stops proving the carried bundle was used and this
+          # gate needs the equivalent of windows.yml's CA-line check.
+          #
           # No CA-line grep here, unlike windows.yml, for two reasons. SDL
           # routes its log through NSLog on Apple and is excluded from the
           # stderr fallback, so the line reaches a terminal and not a CI

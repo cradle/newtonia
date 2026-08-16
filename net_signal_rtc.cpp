@@ -122,6 +122,12 @@ private:
     {
       std::lock_guard<std::mutex> lock(mutex_);
       last_error_.clear();
+      // The inbox too, and this one is not just cosmetic: a frame the dead
+      // socket queued would be parsed against the NEW room — a stale `err`
+      // condemning a code that is fine, or a stale `room` overwriting the
+      // code and token the reconnect just obtained. net_signal_web.cpp
+      // already resets on reopen; this is the RTC backend catching up.
+      inbox_.clear();
     }
     closed_flag_ = false;
     ws_ = rtcCreateWebSocketEx(full_url.c_str(), &cfg);

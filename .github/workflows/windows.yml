@@ -127,6 +127,11 @@ jobs:
       # runner's egress is not a code regression, and the bundle either
       # verifies or it does not, so a real break fails all three.
       - name: Signal self-test (WSS + TLS trust path)
+        # Bounded: ~40 s of waits per attempt plus two 20 s backoffs, so
+        # ~3 min in the worst honest case. The cap is for a hang in
+        # libdatachannel teardown, which would otherwise hold the runner
+        # for the 360-minute default.
+        timeout-minutes: 10
         run: |
           # Both patterns must hold in the SAME attempt, which is why each
           # gets its own log. A cumulative one could be satisfied by two
