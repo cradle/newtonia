@@ -93,6 +93,18 @@ jobs:
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe | tee selftest.log
           grep -q "NET SELFTEST PASS" selftest.log
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: newtonia-windows
+          path: |
+            newtonia.exe
+            audio/
+          retention-days: 7
+
+      # Deliberately AFTER the upload: this gate depends on a live relay,
+      # and a blip that outlasts the retries should not also throw away a
+      # perfectly good exe someone may want to download.
       # Real WSS handshake against the relay, which on Windows is the only
       # thing that proves the TLS trust path end to end (TESTING.md
       # "Per-platform TLS pass"). Windows links OpenSSL, but OpenSSL cannot
@@ -114,7 +126,10 @@ jobs:
           NEWTONIA_SIGNAL_URL: wss://newtonia-signal-beta.gfmcc.workers.dev/ws
         run: |
           for attempt in 1 2 3; do
-            NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe \
+            # 2>&1 matters: the PASS line is std::cout but the TLS line is
+            # SDL_Log, which goes to STDERR. Capturing stdout alone makes
+            # the CA grep below fail on every healthy run.
+            NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe 2>&1 \
               | tee sigtest.log || true
             grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
             echo "signal selftest attempt $attempt failed"
@@ -125,12 +140,3 @@ jobs:
           # the write failed, which on Windows degrades to unverified rather
           # than failing the handshake — the log line is the only tell.
           grep -q "net: tls - verifying server certificates against" sigtest.log
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: newtonia-windows
-          path: |
-            newtonia.exe
-            audio/
-          retention-days: 7

@@ -87,14 +87,22 @@ COMPILES (an unpatched libdatachannel fails on the unknown field), not that
 a real handshake succeeds. **Three of those rows are now automated** (2026-08-16): `macos-dev.yml`
 runs the signal selftest from inside the shipped universal bundle,
 `windows.yml` runs it on the static exe, and `ios.yml` has run it on the
-simulator since M3-4. All three point `NEWTONIA_SIGNAL_URL` at the BETA
-worker — the same Cloudflare chain, which is the thing under test, without
-CI minting rooms in production's Durable Object state — and all three retry
-3× with a 20 s backoff, because a Worker or egress blip is not a code
-regression (ios.yml, 2026-07-17). Each also greps for the
-`verifying server certificates against` line, which on Windows is the only
-tell that the bundle wrote: libdatachannel there falls back to UNVERIFIED
-rather than failing the handshake.
+simulator since M3-4. All three retry 3× with a 20 s backoff, because a
+Worker or egress blip is not a code regression (ios.yml, 2026-07-17).
+They differ in two ways worth knowing:
+
+- **Which relay.** The two new ones point `NEWTONIA_SIGNAL_URL` at the
+  BETA worker — the same Cloudflare chain, which is the thing under test,
+  without CI minting rooms in production's Durable Object state. `ios.yml`
+  predates that choice and still hits the baked production URL.
+- **Whether a PASS is sufficient.** On the MbedTLS rows it is: they fail
+  CLOSED, so a completed handshake proves the bundle wrote, parsed and
+  verified. Windows does NOT fail closed — libdatachannel falls back to
+  UNVERIFIED when no CA is supplied — so `windows.yml` additionally greps
+  for the `verifying server certificates against` line, which is the only
+  tell there. That grep needs `2>&1`: the PASS line is `std::cout` but the
+  TLS line is `SDL_Log`, i.e. stderr. macOS cannot grep it at all — SDL
+  routes through NSLog on Apple, which reaches a terminal, not a CI pipe.
 
 What stays manual: **Android** (no selftest hook — `android_main.cpp` reads
 no env vars, so drive the real feature per below) and **Xbox** (private

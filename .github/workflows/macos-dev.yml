@@ -188,13 +188,20 @@ jobs:
           for attempt in 1 2 3; do
             NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws \
             NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy \
-              ./Newtonia.app/Contents/MacOS/Newtonia | tee sigtest.log || true
+              ./Newtonia.app/Contents/MacOS/Newtonia 2>&1 | tee sigtest.log || true
             grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
             echo "signal selftest attempt $attempt failed"
             [ "$attempt" -lt 3 ] && sleep 20
           done
           grep -q "SIGNAL SELFTEST PASS" sigtest.log
-          grep -q "net: tls - verifying server certificates against" sigtest.log
+          # No CA-line grep here, unlike windows.yml, for two reasons. SDL
+          # routes its log through NSLog on Apple and is excluded from the
+          # stderr fallback, so the line reaches a terminal and not a CI
+          # pipe (TESTING.md) — 2>&1 above is for diagnostics, not for
+          # this. And it is not needed: MbedTLS fails CLOSED, so a PASS
+          # already proves the bundle wrote, parsed and verified the chain.
+          # Windows needs its grep precisely because it does NOT fail
+          # closed.
           rm -f sigtest.log
 
           rm -rf Newtonia.app newtonia-arm64 newtonia-x86_64
