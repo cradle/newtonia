@@ -67,7 +67,7 @@ anyone on the path. Needs `openssl(1)` and a prefix built WITH
 `patches/libdatachannel-ws-ca-cert.patch` (an unpatched one cannot compile
 the gate, or the game).
 
-### Per-platform TLS pass — MANUAL, and not optional
+### Per-platform TLS pass — three rows gated in CI, the rest manual
 The gate above runs on Linux against **OpenSSL**. That is one of two TLS
 backends, and it is the one with a system trust store to fall back on:
 

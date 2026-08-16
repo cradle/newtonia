@@ -306,8 +306,17 @@ bool wait_event(NetSignal *s, NetSignal::Event::Kind want,
     while (s->poll(ev)) {
       if (ev.kind == want) return true;
       if (ev.kind == NetSignal::Event::Error ||
-          ev.kind == NetSignal::Event::Closed)
+          ev.kind == NetSignal::Event::Closed) {
+        // Say WHY. Without this every failure looks the same from outside:
+        // a relay that rate-limited the caller reads exactly like a broken
+        // CA bundle, which is the most alarming thing this test can report
+        // (TESTING.md, per-platform TLS pass) and the one CI cannot tell
+        // apart on its own.
+        SDL_Log("net_signal_selftest: %s%s%s",
+                ev.kind == NetSignal::Event::Error ? "error" : "closed",
+                ev.text.empty() ? "" : " - ", ev.text.c_str());
         return false;
+      }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
