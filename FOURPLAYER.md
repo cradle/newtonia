@@ -526,9 +526,13 @@ Sequential master-based PRs, inert until the B7 flip:
   handshake in flight is re-pushed, un-wedging the next rejoiner.
   Verified by `test/e2e/nseat_swap.sh` (seats 3+4 SIGKILLed together,
   pilots return in the OTHER order, each lands on their own hull).
-  Still open: a rejoiner whose adoption transport flaps waits out the
-  full ICE timeout before the door re-arms (the fast PeerJoin re-offer
-  is N=1-only — a fresh jid cannot name a seat).
+  The flap limit noted here — a rejoiner whose adoption transport
+  half-establishes and dies waiting out the full ICE timeout, because the
+  fast PeerJoin re-offer was N=1-only — is CLOSED by O4 below, which
+  matches the returning PILOT instead of guessing from the jid. What
+  remains of it: a pilot the host cannot name (Game Center relays none)
+  still waits out the timeout, and so does anyone queued behind a
+  legitimately slow handshake — the door serves one parked seat at a time.
 - **B6 — Multi-instance e2e**. LANDED: lib.sh gains the N-seat room
   helpers (`room_setup N [host-env…]` assembles host + N-1 relay joiners
   through the waiting room and waits for seats/auto-start/bootstraps;
@@ -877,6 +881,33 @@ flight must leave it alone — that is the regression this branch could
 plausibly cause. Existing drivers that must stay green: `rejoin.sh`,
 `nseat_rejoin.sh`, `hostresume.sh`, `hiccup.sh`, `turnexpiry.sh`,
 `lankeep.sh`.
+
+#### The seat-re-map case got its driver too (2026-08-16)
+
+`nseat_rejoin_flap.sh` parks ONE seat, so the adoption in flight is always
+heading for the seat the door offered and "same seat" and "same pilot"
+answer alike: it cannot tell step 3's resolver from the wrong one. That
+gap now has `nseat_rejoin_flap_swap.sh` — seats 3 and 4 parked, seat 4's
+pilot answering seat 3's offer, seat 3's own pilot knocking while it is in
+flight. Verified both ways, like the original: green as written, and red
+on a control build whose comparison is `net_rejoin_seat_for_identity(who)
+== hs->seat` (it drops at exactly 12 000 ms, the liveness gate).
+
+Two things it needed. First a second hook, `NEWTONIA_NET_TEST_HANG_MS`
+(net_lobby.cpp): TEST_FLAP's corpse would exercise the same comparison,
+but the assertion with teeth is that the protected handshake goes on to
+COMPLETE at its re-mapped seat, which a corpse can never show. The hook
+holds ICE both ways and **from the first tick** — the first cut held from
+the answer and stalled nothing, because the host offers first and trickles
+immediately, so its candidate was already applied and the peer discovered
+us peer-reflexively (`ice path host/prflx`, connected 178 ms into a 22 s
+hold). Second, the resolver's "different pilot, leave it alone" branch now
+LOGS. Until it did, the negative could only assert the ABSENCE of the drop
+line — equally true of a resolver that never ran. That mattered
+immediately: the driver's first skip guard read the door re-arming as "the
+adoption expired on its own", and a drop re-offers, so it re-arms
+identically — the control build's regression exited 0. The drop test now
+runs first and every pass.
 
 **Cost.** One focused PR: ~60-100 lines across glgame.cpp/.h, one e2e
 driver, one test hook, doc updates. No worker change, no PROTO bump, no

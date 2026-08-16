@@ -344,6 +344,24 @@ private:
   // maybe our own kill-orphaned room — the no-offer timeout is short.
   bool own_room_probe_ = false;
 
+  // E2e hook (FOURPLAYER.md O4), from NEWTONIA_NET_TEST_HANG_MS: hold this
+  // joiner's ICE so the host is left with an adoption that has not
+  // connected and a peer that is nevertheless still alive and will finish
+  // the handshake when the hold lifts. Both directions, and from the FIRST
+  // TICK rather than from the answer: the host offers first and trickles
+  // immediately, so its candidate is already applied by the time our answer
+  // goes out, and one applied candidate is enough — our agent checks
+  // against it and the host discovers us peer-reflexively (measured: "ice
+  // path host/prflx", connected 178 ms into a 22 s hold). Held candidates
+  // are replayed on release. The countdown runs from the answer, which is
+  // when the host's adoption starts ageing. Read via SDL_getenv on the
+  // first tick; no shipped build sets it, and it does nothing on a host.
+  int test_hang_ms_ = 0;
+  bool test_hang_read_ = false;
+  bool test_hang_counting_ = false;
+  std::vector<std::pair<std::string, std::string> > test_hang_held_;
+  void test_hang_update(int delta);
+
   // Peer attestation from the signaling worker (NETPLAY.md V0). The worker
   // verifies each side's platform credential (Steam Web-API ticket, etc.)
   // and broadcasts an `identity` message; we fold the peer's attested fields

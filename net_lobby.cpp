@@ -1482,6 +1482,11 @@ void NetLobby::pump_signal(int delta) {
       std::fflush(nullptr);
       std::_Exit(0);
     }
+    // TEST_HANG (test_hang_ms_) is the quieter twin of the hook above:
+    // STALL instead of dying, so the host's adoption is one that has not
+    // connected and is going to. Nothing to do here — the hold has been
+    // running since the first tick and its countdown starts from this
+    // line, which is when the host's adoption begins ageing.
     session_ = new NetSession(transport_, NetSession::ClientRole);
     transport_ = nullptr;
     connect_wait_ms_ = 0;
@@ -1515,6 +1520,10 @@ void NetLobby::pump_signal(int delta) {
         if (!t)
           t = transport_ ? transport_
                          : (session_ ? session_->transport() : nullptr);
+        if (!hosting_ && test_hang_ms_ > 0) {  // e2e hold (test_hang_ms_)
+          test_hang_held_.push_back(std::make_pair(ev.text2, ev.text));
+          break;
+        }
         NET_LOG("[lobby] cand in (%s): %s\n", t ? "applied" : "DROPPED",
                ev.text.substr(0, 40).c_str());
         if (t) t->add_remote_candidate(ev.text2, ev.text);
@@ -1849,6 +1858,42 @@ void NetLobby::pump_signal(int delta) {
   }
 }
 
+// E2e ICE hold (see test_hang_ms_). Called at the TOP of tick, ahead of
+// pump_signal, so the hold is in force before the first inbound candidate
+// can be applied — the hook's whole failure mode the first time round. The
+// tick it expires on is also the tick both directions flush: the peer's
+// held candidates go into the transport here, ours drain out of the
+// backend's queue (untouched while held) later in the same tick. Nothing
+// here is compiled out; the hook is inert until the env var arms it.
+void NetLobby::test_hang_update(int delta) {
+  if (!test_hang_read_) {
+    test_hang_read_ = true;
+    const char *hang = SDL_getenv("NEWTONIA_NET_TEST_HANG_MS");
+    test_hang_ms_ = hang ? atoi(hang) : 0;
+    if (test_hang_ms_ > 0)
+      NET_LOG("[lobby] TEST_HANG: armed - ICE held from now, and for %d ms "
+              "past the answer\n", test_hang_ms_);
+  }
+  // The countdown, unlike the hold, runs from the answer: that is when the
+  // host builds the adoption whose age the flap resolver gates on.
+  if (hosting_ || test_hang_ms_ <= 0 || !answer_sent_) return;
+  if (!test_hang_counting_) {
+    test_hang_counting_ = true;
+    NET_LOG("[lobby] TEST_HANG: holding ICE for %d ms\n", test_hang_ms_);
+  }
+  test_hang_ms_ -= delta;
+  if (test_hang_ms_ > 0) return;
+  test_hang_ms_ = 0;
+  NetTransport *t =
+      transport_ ? transport_ : (session_ ? session_->transport() : nullptr);
+  NET_LOG("[lobby] TEST_HANG: releasing %d held candidate(s)%s\n",
+          (int)test_hang_held_.size(), t ? "" : " (no transport)");
+  for (size_t i = 0; i < test_hang_held_.size(); ++i)
+    if (t) t->add_remote_candidate(test_hang_held_[i].first,
+                                   test_hang_held_[i].second);
+  test_hang_held_.clear();
+}
+
 void NetLobby::tick(int delta) {
   currentTime += delta;
   age_ms_ += delta;
@@ -1856,6 +1901,7 @@ void NetLobby::tick(int delta) {
   if (viewpoint.x() > WORLD_W) viewpoint += Point(-WORLD_W, 0);
   if (status_ms_ > 0) status_ms_ -= delta;
 
+  test_hang_update(delta);  // e2e ICE hold; no-op unless armed
   pump_signal(delta);
 
   // Deck: bring the picker (and LAN rows) back the MOMENT the floating
@@ -1888,7 +1934,8 @@ void NetLobby::tick(int delta) {
   // our SDP has gone out: a candidate sent BEFORE its offer is buffered by
   // the relay and then wiped when the offer arrives (fresh-offer rule) —
   // and candidates can be gathered before the description is ready.
-  if (signal_ && (hosting_ ? offer_sent_ : answer_sent_)) {
+  if (signal_ &&
+      (hosting_ ? offer_sent_ : (answer_sent_ && test_hang_ms_ <= 0))) {
     NetTransport *t =
         transport_ ? transport_ : (session_ ? session_->transport() : nullptr);
     std::string c;

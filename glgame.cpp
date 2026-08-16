@@ -3579,8 +3579,10 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
   // match every other iOS peer in the room, which is worse than waiting.
   //
   // Compare PILOTS, not seats. The obvious test — "does this joiner
-  // resolve to the seat the adoption is on?" — is wrong, and wrong in a
-  // way the flap driver cannot see, because it parks a single seat. The
+  // resolve to the seat the adoption is on?" — is wrong, and wrong in a way
+  // no single-parked-seat test can see, since with one seat parked the two
+  // questions always answer alike (nseat_rejoin_flap_swap.sh parks two, and
+  // is red on a build that asks the wrong one). The
   // door always offers the LOWEST parked seat, but the WELCOME re-maps the
   // session onto whichever seat the claim matches
   // (NetSession::seat_resolver_, #447): with seats 3 and 4 both parked and
@@ -3667,6 +3669,14 @@ void GLGame::net_host_rejoin_flap_check(int delta) {
         net_pending_joins_.clear();
         return;
       }
+      // Say so. This is the branch that protects an in-flight handshake
+      // belonging to someone else, and until it logged, a test could only
+      // assert the ABSENCE of the drop line — which is equally true of a
+      // resolver that never ran at all. One line per record (the record
+      // goes with it), so it cannot repeat per tick.
+      NET_LOG("net: jid %s is pilot '%s', not '%s' who holds the handshake - "
+              "leaving it alone\n",
+              jid.c_str(), who.name.c_str(), mid.name.c_str());
       net_pending_joins_.erase(it++);  // a different pilot — leave them be
       continue;
     }
