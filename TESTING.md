@@ -75,7 +75,7 @@ backends, and it is the one with a system trust store to fall back on:
 |-------|-------------|--------------|----------|
 | Linux, `make` on macOS | OpenSSL | system store **+** our bundle | ✅ `linux.yml` gate |
 | `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ `macos-dev.yml` gate (was manual 2026-08-03) |
-| Android | MbedTLS | our bundle ONLY | ✅ selftest hook, run on a real phone 2026-08-16 (was a manual UI drive, 2026-08-04) |
+| Android | MbedTLS | our bundle ONLY | ✅ SIGNAL selftest on a real phone 2026-08-16 (was a manual UI drive, 2026-08-04) |
 | iOS | MbedTLS | our bundle ONLY | ✅ `ios.yml` gate (simulator) |
 | Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ✅ `windows.yml` gate (was manual 2026-08-04) |
 | Xbox | MbedTLS | our bundle ONLY | ⬜ — `cradle/newtonia-xbox` owns console runtime work |
@@ -149,8 +149,10 @@ xcrun devicectl device process launch --console --terminate-existing \
 vars instead — see `ios.yml`.)
 
 **Android HAS the selftests** (2026-08-16, `android_main.cpp` under
-`NEWTONIA_NET_RTC`; the recipe below is device-verified on a real phone,
-not just compiled) — reached like every other `NEWTONIA_*` var here, as
+`NEWTONIA_NET_RTC`). The SIGNAL recipe below is device-verified on a real
+phone; the loopback variant is compile-verified only, so treat its
+multi-minute warning as a prediction from the code rather than something
+anyone has sat through — reached like every other `NEWTONIA_*` var here, as
 intent extras that `NewtoniaActivity.applyEnvExtras` `Os.setenv`s before
 native start. The verdict is the LOG LINE, not the exit status: an app's
 exit code does not reach `adb`. The strings match the desktop and iOS
