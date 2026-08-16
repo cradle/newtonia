@@ -230,6 +230,7 @@ WarpPass::WarpPass()
       vao_(0),
 #endif
       tex_w_(0), tex_h_(0),
+      alloc_w_(0), alloc_h_(0),
       a_pos_(-1), u_mvp_(-1), u_tex_(-1),
       u_center_ndc_(-1), u_radius_ndc_(-1), u_time_(-1)
 {
@@ -291,7 +292,26 @@ void WarpPass::init_shader() {
 void WarpPass::capture(int vp_x, int vp_y, int vp_w, int vp_h) {
     if (vp_w <= 0 || vp_h <= 0) return;
     glBindTexture(GL_TEXTURE_2D, tex_);
-    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, vp_x, vp_y, vp_w, vp_h, 0);
+    // glCopyTexImage2D REDEFINES the image on every call — it allocates
+    // storage as well as filling it, and this runs once per viewport that
+    // has an invisible asteroid on screen, so up to four times a frame in
+    // a 4P grid (FOURPLAYER.md O6 measured the pass at 2x the 1P cost
+    // there, the residue being per-CALL overhead rather than pixels).
+    // Allocate only when the size actually changes and copy into the
+    // existing storage otherwise: every viewport in a split is the same
+    // size, so after the first frame of a layout this is pure sub-copy.
+    //
+    // The storage stays EXACTLY viewport-sized rather than growing to some
+    // maximum, because the shader samples this texture over the whole
+    // [0,1] range — a texture larger than the region copied into it would
+    // put the scene in a corner of its own snapshot.
+    if (vp_w != alloc_w_ || vp_h != alloc_h_) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, vp_w, vp_h, 0, GL_RGB,
+                     GL_UNSIGNED_BYTE, NULL);
+        alloc_w_ = vp_w;
+        alloc_h_ = vp_h;
+    }
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vp_x, vp_y, vp_w, vp_h);
     tex_w_ = vp_w;
     tex_h_ = vp_h;
     glBindTexture(GL_TEXTURE_2D, 0);

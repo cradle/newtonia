@@ -975,13 +975,31 @@ scaling, which is CPU/driver-side. And this box is not weak hardware —
 but a software rasteriser at 59 fps for natural gen-14 4P is a
 reassuring floor, not a worrying one.
 
-**Follow-up candidate, not opened as work:** the capture uses
-`glCopyTexImage2D`, which redefines the texture (reallocating storage)
-on every call — four times a frame at 4P. `glCopyTexSubImage2D` into a
-texture sized once would keep the pixels and drop the reallocation, and
-is the obvious first move if anyone ever profiles this on real hardware
-and finds the lens hot. It is a WarpPass improvement at every player
-count, which is the point: the lens pass is not a 4P problem.
+**Follow-up — DONE (2026-08-16).** The capture used `glCopyTexImage2D`,
+which redefines the texture (reallocating storage) on every call, four
+times a frame at 4P. It now allocates only when the viewport size
+changes and `glCopyTexSubImage2D`s into that storage otherwise; every
+viewport in a split is the same size, so after the first frame of a
+layout there are no allocations at all. Re-measured on the same scenes:
+
+| Lens pass, per frame | before | after |
+|---|---|---|
+| 720p 1P | 2.73 ms | 2.76 ms |
+| 720p 4P | 5.58 ms | 4.64 ms |
+| 1080p 1P | 5.27 ms | 4.81 ms |
+| 1080p 4P | 10.12 ms | 7.62 ms |
+
+Which is the O6 diagnosis confirmed from the other side: the gain lands
+where the allocations were (25% off the lens at 1080p 4P, 26% off the
+whole frame; nothing at 720p 1P, where there is one small allocation a
+frame to save). The 4P-vs-1P lens ratio falls from 2.04x to 1.68x at
+720p and 1.92x to 1.58x at 1080p. Renders are byte-identical before and
+after — `compare -metric AE` reports 0 differing pixels on both the 4P
+lens-stress scene and a 1P natural gen-6 world — which is the property
+that matters for a change to the sampling path: the storage stays
+exactly viewport-sized, because the shader maps NDC across the whole
+[0,1] of the texture and a larger one would put the scene in a corner of
+its own snapshot.
 
 Reproduce: `shots/lens_stress.shot` (and `sed 's/players 4/players 1/'`
 for its twin) — recipe in TESTING.md §"Render cost (1P vs 4P)".
