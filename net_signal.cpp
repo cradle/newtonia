@@ -330,6 +330,14 @@ bool wait_event(NetSignal *s, NetSignal::Event::Kind want,
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+  // Timed out with no error and no close — a blackholed or stalled
+  // connection. Say so for the same reason the branch above does: a FAIL
+  // with no reason is the one outcome a trust-path gate must never
+  // produce, and this is the path that reaches it in silence.
+  SDL_Log("net_signal_selftest: timed out after %d ms waiting for the relay",
+          ms);
+  std::cout << "net_signal_selftest: timed out after " << ms
+            << " ms waiting for the relay" << std::endl;
   return false;
 }
 }  // namespace

@@ -378,13 +378,21 @@ jobs:
             cat attempt.log >> sigtest.log
             grep -q "SIGNAL SELFTEST PASS" attempt.log && { ok=1; break; }
             echo "signal selftest attempt $attempt failed"
+            # Do NOT keep retrying this one: the limiter is a 10-minute
+            # FIXED window and refused requests increment it too, so the
+            # backoff cannot outlast it and each attempt digs the next
+            # job on this IP deeper in.
+            if grep -q "rate-limited" attempt.log; then
+              echo "the relay rate-limited this runner - not retrying (10-minute fixed window)"
+              break
+            fi
             [ "$attempt" -lt 3 ] && sleep 20
           done
           # Only on the way out — a note on a green run would warn about a
           # failure that did not happen.
           if [ -z "$ok" ]; then
             grep -q "rate-limited" sigtest.log &&
-              echo "NOTE: the relay rate-limited at least one attempt - weigh that before reading this as a trust-path failure"
+              echo "NOTE: rate-limited, so this run says NOTHING about the trust path - re-run it"
           fi
           [ -n "$ok" ]
           fi
