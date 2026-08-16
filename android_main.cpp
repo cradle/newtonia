@@ -394,16 +394,26 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // -feature-and-watch (TESTING.md).
     {
         const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
-        if (st && st[0] == '1' && st[1] == '\0') {
-            // Disarm FIRST. applyEnvExtras sets these process-wide, and
-            // returning from SDL_main finishes the Activity without
-            // necessarily ending the PROCESS — the s_running reset at the
-            // top of this function exists because SDL_main is re-entered
-            // on a cached process. Left armed, the next icon tap would run
-            // the selftest again and close the app instead of starting the
-            // game, which is the literal next thing anyone does after this.
-            // Before the test, not after, so a crash mid-run disarms too.
+        const char *ss_env = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+        const bool want_net = st && st[0] == '1' && st[1] == '\0';
+        const bool want_signal = ss_env && ss_env[0] == '1' && ss_env[1] == '\0';
+        // Disarm BOTH before running EITHER, and read the flags above
+        // first because unsetenv invalidates those pointers.
+        //
+        // applyEnvExtras sets these process-wide, and returning from
+        // SDL_main finishes the Activity without necessarily ending the
+        // PROCESS — the s_running reset at the top of this function exists
+        // because SDL_main is re-entered on a cached one. Left armed, the
+        // next icon tap runs a selftest and closes the app instead of
+        // starting the game, which is the literal next thing anyone does
+        // after this. Both, because whichever branch runs returns before
+        // the other is reached: disarming only its own var left the other
+        // armed when a run set both.
+        if (want_net || want_signal) {
             unsetenv("NEWTONIA_NET_SELFTEST");
+            unsetenv("NEWTONIA_SIGNAL_SELFTEST");
+        }
+        if (want_net) {
             // Can run for MINUTES on a bad path — 3 attempts, each waiting
             // up to 30 s a side — with no window and no event loop yet, so
             // the screen is black and a Back press would sit unread while
@@ -420,9 +430,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         // trust story: MbedTLS reaches no system store, so a handshake that
         // completes proves the roots in net_ca_bundle.cpp wrote, parsed and
         // verified Cloudflare's chain.
-        const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
-        if (ss && ss[0] == '1' && ss[1] == '\0') {
-            unsetenv("NEWTONIA_SIGNAL_SELFTEST");  // see above
+        if (want_signal) {
             load_preferences();  // net_signal_url() honours the INI override
             SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
             bool ok = net_signal_selftest();
