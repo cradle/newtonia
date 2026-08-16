@@ -19,6 +19,10 @@
 #include "invites.h"
 #include "world_sound.h"
 #include "view/overlay.h"
+#ifdef NEWTONIA_NET_RTC
+#include "net_signal.h"
+#include "net_transport.h"
+#endif
 
 #include <atomic>
 #include <iostream>
@@ -369,6 +373,49 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // back on, via SDL_StartTextInput.
     SDL_StopTextInput();
     SDL_Log("Audio driver in use: %s", SDL_GetCurrentAudioDriver());
+
+#ifdef NEWTONIA_NET_RTC
+    // Hidden CI/debug hooks, the Android twins of glut.cpp's. Reached the
+    // same way every other NEWTONIA_* var is on this platform:
+    //   adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    //     --es NEWTONIA_SIGNAL_SELFTEST 1
+    // (NewtoniaActivity.applyEnvExtras Os.setenvs the extras before native
+    // start, so SDL_getenv sees them.)
+    //
+    // Placed here rather than at the top of SDL_main because both need SDL
+    // up — the CA bundle is written to SDL_GetPrefPath — but before the
+    // window and GL context, which neither test needs.
+    //
+    // The VERDICT IS THE LOG LINE, not the exit status: an Android app's
+    // exit code does not reach adb, so the strings below are the contract
+    // (`adb logcat -s SDL/APP`), and they are byte-identical to the ones
+    // the desktop and iOS hooks print so one grep covers every platform.
+    // This is why the TLS pass on Android stopped being drive-the-real-
+    // -feature-and-watch (TESTING.md).
+    {
+        const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
+        if (st && st[0] == '1' && st[1] == '\0') {
+            SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
+            bool ok = net_selftest();
+            SDL_Log("%s", ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
+            SDL_Quit();
+            return ok ? 0 : 1;
+        }
+        // The relay round trip, which on this platform is the whole TLS
+        // trust story: MbedTLS reaches no system store, so a handshake that
+        // completes proves the roots in net_ca_bundle.cpp wrote, parsed and
+        // verified Cloudflare's chain.
+        const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+        if (ss && ss[0] == '1' && ss[1] == '\0') {
+            load_preferences();  // net_signal_url() honours the INI override
+            SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
+            bool ok = net_signal_selftest();
+            SDL_Log("%s", ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");
+            SDL_Quit();
+            return ok ? 0 : 1;
+        }
+    }
+#endif
 
     // Request OpenGL ES 2.0 context
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
