@@ -181,7 +181,14 @@ adb shell am force-stop org.newtonia
 #      between a throttled relay and a broken CA bundle.
 ```
 
-**Force-stop afterwards.** The native side clears both vars as it reads
+**The app closes itself** when the test finishes (device-confirmed
+2026-08-16): `SDL_Quit()` and a plain `return` from `SDL_main`, which on
+Android ends the Activity rather than the process — SDL's
+`nativeRunMain` deliberately does not `exit()`, which is why the hook
+returns here where iOS's exits.
+
+**Force-stop afterwards anyway.** A clean close is not the same question
+as a clean NEXT launch. The native side clears both vars as it reads
 them, which covers the cached process re-entering `SDL_main` — but
 `am start` implies `NEW_TASK`, so that intent becomes the TASK's base
 intent, the activity is `singleTask` and not excluded from Recents, and
