@@ -15,9 +15,12 @@ class Ship;
 // dropped like a mine and left to fight on its own. It seeks the nearest
 // killable target in RANGE (asteroids via the owner's missile-asteroid list,
 // enemies/stations/hazards via shock_targets — the other player only under
-// friendly fire), turns the barrel toward it at TURN_RATE, and fires an
-// ordinary player bullet from the muzzle only once the barrel is actually
-// pointing at a target in range. It retires after LIFETIME_MS or SHOTS
+// friendly fire), turns the barrel toward the INTERCEPT point — where the
+// target will be when a bullet fired now arrives, the classic
+// constant-velocity lead solved in the turret's own frame (its bullets
+// inherit its drift) — at TURN_RATE, and fires an ordinary player bullet
+// from the muzzle only once the barrel is actually pointing at that lead
+// for a target in range. It retires after LIFETIME_MS or SHOTS
 // bullets — whichever comes first — and blows apart into debris; it also
 // dies to anything kill-aligned that touches it (asteroid contact, hostile
 // bullets, a comet/seeker ram — those checks live in Ship::collide_grid and
@@ -44,6 +47,13 @@ struct TurretDrone : public Object {
   static const float LIFETIME_MS;    // 60 s on station, then it retires
   static const int   SHOTS;          // 30 bullets, whichever comes first
   static const float RANGE;          // fire only at targets inside this
+  static const float BULLET_SPEED;   // muzzle speed, units/ms — ONE constant
+                                     // shared with Ship::fire_turret_bullet's
+                                     // mint, or the lead prediction and the
+                                     // real bullet drift apart
+  static const float BULLET_TTL_MS;  // bullet lifetime (mint's Particle TTL):
+                                     // an intercept later than this can never
+                                     // land, so the aim falls back to direct
   static const float FIRE_INTERVAL;  // ms between shots
   static const float TURN_RATE;      // barrel tracking rate, rad/ms
   static const float IDLE_SPIN;      // slow idle sweep with no target, rad/ms

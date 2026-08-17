@@ -2618,7 +2618,11 @@ void Ship::fire_turret_bullet(TurretDrone &t) {
   // turret's own position, like every world cue.
   WorldSound::play(shoot_sound, muzzle);
   replay_pews.push_back(Point(t.position.x(), t.position.y()));
-  bullets.push_back(Particle(muzzle, dir * 0.615f + t.velocity * 0.99f, 2000.0f));
+  // Speed and TTL are the drone's shared constants: its lead prediction
+  // (step_turret's intercept solve) assumes exactly this bullet.
+  bullets.push_back(Particle(muzzle,
+                             dir * TurretDrone::BULLET_SPEED + t.velocity * 0.99f,
+                             TurretDrone::BULLET_TTL_MS));
   net_report_last_bullet();
 }
 

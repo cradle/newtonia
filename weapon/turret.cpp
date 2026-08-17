@@ -10,6 +10,8 @@
 const float TurretDrone::LIFETIME_MS   = 60000.0f;
 const int   TurretDrone::SHOTS         = 30;
 const float TurretDrone::RANGE         = 900.0f;
+const float TurretDrone::BULLET_SPEED  = 0.615f;   // the gun's bullet speed
+const float TurretDrone::BULLET_TTL_MS = 2000.0f;  // the gun's bullet TTL
 const float TurretDrone::FIRE_INTERVAL = 600.0f;
 const float TurretDrone::TURN_RATE     = 0.004f;   // ~230 deg/s tracking
 const float TurretDrone::IDLE_SPIN     = 0.0006f;  // ~34 deg/s idle sweep
@@ -75,10 +77,43 @@ void TurretDrone::step_turret(int delta, std::list<Object*> *asteroids,
   }
 
   has_target = true;
-  // Bear on the target the short way round the wrap.
+  // LEAD the target: aim where it will be when the bullet lands, not where
+  // it is. Work in the turret's own frame — the mint gives each bullet
+  // 0.99 of the turret's drift, so what matters is the target's velocity
+  // RELATIVE to the turret — and solve |R + Vr*t| = BULLET_SPEED*t for the
+  // earliest positive intercept time t (the standard quadratic in t; both
+  // sides are units when t is ms). c = |R|^2 > 0 always, so in the common
+  // a < 0 case (target slower than a bullet) exactly one root is positive.
+  // No intercept — target outrunning the bullet, or reachable only after
+  // the bullet's own lifetime — falls back to pointing straight at it.
   Point self = position.closest_to(target->position);
-  float want = atan2f(target->position.y() - self.y(),
-                      target->position.x() - self.x());
+  float rx = target->position.x() - self.x();
+  float ry = target->position.y() - self.y();
+  float vrx = target->velocity.x() - velocity.x() * 0.99f;
+  float vry = target->velocity.y() - velocity.y() * 0.99f;
+  float qa = vrx * vrx + vry * vry - BULLET_SPEED * BULLET_SPEED;
+  float qb = 2.0f * (rx * vrx + ry * vry);
+  float qc = rx * rx + ry * ry;
+  float t_hit = -1.0f;
+  if (fabsf(qa) < 1e-6f) {
+    // Relative speed == bullet speed: the quadratic degenerates to linear.
+    if (fabsf(qb) > 1e-6f) t_hit = -qc / qb;
+  } else {
+    float disc = qb * qb - 4.0f * qa * qc;
+    if (disc >= 0.0f) {
+      float sq = sqrtf(disc);
+      float t1 = (-qb - sq) / (2.0f * qa);
+      float t2 = (-qb + sq) / (2.0f * qa);
+      if (t1 > 0.0f && t2 > 0.0f) t_hit = t1 < t2 ? t1 : t2;
+      else t_hit = t1 > 0.0f ? t1 : t2;
+    }
+  }
+  float lead_x = rx, lead_y = ry;
+  if (t_hit > 0.0f && t_hit <= BULLET_TTL_MS) {
+    lead_x += vrx * t_hit;
+    lead_y += vry * t_hit;
+  }
+  float want = atan2f(lead_y, lead_x);
   float diff = wrap_angle(want - aim);
   float max_turn = TURN_RATE * delta;
   if (diff >  max_turn) diff =  max_turn;
