@@ -438,7 +438,7 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 | Workflow | Output |
 |----------|--------|
 | `.github/workflows/macos-dev.yml` | Universal arm64+x86_64 binary |
-| `.github/workflows/android.yml` | Debug APK |
+| `.github/workflows/android.yml` | Debug APK + the emulator TLS gate (api-30 x86_64 AVD runs `NEWTONIA_SIGNAL_SELFTEST` via `android/emulator_selftest.sh`) |
 | `.github/workflows/ios.yml` | iOS simulator build |
 | `.github/workflows/linux.yml` | Linux executable (netplay + headless loopback self-test) |
 | `.github/workflows/windows.yml` | Windows executable (netplay: MinGW-static libdatachannel + self-test — the compile gate for deploy-steam's Windows build) |
