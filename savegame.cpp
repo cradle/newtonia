@@ -462,6 +462,19 @@ bool Save::serialize_game(Save::Stream &f, const Save::GameState &s) {
     // the walk, exactly like the v14 per-player append.
     for (const auto &p : s.players) ok = ok && wv(f, p.seat);
 
+    // v21 append: per-player DEPLOYED turret drones (PROTO 27), in players
+    // order like the seat block above — each player's section is its own
+    // count + entries, since batteries differ per pilot.
+    for (const auto &p : s.players) {
+        ok = ok && wv(f, (uint16_t)p.turrets.size());
+        for (const auto &t : p.turrets) {
+            ok = ok && wv(f, t.pos_x) && wv(f, t.pos_y);
+            ok = ok && wv(f, t.vel_x) && wv(f, t.vel_y);
+            ok = ok && wv(f, t.aim) && wv(f, t.ms_left) && wv(f, t.cooldown);
+            ok = ok && wv(f, t.shots_left);
+        }
+    }
+
     return ok;
 }
 
@@ -562,6 +575,26 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
     // 0 default, which readers treat as positional (entry i = seat i+1).
     if (version >= 19) {
         for (auto &p : s.players) ok = ok && rv(f, p.seat);
+    }
+
+    // Per-player deployed turrets appended in v21 (PROTO 27); older saves
+    // keep the empty default (= no battery to restore). Count bounded like
+    // every other section — this stream may be a hostile snapshot, and 256
+    // is far past anything a real game deploys (even the 999-round cheat
+    // caps out near ~120 live drones at the 60 s lifetime).
+    if (version >= 21) {
+        for (auto &p : s.players) {
+            uint16_t tcnt = 0;
+            ok = ok && rv(f, tcnt);
+            if (tcnt > 256) return false;
+            p.turrets.resize(ok ? tcnt : 0);
+            for (auto &t : p.turrets) {
+                ok = ok && rv(f, t.pos_x) && rv(f, t.pos_y);
+                ok = ok && rv(f, t.vel_x) && rv(f, t.vel_y);
+                ok = ok && rv(f, t.aim) && rv(f, t.ms_left) && rv(f, t.cooldown);
+                ok = ok && rv(f, t.shots_left);
+            }
+        }
     }
 
     return ok;

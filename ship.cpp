@@ -855,6 +855,18 @@ Save::Player Ship::capture_state() const {
   p.weapons_fired_mask   = weapons_fired_mask;
   p.seat                 = net_seat;  // v19: 0 for non-seated ships (enemies)
 
+  // v21: the deployed battery, so save/continue keeps it on station.
+  for (const auto &t : turrets) {
+    Save::Turret st;
+    st.pos_x = t.position.x();  st.pos_y = t.position.y();
+    st.vel_x = t.velocity.x();  st.vel_y = t.velocity.y();
+    st.aim = t.aim;
+    st.ms_left = t.ms_left;
+    st.cooldown = t.fire_cooldown;
+    st.shots_left = (uint8_t)(t.shots_left < 0 ? 0 : t.shots_left);
+    p.turrets.push_back(st);
+  }
+
   // Primary weapons
   list<Weapon::Base*>::const_iterator cprimary = primary;
   p.selected_primary_idx = 0;
@@ -944,6 +956,27 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   weapons_fired_mask   = p.weapons_fired_mask;
   position        = WrappedPoint(p.pos_x, p.pos_y);
   first_life      = true;  // tells respawn() to try the saved position first
+
+  // v21: rebuild the deployed battery — OFFLINE and host-resume loads only.
+  // On a net client (and replay playback) restore_state runs inside every
+  // 10 Hz snapshot apply, and there the nx ship-extras own the turret list
+  // — a wholesale rebuild from the Save-body copy here would fight their
+  // deploy-grace hold and vanish detection (net_quiet_respawn is the
+  // client-game-lifetime flag, the same distinction reset() draws). Sits
+  // BEFORE the roster-match fast path below: a default-gun-only save takes
+  // that early return on a fresh ship, and its battery must not be lost to
+  // the shortcut.
+  if (!net_quiet_respawn) {
+    turrets.clear();
+    for (const auto &st : p.turrets) {
+      TurretDrone t(WrappedPoint(st.pos_x, st.pos_y),
+                    Point(st.vel_x, st.vel_y), st.aim);
+      t.ms_left = st.ms_left;
+      t.fire_cooldown = st.cooldown;
+      t.shots_left = st.shots_left;
+      turrets.push_back(t);
+    }
+  }
 
   // Fast path (netplay applies this 10x/s): when the weapon ROSTER is
   // unchanged — same counts, same primary weapon_indices, same secondary

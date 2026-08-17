@@ -196,7 +196,15 @@ namespace Net {
 //     mint gate (is_local_player / net_remote_gun) decides which machine
 //     spawns the real bullet, and both sides run the same aim/ammo
 //     bookkeeping so expiry stays in step.
-const uint8_t PROTO_VERSION = 26;
+// 27: savegame v21 appended per-player DEPLOYED turret lists to the
+//     GameState — snapshots serialize through the same structs, so every
+//     keyframe/delta grows ~29 bytes per live drone. The client never
+//     APPLIES that copy (Ship::restore_state gates the rebuild to offline /
+//     host-resume loads): online the nx ship-extras section remains the
+//     authoritative turret feed, with its deploy grace and vanish
+//     detection. The body copy exists so save/continue — and the online
+//     host's resume slot — bring a battery back.
+const uint8_t PROTO_VERSION = 27;
 
 // Peer identity (badge metadata) rides HELLO/WELCOME as an APPEND, not a
 // PROTO bump: `u8 platform (NetPlatform), u8 name_len, name_len bytes
