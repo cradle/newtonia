@@ -6,6 +6,7 @@
 #include "particle.h"
 #include "weapon/missile.h"
 #include "weapon/shock.h"
+#include "weapon/turret.h"
 #include "grid.h"
 #include "black_hole.h"
 #include "savegame.h"
@@ -187,6 +188,7 @@ class Ship : public CompositeObject {
 
     std::vector<Particle> bullets, mines, giga_mines, bullet_trails;
     std::vector<MissileShot> missiles;
+    std::vector<TurretDrone> turrets;
     std::vector<Shockwave> shockwaves;
     std::vector<LancePulse> lance_pulses;
     bool lance_pulse_pending = false;  // set by Weapon::Lance; consumed in step()
@@ -243,6 +245,7 @@ class Ship : public CompositeObject {
     static int random_drop_weapon_index();
     void add_mine_ammo(int amount);
     void add_giga_mine_ammo(int amount);
+    void add_turret_ammo(int amount);  // secondary: deployable sentry drones
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
     void add_beam_ammo(int amount);
@@ -309,6 +312,11 @@ class Ship : public CompositeObject {
     // Same for mines / giga mines that vanish from the snapshot early.
     void net_mine_exploded(const Point &pos, const Point &vel);
     void net_giga_mine_exploded(const Point &pos);
+    // Turret death/retirement: bookkeeping-side bullet mint (gated like the
+    // gun's — see fire_bullet_from_gun) and the debris burst both live on
+    // Ship because the drone can't reach bullets/debris itself.
+    void fire_turret_bullet(TurretDrone &t);
+    void turret_explode(const TurretDrone &t);
     // Shared blast for the two above: the local ship's goes into bullets
     // like the real detonate() (instant local kills + bullet_id-0 claims);
     // the peer's is cosmetic streak debris — its bullets are wholesale-

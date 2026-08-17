@@ -443,6 +443,24 @@ test/e2e/missile_net.sh # client-fired deploys (host launches with
                      # INPUT, the shape a lost-packet stall delivers on
                      # recovery; 12 of 18 were lost before the host queued
                      # secondary presses like it queues primary ones.
+test/e2e/turret_net.sh # turret drones over the wire (PROTO 26). The host
+                     # launches with NEWTONIA_NET_TEST_GRANT_TURRETS=1 (runtime
+                     # hook, host-side like GRANT_WEAPONS): both ships get the
+                     # sentry as their ONLY secondary, armed with no cycling —
+                     # the first version probed the secondary walk instead, and
+                     # at generation 3 the idle joiner was out of lives before
+                     # the walk reached TURRET. The pair skips to generation 3
+                     # (targets everywhere inside the 900-unit range), each
+                     # side deploys a battery, and — since NEITHER pilot ever
+                     # touches a fire key — the driver asserts the loop by
+                     # attribution: the host spawns MSG_SHOT clones it can only
+                     # have got from the joiner's turret fire, the joiner's
+                     # claim path logs bullet-vs-asteroid impacts only turret
+                     # bullets can have made, and the host's fire clones on the
+                     # joiner the same way. Plus the deployable regressions in
+                     # turret clothes: no "turret vanished" with >=59.5 s of
+                     # its 60 s left (the muzzle-blast signature), no deploy
+                     # aged out unconfirmed.
 test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
 test/e2e/fourplayer.sh # local 3-4P (FOURPLAYER.md): grid runs, Enter-join cap, 4P save/resume
                      # + the NEWTONIA_NET_TEST_REVIVE_FILE payload hook (touch

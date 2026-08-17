@@ -26,6 +26,8 @@ struct WeaponEntry {
         Lance,     // primary full-length pulse; ammo = number of pulses
         Shock,     // chain-lightning primary; ammo = number of bolts (appended
                    // after Lance to keep the branch's v14 wire ordinals stable)
+        Turret,    // deployable sentry-drone secondary; ammo = drones left
+                   // (appended, v20)
     };
     Kind kind;
     int  weapon_index;  // Default only; ignored for all other kinds
@@ -107,7 +109,8 @@ enum class PickupType : uint8_t {
     Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge, Beam, Lance,
     Revive,       // co-op: revives the fallen partner (v13)
     ShockWeapon,  // chain-lightning primary drop (appended after Revive, v15)
-    TimeSlow      // clock: slows the world's wall-clock rate (appended, v18)
+    TimeSlow,     // clock: slows the world's wall-clock rate (appended, v18)
+    Turret        // sentry-drone secondary drop (appended, v20)
 };
 
 struct Pickup {
@@ -194,7 +197,12 @@ struct GameState {
     // and the owning player's index) appended at the end.
     // 19 = per-player seat id appended at the end (PROTO 25 / FOURPLAYER.md
     // PB-D3: snapshots and net restore key ship records by seat).
-    static constexpr uint16_t VERSION = 19;
+    // 20 = Turret weapon kind + Turret pickup type (PROTO 26). No new fields
+    // in the save body — deployed drones are transient like mines — but the
+    // snapshot/replay SHIP EXTRAS gained a turret section, read gated on
+    // this version (nx_read_projectiles), so pre-v20 replay files still
+    // parse.
+    static constexpr uint16_t VERSION = 20;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of

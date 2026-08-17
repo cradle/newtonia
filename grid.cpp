@@ -95,6 +95,30 @@ void Grid::query_neighbours(const Object &object, vector<Object *> &out) const {
   }
 }
 
+// Same cell walk as the queries above, sized by an arbitrary radius
+// instead of an object's own footprint. get() wraps out-of-range indices,
+// so a circle crossing the world edge collects the wrapped cells for
+// free; the span clamps below stop a radius wider than the world from
+// visiting the same (wrapped) cell several times over.
+void Grid::query_radius(Point center, float radius, vector<Object *> &out) const {
+  out.clear();
+  int row_min = (int)floor((center.x() - radius) / cell_size.x()) - 1;
+  int row_max = (int)floor((center.x() + radius) / cell_size.x()) + 1;
+  int col_min = (int)floor((center.y() - radius) / cell_size.y()) - 1;
+  int col_max = (int)floor((center.y() + radius) / cell_size.y()) + 1;
+  if(row_max - row_min + 1 > num_rows) { row_min = 0; row_max = num_rows - 1; }
+  if(col_max - col_min + 1 > num_cols) { col_min = 0; col_max = num_cols - 1; }
+
+  for(int row = row_min; row <= row_max; row++) {
+    for(int col = col_min; col <= col_max; col++) {
+      const vector<Object *> &others = get(row, col);
+      for(vector<Object *>::const_iterator o = others.begin();
+          o != others.end(); ++o)
+        out.push_back(*o);
+    }
+  }
+}
+
 void Grid::update(const list<Object *> *objects) {
   for(int i = 0; i < num_rows; i++)
     for(int j = 0; j < num_cols; j++)

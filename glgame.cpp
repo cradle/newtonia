@@ -166,6 +166,8 @@ const float GLGame::lance_pickup_drop_chance = 0.0025f;
 const float GLGame::shock_pickup_drop_chance = 0.003125f;
 // Rare like god mode/lance: a whole-world effect, not an ammo top-up.
 const float GLGame::time_slow_pickup_drop_chance = 0.0025f;
+// Giga-mine tier: one drop arms 3 sentry drones.
+const float GLGame::turret_pickup_drop_chance = 0.005f;
 // Defined below; used by the host's MSG_SHOCK handler above it.
 static bool shock_bolt_reaches(const std::vector<Point> &pts,
                                const WrappedPoint &pos, float radius);
@@ -193,6 +195,7 @@ static Pickup *make_pickup(const Save::Pickup &sp) {
     case Save::PickupType::Revive:      return new RevivePickup(pos);
     case Save::PickupType::ShockWeapon: return new ShockPickup(pos);
     case Save::PickupType::TimeSlow:    return new TimeSlowPickup(pos);
+    case Save::PickupType::Turret:      return new TurretPickup(pos);
   }
   return NULL;  // unknown value from a newer save: skip, matching old behavior
 }
@@ -331,7 +334,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
       new NovaChargePickup(WrappedPoint(0, 0)), new BeamPickup(WrappedPoint(0, 0)),
       new LancePickup(WrappedPoint(0, 0)),     new ShockPickup(WrappedPoint(0, 0)),
       new RevivePickup(WrappedPoint(0, 0)),    new ExtraLife(WrappedPoint(0, 0)),
-      new TimeSlowPickup(WrappedPoint(0, 0)),
+      new TimeSlowPickup(WrappedPoint(0, 0)),  new TurretPickup(WrappedPoint(0, 0)),
     };
     for (size_t i = 0; i < ring.size(); i++) {
       float a = i * 2.0f * (float)M_PI / ring.size();
@@ -984,6 +987,8 @@ Save::GameState GLGame::build_save_data(bool include_asteroids) const {
       sp.type = Save::PickupType::ShockWeapon;
     } else if (dynamic_cast<TimeSlowPickup*>(p)) {
       sp.type = Save::PickupType::TimeSlow;
+    } else if (dynamic_cast<TurretPickup*>(p)) {
+      sp.type = Save::PickupType::Turret;
     } else {
       continue; // unknown pickup type, skip
     }
@@ -4093,6 +4098,18 @@ void nx_write_ship(Save::Stream &out, const Ship &s) {
     nx_write(out, w.time_left);
     nx_write(out, (uint8_t)w.is_nova);
   }
+
+  // v20 (PROTO 26): deployed turrets. Readers gate this section on the
+  // stream's save version (nx_read_projectiles) so pre-v20 replay files
+  // still parse; the live wire is PROTO-fenced to matching builds.
+  nx_write(out, (uint16_t)s.turrets.size());
+  for (const TurretDrone &t : s.turrets) {
+    nx_write_projectile(out, t);
+    nx_write(out, t.aim);
+    nx_write(out, t.ms_left);
+    nx_write(out, t.fire_cooldown);
+    nx_write(out, (uint8_t)(t.shots_left < 0 ? 0 : t.shots_left));
+  }
 }
 
 // v6: the mini-station's shots — its Save record carries none, so the
@@ -4963,7 +4980,7 @@ GLGame *GLGame::start_replay_playback(const std::string &path) {
   // conditions, not events (no death explosion for a run that starts in
   // the spawn countdown).
   g->replay_bootstrap_apply_ = true;
-  g->net_apply_extras(in, s);
+  g->net_apply_extras(in, s, sv);
   g->replay_bootstrap_apply_ = false;
   // The timeline starts at the bootstrap record's slot (0 for a fresh run).
   // Reader::next only yields slots inside MAX_RECORD_SLOT, chosen so that
@@ -5159,9 +5176,9 @@ void GLGame::tick_replay_poll(int delta) {
     if (!net_state_sane(s)) continue;
     net_apply_state(s);
     if (rec.kind == Replay::REC_KEYFRAME) {
-      net_apply_extras(in, s);
+      net_apply_extras(in, s, replay_save_version_);
     } else {
-      if (!net_apply_ship_extras(in, s)) continue;
+      if (!net_apply_ship_extras(in, s, true, replay_save_version_)) continue;
       net_apply_delta_asteroids(in);
     }
   }
@@ -5720,8 +5737,12 @@ static bool nx_pose_sane(float x, float y, float vx, float vy) {
 // leave the ship" — taking its PROTO 13 hit claim with it. Mines/gigas/
 // missiles/shockwaves stay host-echoed: they're deployed objects with
 // host-side lifecycles, not aim-critical projectiles.
+// has_turrets: the stream was written at save version >= 20 and carries the
+// turret section (always true on the live wire — PROTO 26 fences builds —
+// false only for pre-v20 replay files).
 bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
-                         float lead_ms, bool own_bullets = false) {
+                         float lead_ms, bool own_bullets = false,
+                         bool has_turrets = true) {
   uint16_t n = 0;
   float x, y, vx, vy;
 
@@ -5883,6 +5904,56 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
   // A nova wave the client hasn't seen yet: the wave itself replicates,
   // only its boom was host-side.
   if (s && !quiet && new_novas > old_novas) s->net_nova_arrived();
+
+  // v20: deployed turrets, host-echoed like mines. A turret that vanishes
+  // from the snapshot with real life left was destroyed host-side
+  // (asteroid/bullet/hazard contact) — play the debris burst here. One
+  // near its natural end is skipped: Ship::step retires it locally on
+  // every machine (the missiles' >300 ms trick, wider because the client's
+  // copy can sit a snapshot interval behind). A just-deployed local one is
+  // held for the host echo (nx_hold_unconfirmed), like every deployable.
+  if (!has_turrets) return true;
+  if (!nx_read(in, n)) return false;
+  std::vector<TurretDrone> old_turrets;
+  if (s) old_turrets.swap(s->turrets);
+  for (int i = 0; i < n; i++) {
+    float aim, ms_left, cooldown;
+    uint8_t shots;
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) ||
+        !nx_read(in, vy) || !nx_read(in, aim) || !nx_read(in, ms_left) ||
+        !nx_read(in, cooldown) || !nx_read(in, shots))
+      return false;
+    if (!s || !nx_pose_sane(x, y, vx, vy) || !std::isfinite(aim) ||
+        !std::isfinite(ms_left) || !std::isfinite(cooldown) ||
+        ms_left > TurretDrone::LIFETIME_MS || shots > TurretDrone::SHOTS)
+      continue;
+    TurretDrone t(WrappedPoint(x, y), Point(vx, vy), aim);
+    t.ms_left = ms_left;
+    t.fire_cooldown = cooldown;
+    t.shots_left = shots;
+    int j = nx_match_previous(old_turrets, t.position, 100.0f);
+    if (j >= 0) {
+      if (old_turrets[j].net_unconfirmed)
+        NET_LOG("net: turret deploy confirmed by the host echo\n");
+      old_turrets.erase(old_turrets.begin() + j);
+    }
+    s->turrets.push_back(t);
+  }
+  if (s) {
+    std::vector<TurretDrone> gone =
+        nx_hold_unconfirmed(old_turrets, s->turrets, quiet, "turret");
+    if (!quiet)
+      for (auto &t : gone)
+        if (t.ms_left > 1000.0f && t.shots_left > 0) {
+          // The life is the regression handle, exactly as for missiles: a
+          // turret that vanishes moments after its deploy never met an
+          // asteroid — that is the muzzle-blast bug the deploy grace
+          // exists to prevent (turret_net.sh asserts on this line).
+          NET_LOG("net: turret vanished (host destruction), life %d ms\n",
+                  (int)t.ms_left);
+          s->turret_explode(t);
+        }
+  }
   return true;
 }
 
@@ -7221,7 +7292,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
             (1u << (int)Save::WeaponEntry::Kind::GigaMine) |
             (1u << (int)Save::WeaponEntry::Kind::Missile) |
             (1u << (int)Save::WeaponEntry::Kind::Shield) |
-            (1u << (int)Save::WeaponEntry::Kind::Nova);
+            (1u << (int)Save::WeaponEntry::Kind::Nova) |
+            (1u << (int)Save::WeaponEntry::Kind::Turret);
         if ((me->weapons_fired_mask & secondary_bits) == 0)
           Achievements::unlock("no_secondary_level10");
       }
@@ -7631,13 +7703,14 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   }
 }
 
-void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
-  if (!net_apply_ship_extras(in, s)) return;
+void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s,
+                              uint16_t ver) {
+  if (!net_apply_ship_extras(in, s, true, ver)) return;
   net_apply_keyframe_asteroid_ids(in, s);
 }
 
 bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
-                                   bool apply) {
+                                   bool apply, uint16_t ver) {
   uint32_t nplayers = 0;
   if (!nx_read(in, nplayers)) return false;
   // PROTO 25: each record leads with its seat byte — but only when the
@@ -7660,7 +7733,8 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
       // Parse-only walk (stale delta): every pose/effect in this section
       // is stale poison — only the stream position matters, so the
       // asteroid membership records behind it can still be reached.
-      if (!nx_read_projectiles(in, NULL, false, 0.0f)) return false;
+      if (!nx_read_projectiles(in, NULL, false, 0.0f, false, ver >= 20))
+        return false;
       continue;
     }
     GLShip *gs_rec;
@@ -7765,7 +7839,8 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     // visual/audio flourishes are missing).
 
     if (!nx_read_projectiles(in, ship, net_world_rebuilt_last_apply_,
-                             net_lead_ms(), /*own_bullets=*/local_ship))
+                             net_lead_ms(), /*own_bullets=*/local_ship,
+                             /*has_turrets=*/ver >= 20))
       return false;
     if (!seat_led) ++it;
   }
@@ -8592,6 +8667,13 @@ void GLGame::tick(int delta) {
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
+        // Deployed turrets end with the level, like the pickups above:
+        // they survive their owner's respawn (reset() spares them), so
+        // the rollover is the one place they are swept — the new world
+        // has new bounds, and a survivor could sit outside them. Silent
+        // by design; the net client's wipe arrives as this rebuild's
+        // QUIET apply, so no debris fires on either machine.
+        (*o)->ship->turrets.clear();
         (*o)->ship->respawn(grid, false);
         (*o)->ship->died_this_generation = false;
       }
@@ -8602,7 +8684,7 @@ void GLGame::tick(int delta) {
       // displayed level = generation + 1.
       Achievements::progress("reach_level15", (generation + 1) * 100 / 15);
       // "Reach level 10 without using a secondary weapon" — secondary kinds
-      // are Mine..Nova in weapons_fired_mask, which is per-game, per-player,
+      // are Mine..Nova + Turret in weapons_fired_mask — per-game, per-player,
       // and saved, so a resumed game keeps its usage history. Level-triggered
       // (>= 9) so a still-clean mask keeps qualifying on later rebuilds.
       if(generation >= 9) {
@@ -8611,7 +8693,8 @@ void GLGame::tick(int delta) {
             (1u << (int)Save::WeaponEntry::Kind::GigaMine) |
             (1u << (int)Save::WeaponEntry::Kind::Missile) |
             (1u << (int)Save::WeaponEntry::Kind::Shield) |
-            (1u << (int)Save::WeaponEntry::Kind::Nova);
+            (1u << (int)Save::WeaponEntry::Kind::Nova) |
+            (1u << (int)Save::WeaponEntry::Kind::Turret);
         for(o = players->begin(); o != players->end(); o++) {
           Ship *s = (*o)->ship;
           if(s->is_local_player && (s->weapons_fired_mask & secondary_bits) == 0) {
@@ -8779,7 +8862,7 @@ void GLGame::tick(int delta) {
       }
     }
 
-    // Apply black-hole gravity to bullets, missiles, and mines.
+    // Apply black-hole gravity to bullets, missiles, mines, and turrets.
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       for(o = players->begin(); o != players->end(); o++) {
         for(auto &b : (*o)->ship->bullets)
@@ -8790,6 +8873,12 @@ void GLGame::tick(int delta) {
           (*bhi)->apply_gravity(n, step_size);
         for(auto &n : (*o)->ship->giga_mines)
           (*bhi)->apply_gravity(n, step_size);
+        // Turrets fall like every other deployed object (they used to be
+        // the one deployable the hole could not move — a drone parked in
+        // the gravity well sat immune while its own bullets curved away).
+        // The horizon-crossing return is ignored, the mine treatment.
+        for(auto &t : (*o)->ship->turrets)
+          (*bhi)->apply_gravity(t, step_size);
       }
       for(o = enemies->begin(); o != enemies->end(); o++) {
         for(auto &b : (*o)->ship->bullets)
@@ -8882,6 +8971,8 @@ void GLGame::tick(int delta) {
             pickups->push_back(new ShockPickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance + time_slow_pickup_drop_chance) {
             pickups->push_back(new TimeSlowPickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance + time_slow_pickup_drop_chance + turret_pickup_drop_chance) {
+            pickups->push_back(new TurretPickup((*oi)->position));
           }
           }
         }
@@ -9397,6 +9488,78 @@ void GLGame::tick(int delta) {
           }
         }
         bolt.struck.clear();
+      }
+    }
+
+    /* KILL-ALIGNED OBJECTS VS DEPLOYED TURRETS */
+    // A turret dies to anything that could kill a ship: hostile bullets
+    // (enemies', the mini-station's, the other player's under friendly
+    // fire), a comet or seeker ram, the mini-station's hull. Asteroid
+    // contact is handled in each owner's collide_grid pass (which owns the
+    // grid) and expiry in Ship::step. Debris only — no blast, no bounty.
+    for (auto *tgs : *players) {
+      Ship *ts = tgs->ship;
+      for (size_t ti = 0; ti < ts->turrets.size(); ) {
+        TurretDrone &t = ts->turrets[ti];
+        bool t_dead = false;
+        for (auto *h : *hazards) {
+          if (!h->is_alive()) continue;
+          if (h->kind_of() != Hazard::COMET && h->kind_of() != Hazard::SEEKER)
+            continue;  // a pulsar's body shoves, it doesn't kill
+          if (h->Object::collide(t)) { t_dead = true; break; }
+        }
+        if (!t_dead && mini_station != NULL && mini_station->is_alive() &&
+            mini_station->Object::collide(t))
+          t_dead = true;
+        if (!t_dead && mini_station != NULL) {
+          for (size_t i = 0; i < mini_station->bullets.size(); i++) {
+            if (t.collide(mini_station->bullets[i])) {
+              mini_station->bullets[i] = std::move(mini_station->bullets.back());
+              mini_station->bullets.pop_back();
+              t_dead = true;
+              break;
+            }
+          }
+        }
+        if (!t_dead) {
+          for (auto *e : *enemies) {
+            Ship *es = e->ship;
+            for (size_t i = 0; i < es->bullets.size(); i++) {
+              if (t.collide(es->bullets[i])) {
+                es->bullets[i] = std::move(es->bullets.back());
+                es->bullets.pop_back();
+                t_dead = true;
+                break;
+              }
+            }
+            if (t_dead) break;
+          }
+        }
+        // The partner's fire only counts when friendly fire is on (with it
+        // off their bullets can't hurt the owner either). Never the
+        // owner's own — its shots leave from this turret's muzzle.
+        if (!t_dead && friendly_fire) {
+          for (auto *p2 : *players) {
+            Ship *s2 = p2->ship;
+            if (s2 == ts) continue;
+            for (size_t i = 0; i < s2->bullets.size(); i++) {
+              if (t.collide(s2->bullets[i])) {
+                s2->bullets[i] = std::move(s2->bullets.back());
+                s2->bullets.pop_back();
+                t_dead = true;
+                break;
+              }
+            }
+            if (t_dead) break;
+          }
+        }
+        if (t_dead) {
+          ts->turret_explode(t);
+          ts->turrets[ti] = std::move(ts->turrets.back());
+          ts->turrets.pop_back();
+        } else {
+          ++ti;
+        }
       }
     }
 

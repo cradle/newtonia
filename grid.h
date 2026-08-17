@@ -24,6 +24,15 @@ public:
   // elastic-asteroid pass, which otherwise tested every rock against
   // every other one each step.
   void query_neighbours(const Object &object, vector<Object *> &out) const;
+  // Broad-phase gather of everything within `radius` of `center`: the
+  // cells overlapping the circle's bounding box, wrap included. The seeks'
+  // candidate source (seek.h) — cells are sized to the biggest asteroid
+  // and the cell COUNT grows with the world, so at late generations a
+  // weapon-range circle touches a small fraction of the grid where a list
+  // walk touched every rock alive. Same caveats as query_neighbours:
+  // duplicates possible, no exact test — the caller measures real
+  // (wrapped) distances itself.
+  void query_radius(Point center, float radius, vector<Object *> &out) const;
 
 private:
   const vector<Object *> &get(int row, int col) const;

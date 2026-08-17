@@ -187,7 +187,16 @@ namespace Net {
 //     partitioned by seat in the top nibble so cross-ship scans stay
 //     unambiguous; EV_SHIP_IMPACT's arg reads as seat 1..MAX_PLAYERS;
 //     EV_REMOTE_SHOT (dead since PROTO 17) loses its reader.
-const uint8_t PROTO_VERSION = 25;
+// 26: Turret drones (savegame v20). Each nx ship-extras record gains a
+//     trailing turret section (pos/vel, barrel angle, ms left, cooldown,
+//     shots left) — host-echoed like mines, deploy-grace held like every
+//     secondary. No new message: turret bullets are ordinary bullets from
+//     the owner's gun path, so MSG_SHOT reporting, hit claims and the
+//     wholesale bullet rebuild all cover them unchanged; the firing sim's
+//     mint gate (is_local_player / net_remote_gun) decides which machine
+//     spawns the real bullet, and both sides run the same aim/ammo
+//     bookkeeping so expiry stays in step.
+const uint8_t PROTO_VERSION = 26;
 
 // Peer identity (badge metadata) rides HELLO/WELCOME as an APPEND, not a
 // PROTO bump: `u8 platform (NetPlatform), u8 name_len, name_len bytes

@@ -212,6 +212,21 @@ void GLShip::step(int delta, const Grid &grid) {
     if(!has_beam) ship->add_beam_ammo(999);
   }
 
+  // Turret twin (test/e2e/turret_net.sh), same host-side contract as above.
+  // Deliberately its own hook rather than a row in GRANT_WEAPONS: with no
+  // other secondary granted the turret is armed the moment it appears, and
+  // the driver never has to walk the secondary cycle at a hostile
+  // generation — the selection probes at generation 3 cost an idle joiner
+  // all three lives before it ever reached TURRET (2026-08-17).
+  static const bool test_grant_turrets =
+      SDL_getenv("NEWTONIA_NET_TEST_GRANT_TURRETS") != NULL;
+  if(test_grant_turrets && !Ship::net_quiet_respawn && ship->is_alive()) {
+    bool has_turret = false;
+    for(Weapon::Base *w : ship->secondary_weapons)
+      if(dynamic_cast<Weapon::Turret*>(w)) { has_turret = true; break; }
+    if(!has_turret) ship->add_turret_ammo(999);
+  }
+
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
   }
@@ -648,6 +663,7 @@ void GLShip::draw(bool minimap) {
   }
   draw_mines(minimap);
   draw_giga_mines(minimap);
+  draw_turrets(minimap);
   if(!minimap) {
     draw_missiles();
     draw_shockwaves();
@@ -1201,6 +1217,72 @@ void GLShip::draw_mines(bool minimap) const {
   glLineWidth(1.5f);
   mesh.upload(mb, GL_DYNAMIC_DRAW);
   mesh.draw();
+}
+
+void GLShip::draw_turrets(bool minimap) const {
+  if(ship->turrets.empty()) return;
+
+  static MeshBuilder mb;
+  static Mesh mesh;
+
+  if(minimap) {
+    mb.clear();
+    mb.begin(GL_POINTS);
+    mb.color(color[0], color[1], color[2]);
+    for(auto &t : ship->turrets)
+      mb.vertex(t.position.x(), t.position.y());
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw(2.5f);
+    return;
+  }
+
+  // Body: an owner-coloured circle with a hub dot; the last 5 seconds (or
+  // last 5 rounds) dim the ring so retirement doesn't come out of nowhere.
+  mb.clear();
+  for(auto &t : ship->turrets) {
+    float fade = 1.0f;
+    if(t.ms_left < 5000.0f || t.shots_left <= 5) fade = 0.45f;
+    mb.begin(GL_LINE_LOOP);
+    mb.color(color[0], color[1], color[2], fade);
+    for(int i = 0; i < 18; i++) {
+      float a = i * 2.0f * (float)M_PI / 18.0f;
+      mb.vertex(cosf(a) * TurretDrone::RADIUS + t.position.x(),
+                sinf(a) * TurretDrone::RADIUS + t.position.y());
+    }
+    mb.end();
+  }
+  glLineWidth(2.0f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+
+  // Barrel: a thick stub from the hub out past the ring, pointing where the
+  // turret aims — full brightness while tracking a target, dimmed on the
+  // idle sweep so "armed and hunting" reads at a glance.
+  mb.clear();
+  mb.begin(GL_LINES);
+  for(auto &t : ship->turrets) {
+    mb.color(color[0], color[1], color[2], t.has_target ? 1.0f : 0.5f);
+    float ca = cosf(t.aim), sa = sinf(t.aim);
+    mb.vertex(t.position.x() + ca * 3.0f, t.position.y() + sa * 3.0f);
+    mb.vertex(t.position.x() + ca * TurretDrone::BARREL_LEN,
+              t.position.y() + sa * TurretDrone::BARREL_LEN);
+  }
+  mb.end();
+  glLineWidth(3.0f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+
+  // Hub dots in one point batch.
+  mb.clear();
+  mb.begin(GL_POINTS);
+  for(auto &t : ship->turrets) {
+    mb.color(color[0], color[1], color[2]);
+    mb.vertex(t.position.x(), t.position.y());
+  }
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw(4.0f);
 }
 
 void GLShip::draw_giga_mines(bool minimap) const {

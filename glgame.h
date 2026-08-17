@@ -29,6 +29,7 @@
 #include "revive_pickup.h"
 #include "shock_pickup.h"
 #include "time_slow_pickup.h"
+#include "turret_pickup.h"
 #include "net_identity.h"
 #include "net_signal.h"
 #include "view/tap_band.h"
@@ -409,13 +410,19 @@ private:
   void net_client_poll();
   void net_client_send_input();
   void net_apply_state(const Save::GameState &s);
-  void net_apply_extras(Save::Stream &in, const Save::GameState &s);
+  // ver: the save version the extras were serialized with — the current
+  // build's on the live wire (PROTO-fenced), the file header's on replay
+  // playback, where it gates sections older recordings don't carry (the
+  // v20 turret list).
+  void net_apply_extras(Save::Stream &in, const Save::GameState &s,
+                        uint16_t ver = Save::GameState::VERSION);
   // Delta protocol (M2-6): the ship half of the extras is shared between
   // keyframes and deltas; asteroids arrive as new/dynamic/removed records.
   // apply=false / membership_only=true drive the stale-delta walk: parse
   // past the stale poses, keep only the once-sent new/removed records.
   bool net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
-                             bool apply = true);
+                             bool apply = true,
+                             uint16_t ver = Save::GameState::VERSION);
   void net_apply_keyframe_asteroid_ids(Save::Stream &in,
                                        const Save::GameState &s);
   void net_apply_delta_asteroids(Save::Stream &in,
@@ -1395,6 +1402,7 @@ private:
   static const float lance_pickup_drop_chance;
   static const float shock_pickup_drop_chance;
   static const float time_slow_pickup_drop_chance;
+  static const float turret_pickup_drop_chance;
   // Co-op revive: 10% per asteroid kill while a
   // partner is fully out, at most one in the world at a time.
   static const float revive_pickup_drop_chance;
