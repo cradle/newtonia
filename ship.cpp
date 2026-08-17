@@ -2910,8 +2910,7 @@ void Ship::step(float delta, const Grid &grid) {
   // near-expiry guard (nx_read_projectiles) keeps the echo from doubling
   // the burst. Collision deaths stay host-side (collide_grid / GLGame).
   for(size_t i = 0; i < turrets.size(); ) {
-    turrets[i].step_turret((int)delta, &grid, missile_asteroids, shock_targets,
-                           this);
+    turrets[i].step_turret((int)delta, &grid, shock_targets, this);
     if(turrets[i].expired()) {
       turret_explode(turrets[i]);
       turrets[i] = std::move(turrets.back());
@@ -2936,7 +2935,7 @@ void Ship::step(float delta, const Grid &grid) {
   // has been drained (asteroids in collide_grid, hostiles in GLGame) so no hit is
   // dropped on the frame it dies.
   for(size_t i = 0; i < shocks.size(); ) {
-    shocks[i].step_bolt(delta, missile_asteroids, shock_targets, &grid);
+    shocks[i].step_bolt(delta, shock_targets, &grid);
     // PROTO 22: once a bolt is done growing, report its exact polyline to the
     // peer so the remote flash uses identical segments (a re-seek would
     // diverge — grow_segment jitters with rand()). "Done growing" is either
@@ -2968,7 +2967,7 @@ void Ship::step(float delta, const Grid &grid) {
 
   // Step missiles unconditionally so they keep flying regardless of weapon state.
   for(size_t i = 0; i < missiles.size(); i++) {
-    missiles[i].step_missile(delta, missile_asteroids, missile_ships_list,
+    missiles[i].step_missile(delta, &grid, missile_ships_list,
                              missiles_seek_players);
   }
 

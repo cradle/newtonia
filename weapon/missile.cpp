@@ -1,5 +1,6 @@
 #include "missile.h"
 #include "../seek.h"
+#include "../grid.h"
 #include "../world_sound.h"
 #include "../asset_path.h"
 #include "../sound_cache.h"
@@ -32,7 +33,7 @@ MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
   radius = 3.0f;
 }
 
-void MissileShot::step_missile(int delta, std::list<Object*> *asteroids,
+void MissileShot::step_missile(int delta, const Grid *grid,
                                std::list<Object*> *ships, bool seek_players) {
   time_left -= delta;
 
@@ -40,7 +41,11 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids,
   // the shared seek_nearest loop (seek.h); the ±45° cone and the per-list
   // exclusions live in the filters. fwd is unit length, so the dot product
   // is |to_o|*cos(angle) and the cone keeps cos(angle) >= cos(45°) — the
-  // same test the old degree arithmetic made.
+  // same test the old degree arithmetic made. Asteroid candidates come
+  // from the grid's radius query — this re-seek runs every 8 ms step per
+  // live missile, so it was the hottest of the full-list walks (CLAUDE.md
+  // convention 6). Reused scratch, single-threaded like the renderer's
+  // static MeshBuilders; broad-phase duplicates lose the min test.
   {
     Object *target = NULL;
     float closest = SEEK_RANGE;
@@ -50,7 +55,10 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids,
       return to_o.x() * fwd.x() + to_o.y() * fwd.y() >= mag * kCos45;
     };
 
-    Object *hit = seek_nearest(position, asteroids, closest,
+    static std::vector<Object *> candidates;
+    grid->query_radius(Point(position.x(), position.y()), SEEK_RANGE,
+                       candidates);
+    Object *hit = seek_nearest(position, &candidates, closest,
         [&in_cone](Object *a, const Point &to_o, float mag) {
           if (a->invincible) return false;
           return in_cone(to_o, mag);

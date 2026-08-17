@@ -52,7 +52,8 @@ ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
   points.push_back(Point(origin.x(), origin.y()));
 }
 
-Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
+template <typename Container>
+Object *ShockBolt::seek_target(const Point &tip, const Container *lst,
                                float &best_dist, bool asteroid_list) const {
   // The scan itself is the shared seek_nearest loop (seek.h); everything
   // in the filter below is this weapon's own law.
@@ -82,13 +83,17 @@ Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
       });
 }
 
-void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *hostiles,
-                             const Grid *grid) {
+void ShockBolt::grow_segment(std::list<Object*> *hostiles, const Grid *grid) {
   const Point tip = points.back();
 
-  // Pick the single nearest target across asteroids and hostiles.
+  // Pick the single nearest target across asteroids and hostiles. Asteroid
+  // candidates come from the grid around the advancing tip — SEEK_RANGE is
+  // a few cells, where the list walk was every rock alive. Reused scratch;
+  // broad-phase duplicates lose the min test.
   float best = SEEK_RANGE;
-  Object *target = seek_target(tip, asteroids, best, /*asteroid_list=*/true);
+  static std::vector<Object *> seek_candidates;
+  grid->query_radius(tip, SEEK_RANGE, seek_candidates);
+  Object *target = seek_target(tip, &seek_candidates, best, /*asteroid_list=*/true);
   Object *h = seek_target(tip, hostiles, best, /*asteroid_list=*/false);
   if (h) target = h;
 
@@ -192,12 +197,12 @@ void ShockBolt::stop() {
   }
 }
 
-void ShockBolt::step_bolt(int delta, std::list<Object*> *asteroids, std::list<Object*> *hostiles,
+void ShockBolt::step_bolt(int delta, std::list<Object*> *hostiles,
                           const Grid *grid) {
   seg_accum += delta;
   while (growing && (int)points.size() <= MAX_SEGMENTS && seg_accum >= SEG_MS) {
     seg_accum -= SEG_MS;
-    grow_segment(asteroids, hostiles, grid);
+    grow_segment(hostiles, grid);
   }
   if ((int)points.size() > MAX_SEGMENTS) growing = false;
   if (!growing) life -= (float)delta / FADE_MS;

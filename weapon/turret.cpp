@@ -38,32 +38,26 @@ TurretDrone::TurretDrone(WrappedPoint pos, Point vel, float initial_aim)
   radius_squared = radius * radius;
 }
 
-Object *TurretDrone::seek_target(const Grid *grid, std::list<Object*> *asteroids,
+Object *TurretDrone::seek_target(const Grid *grid,
                                  std::list<Object*> *hostiles,
-                                 const Ship *owner, float &best_dist) const {
-  best_dist = RANGE;
-  // Both containers are statically asteroids (the grid holds the game's
-  // asteroid list; the list fallback IS that list). Skip what a bullet
-  // can't harm right now: invincible rocks and phased ghosts (same
-  // exclusions as the shock bolt's seek).
-  auto keep_asteroid = [](Object *o, const Point &, float) {
-    Asteroid *a = static_cast<Asteroid *>(o);
-    if (a->invincible) return false;
-    if (a->phasing && a->phased) return false;
-    return true;
-  };
-  Object *best;
-  if (grid) {
-    // Broad phase by the grid: only the cells the RANGE circle touches.
-    // Reused scratch, not a per-seek allocation (the game loop is single-
-    // threaded, like the renderer's static MeshBuilders); duplicates from
-    // the broad phase are harmless to the min scan.
-    static std::vector<Object *> candidates;
-    grid->query_radius(Point(position.x(), position.y()), RANGE, candidates);
-    best = seek_nearest(position, &candidates, best_dist, keep_asteroid);
-  } else {
-    best = seek_nearest(position, asteroids, best_dist, keep_asteroid);
-  }
+                                 const Ship *owner) const {
+  float best_dist = RANGE;
+  // Broad phase by the grid: only the cells the RANGE circle touches (the
+  // grid only ever indexes the asteroid list, so every candidate is
+  // statically an Asteroid). Reused scratch, not a per-seek allocation
+  // (the game loop is single-threaded, like the renderer's static
+  // MeshBuilders); duplicates from the broad phase are harmless to the
+  // min scan. Skip what a bullet can't harm right now: invincible rocks
+  // and phased ghosts (same exclusions as the shock bolt's seek).
+  static std::vector<Object *> candidates;
+  grid->query_radius(Point(position.x(), position.y()), RANGE, candidates);
+  Object *best = seek_nearest(position, &candidates, best_dist,
+      [](Object *o, const Point &, float) {
+        Asteroid *a = static_cast<Asteroid *>(o);
+        if (a->invincible) return false;
+        if (a->phasing && a->phased) return false;
+        return true;
+      });
   Object *h = seek_nearest(position, hostiles, best_dist,
       [owner](Object *o, const Point &, float) {
         return o != (const Object *)owner;
@@ -73,7 +67,6 @@ Object *TurretDrone::seek_target(const Grid *grid, std::list<Object*> *asteroids
 }
 
 void TurretDrone::step_turret(int delta, const Grid *grid,
-                              std::list<Object*> *asteroids,
                               std::list<Object*> *hostiles, Ship *owner) {
   ms_left -= delta;
   Object::step(delta);
@@ -89,8 +82,7 @@ void TurretDrone::step_turret(int delta, const Grid *grid,
   seek_wait -= delta;
   if (seek_wait <= 0.0f) {
     seek_wait = SEEK_INTERVAL;
-    float dist = RANGE;
-    Object *target = seek_target(grid, asteroids, hostiles, owner, dist);
+    Object *target = seek_target(grid, hostiles, owner);
     has_target = target != NULL;
     if (target != NULL) {
       // LEAD the target: aim where it will be when the bullet lands, not

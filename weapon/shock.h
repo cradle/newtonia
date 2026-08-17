@@ -58,10 +58,12 @@ struct ShockBolt {
   static const float SPARK_MS;      // spark-burst fade duration
 
   ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner = nullptr);
-  // `grid` is the asteroid collision grid, used to find invincible rocks the
-  // growing segment must stop at (segment query, like the bullet sweep).
-  void step_bolt(int delta, std::list<Object*> *asteroids, std::list<Object*> *hostiles,
-                 const Grid *grid);
+  // `grid` is the asteroid collision grid, and is required: it feeds the
+  // seek's asteroid candidates (Grid::query_radius around the advancing
+  // tip) and finds the invincible rocks the growing segment must stop at
+  // (segment query, like the bullet sweep). Hostiles arrive as a list —
+  // it is tiny.
+  void step_bolt(int delta, std::list<Object*> *hostiles, const Grid *grid);
   bool is_alive() const { return life > 0.0f || spark_life > 0.0f; }
   // Halt further growth: the arc has reached a target it couldn't destroy, so it
   // ends where it is and fades instead of chaining onward, spawning a spark at
@@ -71,15 +73,20 @@ struct ShockBolt {
 
 private:
   // Nearest live, un-avoided target in `lst` within SEEK_RANGE of `tip`.
-  // `asteroid_list` says every element is statically an Asteroid (the ship's
-  // missile-asteroid list) — invincible rocks are skipped there (never sought,
-  // only blocking); the hostiles list never contains asteroids, so it takes no
-  // per-element type check at all. Invincible SHIPS (shielded/god-mode players
-  // under friendly fire) stay eligible — the arc paths to and stops at them.
-  Object *seek_target(const Point &tip, std::list<Object*> *lst, float &best_dist,
+  // `asteroid_list` says every element is statically an Asteroid (a
+  // Grid::query_radius result — the grid only ever indexes the asteroid
+  // list) — invincible rocks are skipped there (never sought, only
+  // blocking); the hostiles list never contains asteroids, so it takes no
+  // per-element type check at all. Invincible SHIPS (shielded/god-mode
+  // players under friendly fire) stay eligible — the arc paths to and
+  // stops at them. Templated on the container because the two calls feed
+  // it differently — a grid result vector and the hostiles list — and
+  // both walk the shared seek_nearest loop (seek.h); defined in shock.cpp,
+  // its only user.
+  template <typename Container>
+  Object *seek_target(const Point &tip, const Container *lst, float &best_dist,
                       bool asteroid_list) const;
-  void grow_segment(std::list<Object*> *asteroids, std::list<Object*> *hostiles,
-                    const Grid *grid);
+  void grow_segment(std::list<Object*> *hostiles, const Grid *grid);
   // Where a terminal segment should end: the point on `target`'s surface facing
   // the incoming bolt (`from`), given the target's centre. Traces the real
   // polygon edge for asteroids; falls back to the collision circle otherwise, so

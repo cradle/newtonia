@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <SDL_mixer.h>
 
+class Grid;
+
 struct MissileShot : public Object {
   Point facing;
   float thrust;
@@ -35,8 +37,11 @@ struct MissileShot : public Object {
 
   MissileShot(WrappedPoint pos, Point facing_dir, Point base_velocity);
   // seek_players=false (friendly fire off) skips player ships in the seek
-  // scan — a co-op missile must not hunt the partner.
-  void step_missile(int delta, std::list<Object*> *asteroids,
+  // scan — a co-op missile must not hunt the partner. Asteroid candidates
+  // come from the grid's radius query (Grid::query_radius — the missile
+  // re-seeks every 8 ms step, so it was the hottest of the full-list
+  // walks); `grid` is required. Ships arrive as a list — it is tiny.
+  void step_missile(int delta, const Grid *grid,
                     std::list<Object*> *ships = nullptr,
                     bool seek_players = true);
   bool is_alive() const { return time_left > 0; }
