@@ -254,8 +254,9 @@ lives in the achievement's **Achievement Localization** section, not on the
 achievement itself, and unlike Steam and Play an edit to a live
 localization does not go live on Save: it needs Add for Review → Submit for
 Review (standalone, no app version required, once the achievement has
-shipped with one). `coop_clear`'s reword was submitted 2026-08-15 and is in
-review; the table records what was entered. Wording deviations from
+shipped with one). `coop_clear`'s reword went that route and is **live**
+(submitted 2026-08-15, approved 2026-08-17 — budget a couple of days for a
+copy fix). Wording deviations from
 §5 are deliberate: Myriad spells out "across all your games" to
 distinguish the lifetime count from Millennium's one-game count (the
 state-your-requirements rule), and Untouchable's earned text drops the

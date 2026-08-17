@@ -627,11 +627,13 @@ Was: the achievement unlocks for any clear with ≥2 players (unchanged —
 "Clear a level in 2-player mode" (entered 2026-07-26).
 
 Reworded to **"Clear a level in co-op mode"** — a straight "2-player" →
-"co-op" substitution — in Steamworks and the Play Console (both live) and
-in App Store Connect (**submitted 2026-08-15, in review**: Apple keeps the
-copy in the achievement's Achievement Localization section and a live
-localization edit needs Add for Review → Submit for Review rather than
-going live on Save; it can go standalone, no app version). The two
+"co-op" substitution — in Steamworks, the Play Console and App Store
+Connect. **All three live**; Apple's took two days (submitted 2026-08-15,
+approved 2026-08-17), because it keeps the copy in the achievement's
+Achievement Localization section and a live localization edit needs Add
+for Review → Submit for Review rather than going live on Save. It went
+standalone, with no app version attached — worth remembering for the next
+copy fix. The two
 ACHIEVEMENTS.md tables (§2 ASC copy of record, §5 master list) match what
 was entered. No code change — the symbolic id, gating, and point values
 are untouched.
