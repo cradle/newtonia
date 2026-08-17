@@ -22,6 +22,11 @@
 # ways for long enough to clear the resolver's liveness gate
 # (FLAP_MIN_ADOPT_MS, 12 s) and then lets the connection finish.
 #
+# The knocker is a scripted relay client (fake_joiner.mjs), not a game: it
+# has to land inside that hold, and a real instance took ~34 s of boot,
+# window and xdotool to get there on a CI runner. Everything else here is
+# real instances — including the pilot that finally takes seat 3 back.
+#
 # Prints "NSEAT-REJOIN-FLAP-SWAP-OK". Needs a local relay (see lib.sh).
 set -u
 if [ -z "${DISPLAY:-}" ]; then
@@ -62,19 +67,14 @@ done
 # the door serves one seat at a time. The re-map below is its proof.
 echo "seats 3+4 parked, door offering seat 3"
 
-# Both instances get their windows up BEFORE the hold starts: from the
-# moment the holder answers, everything below is racing a 22 s clock, and a
-# process launch plus its window wait is ~5 s of that spent for nothing.
+# The holder's window goes up BEFORE the hold starts: from the moment it
+# answers, everything below is racing the hold's clock, and a process
+# launch plus its window wait is ~5 s of that spent for nothing.
 BEFORE=$(newtonia_windows)
 PH=$(launch holder NEWTONIA_NET_NAME=PILOT3 NEWTONIA_NET_TEST_HANG_MS=$HOLD_MS)
 sleep 4
 WH=$(new_window_since "$BEFORE")
 [ -n "$WH" ] || { echo "NO HOLDER WINDOW"; kill "$PH" 2>/dev/null; room_kill_all; exit 1; }
-BEFORE=$(newtonia_windows)
-PK=$(launch knocker NEWTONIA_NET_NAME=PILOT2)
-sleep 4
-WK=$(new_window_since "$BEFORE")
-[ -n "$WK" ] || { echo "NO KNOCKER WINDOW"; kill "$PK" "$PH" 2>/dev/null; room_kill_all; exit 1; }
 
 # Sampled before anyone joins: a re-arm from here on means the adoption
 # died of its own accord and there is no longer a handshake to protect —
@@ -92,9 +92,29 @@ done
 echo "PILOT3's answer is on the wire and its ICE is held"
 
 # --- seat 3's own pilot knocks while that handshake is in flight ----------
-nav_join "$WK" "$ROOM_CODE" knocker
+# A scripted joiner, not a game instance. The resolver consumes exactly two
+# worker events here — the PeerJoin and the identity frame naming its jid —
+# and a real instance delivers them only after booting, showing a window and
+# being walked through the menu with xdotool: ~34 s on a loaded CI runner,
+# against a hold it had to land inside. It failed on that, twice, asserting
+# nothing. This lands in under a second and cannot answer the offer, so it
+# cannot squat the door either (see fake_joiner.mjs).
+# Created here, not by the redirect: that runs in the forked child, so the
+# first poll below can beat it and grep complains about a missing file.
+: > "$OUT/knocker.log"
+node "$(dirname "$0")/fake_joiner.mjs" "$ROOM_CODE" PILOT2 \
+  >> "$OUT/knocker.log" 2>&1 &
+PK=$!
+JOINED=
+for _ in $(seq 1 20); do
+  grep -aq "^JOINED" "$OUT/knocker.log" && { JOINED=1; break; }
+  grep -aq "^FAILED\|^CLOSED" "$OUT/knocker.log" &&
+    room_fail "KNOCKER COULD NOT JOIN THE ROOM" knocker
+  sleep 1
+done
+[ -n "$JOINED" ] || room_fail "KNOCKER NEVER JOINED THE ROOM" knocker
 SEEN=
-for _ in $(seq 1 25); do
+for _ in $(seq 1 20); do
   grep -aq "while seat 3 is mid-handshake" "$OUT/host.log" && { SEEN=1; break; }
   sleep 1
 done
@@ -129,11 +149,12 @@ done
 [ -n "$VERDICT" ] || room_fail "RESOLVER NEVER RULED ON THE KNOCKER" host
 echo "resolver left the handshake alone"
 
-# Out of the room before the hold lifts. Once seat 4 seats, the door
-# re-arms for seat 3 and its offer is UNADDRESSED — the knocker, still the
-# oldest connected joiner, would eat the offer meant for the instance
-# launched below (the squatter case nseat_rejoin_flap.sh names).
-kill -9 "$PK" 2>/dev/null; wait "$PK" 2>/dev/null
+# Out of the room before the hold lifts. It cannot ANSWER the door, but it
+# is still the oldest connected joiner, and the re-armed door's offer is
+# unaddressed — leaving it there would hand seat 3's offer to a socket that
+# will never use it (the squatter case nseat_rejoin_flap.sh names; the
+# host's 6 s re-push would recover, but not deterministically).
+kill "$PK" 2>/dev/null; wait "$PK" 2>/dev/null
 
 # --- the hold lifts: the protected handshake must complete, at seat 4 -----
 # This is what a corpse could not have shown. The exchange the resolver
@@ -179,9 +200,9 @@ for i in "${!ROOM_WINS[@]}"; do
 done
 
 room_kill_all
-# The knocker's log is exempt: it is SIGKILLed with a join half-made by
-# design, which is exactly the shape assert_clean reads as a failure
-# everywhere else (same exemption nseat_rejoin_flap.sh gives its flapper).
+# The knocker's log is not a game log at all (node, three words long), so
+# the game-crash markers assert_clean greps for say nothing about it; its
+# own JOINED/FAILED contract is asserted above instead.
 assert_clean "$OUT/host.log" "$OUT/joiner1.log" "$OUT/holder.log" \
              "$OUT/rejoin3.log"
 echo "NSEAT-REJOIN-FLAP-SWAP-OK"

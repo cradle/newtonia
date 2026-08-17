@@ -895,7 +895,7 @@ flight. Verified both ways, like the original: green as written, and red
 on a control build whose comparison is `net_rejoin_seat_for_identity(who)
 == hs->seat` (it drops at exactly 12 000 ms, the liveness gate).
 
-Two things it needed. First a second hook, `NEWTONIA_NET_TEST_HANG_MS`
+Three things it needed. First a second hook, `NEWTONIA_NET_TEST_HANG_MS`
 (net_lobby.cpp): TEST_FLAP's corpse would exercise the same comparison,
 but the assertion with teeth is that the protected handshake goes on to
 COMPLETE at its re-mapped seat, which a corpse can never show. The hook
@@ -910,6 +910,18 @@ immediately: the driver's first skip guard read the door re-arming as "the
 adoption expired on its own", and a drop re-offers, so it re-arms
 identically — the control build's regression exited 0. The drop test now
 runs first and every pass.
+
+Third, learned from CI rather than reasoned: the knocker had to stop being
+a game instance. It has to land inside the hold, and delivering its two
+worker events through a real instance means booting, waiting for a window
+and walking the menu with xdotool — ~34 s on a loaded runner against a
+22 s hold, so the driver failed on timing while asserting nothing (twice,
+both attempts). `test/e2e/fake_joiner.mjs` is a scripted relay client that
+joins and announces a name in under a second and does nothing else; the
+measured gap between the holder's answer and the filed PeerJoin went from
+~7 s to 0.5 s. It also cannot ANSWER the door, which removes the squatter
+hazard the real instance carried. Everything else in the driver stays a
+real instance, including the pilot that finally retakes seat 3.
 
 **Cost.** One focused PR: ~60-100 lines across glgame.cpp/.h, one e2e
 driver, one test hook, doc updates. No worker change, no PROTO bump, no

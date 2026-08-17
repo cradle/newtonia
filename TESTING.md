@@ -474,8 +474,13 @@ test/e2e/nseat_rejoin_flap_swap.sh # O4's seat-re-map case, which the
                      # and the held handshake must then COMPLETE onto seat 4:
                      # the part a corpse could never show, and why this one
                      # needs NEWTONIA_NET_TEST_HANG_MS rather than TEST_FLAP.
-                     # Verified both ways — green as written, red on a build
-                     # whose resolver compares seats
+                     # The knocker is test/e2e/fake_joiner.mjs, a scripted
+                     # relay client, because it has to land inside that hold
+                     # and a real instance took ~34 s of boot+window+xdotool
+                     # to get there on CI; it also cannot answer the offer,
+                     # so it cannot squat the re-armed door. Verified both
+                     # ways — green as written, red on a build whose
+                     # resolver compares seats
 test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # (host-only env) empties every seat; each CLIENT must
                      # observe "game over (all players out)" via replication,
