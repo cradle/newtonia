@@ -5944,7 +5944,15 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
         nx_hold_unconfirmed(old_turrets, s->turrets, quiet, "turret");
     if (!quiet)
       for (auto &t : gone)
-        if (t.ms_left > 1000.0f && t.shots_left > 0) s->turret_explode(t);
+        if (t.ms_left > 1000.0f && t.shots_left > 0) {
+          // The life is the regression handle, exactly as for missiles: a
+          // turret that vanishes moments after its deploy never met an
+          // asteroid — that is the muzzle-blast bug the deploy grace
+          // exists to prevent (turret_net.sh asserts on this line).
+          NET_LOG("net: turret vanished (host destruction), life %d ms\n",
+                  (int)t.ms_left);
+          s->turret_explode(t);
+        }
   }
   return true;
 }

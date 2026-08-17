@@ -3,6 +3,7 @@
 #include "../sound_cache.h"
 #include "../ship.h"
 #include "../asteroid.h"
+#include "../net_protocol.h"
 #include <math.h>
 #include <iostream>
 
@@ -129,6 +130,13 @@ namespace Weapon {
         ship->turrets.push_back(TurretDrone(
             ship->tail(), ship->facing * -0.05f + ship->velocity * 0.1f,
             atan2f(ship->facing.y(), ship->facing.x())));
+        // Deploys are otherwise silent in the logs; the e2e driver
+        // (test/e2e/turret_net.sh) keys its selection probes on this line —
+        // note it also fires on the HOST's replica of a client's deploy
+        // (the INPUT press replays through this same weapon sim).
+        NET_LOG("turret deployed at (%.0f, %.0f)\n",
+                ship->turrets.back().position.x(),
+                ship->turrets.back().position.y());
         if(deploy_sound != NULL && ship->sound_volume_scale > 0.0f) {
           Mix_VolumeChunk(deploy_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
           Mix_PlayChannel(-1, deploy_sound, 0);

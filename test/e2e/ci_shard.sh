@@ -38,8 +38,9 @@ shard_drivers() {
     lobby-and-lan) echo "lan_hidden lanclip lanrejoin lanrename byecard lankeep
                          ownroom mismatch policy identity identity_legacy pairstart fly
                          nseat_lobby_kick nseat_lobby_mouse" ;;
-    netplay-core) echo "room weapons_net missile_net shock_net shock_hazards_net
-                        hazards_net timeslow_net impacts replay_online" ;;
+    netplay-core) echo "room weapons_net missile_net turret_net shock_net
+                        shock_hazards_net hazards_net timeslow_net impacts
+                        replay_online" ;;
     # nseat_rejoin_flap_swap sits here rather than beside its sibling
     # nseat_rejoin_flap for load, not theme: seats-and-soak is the shard
     # that decides this job's wall clock (16 min against 12 for this one),

@@ -212,6 +212,21 @@ void GLShip::step(int delta, const Grid &grid) {
     if(!has_beam) ship->add_beam_ammo(999);
   }
 
+  // Turret twin (test/e2e/turret_net.sh), same host-side contract as above.
+  // Deliberately its own hook rather than a row in GRANT_WEAPONS: with no
+  // other secondary granted the turret is armed the moment it appears, and
+  // the driver never has to walk the secondary cycle at a hostile
+  // generation — the selection probes at generation 3 cost an idle joiner
+  // all three lives before it ever reached TURRET (2026-08-17).
+  static const bool test_grant_turrets =
+      SDL_getenv("NEWTONIA_NET_TEST_GRANT_TURRETS") != NULL;
+  if(test_grant_turrets && !Ship::net_quiet_respawn && ship->is_alive()) {
+    bool has_turret = false;
+    for(Weapon::Base *w : ship->secondary_weapons)
+      if(dynamic_cast<Weapon::Turret*>(w)) { has_turret = true; break; }
+    if(!has_turret) ship->add_turret_ammo(999);
+  }
+
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
   }
