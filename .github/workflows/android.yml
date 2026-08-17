@@ -90,3 +90,65 @@ jobs:
           name: newtonia-debug
           path: newtonia/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
+
+  # The Android half of the per-platform TLS trust gate (TESTING.md). Every
+  # other platform's relay round trip is CI-gated — macos-dev and windows run
+  # the same NEWTONIA_SIGNAL_SELFTEST — and Android's was the one still
+  # verified by hand on a phone, because it needs a device to run on. An
+  # emulator is a device.
+  #
+  # What it proves is specific to this platform: MbedTLS reaches no system
+  # trust store, so a completed WSS handshake to the production worker is the
+  # proof that the roots baked into net_ca_bundle.cpp wrote to the pref path,
+  # parsed, and verified Cloudflare's chain. Nothing else on Android checks
+  # that.
+  emulator-selftest:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # /dev/kvm exists on ubuntu-latest but is root-only, and the emulator
+      # is unusably slow (or refuses to boot) without it. This udev rule is
+      # the documented fix for android-emulator-runner on GitHub-hosted
+      # Linux runners.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: newtonia-debug
+
+      # A plain image, not google_apis: the hook returns from SDL_main long
+      # before Achievements::init() brings up the Play Games SDK, so nothing
+      # here needs Google Play services. x86_64 because that is what the
+      # runner can accelerate — the APK ships it alongside the two ARM ABIs
+      # (android/app/build.gradle abiFilters).
+      - name: Signal selftest on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash android/emulator_selftest.sh
+        env:
+          APK: app-debug.apk
+
+      - name: Upload logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-selftest-log
+          path: logcat-*.txt
+          retention-days: 7
+          if-no-files-found: ignore

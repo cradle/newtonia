@@ -75,7 +75,7 @@ backends, and it is the one with a system trust store to fall back on:
 |-------|-------------|--------------|----------|
 | Linux, `make` on macOS | OpenSSL | system store **+** our bundle | ✅ `linux.yml` gate |
 | `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ `macos-dev.yml` gate (was manual 2026-08-03) |
-| Android | MbedTLS | our bundle ONLY | ✅ SIGNAL selftest on a real phone 2026-08-16 (was a manual UI drive, 2026-08-04) |
+| Android | MbedTLS | our bundle ONLY | ✅ `android.yml` emulator gate (was a real phone 2026-08-16, a manual UI drive before that) |
 | iOS | MbedTLS | our bundle ONLY | ✅ `ios.yml` gate (simulator) |
 | Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ✅ `windows.yml` gate (was manual 2026-08-04) |
 | Xbox | MbedTLS | our bundle ONLY | ⬜ — `cradle/newtonia-xbox` owns console runtime work |
@@ -149,7 +149,16 @@ xcrun devicectl device process launch --console --terminate-existing \
 vars instead — see `ios.yml`.)
 
 **Android HAS the selftests** (2026-08-16, `android_main.cpp` under
-`NEWTONIA_NET_RTC`). The SIGNAL recipe below is device-verified on a real
+`NEWTONIA_NET_RTC`), and the SIGNAL one is now **CI-gated on an emulator** —
+`android.yml`'s `emulator-selftest` job installs the debug APK on an
+api-30 x86_64 AVD and runs `android/emulator_selftest.sh`, which is the
+recipe below with retries, turning the log line into an exit status. That
+script takes a real phone just as happily (`adb devices`), and
+`SELFTEST=NEWTONIA_NET_SELFTEST` picks the loopback hook instead. The
+emulator needs `/dev/kvm`, which exists on `ubuntu-latest` but is root-only
+until the udev rule in the job opens it up.
+
+The SIGNAL recipe below is device-verified on a real
 phone; the loopback variant is compile-verified only, so treat its
 multi-minute warning as a prediction from the code rather than something
 anyone has sat through — reached like every other `NEWTONIA_*` var here, as
