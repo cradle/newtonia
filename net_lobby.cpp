@@ -1869,18 +1869,28 @@ void NetLobby::test_hang_update(int delta) {
   if (!test_hang_read_) {
     test_hang_read_ = true;
     const char *hang = SDL_getenv("NEWTONIA_NET_TEST_HANG_MS");
-    test_hang_ms_ = hang ? atoi(hang) : 0;
-    if (test_hang_ms_ > 0)
+    test_hang_cfg_ms_ = hang ? atoi(hang) : 0;
+    test_hang_ms_ = test_hang_cfg_ms_;  // held from here, counted from the answer
+    if (test_hang_cfg_ms_ > 0)
       NET_LOG("[lobby] TEST_HANG: armed - ICE held from now, and for %d ms "
-              "past the answer\n", test_hang_ms_);
+              "past each answer\n", test_hang_cfg_ms_);
+  }
+  if (hosting_ || test_hang_cfg_ms_ <= 0) return;
+  // Re-arm on every crossing of answer_sent_, in both directions (see the
+  // header): a retry that rebuilds the transport must get the hold back
+  // before its candidates start flowing, and its answer must get a full
+  // countdown rather than whatever the superseded attempt left behind. Held
+  // candidates go with the transport they were meant for.
+  if (answer_sent_ != test_hang_answered_) {
+    test_hang_answered_ = answer_sent_;
+    test_hang_ms_ = test_hang_cfg_ms_;
+    test_hang_held_.clear();
+    if (answer_sent_)
+      NET_LOG("[lobby] TEST_HANG: holding ICE for %d ms\n", test_hang_ms_);
   }
   // The countdown, unlike the hold, runs from the answer: that is when the
   // host builds the adoption whose age the flap resolver gates on.
-  if (hosting_ || test_hang_ms_ <= 0 || !answer_sent_) return;
-  if (!test_hang_counting_) {
-    test_hang_counting_ = true;
-    NET_LOG("[lobby] TEST_HANG: holding ICE for %d ms\n", test_hang_ms_);
-  }
+  if (!answer_sent_ || test_hang_ms_ <= 0) return;
   test_hang_ms_ -= delta;
   if (test_hang_ms_ > 0) return;
   test_hang_ms_ = 0;

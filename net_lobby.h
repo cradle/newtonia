@@ -356,9 +356,18 @@ private:
   // are replayed on release. The countdown runs from the answer, which is
   // when the host's adoption starts ageing. Read via SDL_getenv on the
   // first tick; no shipped build sets it, and it does nothing on a host.
-  int test_hang_ms_ = 0;
+  //
+  // EACH answer gets its own hold, which is why the configured duration is
+  // kept apart from what remains. A joiner can answer more than once in one
+  // lobby — the four paths that reset answer_sent_ rebuild the transport and
+  // re-answer — and a one-shot countdown drained on a superseded first
+  // attempt, leaving the answer that actually became the host's adoption
+  // with no hold at all. On CI that read as a knocker arriving too late,
+  // twice, because the window it needed had never opened.
+  int test_hang_cfg_ms_ = 0;   // configured hold, read once
+  int test_hang_ms_ = 0;       // remaining on the current answer
   bool test_hang_read_ = false;
-  bool test_hang_counting_ = false;
+  bool test_hang_answered_ = false;  // edge detector on answer_sent_
   std::vector<std::pair<std::string, std::string> > test_hang_held_;
   void test_hang_update(int delta);
 

@@ -903,7 +903,16 @@ holds ICE both ways and **from the first tick** — the first cut held from
 the answer and stalled nothing, because the host offers first and trickles
 immediately, so its candidate was already applied and the peer discovered
 us peer-reflexively (`ice path host/prflx`, connected 178 ms into a 22 s
-hold). Second, the resolver's "different pilot, leave it alone" branch now
+hold). The countdown re-arms on EVERY answer, which the second CI failure
+forced: a joiner can answer more than once in one lobby (four paths reset
+`answer_sent_` and rebuild the transport), and a one-shot countdown drained
+on a superseded first attempt left the answer that actually became the
+adoption with no hold at all — the host connected it inside 4 s, the window
+never opened, and the driver reported it as the knocker arriving late. The
+driver now dumps the holder's side on any failure in that phase and names a
+too-short window separately from a missing knocker, because two rounds of
+inferring the cause from a 20-line host tail got it wrong twice.
+Second, the resolver's "different pilot, leave it alone" branch now
 LOGS. Until it did, the negative could only assert the ABSENCE of the drop
 line — equally true of a resolver that never ran. That mattered
 immediately: the driver's first skip guard read the door re-arming as "the

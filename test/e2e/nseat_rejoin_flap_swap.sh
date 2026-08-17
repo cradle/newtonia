@@ -113,11 +113,38 @@ for _ in $(seq 1 20); do
   sleep 1
 done
 [ -n "$JOINED" ] || room_fail "KNOCKER NEVER JOINED THE ROOM" knocker
+
+# Two CI failures were reported as "the knocker never filed" when the real
+# story was upstream of the knocker — the hold had already ended and there
+# was no adoption left to file against. room_fail tails host.log only, so
+# the evidence that would have said which was never in the output. Dump the
+# holder's side of the story on any failure from here on, and name the
+# upstream case separately from the knocker's own.
+hold_diag() {
+  echo "---- holder (hold + connect) ----"
+  grep -a "TEST_HANG\|answer sent\|joining room\|bootstrap adopted\|ice path\|connect failed" \
+    "$OUT/holder.log" | tail -12
+  echo "---- knocker ----"; cat "$OUT/knocker.log"
+  echo "---- host (door + adoption) ----"
+  grep -a "reopened for rejoin\|mid-handshake\|rejoin answer\|unanswered\|rejoined\|leaving it alone\|dropping the stale" \
+    "$OUT/host.log" | tail -12
+  echo "----"
+}
 SEEN=
 for _ in $(seq 1 20); do
   grep -aq "while seat 3 is mid-handshake" "$OUT/host.log" && { SEEN=1; break; }
+  # The hold ending before the host has filed anything means the adoption
+  # connected and the window this test needs is gone — a different failure
+  # from "the knocker didn't arrive", and the one worth naming.
+  grep -aq "TEST_HANG: releasing" "$OUT/holder.log" && break
   sleep 1
 done
+if [ -z "$SEEN" ]; then
+  hold_diag
+  grep -aq "TEST_HANG: releasing" "$OUT/holder.log" &&
+    room_fail "HOLD ENDED BEFORE THE KNOCKER WAS FILED (window too short)" host
+  room_fail "HOST NEVER FILED THE KNOCKER'S JOIN" host
+fi
 [ -n "$SEEN" ] || room_fail "HOST NEVER FILED THE KNOCKER'S JOIN" host
 echo "host filed PILOT2's join against seat 3's adoption"
 
@@ -146,7 +173,7 @@ for _ in $(seq 1 25); do
   fi
   sleep 1
 done
-[ -n "$VERDICT" ] || room_fail "RESOLVER NEVER RULED ON THE KNOCKER" host
+[ -n "$VERDICT" ] || { hold_diag; room_fail "RESOLVER NEVER RULED ON THE KNOCKER" host; }
 echo "resolver left the handshake alone"
 
 # Out of the room before the hold lifts. It cannot ANSWER the door, but it
