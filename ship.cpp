@@ -1204,7 +1204,11 @@ void Ship::reset(bool was_killed) {
     giga_mines.clear();
     bullets.clear();
     missiles.clear();
-    turrets.clear();
+    // Turrets deliberately NOT cleared (decided 2026-08-17): a deployed
+    // sentry fights on through its owner's death and respawn, retiring
+    // only by its own expiry, by destruction, or at the generation
+    // rebuild (GLGame's rollover clears every ship's list — the new
+    // world has new bounds, so a survivor could sit outside them).
     shockwaves.clear();
     shocks.clear();
   }

@@ -169,9 +169,9 @@ alive $PA host; alive $PB joiner
 # or a hostile shot met the drone) happens after it has lived a while; the
 # echo-gap bug vanishes the local copy within an apply or two of the press,
 # i.e. with essentially all of LIFETIME_MS (60000) still on the clock. The
-# line sits at 59500 — inside the ~400 ms grace-disabled signature, clear of
-# a host respawn wiping a just-deployed drone (possible, but it needs the
-# owner to die within half a second of the press).
+# line sits at 59500 — inside the ~400 ms grace-disabled signature. (Turrets
+# survive their owner's respawn and are swept only by the level rollover's
+# QUIET apply, so no legitimate wipe can produce a young vanish here.)
 YOUNG=$(grep -a "turret vanished (host destruction)" "$OUT/joiner.log" |
         sed 's/.*life \([0-9]*\) ms.*/\1/' |
         awk '$1 >= 59500 { n++ } END { print n + 0 }')

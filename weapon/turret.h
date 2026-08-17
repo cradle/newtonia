@@ -24,7 +24,9 @@ class Ship;
 // bullets — whichever comes first — and blows apart into debris; it also
 // dies to anything kill-aligned that touches it (asteroid contact, hostile
 // bullets, a comet/seeker ram — those checks live in Ship::collide_grid and
-// GLGame's hostile passes, which own the lists involved).
+// GLGame's hostile passes, which own the lists involved). Unlike the other
+// deployables it SURVIVES its owner's death and respawn — a sentry fights
+// on through the countdown — and is swept only at the generation rebuild.
 //
 // Its bullets go into the OWNER's `bullets` vector through
 // Ship::fire_turret_bullet, so every downstream system — asteroid collision

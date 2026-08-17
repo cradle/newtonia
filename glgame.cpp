@@ -8667,6 +8667,13 @@ void GLGame::tick(int delta) {
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
+        // Deployed turrets end with the level, like the pickups above:
+        // they survive their owner's respawn (reset() spares them), so
+        // the rollover is the one place they are swept — the new world
+        // has new bounds, and a survivor could sit outside them. Silent
+        // by design; the net client's wipe arrives as this rebuild's
+        // QUIET apply, so no debris fires on either machine.
+        (*o)->ship->turrets.clear();
         (*o)->ship->respawn(grid, false);
         (*o)->ship->died_this_generation = false;
       }
