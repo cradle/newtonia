@@ -55,14 +55,13 @@ namespace Weapon {
 
     void shoot(bool on = true);
     void step(int delta);
-    void set_asteroids(std::list<Object*> *a) { asteroids = a; }
-    void set_ship_targets(std::list<Object*> *s) { ship_targets = s; }
+    // No target lists here: the launcher only mints MissileShots — every
+    // shot's targets arrive per step from Ship::step (the grid for
+    // asteroids, the ships list), so the old set_asteroids/set_ship_targets
+    // members were write-only plumbing and are gone.
 
     Mix_Chunk *fly_sound = NULL, *empty_sound = NULL;
     std::weak_ptr<int> fly_channel_handle;
-  private:
-    std::list<Object*> *asteroids = nullptr;
-    std::list<Object*> *ship_targets = nullptr;
   };
 }
 

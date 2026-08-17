@@ -125,7 +125,10 @@ void ShockBolt::grow_segment(std::list<Object*> *hostiles, const Grid *grid) {
   // the bullet sweep) rather than a full asteroid scan — CLAUDE.md convention
   // 6. Stop here directly (spark at the surface) — nothing to score, so no
   // struck entry — and the ended polyline replicates as-is.
-  if (grid) {
+  {
+    // grid is required (the seek above already dereferenced it) — the old
+    // null guard here misread as "grid optional" and invited a call path
+    // that would have crashed 30 lines up.
     static std::vector<Object *> block_candidates;
     block_candidates.clear();
     grid->query_segment(tip, next, block_candidates);

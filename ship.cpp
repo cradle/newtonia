@@ -502,8 +502,6 @@ void Ship::add_missile_ammo(int amount) {
   }
   Weapon::Missile *w = new Weapon::Missile(this);
   w->set_ammo(amount);
-  if(missile_asteroids) w->set_asteroids(missile_asteroids);
-  if(missile_ships_list) w->set_ship_targets(missile_ships_list);
   secondary_weapons.push_back(w);
   if(!shield_held(secondary_weapons, secondary))
     secondary = --secondary_weapons.end();
@@ -1056,20 +1054,16 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   velocity = Point(p.vel_x, p.vel_y);
 }
 
+// The lists live on the SHIP: missile_asteroids feeds the shockwave pass
+// (and is the game's asteroid list), missile_ships_list feeds each
+// MissileShot's per-step seek. The Missile WEAPON itself holds no target
+// state — it only mints shots.
 void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
   missile_asteroids = asteroids;
-  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
-    Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
-    if(mw) { mw->set_asteroids(asteroids); return; }
-  }
 }
 
 void Ship::set_missile_ships(std::list<Object*> *ships) {
   missile_ships_list = ships;
-  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
-    Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
-    if(mw) { mw->set_ship_targets(ships); return; }
-  }
 }
 
 void Ship::set_shock_targets(std::list<Object*> *hostiles) {

@@ -92,9 +92,40 @@ deploy_confirmed $B || {
   kill_pair $PA $PB; exit 1; }
 for i in 1 2 3 4; do
   key $B x
-  key $B w
+  key $B w; key $B w; key $B w   # spread the sites: a rock camped on one
+                                 # spot once ate several same-spot deploys
   alive $PB joiner
 done
+
+# The HOST deploys its battery NOW, while generation 3 is still full of
+# rocks — the first version ran this phase after the two joiner waits,
+# by which point the joiner's battery had spent ~40 s thinning the field
+# and the host's lone late drone could sit targetless for the whole
+# assertion-3 window (observed once, 2026-08-17). Its own deploys are
+# authoritative (nothing to confirm), so the observable is the deploy
+# line itself — counted as a DELTA, because the host's log already
+# carries one "turret deployed" per JOINER deploy (the INPUT press
+# replays through the replica's weapon sim). The joiner is idle between
+# its battery and this probe — its drones FIRE but only a press deploys.
+echo "== host: deploy a battery"
+host_deployed() {
+  local before after i j
+  for i in 1 2 3 4 5; do
+    before=$(grep -ac "turret deployed" "$OUT/host.log")
+    key $A x
+    after=$before
+    for j in 1 2 3 4; do
+      sleep 1
+      after=$(grep -ac "turret deployed" "$OUT/host.log")
+      [ "$after" -gt "$before" ] && return 0
+    done
+  done
+  return 1
+}
+host_deployed || {
+  echo "FAIL: the host never landed a turret deploy of its own"
+  kill_pair $PA $PB; exit 1; }
+for i in 1 2 3; do key $A x; key $A w; key $A w; done
 
 # Assertion 2, half one: the host spawns MSG_SHOT clones it can only have
 # received from the joiner's turrets (1 Hz proof-of-flow line, so one line
@@ -103,6 +134,7 @@ echo "== waiting for the joiner's turret fire to reach the host"
 OK=
 for i in $(seq 1 45); do
   grep -aq "reported shots/s spawned" "$OUT/host.log" && { OK=1; break; }
+  case $i in 15|30) xdotool key --window $B x 2>/dev/null ;; esac  # top-up drone
   sleep 1
 done
 [ -n "$OK" ] || {
@@ -125,37 +157,13 @@ done
   kill_pair $PA $PB; exit 1; }
 echo "   (joiner's turret bullets hitting asteroids through the claim path)"
 
-# Now the HOST deploys. Its own deploys are authoritative (nothing to
-# confirm), so the observable is the deploy line itself — counted as a
-# DELTA, because the host's log already carries one "turret deployed" per
-# JOINER deploy (the INPUT press replays through the replica's weapon sim).
-# The joiner is idle from here on, so any increment is the host's own.
-echo "== host: deploy a battery"
-host_deployed() {
-  local before after i j
-  for i in 1 2 3 4 5; do
-    before=$(grep -ac "turret deployed" "$OUT/host.log")
-    key $A x
-    after=$before
-    for j in 1 2 3 4; do
-      sleep 1
-      after=$(grep -ac "turret deployed" "$OUT/host.log")
-      [ "$after" -gt "$before" ] && return 0
-    done
-  done
-  return 1
-}
-host_deployed || {
-  echo "FAIL: the host never landed a turret deploy of its own"
-  kill_pair $PA $PB; exit 1; }
-for i in 1 2 3; do key $A x; key $A w; done
-
 # Assertion 3: the host's turret fire reaches the client as MSG_SHOT
 # clones, the same 1 Hz line on the other log.
 echo "== waiting for the host's turret fire to reach the joiner"
 OK=
 for i in $(seq 1 45); do
   grep -aq "reported shots/s spawned" "$OUT/joiner.log" && { OK=1; break; }
+  case $i in 15|30) xdotool key --window $A x 2>/dev/null ;; esac  # top-up drone
   sleep 1
 done
 [ -n "$OK" ] || {
@@ -172,16 +180,19 @@ alive $PA host; alive $PB joiner
 # line sits at 59500 — inside the ~400 ms grace-disabled signature. (Turrets
 # survive their owner's respawn and are swept only by the level rollover's
 # QUIET apply, so no legitimate wipe can produce a young vanish here.)
-# Tolerance 1, not 0, on both counts below: a rock drifting through the
-# ship's tail as a deploy lands is a LEGITIMATE host-side destruction
-# inside the same window as the bug signature (and, dying before the
-# first echo, can also age the local copy out as "dropped"). One such
-# coincidence per run is weather; the regression this guards produces
-# them for essentially EVERY deploy, and the run makes ~9.
+# Tolerance below: a rock drifting through a deploy site is a LEGITIMATE
+# host-side destruction inside the same window as the bug signature (and,
+# dying before the first echo, can also age the local copy out as
+# "dropped"). A rock CAMPED on the ship's tail once ate three same-spot
+# deploys in one run (2026-08-17) even though every clone assertion
+# passed, so the young-vanish count tolerates 3; the regression this
+# guards produces them for essentially EVERY deploy, and the run makes
+# ~9-11, so detection keeps a wide margin. The deploy spreading above is
+# the other half of the defence.
 YOUNG=$(grep -a "turret vanished (host destruction)" "$OUT/joiner.log" |
         sed 's/.*life \([0-9]*\) ms.*/\1/' |
         awk '$1 >= 59500 { n++ } END { print n + 0 }')
-[ "$YOUNG" -le 1 ] || {
+[ "$YOUNG" -le 3 ] || {
   echo "FAIL: $YOUNG joiner turret(s) vanished at the muzzle:"
   grep -a "turret vanished (host destruction)" "$OUT/joiner.log" | head -5
   kill_pair $PA $PB; exit 1; }
