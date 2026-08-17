@@ -107,6 +107,7 @@ protected:
   virtual void draw_ship(bool minimap = false) const;
   void draw_particles() const;
   void draw_mines(bool minimap) const;
+  void draw_turrets(bool minimap) const;
   void draw_giga_mines(bool minimap) const;
   void draw_shockwaves() const;
   void draw_shocks() const;

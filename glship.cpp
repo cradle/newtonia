@@ -648,6 +648,7 @@ void GLShip::draw(bool minimap) {
   }
   draw_mines(minimap);
   draw_giga_mines(minimap);
+  draw_turrets(minimap);
   if(!minimap) {
     draw_missiles();
     draw_shockwaves();
@@ -1201,6 +1202,71 @@ void GLShip::draw_mines(bool minimap) const {
   glLineWidth(1.5f);
   mesh.upload(mb, GL_DYNAMIC_DRAW);
   mesh.draw();
+}
+
+void GLShip::draw_turrets(bool minimap) const {
+  if(ship->turrets.empty()) return;
+
+  static MeshBuilder mb;
+  static Mesh mesh;
+
+  if(minimap) {
+    mb.clear();
+    mb.begin(GL_POINTS);
+    mb.color(color[0], color[1], color[2]);
+    for(auto &t : ship->turrets)
+      mb.vertex(t.position.x(), t.position.y());
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw(2.5f);
+    return;
+  }
+
+  // Body: an owner-coloured circle with a hub dot; the last 5 seconds (or
+  // last 5 rounds) dim the ring so retirement doesn't come out of nowhere.
+  mb.clear();
+  for(auto &t : ship->turrets) {
+    float fade = 1.0f;
+    if(t.ms_left < 5000.0f || t.shots_left <= 5) fade = 0.45f;
+    mb.begin(GL_LINE_LOOP);
+    mb.color(color[0], color[1], color[2], fade);
+    for(int i = 0; i < 18; i++) {
+      float a = i * 2.0f * (float)M_PI / 18.0f;
+      mb.vertex(cosf(a) * TurretDrone::RADIUS + t.position.x(),
+                sinf(a) * TurretDrone::RADIUS + t.position.y());
+    }
+    mb.end();
+  }
+  glLineWidth(2.0f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+
+  // Barrel: a thick stub from the hub out past the ring, pointing where the
+  // turret aims (at its current target, or sweeping idly).
+  mb.clear();
+  mb.begin(GL_LINES);
+  for(auto &t : ship->turrets) {
+    mb.color(color[0], color[1], color[2]);
+    float ca = cosf(t.aim), sa = sinf(t.aim);
+    mb.vertex(t.position.x() + ca * 3.0f, t.position.y() + sa * 3.0f);
+    mb.vertex(t.position.x() + ca * TurretDrone::BARREL_LEN,
+              t.position.y() + sa * TurretDrone::BARREL_LEN);
+  }
+  mb.end();
+  glLineWidth(3.0f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+
+  // Hub dots in one point batch.
+  mb.clear();
+  mb.begin(GL_POINTS);
+  for(auto &t : ship->turrets) {
+    mb.color(color[0], color[1], color[2]);
+    mb.vertex(t.position.x(), t.position.y());
+  }
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw(4.0f);
 }
 
 void GLShip::draw_giga_mines(bool minimap) const {

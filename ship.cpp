@@ -470,6 +470,24 @@ void Ship::add_giga_mine_ammo(int amount) {
     secondary = --secondary_weapons.end();
 }
 
+void Ship::add_turret_ammo(int amount) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Turret*>(*it)) {
+      (*it)->add_ammo(amount);
+      if(!shield_held(secondary_weapons, secondary)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+      }
+      return;
+    }
+  }
+  Weapon::Turret *w = new Weapon::Turret(this);
+  w->set_ammo(amount);
+  secondary_weapons.push_back(w);
+  if(!shield_held(secondary_weapons, secondary))
+    secondary = --secondary_weapons.end();
+}
+
 void Ship::add_missile_ammo(int amount) {
   // Find the Missile weapon in secondary_weapons, add ammo and switch to it.
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
@@ -614,6 +632,7 @@ void Ship::give_all_weapons(int ammo) {
   add_giga_mine_ammo(ammo);
   add_missile_ammo(ammo);
   add_shield_ammo(ammo);
+  add_turret_ammo(ammo);
   add_nova_ammo(ammo);
   // Top every limited-ammo weapon up to `ammo` (base gun stays unlimited; Nova
   // keeps its design cap set above).
@@ -867,6 +886,7 @@ Save::Player Ship::capture_state() const {
     else if (dynamic_cast<Weapon::Missile*>(*it))  we.kind = Save::WeaponEntry::Kind::Missile;
     else if (dynamic_cast<Weapon::Shield*>(*it))   we.kind = Save::WeaponEntry::Kind::Shield;
     else if (dynamic_cast<Weapon::Nova*>(*it))     we.kind = Save::WeaponEntry::Kind::Nova;
+    else if (dynamic_cast<Weapon::Turret*>(*it))   we.kind = Save::WeaponEntry::Kind::Turret;
     else we.kind = Save::WeaponEntry::Kind::Mine; // fallback
     p.secondary_weapons.push_back(we);
   }
@@ -882,6 +902,7 @@ static Save::WeaponEntry::Kind secondary_kind(Weapon::Base *w) {
   else if (dynamic_cast<Weapon::Missile*>(w))  return Save::WeaponEntry::Kind::Missile;
   else if (dynamic_cast<Weapon::Shield*>(w))   return Save::WeaponEntry::Kind::Shield;
   else if (dynamic_cast<Weapon::Nova*>(w))     return Save::WeaponEntry::Kind::Nova;
+  else if (dynamic_cast<Weapon::Turret*>(w))   return Save::WeaponEntry::Kind::Turret;
   return Save::WeaponEntry::Kind::Mine;  // capture_state's fallback
 }
 
@@ -1012,6 +1033,7 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
       case Save::WeaponEntry::Kind::Missile:  add_missile_ammo(we.ammo);  break;
       case Save::WeaponEntry::Kind::Shield:   add_shield_ammo(we.ammo);   break;
       case Save::WeaponEntry::Kind::Nova:     add_nova_ammo(we.ammo);     break;
+      case Save::WeaponEntry::Kind::Turret:   add_turret_ammo(we.ammo);   break;
       default: break;
     }
   }
@@ -1182,6 +1204,7 @@ void Ship::reset(bool was_killed) {
     giga_mines.clear();
     bullets.clear();
     missiles.clear();
+    turrets.clear();
     shockwaves.clear();
     shocks.clear();
   }
@@ -1505,6 +1528,21 @@ void Ship::collide_grid(Grid &grid, int delta) {
       giga_detonate(giga_mines[i].position);
       giga_mines[i] = std::move(giga_mines.back());
       giga_mines.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  // An asteroid touching a turret destroys it — debris only, no blast.
+  // Phased ghosts pass through it, matching what they do to bullets.
+  for(size_t i = 0; i < turrets.size(); ) {
+    object = grid.collide(turrets[i]);
+    Asteroid *t_ast = object ? dynamic_cast<Asteroid*>(object) : NULL;
+    bool t_ghost = t_ast != NULL && t_ast->phasing && t_ast->phased;
+    if(object != NULL && object->alive && !t_ghost) {
+      turret_explode(turrets[i]);
+      turrets[i] = std::move(turrets.back());
+      turrets.pop_back();
     } else {
       ++i;
     }
@@ -2076,6 +2114,7 @@ void Ship::fire_secondary(bool on) {
       else if (dynamic_cast<Weapon::Missile*>(*secondary))  kind = Save::WeaponEntry::Kind::Missile;
       else if (dynamic_cast<Weapon::Shield*>(*secondary))   kind = Save::WeaponEntry::Kind::Shield;
       else if (dynamic_cast<Weapon::Nova*>(*secondary))     kind = Save::WeaponEntry::Kind::Nova;
+      else if (dynamic_cast<Weapon::Turret*>(*secondary))   kind = Save::WeaponEntry::Kind::Turret;
       record_weapon_fired(kind);
     }
     // Mark whatever this press deploys as not-yet-confirmed by the host.
@@ -2084,7 +2123,7 @@ void Ship::fire_secondary(bool on) {
     // it is inert, so the marking is unconditional rather than gated on a
     // role flag nobody would remember to arm on every rejoin path.
     size_t pre_mines = mines.size(), pre_gigas = giga_mines.size(),
-           pre_missiles = missiles.size();
+           pre_missiles = missiles.size(), pre_turrets = turrets.size();
     (*secondary)->shoot(on);
     for (size_t i = pre_mines; i < mines.size(); i++)
       mines[i].net_unconfirmed = NET_DEPLOY_GRACE;
@@ -2092,6 +2131,8 @@ void Ship::fire_secondary(bool on) {
       giga_mines[i].net_unconfirmed = NET_DEPLOY_GRACE;
     for (size_t i = pre_missiles; i < missiles.size(); i++)
       missiles[i].net_unconfirmed = NET_DEPLOY_GRACE;
+    for (size_t i = pre_turrets; i < turrets.size(); i++)
+      turrets[i].net_unconfirmed = NET_DEPLOY_GRACE;
   }
 }
 
@@ -2560,6 +2601,45 @@ void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
   }
 }
 
+// A deployed turret fires: bookkeeping runs on EVERY machine stepping the
+// drone (cooldown/ammo mirror the gun sim's contract, so host and client
+// agree on when the magazine runs dry), but the bullet, its sounds and its
+// replay cues are minted only where the ship is locally piloted — the
+// host's remote replica and a client's view of the peer get the real
+// bullet via MSG_SHOT / the snapshot rebuild, replay ghosts via FX_BULLET.
+void Ship::fire_turret_bullet(TurretDrone &t) {
+  t.shots_left--;
+  t.fire_cooldown = TurretDrone::FIRE_INTERVAL;
+  if (!is_local_player || net_remote_gun) return;
+  Point dir(cosf(t.aim), sinf(t.aim));
+  WrappedPoint muzzle(t.position.x() + dir.x() * TurretDrone::BARREL_LEN,
+                      t.position.y() + dir.y() * TurretDrone::BARREL_LEN);
+  // The shot belongs to a place, not the pilot: attenuate against the
+  // turret's own position, like every world cue.
+  WorldSound::play(shoot_sound, muzzle);
+  replay_pews.push_back(Point(t.position.x(), t.position.y()));
+  bullets.push_back(Particle(muzzle, dir * 0.615f + t.velocity * 0.99f, 2000.0f));
+  net_report_last_bullet();
+}
+
+// Retirement or destruction: the drone blows apart into hull debris (drawn
+// in the owner's colour by draw_debris) with a compact bang. No damaging
+// blast — a sentry is not a mine.
+void Ship::turret_explode(const TurretDrone &t) {
+  int count = 18;
+  debris.reserve(debris.size() + count);
+  for (int i = 0; i < count; i++) {
+    float angle = (float)(rand() % 100000) / 100000.0f * 2.0f * (float)M_PI;
+    float dist  = (float)(rand() % (int)TurretDrone::RADIUS);
+    Point start(t.position.x() + dist * cosf(angle),
+                t.position.y() + dist * sinf(angle));
+    float speed = 0.05f + (float)(rand() % 100) / 500.0f;
+    debris.push_back(Particle(start, Point(speed * cosf(angle), speed * sinf(angle)),
+                              900.0f + rand() % 600));
+  }
+  WorldSound::play(missile_explode_sound, t.position);
+}
+
 WrappedPoint Ship::tail() const {
   return WrappedPoint(position - (facing * 15.0));
 }
@@ -2807,6 +2887,24 @@ void Ship::step(float delta, const Grid &grid) {
     if(!giga_mines[i].is_alive()) {
       giga_mines[i] = std::move(giga_mines.back());
       giga_mines.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  // Turrets fight on their own: seek, track, fire (through
+  // fire_turret_bullet, whose mint gate handles the net roles). Expiry —
+  // lifetime spent or magazine dry — retires the drone into debris HERE, on
+  // every machine that steps it: the client's copy reaches zero within a
+  // snapshot interval of the host's, and the vanish detection's
+  // near-expiry guard (nx_read_projectiles) keeps the echo from doubling
+  // the burst. Collision deaths stay host-side (collide_grid / GLGame).
+  for(size_t i = 0; i < turrets.size(); ) {
+    turrets[i].step_turret((int)delta, missile_asteroids, shock_targets, this);
+    if(turrets[i].expired()) {
+      turret_explode(turrets[i]);
+      turrets[i] = std::move(turrets.back());
+      turrets.pop_back();
     } else {
       ++i;
     }
