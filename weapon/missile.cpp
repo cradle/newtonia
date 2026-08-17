@@ -1,4 +1,5 @@
 #include "missile.h"
+#include "../seek.h"
 #include "../world_sound.h"
 #include "../asset_path.h"
 #include "../sound_cache.h"
@@ -35,39 +36,35 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids,
                                std::list<Object*> *ships, bool seek_players) {
   time_left -= delta;
 
-  // Seek nearest target (asteroid or ship) within forward cone
-  static const float FORWARD_FOV = 45.0f;  // only seek targets within ±45° ahead
+  // Seek nearest target (asteroid or ship) within forward cone. The scan is
+  // the shared seek_nearest loop (seek.h); the ±45° cone and the per-list
+  // exclusions live in the filters. fwd is unit length, so the dot product
+  // is |to_o|*cos(angle) and the cone keeps cos(angle) >= cos(45°) — the
+  // same test the old degree arithmetic made.
   {
     Object *target = NULL;
     float closest = SEEK_RANGE;
-
-    auto seek_list = [&](std::list<Object*> *lst, bool skip_invincible) {
-      if (!lst) return;
-      for (auto it = lst->begin(); it != lst->end(); ++it) {
-        Object *a = *it;
-        if (!a->alive) continue;
-        if (skip_invincible && a->invincible) continue;
-        if (!seek_players) {
-          Ship *s = dynamic_cast<Ship*>(a);
-          if (s && s->player_ship) continue;
-        }
-        WrappedPoint apos = a->position;
-        float dist = position.distance_to(apos) - a->radius;
-        if (dist >= closest) continue;
-
-        Point toward = (position.closest_to(apos) - apos) * -1.0f;
-        float angle_to = facing.direction() - toward.normalized().direction();
-        while (angle_to >  180.0f) angle_to -= 360.0f;
-        while (angle_to < -180.0f) angle_to += 360.0f;
-        if (std::fabs(angle_to) > FORWARD_FOV) continue;
-
-        closest = dist;
-        target = a;
-      }
+    Point fwd = facing.normalized();
+    static const float kCos45 = 0.70710678f;
+    auto in_cone = [&fwd](const Point &to_o, float mag) {
+      return to_o.x() * fwd.x() + to_o.y() * fwd.y() >= mag * kCos45;
     };
 
-    seek_list(asteroids, true);
-    seek_list(ships, false);
+    Object *hit = seek_nearest(position, asteroids, closest,
+        [&in_cone](Object *a, const Point &to_o, float mag) {
+          if (a->invincible) return false;
+          return in_cone(to_o, mag);
+        });
+    if (hit) target = hit;
+    hit = seek_nearest(position, ships, closest,
+        [&in_cone, seek_players](Object *a, const Point &to_o, float mag) {
+          if (!seek_players) {
+            Ship *s = dynamic_cast<Ship*>(a);
+            if (s && s->player_ship) return false;
+          }
+          return in_cone(to_o, mag);
+        });
+    if (hit) target = hit;
 
     if (target) {
       WrappedPoint tpos = target->position;

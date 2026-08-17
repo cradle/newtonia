@@ -2910,7 +2910,8 @@ void Ship::step(float delta, const Grid &grid) {
   // near-expiry guard (nx_read_projectiles) keeps the echo from doubling
   // the burst. Collision deaths stay host-side (collide_grid / GLGame).
   for(size_t i = 0; i < turrets.size(); ) {
-    turrets[i].step_turret((int)delta, missile_asteroids, shock_targets, this);
+    turrets[i].step_turret((int)delta, &grid, missile_asteroids, shock_targets,
+                           this);
     if(turrets[i].expired()) {
       turret_explode(turrets[i]);
       turrets[i] = std::move(turrets.back());

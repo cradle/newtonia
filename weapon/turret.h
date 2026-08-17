@@ -10,6 +10,7 @@
 #include <SDL_mixer.h>
 
 class Ship;
+class Grid;
 
 // A deployed sentry drone: a player-coloured circle with a rotating barrel,
 // dropped like a mine and left to fight on its own. It seeks the nearest
@@ -83,14 +84,20 @@ struct TurretDrone : public Object {
 
   // One sim tick: drift, count down, seek, turn the barrel, and (through
   // owner->fire_turret_bullet) fire when aligned on an in-range target.
-  void step_turret(int delta, std::list<Object*> *asteroids,
+  // `grid` feeds the asteroid half of the seek (Grid::query_radius);
+  // `asteroids` is the list fallback when no grid is in hand.
+  void step_turret(int delta, const Grid *grid, std::list<Object*> *asteroids,
                    std::list<Object*> *hostiles, Ship *owner);
 
 private:
-  // Nearest live target within RANGE: killable asteroids (invincible rocks
-  // and phased ghosts are skipped — a bullet can't harm them right now) plus
-  // the hostiles list, never the owner.
-  Object *seek_target(std::list<Object*> *asteroids,
+  // Nearest live target within RANGE, via the shared seek_nearest loop
+  // (seek.h): killable asteroids (invincible rocks and phased ghosts are
+  // skipped — a bullet can't harm them right now) plus the hostiles list,
+  // never the owner. Asteroid candidates come from the grid's radius query
+  // when a grid is supplied — at late generations the RANGE circle touches
+  // a small fraction of the cells where the list walk touched every rock
+  // alive — and from the plain list otherwise.
+  Object *seek_target(const Grid *grid, std::list<Object*> *asteroids,
                       std::list<Object*> *hostiles, const Ship *owner,
                       float &best_dist) const;
 };

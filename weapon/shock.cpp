@@ -3,6 +3,7 @@
 #include "../ship.h"
 #include "../asteroid.h"
 #include "../grid.h"
+#include "../seek.h"
 #include "../point.h"
 #include "../wrapped_point.h"
 #include <cmath>
@@ -53,37 +54,32 @@ ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
 
 Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
                                float &best_dist, bool asteroid_list) const {
-  Object *best = NULL;
-  if (!lst) return best;
-  for (Object *o : *lst) {
-    if (o == owner) continue;  // a bolt never seeks the ship that fired it
-    if (!o->alive) continue;
-    // Invincible ASTEROIDS are not sought: the arc would only dead-end on a
-    // rock it can't destroy, wasting the bolt, so it ignores them and chains
-    // to killable targets instead (they still BLOCK — see grow_segment).
-    // The asteroid list is statically all-Asteroid (the ship's missile list
-    // is the game's asteroid list), so no RTTI is needed; the hostiles list
-    // never contains asteroids, so it skips the check entirely. Invincible
-    // SHIPS (a shielded/god-mode player under friendly fire) stay eligible —
-    // the arc paths to and stops at them rather than arcing past.
-    if (asteroid_list && static_cast<Asteroid *>(o)->invincible) continue;
-    bool skip = false;
-    for (Object *a : avoid) if (a == o) { skip = true; break; }
-    if (skip) continue;
-    Point op = o->position.closest_to(tip);
-    Point to_o = op - tip;
-    float mag = to_o.magnitude();
-    // Only seek targets inside the forward 135° cone (±67.5° of the firing
-    // direction), so the arc reaches ahead and a little to the side but never
-    // sharply back past the ship. main_dir is unit length, so the dot product
-    // is |to_o|*cos(angle); keep it only when cos(angle) >= cos(67.5°).
-    static const float kCosHalfCone = 0.38268343f;  // cos(67.5°)
-    if (to_o.x() * main_dir.x() + to_o.y() * main_dir.y() < mag * kCosHalfCone)
-      continue;
-    float d = mag - o->radius;
-    if (d < best_dist) { best_dist = d; best = o; }
-  }
-  return best;
+  // The scan itself is the shared seek_nearest loop (seek.h); everything
+  // in the filter below is this weapon's own law.
+  return seek_nearest(tip, lst, best_dist,
+      [this, asteroid_list](Object *o, const Point &to_o, float mag) {
+        if (o == owner) return false;  // never the ship that fired it
+        // Invincible ASTEROIDS are not sought: the arc would only dead-end
+        // on a rock it can't destroy, wasting the bolt, so it ignores them
+        // and chains to killable targets instead (they still BLOCK — see
+        // grow_segment). The asteroid list is statically all-Asteroid (the
+        // ship's missile list is the game's asteroid list), so no RTTI is
+        // needed; the hostiles list never contains asteroids, so it skips
+        // the check entirely. Invincible SHIPS (a shielded/god-mode player
+        // under friendly fire) stay eligible — the arc paths to and stops
+        // at them rather than arcing past.
+        if (asteroid_list && static_cast<Asteroid *>(o)->invincible)
+          return false;
+        for (Object *a : avoid) if (a == o) return false;
+        // Only seek targets inside the forward 135° cone (±67.5° of the
+        // firing direction), so the arc reaches ahead and a little to the
+        // side but never sharply back past the ship. main_dir is unit
+        // length, so the dot product is |to_o|*cos(angle); keep it only
+        // when cos(angle) >= cos(67.5°).
+        static const float kCosHalfCone = 0.38268343f;  // cos(67.5°)
+        return to_o.x() * main_dir.x() + to_o.y() * main_dir.y() >=
+               mag * kCosHalfCone;
+      });
 }
 
 void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *hostiles,
