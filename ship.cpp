@@ -2576,13 +2576,15 @@ void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
   // samples into one very loud bang (Glenn, PEW PEW 5 heard host-side).
   // The 40 ms window is well under every gun's re-fire interval, so
   // consecutive real shots still each sound; the clones all spawn.
+  // Attenuated at the BULLET's spawn point (WorldSound), not the owner
+  // ship's scale: for gun fire the two are the same place, but a turret's
+  // shots leave from wherever the drone sits — anchoring them to the
+  // pilot made a turret parked beside you fire silently while its owner
+  // flew two screens away, and vice versa.
   uint32_t now = SDL_GetTicks();
   if (!quiet && now - net_clone_sound_ms >= 40) {
     net_clone_sound_ms = now;
-    if(snd != NULL && sound_volume_scale > 0.0f) {
-      Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * sound_volume_scale));
-      Mix_PlayChannel(-1, snd, 0);
-    }
+    WorldSound::play(snd, pos);
   }
   bullets.push_back(Particle(pos, vel, 2000.0f));
   Particle &b = bullets.back();

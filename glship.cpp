@@ -1257,11 +1257,12 @@ void GLShip::draw_turrets(bool minimap) const {
   mesh.draw();
 
   // Barrel: a thick stub from the hub out past the ring, pointing where the
-  // turret aims (at its current target, or sweeping idly).
+  // turret aims — full brightness while tracking a target, dimmed on the
+  // idle sweep so "armed and hunting" reads at a glance.
   mb.clear();
   mb.begin(GL_LINES);
   for(auto &t : ship->turrets) {
-    mb.color(color[0], color[1], color[2]);
+    mb.color(color[0], color[1], color[2], t.has_target ? 1.0f : 0.5f);
     float ca = cosf(t.aim), sa = sinf(t.aim);
     mb.vertex(t.position.x() + ca * 3.0f, t.position.y() + sa * 3.0f);
     mb.vertex(t.position.x() + ca * TurretDrone::BARREL_LEN,

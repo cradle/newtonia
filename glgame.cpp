@@ -8862,7 +8862,7 @@ void GLGame::tick(int delta) {
       }
     }
 
-    // Apply black-hole gravity to bullets, missiles, and mines.
+    // Apply black-hole gravity to bullets, missiles, mines, and turrets.
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       for(o = players->begin(); o != players->end(); o++) {
         for(auto &b : (*o)->ship->bullets)
@@ -8873,6 +8873,12 @@ void GLGame::tick(int delta) {
           (*bhi)->apply_gravity(n, step_size);
         for(auto &n : (*o)->ship->giga_mines)
           (*bhi)->apply_gravity(n, step_size);
+        // Turrets fall like every other deployed object (they used to be
+        // the one deployable the hole could not move — a drone parked in
+        // the gravity well sat immune while its own bullets curved away).
+        // The horizon-crossing return is ignored, the mine treatment.
+        for(auto &t : (*o)->ship->turrets)
+          (*bhi)->apply_gravity(t, step_size);
       }
       for(o = enemies->begin(); o != enemies->end(); o++) {
         for(auto &b : (*o)->ship->bullets)

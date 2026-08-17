@@ -38,10 +38,15 @@ class Ship;
 // locally-piloted ship's turret spawns the bullet and its sounds.
 struct TurretDrone : public Object {
   float aim;             // barrel angle, radians (world frame)
+  float aim_want;        // latest intercept bearing (refreshed per seek)
   float ms_left;         // lifetime countdown, LIFETIME_MS at deploy
   int   shots_left;      // bullets remaining, SHOTS at deploy
   float fire_cooldown;   // ms until the next shot may fire
-  bool  has_target;      // barrel currently tracking something in range
+  float seek_wait;       // ms until the next target re-seek (SEEK_INTERVAL)
+  bool  has_target;      // tracking something in range; draw_turrets dims
+                         // the barrel on the idle sweep. Local presentation
+                         // state — never serialized; a replicated drone's
+                         // value comes from its own machine's re-seek
   // Net client, locally-deployed turret the host has not echoed back yet —
   // see Ship::NET_DEPLOY_GRACE (same contract as MissileShot's).
   uint8_t net_unconfirmed = 0;
@@ -57,6 +62,15 @@ struct TurretDrone : public Object {
                                      // an intercept later than this can never
                                      // land, so the aim falls back to direct
   static const float FIRE_INTERVAL;  // ms between shots
+  static const float SEEK_INTERVAL;  // ms between target re-seeks: the scan
+                                     // walks the whole asteroid list, and at
+                                     // late generations doing that every 8 ms
+                                     // step per drone is the dominant cost —
+                                     // ~20 Hz tracks everything the barrel
+                                     // can physically follow. No pointer is
+                                     // cached across the gap (asteroids are
+                                     // deleted between ticks); only the
+                                     // computed bearing is
   static const float TURN_RATE;      // barrel tracking rate, rad/ms
   static const float IDLE_SPIN;      // slow idle sweep with no target, rad/ms
   static const float AIM_TOLERANCE;  // fire once within this many rad of target

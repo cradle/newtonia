@@ -172,10 +172,16 @@ alive $PA host; alive $PB joiner
 # line sits at 59500 — inside the ~400 ms grace-disabled signature. (Turrets
 # survive their owner's respawn and are swept only by the level rollover's
 # QUIET apply, so no legitimate wipe can produce a young vanish here.)
+# Tolerance 1, not 0, on both counts below: a rock drifting through the
+# ship's tail as a deploy lands is a LEGITIMATE host-side destruction
+# inside the same window as the bug signature (and, dying before the
+# first echo, can also age the local copy out as "dropped"). One such
+# coincidence per run is weather; the regression this guards produces
+# them for essentially EVERY deploy, and the run makes ~9.
 YOUNG=$(grep -a "turret vanished (host destruction)" "$OUT/joiner.log" |
         sed 's/.*life \([0-9]*\) ms.*/\1/' |
         awk '$1 >= 59500 { n++ } END { print n + 0 }')
-[ "$YOUNG" -eq 0 ] || {
+[ "$YOUNG" -le 1 ] || {
   echo "FAIL: $YOUNG joiner turret(s) vanished at the muzzle:"
   grep -a "turret vanished (host destruction)" "$OUT/joiner.log" | head -5
   kill_pair $PA $PB; exit 1; }
@@ -183,7 +189,7 @@ YOUNG=$(grep -a "turret vanished (host destruction)" "$OUT/joiner.log" |
 # ...and every deploy the joiner made reached the host's sim: a turret that
 # ages out of the grace unconfirmed is one the host never fired.
 DROPPED=$(grep -ac "turret deploy dropped" "$OUT/joiner.log" || true)
-[ "${DROPPED:-0}" -eq 0 ] || {
+[ "${DROPPED:-0}" -le 1 ] || {
   echo "FAIL: $DROPPED joiner turret deploy(s) never made it into the host's sim"
   kill_pair $PA $PB; exit 1; }
 
