@@ -40,8 +40,14 @@ shard_drivers() {
                          nseat_lobby_kick nseat_lobby_mouse" ;;
     netplay-core) echo "room weapons_net missile_net shock_net shock_hazards_net
                         hazards_net timeslow_net impacts replay_online" ;;
+    # nseat_rejoin_flap_swap sits here rather than beside its sibling
+    # nseat_rejoin_flap for load, not theme: seats-and-soak is the shard
+    # that decides this job's wall clock (16 min against 12 for this one),
+    # and 2m20 of 4-seat flap driver costs nothing here and 2m20 there. It
+    # is a loss-and-recovery driver either way.
     netplay-resilience) echo "rejoin rejoinexit hiccup blackout invite hostresume
-                              spectate spectate_disconnect revive" ;;
+                              spectate spectate_disconnect revive
+                              nseat_rejoin_flap_swap" ;;
     seats-and-soak) echo "nseat nseat_rejoin nseat_rejoin_flap nseat_gameover
                           nseat_swap nseat_soak gensoak nseat_kick nseat_anon" ;;
     *) return 1 ;;

@@ -526,9 +526,13 @@ Sequential master-based PRs, inert until the B7 flip:
   handshake in flight is re-pushed, un-wedging the next rejoiner.
   Verified by `test/e2e/nseat_swap.sh` (seats 3+4 SIGKILLed together,
   pilots return in the OTHER order, each lands on their own hull).
-  Still open: a rejoiner whose adoption transport flaps waits out the
-  full ICE timeout before the door re-arms (the fast PeerJoin re-offer
-  is N=1-only — a fresh jid cannot name a seat).
+  The flap limit noted here — a rejoiner whose adoption transport
+  half-establishes and dies waiting out the full ICE timeout, because the
+  fast PeerJoin re-offer was N=1-only — is CLOSED by O4 below, which
+  matches the returning PILOT instead of guessing from the jid. What
+  remains of it: a pilot the host cannot name (Game Center relays none)
+  still waits out the timeout, and so does anyone queued behind a
+  legitimately slow handshake — the door serves one parked seat at a time.
 - **B6 — Multi-instance e2e**. LANDED: lib.sh gains the N-seat room
   helpers (`room_setup N [host-env…]` assembles host + N-1 relay joiners
   through the waiting room and waits for seats/auto-start/bootstraps;
@@ -623,11 +627,13 @@ Was: the achievement unlocks for any clear with ≥2 players (unchanged —
 "Clear a level in 2-player mode" (entered 2026-07-26).
 
 Reworded to **"Clear a level in co-op mode"** — a straight "2-player" →
-"co-op" substitution — in Steamworks and the Play Console (both live) and
-in App Store Connect (**submitted 2026-08-15, in review**: Apple keeps the
-copy in the achievement's Achievement Localization section and a live
-localization edit needs Add for Review → Submit for Review rather than
-going live on Save; it can go standalone, no app version). The two
+"co-op" substitution — in Steamworks, the Play Console and App Store
+Connect. **All three live**; Apple's took two days (submitted 2026-08-15,
+approved 2026-08-17), because it keeps the copy in the achievement's
+Achievement Localization section and a live localization edit needs Add
+for Review → Submit for Review rather than going live on Save. It went
+standalone, with no app version attached — worth remembering for the next
+copy fix. The two
 ACHIEVEMENTS.md tables (§2 ASC copy of record, §5 master list) match what
 was entered. No code change — the symbolic id, gating, and point values
 are untouched.
@@ -877,6 +883,58 @@ flight must leave it alone — that is the regression this branch could
 plausibly cause. Existing drivers that must stay green: `rejoin.sh`,
 `nseat_rejoin.sh`, `hostresume.sh`, `hiccup.sh`, `turnexpiry.sh`,
 `lankeep.sh`.
+
+#### The seat-re-map case got its driver too (2026-08-16)
+
+`nseat_rejoin_flap.sh` parks ONE seat, so the adoption in flight is always
+heading for the seat the door offered and "same seat" and "same pilot"
+answer alike: it cannot tell step 3's resolver from the wrong one. That
+gap now has `nseat_rejoin_flap_swap.sh` — seats 3 and 4 parked, seat 4's
+pilot answering seat 3's offer, seat 3's own pilot knocking while it is in
+flight. Verified both ways, like the original: green as written, and red
+on a control build whose comparison is `net_rejoin_seat_for_identity(who)
+== hs->seat` (it drops at exactly 12 000 ms, the liveness gate).
+
+Two things it needed, and one it did not.
+
+First, the resolver's "different pilot, leave it alone" branch now LOGS.
+Until it did, the negative could only assert the ABSENCE of the drop line —
+equally true of a resolver that never ran. That mattered immediately: the
+driver's first skip guard read the door re-arming as "the adoption expired
+on its own", and a drop re-offers, so it re-arms identically; the control
+build's regression exited 0. The drop test now runs first and every pass.
+
+Second, the knocker is not a game instance. The resolver consumes exactly
+two worker events from that socket — the PeerJoin and the identity frame
+naming its jid — and delivering them through a real instance means booting,
+waiting for a window and walking the menu with xdotool, ~34 s of it on a
+loaded runner. `test/e2e/fake_joiner.mjs` joins and announces a name in
+under a second and does nothing else; it also cannot ANSWER the door, so it
+cannot squat the unaddressed offer the way a parked instance can.
+
+**And the thing it did not need: a hook to make the handshake HANG.** Three
+CI rounds went into `NEWTONIA_NET_TEST_HANG_MS`, on the reasoning that a
+corpse cannot show the protected exchange going on to COMPLETE. It held the
+trickle path in both directions and it does not work: with no TURN servers
+the only candidates are local host ones, gathering finishes immediately,
+and they ride INLINE in the offer and answer SDPs, so trickle carries
+nothing that matters and the held handshake connected in 212 ms while the
+hook logged that it was holding (`ice path host/host`). Doing it honestly
+would mean stripping `a=candidate:` lines out of the SDP the game sends —
+test-only surgery on shipping netcode — to buy an assertion the comparison
+under test cannot distinguish anyway, since it looks only at
+`!connected()` past its liveness gate. The hook is gone; the driver uses
+TEST_FLAP's corpse, keeps every bit of its discriminating power (the
+control build still fails it), and says in its header what it therefore
+does not show. What the corpse costs is time, not coverage: nothing clears
+it early — declining to is the assertion — so the driver then waits out the
+ICE timeout before the room recovers, which is precisely the residual this
+entry documents.
+
+Two of those three CI rounds were spent inferring the cause from the
+20-line host tail `room_fail` prints, and both inferences were wrong. The
+driver now dumps the flapper's, the knocker's and the host's own lines on
+any failure in that phase.
 
 **Cost.** One focused PR: ~60-100 lines across glgame.cpp/.h, one e2e
 driver, one test hook, doc updates. No worker change, no PROTO bump, no
