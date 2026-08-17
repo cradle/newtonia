@@ -895,42 +895,46 @@ flight. Verified both ways, like the original: green as written, and red
 on a control build whose comparison is `net_rejoin_seat_for_identity(who)
 == hs->seat` (it drops at exactly 12 000 ms, the liveness gate).
 
-Three things it needed. First a second hook, `NEWTONIA_NET_TEST_HANG_MS`
-(net_lobby.cpp): TEST_FLAP's corpse would exercise the same comparison,
-but the assertion with teeth is that the protected handshake goes on to
-COMPLETE at its re-mapped seat, which a corpse can never show. The hook
-holds ICE both ways and **from the first tick** — the first cut held from
-the answer and stalled nothing, because the host offers first and trickles
-immediately, so its candidate was already applied and the peer discovered
-us peer-reflexively (`ice path host/prflx`, connected 178 ms into a 22 s
-hold). The countdown re-arms on EVERY answer, which the second CI failure
-forced: a joiner can answer more than once in one lobby (four paths reset
-`answer_sent_` and rebuild the transport), and a one-shot countdown drained
-on a superseded first attempt left the answer that actually became the
-adoption with no hold at all — the host connected it inside 4 s, the window
-never opened, and the driver reported it as the knocker arriving late. The
-driver now dumps the holder's side on any failure in that phase and names a
-too-short window separately from a missing knocker, because two rounds of
-inferring the cause from a 20-line host tail got it wrong twice.
-Second, the resolver's "different pilot, leave it alone" branch now
-LOGS. Until it did, the negative could only assert the ABSENCE of the drop
-line — equally true of a resolver that never ran. That mattered
-immediately: the driver's first skip guard read the door re-arming as "the
-adoption expired on its own", and a drop re-offers, so it re-arms
-identically — the control build's regression exited 0. The drop test now
-runs first and every pass.
+Two things it needed, and one it did not.
 
-Third, learned from CI rather than reasoned: the knocker had to stop being
-a game instance. It has to land inside the hold, and delivering its two
-worker events through a real instance means booting, waiting for a window
-and walking the menu with xdotool — ~34 s on a loaded runner against a
-22 s hold, so the driver failed on timing while asserting nothing (twice,
-both attempts). `test/e2e/fake_joiner.mjs` is a scripted relay client that
-joins and announces a name in under a second and does nothing else; the
-measured gap between the holder's answer and the filed PeerJoin went from
-~7 s to 0.5 s. It also cannot ANSWER the door, which removes the squatter
-hazard the real instance carried. Everything else in the driver stays a
-real instance, including the pilot that finally retakes seat 3.
+First, the resolver's "different pilot, leave it alone" branch now LOGS.
+Until it did, the negative could only assert the ABSENCE of the drop line —
+equally true of a resolver that never ran. That mattered immediately: the
+driver's first skip guard read the door re-arming as "the adoption expired
+on its own", and a drop re-offers, so it re-arms identically; the control
+build's regression exited 0. The drop test now runs first and every pass.
+
+Second, the knocker is not a game instance. The resolver consumes exactly
+two worker events from that socket — the PeerJoin and the identity frame
+naming its jid — and delivering them through a real instance means booting,
+waiting for a window and walking the menu with xdotool, ~34 s of it on a
+loaded runner. `test/e2e/fake_joiner.mjs` joins and announces a name in
+under a second and does nothing else; it also cannot ANSWER the door, so it
+cannot squat the unaddressed offer the way a parked instance can.
+
+**And the thing it did not need: a hook to make the handshake HANG.** Three
+CI rounds went into `NEWTONIA_NET_TEST_HANG_MS`, on the reasoning that a
+corpse cannot show the protected exchange going on to COMPLETE. It held the
+trickle path in both directions and it does not work: with no TURN servers
+the only candidates are local host ones, gathering finishes immediately,
+and they ride INLINE in the offer and answer SDPs, so trickle carries
+nothing that matters and the held handshake connected in 212 ms while the
+hook logged that it was holding (`ice path host/host`). Doing it honestly
+would mean stripping `a=candidate:` lines out of the SDP the game sends —
+test-only surgery on shipping netcode — to buy an assertion the comparison
+under test cannot distinguish anyway, since it looks only at
+`!connected()` past its liveness gate. The hook is gone; the driver uses
+TEST_FLAP's corpse, keeps every bit of its discriminating power (the
+control build still fails it), and says in its header what it therefore
+does not show. What the corpse costs is time, not coverage: nothing clears
+it early — declining to is the assertion — so the driver then waits out the
+ICE timeout before the room recovers, which is precisely the residual this
+entry documents.
+
+Two of those three CI rounds were spent inferring the cause from the
+20-line host tail `room_fail` prints, and both inferences were wrong. The
+driver now dumps the flapper's, the knocker's and the host's own lines on
+any failure in that phase.
 
 **Cost.** One focused PR: ~60-100 lines across glgame.cpp/.h, one e2e
 driver, one test hook, doc updates. No worker change, no PROTO bump, no

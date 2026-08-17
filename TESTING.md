@@ -470,17 +470,17 @@ test/e2e/nseat_rejoin_flap_swap.sh # O4's seat-re-map case, which the
                      # pilot answers it (nseat_swap's shape, re-mapped at the
                      # WELCOME) — and seat 3's OWN pilot then knocks. The
                      # resolver compares pilots, not seats, so it must leave
-                     # that handshake alone and say so ("leaving it alone"),
-                     # and the held handshake must then COMPLETE onto seat 4:
-                     # the part a corpse could never show, and why this one
-                     # needs NEWTONIA_NET_TEST_HANG_MS rather than TEST_FLAP.
-                     # The knocker is test/e2e/fake_joiner.mjs, a scripted
-                     # relay client, because it has to land inside that hold
-                     # and a real instance took ~34 s of boot+window+xdotool
-                     # to get there on CI; it also cannot answer the offer,
-                     # so it cannot squat the re-armed door. Verified both
-                     # ways — green as written, red on a build whose
-                     # resolver compares seats
+                     # that adoption alone and say so ("leaving it alone").
+                     # Then the room recovers the SLOW way — nothing clears
+                     # the corpse early, because declining to is what was
+                     # just asserted — and that wait is the residual O4
+                     # documents. The knocker is test/e2e/fake_joiner.mjs, a
+                     # scripted relay client: the resolver needs only its
+                     # PeerJoin + identity frame, and a real instance took
+                     # ~34 s of boot+window+xdotool to deliver them on CI.
+                     # It also cannot answer the offer, so it cannot squat
+                     # the re-armed door. Verified both ways — green as
+                     # written, red on a build whose resolver compares seats
 test/e2e/nseat_gameover.sh # B6 game over at N seats: the "all" kill hook
                      # (host-only env) empties every seat; each CLIENT must
                      # observe "game over (all players out)" via replication,
@@ -781,20 +781,22 @@ flap, on demand. `_Exit` rather than `exit` deliberately — running the
 destructors would send a BYE, and a peer that says goodbye is not this case.
 Used by nseat_rejoin_flap.sh.
 
-`NEWTONIA_NET_TEST_HANG_MS=<ms>` (client-side, inert without it) is its
-quieter twin: the joiner STALLS inside the handshake instead of dying, so
-the host holds an adoption that has not connected and is nevertheless going
-to. It holds ICE in BOTH directions — its own candidates stay queued in the
-transport, the peer's are stashed and replayed on release — and from the
-FIRST TICK, not from the answer. Holding only its own would not stall
-anything: the host offers first and trickles immediately, so one of its
-candidates is already applied by the time the answer goes out, and one is
-enough for the peer to be discovered peer-reflexively (measured on the first
-cut of this hook: `ice path host/prflx`, connected 178 ms into a 22 s hold).
-The countdown runs from the answer, which is when the host's adoption starts
-ageing toward the flap resolver's 12 s liveness gate. Used by
-nseat_rejoin_flap_swap.sh; pick a value comfortably over 12 s (it uses 22 s)
-and well under the ~50 s a local ICE agent takes to give up.
+**A quieter twin was attempted and abandoned — don't rebuild it without
+reading this.** `NEWTONIA_NET_TEST_HANG_MS` was to make a joiner STALL
+inside the handshake rather than die, so a driver could show the flap
+resolver protecting an adoption that goes on to COMPLETE, which a corpse
+cannot show. It held the trickle path in both directions — own candidates
+left queued in the transport, the peer's stashed and replayed on release —
+and it does not work: with no TURN servers the only candidates are local
+host ones, gathering finishes immediately, and they ride INLINE in the
+offer and answer SDPs. Trickle carries nothing that matters, so the held
+handshake connected in 212 ms on CI while the hook logged that it was
+holding (`ice path host/host`). Stalling ICE honestly would mean stripping
+`a=candidate:` lines out of the SDP the game sends — test-only surgery on
+shipping netcode — and it buys little: the comparison under test cannot
+tell a corpse from a stall, since `net_host_rejoin_flap_check` looks only
+at `!connected()` past its liveness gate. nseat_rejoin_flap_swap.sh uses
+TEST_FLAP's corpse and says so in its header.
 
 `_WHO` also takes `seatN` (a specific seat, by its wire seat number), and a
 SECOND firing exists — `NEWTONIA_NET_TEST_KILL2_MS`/`_WHO2` — so a driver can
