@@ -31,10 +31,15 @@ use_home() {
 field() { python3 "$CHECK" "$1" | sed -n "s/^$2=//p"; }
 
 # save_run_id -> hex of the savegame's run_id append (v17). No longer the
-# trailing 8 bytes: v18 appended time-slow (int32 ms + u8 owner) and v19
-# one seat byte per player after it — these runs are SOLO, so the tail is
-# run_id(8) ms(4) owner(1) seat(1) and run_id starts 14 bytes from the end.
-save_run_id() { tail -c 14 "$SAVE" | head -c 8 | od -An -tx1 | tr -d ' \n'; }
+# trailing 8 bytes: v18 appended time-slow (int32 ms + u8 owner), v19 one
+# seat byte per player, and v21 one deployed-turret section per player
+# (u16 count + entries) after that — these runs are SOLO and this driver
+# never deploys a turret (no ammo is ever granted or armed), so the tail
+# is run_id(8) ms(4) owner(1) seat(1) tcount(2)=0 and run_id starts 16
+# bytes from the end. If this fails after a savegame bump, re-derive the
+# tail from the new appends before touching anything else — that is
+# exactly how v21 broke it.
+save_run_id() { tail -c 16 "$SAVE" | head -c 8 | od -An -tx1 | tr -d ' \n'; }
 # header run_id, byte-reversed to match od's little-endian byte order
 file_run_id() { dd if="$1" bs=1 skip=32 count=8 2>/dev/null | od -An -tx1 | tr -d ' \n'; }
 

@@ -80,6 +80,23 @@ struct TurretDrone : public Object {
 
   TurretDrone(WrappedPoint pos, Point vel, float initial_aim);
 
+  // ONE field-to-drone mapping for every deserializer — the nx snapshot
+  // reader (glgame.cpp) and the v21 save restore (Ship::restore_state) —
+  // with the bounds carried alongside so no ingest can construct a drone
+  // from unvalidated floats: a 1e30 coordinate spins WrappedPoint::wrap's
+  // repeated-addition loop for minutes, a huge finite aim hangs wrap_angle
+  // outright (ulp > 2*pi: the subtraction stops moving), and a NaN ms_left
+  // never expires.
+  // Both records are untrusted where they matter (a peer's bootstrap
+  // keyframe, a downloaded replay); the two readers once carried separate
+  // copies of this snippet and only one of them validated (the review
+  // finding this fixes).
+  static bool fields_sane(float x, float y, float vx, float vy, float aim,
+                          float ms, float cooldown, uint8_t shots);
+  static TurretDrone from_fields(float x, float y, float vx, float vy,
+                                 float aim, float ms, float cooldown,
+                                 uint8_t shots);
+
   bool expired() const { return ms_left <= 0.0f || shots_left <= 0; }
 
   // One sim tick: drift, count down, seek, turn the barrel, and (through

@@ -34,6 +34,20 @@ struct WeaponEntry {
     int  ammo;
 };
 
+// ── Deployed turret drone ────────────────────────────────────────────────────
+// One live TurretDrone (weapon/turret.h), v21: the same fields the netplay
+// ship-extras record carries, so a CONTINUE brings the battery back exactly
+// where — and how far along — the save left it.
+
+struct Turret {
+    float   pos_x, pos_y;
+    float   vel_x, vel_y;
+    float   aim;         // barrel angle, radians
+    float   ms_left;     // lifetime countdown
+    float   cooldown;    // ms until the next shot
+    uint8_t shots_left;
+};
+
 // ── Player ───────────────────────────────────────────────────────────────────
 
 struct Player {
@@ -64,6 +78,18 @@ struct Player {
     // block. Snapshots share this struct, so the wire carries it too, and
     // net restore paths key ship records by seat instead of list position.
     uint8_t  seat = 0;
+
+    // v21 append (PROTO 27) — this player's DEPLOYED turret drones, so the
+    // battery survives save/continue (until v21 only the weapon's ammo
+    // persisted and the drones were transient like mines). Written as a
+    // trailing per-player section at the end of the file, count clamped to
+    // the reader's 256 bound. Snapshots share the struct, so keyframes/
+    // deltas grow ~29 bytes per live drone; the client applies this copy
+    // exactly once, at the join/playback bootstrap (before
+    // net_quiet_respawn arms), after which the nx ship-extras section owns
+    // the list — see Ship::restore_state. Every ingest bounds the fields
+    // through TurretDrone::fields_sane.
+    std::vector<Turret> turrets;
 };
 
 // ── Asteroid ─────────────────────────────────────────────────────────────────
@@ -198,11 +224,14 @@ struct GameState {
     // 19 = per-player seat id appended at the end (PROTO 25 / FOURPLAYER.md
     // PB-D3: snapshots and net restore key ship records by seat).
     // 20 = Turret weapon kind + Turret pickup type (PROTO 26). No new fields
-    // in the save body — deployed drones are transient like mines — but the
+    // in the save body — deployed drones were transient like mines — but the
     // snapshot/replay SHIP EXTRAS gained a turret section, read gated on
     // this version (nx_read_projectiles), so pre-v20 replay files still
     // parse.
-    static constexpr uint16_t VERSION = 20;
+    // 21 = per-player DEPLOYED turret lists appended at the end (PROTO 27):
+    // a 60 s sentry that survives its owner's death deserved to survive a
+    // save too. Pre-v21 files just load with empty batteries.
+    static constexpr uint16_t VERSION = 21;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of

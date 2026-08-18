@@ -5923,14 +5923,13 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
         !nx_read(in, vy) || !nx_read(in, aim) || !nx_read(in, ms_left) ||
         !nx_read(in, cooldown) || !nx_read(in, shots))
       return false;
-    if (!s || !nx_pose_sane(x, y, vx, vy) || !std::isfinite(aim) ||
-        !std::isfinite(ms_left) || !std::isfinite(cooldown) ||
-        ms_left > TurretDrone::LIFETIME_MS || shots > TurretDrone::SHOTS)
+    // fields_sane is the shared bound for BOTH turret ingests (this reader
+    // and the v21 save restore) — one place, or they drift.
+    if (!s || !TurretDrone::fields_sane(x, y, vx, vy, aim, ms_left,
+                                        cooldown, shots))
       continue;
-    TurretDrone t(WrappedPoint(x, y), Point(vx, vy), aim);
-    t.ms_left = ms_left;
-    t.fire_cooldown = cooldown;
-    t.shots_left = shots;
+    TurretDrone t =
+        TurretDrone::from_fields(x, y, vx, vy, aim, ms_left, cooldown, shots);
     int j = nx_match_previous(old_turrets, t.position, 100.0f);
     if (j >= 0) {
       if (old_turrets[j].net_unconfirmed)
