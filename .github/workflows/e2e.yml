@@ -116,8 +116,16 @@ jobs:
                     if "$@"; then return 0; fi
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          try sudo apt-get update
-          try sudo apt-get install -y \
+          # A wedged mirror HANGS apt rather than failing it, and try() only
+          # retries a FAILURE — three 40-minute timeout deaths on 2026-08-18
+          # (azure.archive dead, the archive.ubuntu.com fallback tar-pitting
+          # on jammy-security InRelease) never reached a single retry.
+          # timeout(1) bounds each attempt hard; the Acquire timeouts make
+          # apt abandon a silent socket on its own within an attempt.
+          apt_bounded() { sudo timeout 300 apt-get -o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
+          try apt_bounded update
+          try apt_bounded install -y \
             libsdl2-dev \
             freeglut3-dev \
             libgl1-mesa-dev \
@@ -220,8 +228,16 @@ jobs:
                     if "$@"; then return 0; fi
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          try sudo apt-get update
-          try sudo apt-get install -y \
+          # A wedged mirror HANGS apt rather than failing it, and try() only
+          # retries a FAILURE — three 40-minute timeout deaths on 2026-08-18
+          # (azure.archive dead, the archive.ubuntu.com fallback tar-pitting
+          # on jammy-security InRelease) never reached a single retry.
+          # timeout(1) bounds each attempt hard; the Acquire timeouts make
+          # apt abandon a silent socket on its own within an attempt.
+          apt_bounded() { sudo timeout 300 apt-get -o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
+          try apt_bounded update
+          try apt_bounded install -y \
             libsdl2-2.0-0 \
             freeglut3 \
             libglu1-mesa \
@@ -287,8 +303,16 @@ jobs:
                     if "$@"; then return 0; fi
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          try sudo apt-get update
-          try sudo apt-get install -y \
+          # A wedged mirror HANGS apt rather than failing it, and try() only
+          # retries a FAILURE — three 40-minute timeout deaths on 2026-08-18
+          # (azure.archive dead, the archive.ubuntu.com fallback tar-pitting
+          # on jammy-security InRelease) never reached a single retry.
+          # timeout(1) bounds each attempt hard; the Acquire timeouts make
+          # apt abandon a silent socket on its own within an attempt.
+          apt_bounded() { sudo timeout 300 apt-get -o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
+          try apt_bounded update
+          try apt_bounded install -y \
             libsdl2-2.0-0 \
             freeglut3 \
             libglu1-mesa \
