@@ -374,6 +374,15 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     SDL_StopTextInput();
     SDL_Log("Audio driver in use: %s", SDL_GetCurrentAudioDriver());
 
+    // TESTBUILD ONLY — NEVER MERGE THIS BRANCH. Bakes the turret-testing
+    // hooks in because the tester has no computer to adb the extras from:
+    // every NEW GAME rings one of each pickup around the spawn (including
+    // the turret pickup, +3 drones per collect) and grants the full
+    // arsenal at 30 rounds each spawn. ALL_WEAPONS flags the game cheated,
+    // so no achievements/stats bank from this build.
+    SDL_setenv("NEWTONIA_TEST_SPAWN_PICKUPS", "1", 1);
+    SDL_setenv("NEWTONIA_ALL_WEAPONS", "30", 1);
+
 #ifdef NEWTONIA_NET_RTC
     // Hidden CI/debug hooks, the Android twins of glut.cpp's. Reached the
     // same way every other NEWTONIA_* var is on this platform:
