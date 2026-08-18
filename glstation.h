@@ -12,7 +12,7 @@ using namespace std;
 
 class GLStation : public Ship {
 public:
-  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids = NULL);
+  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids = NULL, float aim_lead = 0.0f);
   virtual ~GLStation();
 
   void draw(bool minimap = false) const;
@@ -42,6 +42,11 @@ private:
   int time_until_next_ship, time_between_ships;
   bool deploying, redeploying;
   int wave, difficulty;
+  // How much of the perfect intercept lead this generation's wave ships aim
+  // with (GLGame::hostile_aim_lead; the station is recreated each rollover,
+  // so the value tracks the generation with no saved state). Handed to each
+  // deployed GLEnemy's Follower at spawn.
+  float aim_lead;
 };
 
 #endif

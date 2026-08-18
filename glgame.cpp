@@ -358,9 +358,11 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
     if (generation >= 13)
       black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
     if (generation >= 10)
-      mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+      mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects,
+                                       hostile_aim_lead(generation));
     if (generation >= 14)
-      station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+      station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
+                              hostile_aim_lead(generation));
     Achievements::note_cheat_used();
   }
 
@@ -810,7 +812,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   }
 
   if (save.station.present) {
-    station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+    station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
+                            hostile_aim_lead(generation));
     station->restore_state(save.station, grid);
   } else {
     station = NULL;
@@ -820,7 +823,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   // was saved. If it had already been destroyed there is none to restore — the
   // next generation will spawn a fresh one as usual.
   if (save.mini_station.present && save.mini_station.alive) {
-    mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+    mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects,
+                                     hostile_aim_lead(generation));
     mini_station->restore_state(save.mini_station);
   } else {
     mini_station = NULL;
@@ -7668,7 +7672,10 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // the client near 15 fps at gen 20+; see glstation.cpp).
   if (s.station.present) {
     if (!station)
-      station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects);
+      // Client replica: its enemies never steer or shoot (the host owns
+      // that), so the lead value is cosmetic here — passed for symmetry.
+      station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects,
+                              hostile_aim_lead(generation));
     station->restore_state(s.station, grid);
   } else if (station) {
     while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
@@ -7687,7 +7694,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // (bootstrap mid-fade) starts dead with no burst.
     bool watched_alive = mini_station != NULL && mini_station->is_alive();
     if (!mini_station)
-      mini_station = new GLMiniStation(grid, players, (std::list<Object *> *)objects);
+      mini_station = new GLMiniStation(grid, players, (std::list<Object *> *)objects,
+                                       hostile_aim_lead(generation));
     if (watched_alive && !s.mini_station.alive) {
       // Burst at the authoritative death spot, not the extrapolated one.
       mini_station->position =
@@ -8618,7 +8626,8 @@ void GLGame::tick(int delta) {
       if(generation >= 14) {
         if(station != NULL)
           delete station;
-        station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+        station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
+                                hostile_aim_lead(generation));
       }
       if(station != NULL) {
         station->reset();
@@ -8644,7 +8653,8 @@ void GLGame::tick(int delta) {
       if(generation >= 10) {
         if(mini_station != NULL)
           delete mini_station;
-        mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+        mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects,
+                                         hostile_aim_lead(generation));
       }
       // Rebuild the mid-game hazards for the new generation (fresh positions,
       // like the mini-station gets a fresh heading each level).

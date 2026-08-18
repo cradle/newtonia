@@ -8,6 +8,7 @@
 #include "particle.h"
 #include "ship.h"
 #include "grid.h"
+#include "seek.h"
 #include "asset_path.h"
 #include <iostream>
 
@@ -16,8 +17,8 @@ using namespace std;
 const float GLMiniStation::SHOOT_INTERVAL = 3000.0f;  // fire every 3 seconds
 const float GLMiniStation::DRIFT_SPEED    = 0.12f;    // steady cruise speed
 
-GLMiniStation::GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Object*>* /*asteroids*/)
-    : Ship(grid, false), players(players) {
+GLMiniStation::GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Object*>* /*asteroids*/, float aim_lead)
+    : Ship(grid, false), players(players), aim_lead(aim_lead) {
   // Smaller than the wave-deploying GLStation (radius 200).
   radius = 70.0f;
   radius_squared = radius * radius;
@@ -171,10 +172,19 @@ void GLMiniStation::fire_at_nearest_player() {
   }
   if (nearest == NULL) return;
 
-  // Aim across the nearest world wrap so we shoot the short way round.
+  // Aim across the nearest world wrap so we shoot the short way round —
+  // shifted toward the intercept point by the generation's aim_lead ramp
+  // (the shared solve in seek.h; bullet kinematics below are what it
+  // assumes: 0.615 units/ms, 0.99 of our drift inherited, 2000 ms TTL).
   Point self = position.closest_to(nearest->ship->position);
   Point dir(nearest->ship->position.x() - self.x(),
             nearest->ship->position.y() - self.y());
+  if (aim_lead > 0.0f) {
+    Point rel_vel(nearest->ship->velocity.x() - velocity.x() * 0.99f,
+                  nearest->ship->velocity.y() - velocity.y() * 0.99f);
+    Point off = intercept_offset(dir, rel_vel, 0.615f, 2000.0f, aim_lead);
+    dir = Point(dir.x() + off.x(), dir.y() + off.y());
+  }
   float m = dir.magnitude();
   if (m < 1e-4f) return;
   dir = dir / m;
