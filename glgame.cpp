@@ -1825,20 +1825,43 @@ void GLGame::collide_elastic_pair(Asteroid *a, Asteroid *b, bool announce) {
     b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
 
     // Play a deep metallic ting when an asteroid strikes a reflective one,
-    // but only if the collision is visible to any player.
-    if(announce && (a->reflective || b->reflective) &&
+    // but only if the collision is visible to any player — and only as
+    // loud as the hit was hard. -vrel_n is the closing speed along the
+    // contact normal (vrel_n < 0 here, or we returned above): a full ring
+    // needs an honest impact (~a fast rock's whole speed, max_speed/radius
+    // tops out at 0.3), and below the floor the cue is skipped entirely.
+    // Without the scaling, a crowd of elastic rocks jostling at near-zero
+    // relative speed — the normal state of a late generation, where a
+    // dozen of them share the level — rang every graze like a hammer blow
+    // (Glenn's level 25). The base rides the wire too, so the client
+    // hears the same hardness.
+    static const float kBounceRingSpeed = 0.15f;  // closing speed of a full ring
+    static const float kBounceMinBase   = 0.25f;  // quieter than this: skip
+    float ring_base = -vrel_n / kBounceRingSpeed;
+    if(ring_base > 1.0f) ring_base = 1.0f;
+    if(announce && ring_base >= kBounceMinBase &&
+       (a->reflective || b->reflective) &&
        Asteroid::asteroid_ting_sound != NULL) {
       Point contact(
         (a->position.x() + b->position.x()) * 0.5f,
         (a->position.y() + b->position.y()) * 0.5f);
+      // Audible to ANYONE seated (players holds the remote replicas too):
+      // worth a local play and a wire event. WorldSound attenuates the
+      // local play against THIS machine's camera; the client re-attenuates
+      // the event against its own (EV_ROID_BOUNCE_AT) — the old event
+      // carried this max-over-listeners volume as the playback level, so
+      // a bounce beside the host rang at full volume on a client parked
+      // across the world.
       float vol = sound_volume_for_point(contact);
       if(vol > 0.0f) {
         static Uint32 last_asteroid_ting_tick = UINT32_MAX;
         Uint32 now = SDL_GetTicks();
         if(now - last_asteroid_ting_tick >= 125) {
           last_asteroid_ting_tick = now;
-          WorldSound::play(Asteroid::asteroid_ting_sound, contact);
-          net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
+          WorldSound::play(Asteroid::asteroid_ting_sound, contact, ring_base);
+          net_send_event(Net::EV_ROID_BOUNCE_AT,
+                         Net::pack_pos_vol(contact.x(), contact.y(), ring_base,
+                                           world.x(), world.y()));
         }
       }
     }
@@ -5462,14 +5485,28 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
         net_pickup_latch_[arg] = 12;
       break;
     case Net::EV_ROID_BOUNCE:
-      // Asteroid-vs-reflective bounce; arg is the volume the host
-      // computed for the nearest player.
+      // LEGACY decode only (old replay files, old hosts): the superseded
+      // bounce event carried a playback VOLUME — the loudest listener's,
+      // not ours — and no position, so flat chunk-volume play is all it
+      // can support. New writers send EV_ROID_BOUNCE_AT below.
       if (Asteroid::asteroid_ting_sound) {
         Mix_VolumeChunk(Asteroid::asteroid_ting_sound,
                         (int)(arg & 0xff) * MIX_MAX_VOLUME / 255);
         Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
       }
       break;
+    case Net::EV_ROID_BOUNCE_AT: {
+      // Asteroid-vs-reflective bounce at a packed contact position, with
+      // the host's impulse loudness. Re-attenuated against THIS machine's
+      // camera like every other world cue — the legacy event above played
+      // the host's own loudness flat, which put every bounce beside the
+      // host at full volume in this cockpit.
+      float ix, iy, ring_base;
+      Net::unpack_pos_vol(arg, ix, iy, ring_base, world.x(), world.y());
+      WorldSound::play(Asteroid::asteroid_ting_sound, Point(ix, iy),
+                       ring_base);
+      break;
+    }
     // (EV_REMOTE_SHOT retired at PROTO 25 — nothing wrote it since the
     // PROTO 17 MSG_SHOT echo; a code 12 in an old replay's records falls
     // to the default case and is dropped silently.)

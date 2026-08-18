@@ -324,7 +324,10 @@ enum EventCode {
   EV_LEVEL_TIC = 8,
   EV_PICKUP = 9,
   // Asteroid-vs-reflective-asteroid bounce; arg = volume 0..255 as the
-  // host computed it (distance to the nearest player).
+  // host computed it (distance to the nearest player). Superseded by
+  // EV_ROID_BOUNCE_AT (that volume was the LOUDEST listener's, so a
+  // bounce beside the host rang at full volume on a client across the
+  // world); kept decodable for old replay files and old hosts.
   EV_ROID_BOUNCE = 10,
   // A player ship bounced off (or was rammed by) an asteroid without
   // dying; arg = seat 1..MAX_PLAYERS | 0x100 when the armoured-face
@@ -368,6 +371,15 @@ enum EventCode {
   // just sees the transport close and tries to rejoin — the seat may well
   // be gone by then, and the host is free to kick again.
   EV_KICKED = 19,
+  // Asteroid-vs-reflective bounce, replacing EV_ROID_BOUNCE: arg =
+  // pack_pos_vol (12-bit contact position fractions + 8-bit loudness
+  // base). The client re-attenuates against its OWN camera via
+  // WorldSound like every other world cue, and the base carries the
+  // host's impulse scaling (closing speed along the contact normal) so
+  // both machines agree on how hard the hit rang. Appended, not a PROTO
+  // bump: an old client ignores the unknown code and just misses the
+  // cue.
+  EV_ROID_BOUNCE_AT = 20,
 };
 
 // EV_ACHIEVEMENT arg values. Stable wire numbers — append only.
@@ -398,6 +410,30 @@ inline void unpack_pos(uint32_t arg, float &x, float &y,
                        float world_w, float world_h) {
   x = (float)(arg >> 16)    / 65535.0f * world_w;
   y = (float)(arg & 0xffff) / 65535.0f * world_h;
+}
+
+// EV_ROID_BOUNCE_AT arg: pack_pos with 12-bit fractions instead of 16,
+// freeing a byte for the cue's loudness base (0..255 -> 0..1). The coarser
+// grid (world/4095 — a couple of units even on huge worlds) is far below
+// what distance attenuation can resolve, and audio cues are all this
+// packing drives.
+inline uint32_t pack_pos_vol(float x, float y, float base,
+                             float world_w, float world_h) {
+  float fx = world_w > 0.0f ? x / world_w : 0.0f;
+  float fy = world_h > 0.0f ? y / world_h : 0.0f;
+  if (fx < 0.0f) fx = 0.0f; else if (fx > 1.0f) fx = 1.0f;
+  if (fy < 0.0f) fy = 0.0f; else if (fy > 1.0f) fy = 1.0f;
+  if (base < 0.0f) base = 0.0f; else if (base > 1.0f) base = 1.0f;
+  uint32_t ux = (uint32_t)(fx * 4095.0f + 0.5f);
+  uint32_t uy = (uint32_t)(fy * 4095.0f + 0.5f);
+  uint32_t ub = (uint32_t)(base * 255.0f + 0.5f);
+  return (ux << 20) | (uy << 8) | ub;
+}
+inline void unpack_pos_vol(uint32_t arg, float &x, float &y, float &base,
+                           float world_w, float world_h) {
+  x    = (float)((arg >> 20) & 0xfff) / 4095.0f * world_w;
+  y    = (float)((arg >> 8)  & 0xfff) / 4095.0f * world_h;
+  base = (float)(arg & 0xff) / 255.0f;
 }
 
 // MSG_INPUT held-button bitmask (uint16). One-shot actions (boost,
