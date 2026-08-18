@@ -6,7 +6,9 @@
 #include "../ship.h"
 #include "../asteroid.h"
 #include "../net_protocol.h"
+#include "../net_session.h"
 #include <math.h>
+#include <cmath>
 #include <iostream>
 #include <vector>
 
@@ -28,6 +30,24 @@ static float wrap_angle(float a) {
   while (a >  (float)M_PI) a -= 2.0f * (float)M_PI;
   while (a < -(float)M_PI) a += 2.0f * (float)M_PI;
   return a;
+}
+
+bool TurretDrone::fields_sane(float x, float y, float vx, float vy, float aim,
+                              float ms, float cooldown, uint8_t shots) {
+  return net_coord_sane(x) && net_coord_sane(y) &&
+         net_vel_sane(vx) && net_vel_sane(vy) &&
+         std::isfinite(aim) && std::isfinite(ms) && std::isfinite(cooldown) &&
+         ms <= LIFETIME_MS && shots <= SHOTS;
+}
+
+TurretDrone TurretDrone::from_fields(float x, float y, float vx, float vy,
+                                     float aim, float ms, float cooldown,
+                                     uint8_t shots) {
+  TurretDrone t(WrappedPoint(x, y), Point(vx, vy), aim);
+  t.ms_left = ms;
+  t.fire_cooldown = cooldown;
+  t.shots_left = shots;
+  return t;
 }
 
 TurretDrone::TurretDrone(WrappedPoint pos, Point vel, float initial_aim)

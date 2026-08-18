@@ -82,12 +82,13 @@ struct Player {
     // v21 append (PROTO 27) — this player's DEPLOYED turret drones, so the
     // battery survives save/continue (until v21 only the weapon's ammo
     // persisted and the drones were transient like mines). Written as a
-    // trailing per-player section at the end of the file. Snapshots share
-    // the struct, so keyframes/deltas grow ~29 bytes per live drone; the
-    // client never APPLIES this copy — online the nx ship-extras section
-    // stays the authoritative turret feed (deploy grace, vanish
-    // detection), and Ship::restore_state's rebuild is gated to the
-    // offline / host-resume loads (see net_quiet_respawn there).
+    // trailing per-player section at the end of the file, count clamped to
+    // the reader's 256 bound. Snapshots share the struct, so keyframes/
+    // deltas grow ~29 bytes per live drone; the client applies this copy
+    // exactly once, at the join/playback bootstrap (before
+    // net_quiet_respawn arms), after which the nx ship-extras section owns
+    // the list — see Ship::restore_state. Every ingest bounds the fields
+    // through TurretDrone::fields_sane.
     std::vector<Turret> turrets;
 };
 

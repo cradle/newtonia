@@ -957,24 +957,29 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   position        = WrappedPoint(p.pos_x, p.pos_y);
   first_life      = true;  // tells respawn() to try the saved position first
 
-  // v21: rebuild the deployed battery — OFFLINE and host-resume loads only.
-  // On a net client (and replay playback) restore_state runs inside every
-  // 10 Hz snapshot apply, and there the nx ship-extras own the turret list
-  // — a wholesale rebuild from the Save-body copy here would fight their
-  // deploy-grace hold and vanish detection (net_quiet_respawn is the
-  // client-game-lifetime flag, the same distinction reset() draws). Sits
-  // BEFORE the roster-match fast path below: a default-gun-only save takes
-  // that early return on a fresh ship, and its battery must not be lost to
-  // the shortcut.
+  // v21: rebuild the deployed battery — offline loads, host-resume loads,
+  // and ONCE at a net client's (or replay playback's) bootstrap, since the
+  // delegated restore constructor runs before Ship::net_quiet_respawn is
+  // armed. That single bootstrap apply is fine: the same keyframe's nx
+  // ship-extras take over the list immediately after (matching these
+  // copies within 100 units). Every LATER 10 Hz apply is quiet-gated out —
+  // the nx extras own the turret list online, and a wholesale rebuild here
+  // would fight their deploy-grace hold and vanish detection. Because the
+  // bootstrap bytes are a PEER's (or a downloaded replay's), every entry
+  // goes through the same fields_sane bound the nx reader uses — an insane
+  // record is dropped, never constructed. Sits BEFORE the roster-match
+  // fast path below: a default-gun-only save takes that early return on a
+  // fresh ship, and its battery must not be lost to the shortcut.
   if (!net_quiet_respawn) {
     turrets.clear();
     for (const auto &st : p.turrets) {
-      TurretDrone t(WrappedPoint(st.pos_x, st.pos_y),
-                    Point(st.vel_x, st.vel_y), st.aim);
-      t.ms_left = st.ms_left;
-      t.fire_cooldown = st.cooldown;
-      t.shots_left = st.shots_left;
-      turrets.push_back(t);
+      if (!TurretDrone::fields_sane(st.pos_x, st.pos_y, st.vel_x, st.vel_y,
+                                    st.aim, st.ms_left, st.cooldown,
+                                    st.shots_left))
+        continue;
+      turrets.push_back(TurretDrone::from_fields(
+          st.pos_x, st.pos_y, st.vel_x, st.vel_y, st.aim, st.ms_left,
+          st.cooldown, st.shots_left));
     }
   }
 

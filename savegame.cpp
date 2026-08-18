@@ -464,10 +464,21 @@ bool Save::serialize_game(Save::Stream &f, const Save::GameState &s) {
 
     // v21 append: per-player DEPLOYED turret drones (PROTO 27), in players
     // order like the seat block above — each player's section is its own
-    // count + entries, since batteries differ per pilot.
+    // count + entries, since batteries differ per pilot. The write CLAMPS
+    // to the reader's 256 bound: the deploy has no cooldown, so a
+    // 999-round cheat session hammering the key can float more than 256
+    // live 60 s drones, and an unclamped count made the reader reject the
+    // whole stream — a bricked CONTINUE, and online every keyframe/delta
+    // dropped until enough drones expired. Losing the excess drones from
+    // a save is the graceful degradation; the read bound stays hard, it
+    // is the hostile-stream defence.
     for (const auto &p : s.players) {
-        ok = ok && wv(f, (uint16_t)p.turrets.size());
+        uint16_t tcnt = (uint16_t)(p.turrets.size() > 256 ? 256
+                                                          : p.turrets.size());
+        ok = ok && wv(f, tcnt);
+        uint16_t tw = 0;
         for (const auto &t : p.turrets) {
+            if (tw++ >= tcnt) break;
             ok = ok && wv(f, t.pos_x) && wv(f, t.pos_y);
             ok = ok && wv(f, t.vel_x) && wv(f, t.vel_y);
             ok = ok && wv(f, t.aim) && wv(f, t.ms_left) && wv(f, t.cooldown);

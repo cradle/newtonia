@@ -198,12 +198,16 @@ namespace Net {
 //     bookkeeping so expiry stays in step.
 // 27: savegame v21 appended per-player DEPLOYED turret lists to the
 //     GameState — snapshots serialize through the same structs, so every
-//     keyframe/delta grows ~29 bytes per live drone. The client never
-//     APPLIES that copy (Ship::restore_state gates the rebuild to offline /
-//     host-resume loads): online the nx ship-extras section remains the
-//     authoritative turret feed, with its deploy grace and vanish
-//     detection. The body copy exists so save/continue — and the online
-//     host's resume slot — bring a battery back.
+//     keyframe/delta grows ~29 bytes per live drone. The client applies
+//     that copy exactly ONCE, at the join/playback bootstrap (the
+//     delegated restore constructor runs before net_quiet_respawn arms),
+//     where the same keyframe's nx ship-extras immediately take the list
+//     over; every later 10 Hz apply is gated out, so the nx section stays
+//     the authoritative online feed with its deploy grace and vanish
+//     detection. Both ingests bound every field through
+//     TurretDrone::fields_sane — the bootstrap bytes are a peer's. The
+//     body copy exists so save/continue — and the online host's resume
+//     slot — bring a battery back.
 const uint8_t PROTO_VERSION = 27;
 
 // Peer identity (badge metadata) rides HELLO/WELCOME as an APPEND, not a
