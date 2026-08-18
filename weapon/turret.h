@@ -84,7 +84,9 @@ struct TurretDrone : public Object {
   // reader (glgame.cpp) and the v21 save restore (Ship::restore_state) —
   // with the bounds carried alongside so no ingest can construct a drone
   // from unvalidated floats: a 1e30 coordinate spins WrappedPoint::wrap's
-  // repeated-addition loop for minutes, and a NaN ms_left never expires.
+  // repeated-addition loop for minutes, a huge finite aim hangs wrap_angle
+  // outright (ulp > 2*pi: the subtraction stops moving), and a NaN ms_left
+  // never expires.
   // Both records are untrusted where they matter (a peer's bootstrap
   // keyframe, a downloaded replay); the two readers once carried separate
   // copies of this snippet and only one of them validated (the review

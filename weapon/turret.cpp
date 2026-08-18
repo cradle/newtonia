@@ -34,10 +34,22 @@ static float wrap_angle(float a) {
 
 bool TurretDrone::fields_sane(float x, float y, float vx, float vy, float aim,
                               float ms, float cooldown, uint8_t shots) {
+  // aim needs a MAGNITUDE bound, not just isfinite: the constructor feeds it
+  // through wrap_angle's subtract-2-pi loop, and above ~2.7e8 a float's ulp
+  // exceeds 2*pi so the subtraction rounds back to the same value and the
+  // loop never exits — a finite hostile aim was a hard hang, worse than the
+  // WrappedPoint spin this predicate exists to stop. Every writer serializes
+  // an aim already wrapped to [-pi, pi], so one turn of slack rejects
+  // nothing real. ms is bounded below too: live drones always save with
+  // ms_left > 0 (expiry sweeps before capture), and a negative record would
+  // rebuild as pre-expired — up to 256 debris bursts on the first tick
+  // after a hostile load.
   return net_coord_sane(x) && net_coord_sane(y) &&
          net_vel_sane(vx) && net_vel_sane(vy) &&
-         std::isfinite(aim) && std::isfinite(ms) && std::isfinite(cooldown) &&
-         ms <= LIFETIME_MS && shots <= SHOTS;
+         std::isfinite(aim) && fabsf(aim) <= 2.0f * (float)M_PI &&
+         std::isfinite(cooldown) &&
+         std::isfinite(ms) && ms > 0.0f && ms <= LIFETIME_MS &&
+         shots <= SHOTS;
 }
 
 TurretDrone TurretDrone::from_fields(float x, float y, float vx, float vy,
