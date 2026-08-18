@@ -63,6 +63,24 @@ static float glgame_world_volume(const void *ctx, Point p) {
   return static_cast<const GLGame *>(ctx)->world_volume(p);
 }
 
+#ifdef __EMSCRIPTEN__
+// Game over on the web: hand the run's result to the page (main.ts installs
+// window.newtGameOver), which shows the "see where you'd rank" / "get it on
+// Steam" banner over the canvas — the web build's stand-in for the Steam
+// leaderboard prompt (NetBoard::create() is null on web). The score is the
+// best local ship's, the number the game-over card headlines. Callers must
+// skip playback (NetReplay): a replayed run's score is not the viewer's.
+static void web_notify_game_over(std::list<GLShip *> *players) {
+  int best = 0, count = 0;
+  for (auto *gs : *players) {
+    if (gs->ship->score > best) best = gs->ship->score;
+    ++count;
+  }
+  EM_ASM({ if (window.newtGameOver) window.newtGameOver($0, $1); },
+         best, count);
+}
+#endif
+
 // First point along segment a->b entering the circle (centre target_pos,
 // radius r), with the target translated to its wrapped copy nearest a —
 // the same wrap idiom as the lance's asteroid march. Used by the lance
@@ -1257,6 +1275,17 @@ bool GLGame::pause_menu_active() const {
   return true;
 }
 
+// The pause menu's LEAVE A REVIEW row: only where the Steam overlay can
+// actually open the form (steam_can_review — false everywhere but a Steam
+// build with the client up), only until used once, and only after enough
+// real play that the ask is earned. Lifetime kills is the playtime proxy:
+// it already exists (stats.h), roams with the player, and can't be reset
+// by starting a new game — ~300 kills is a solid session or two.
+bool GLGame::pause_review_available() const {
+  return steam_can_review() && !g_prefs.review_prompt_done &&
+         Stats::lifetime_kills() >= 300;
+}
+
 void GLGame::pause_nav(unsigned char key) {
   if (MenuSelect::move(key, pause_selection_, pause_row_count())) return;
   if (!MenuSelect::is_confirm(key)) return;
@@ -1267,6 +1296,16 @@ void GLGame::pause_nav(unsigned char key) {
     case PAUSE_PLAYERS:
       roster_active_ = true;
       roster_selection_ = 0;
+      break;
+    case PAUSE_REVIEW:
+      // One shot: opening the form retires the row for good (the flag is
+      // saved immediately — a crash later must not resurrect the ask). The
+      // overlay opens over the paused game; selection resets because the
+      // row list just shrank under the cursor.
+      steam_open_review_page();
+      g_prefs.review_prompt_done = true;
+      save_preferences();
+      pause_selection_ = PAUSE_RESUME;
       break;
     default:
       // Exactly what the menu key does — save first, then hand over.
@@ -6036,6 +6075,9 @@ void GLGame::tick_net_client(int delta) {
       NET_LOG("net: game over (all players out) - showing GAME OVER card\n");
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
+      // This block also runs for replay playback (it shares the client
+      // tick) — the banner is only for the player's OWN run.
+      if (net_mode_ == NetClient) web_notify_game_over(players);
 #endif
     }
   }
@@ -9716,6 +9758,7 @@ void GLGame::tick(int delta) {
 #ifdef __EMSCRIPTEN__
       // Show the tap-to-continue overlay so any touch reaches _web_tap_start().
       EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
+      if (net_mode_ != NetReplay) web_notify_game_over(players);
 #endif
     }
   }

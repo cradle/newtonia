@@ -586,15 +586,17 @@ void Overlay::paused(const GLGame *glgame) {
   // pause_menu_active() refuses while that card owns input — but the
   // positions stay put so neither screen shifts.
   if (!menu_live) return;
-  // Two rows online (a peer's seat isn't ours to rearrange), three offline
-  // with PLAYERS between them — the row list and the ladder both come from
-  // pause_row_count/pause_row_at, so they can't disagree about what row 1 is.
+  // The row list and the ladder both come from pause_row_count/pause_row_at,
+  // so they can't disagree about what row 1 is: RESUME and EXIT TO MENU
+  // always, PLAYERS between them offline/host, and the one-shot Steam
+  // LEAVE A REVIEW row (pause_review_available) above the exit.
   int rows = glgame->pause_row_count();
   for (int i = 0; i < rows; i++) {
     const char *label = "EXIT TO MENU";
     switch (glgame->pause_row_at(i)) {
       case GLGame::PAUSE_RESUME:  label = "RESUME"; break;
       case GLGame::PAUSE_PLAYERS: label = "PLAYERS"; break;
+      case GLGame::PAUSE_REVIEW:  label = "LEAVE A REVIEW"; break;
       default: break;
     }
     MenuSelect::draw_row(PAUSE_ROW_Y0 - i * PAUSE_ROW_GAP, label, PAUSE_ROW_SZ,

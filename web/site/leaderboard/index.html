@@ -138,6 +138,34 @@
       color: var(--muted);
       letter-spacing: 0.06em;
     }
+    /* "Would place" banner + row: shown only when the web game hands a
+       finished run over (?score= — see leaderboard.js). Gold like the
+       #1 row: this is the page's one conversion moment, the player
+       looking at the exact seat their run would take. */
+    .you-banner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem 1.2rem;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--gold);
+      background: rgba(255, 210, 77, 0.08);
+      padding: 0.7rem 1rem;
+      margin-bottom: 1.4rem;
+      letter-spacing: 0.06em;
+    }
+    #you-banner-text { color: var(--gold); }
+    a.steam-cta {
+      color: var(--gold);
+      border: 1px solid var(--gold);
+      padding: 0.3em 0.9em;
+      font-size: 0.82rem;
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+    }
+    a.steam-cta:hover { background: rgba(255, 210, 77, 0.16); color: var(--ink); }
+    tr.you-row td { background: rgba(255, 210, 77, 0.10); color: var(--gold); }
+    tr.you-row td.score, tr.you-row td.rank { color: var(--gold); }
     @media (max-width: 560px) {
       table.board { font-size: 0.8rem; }
       table.board th, table.board td { padding: 0.45rem 0.55rem; }
@@ -180,6 +208,15 @@
         <div class="board-updated" id="updated"></div>
       </div>
 
+      <!-- Filled and shown by leaderboard.js when the game passes a run's
+           score in ?score= (the web build's game-over banner links here). -->
+      <div class="you-banner" id="you-banner" hidden>
+        <span id="you-banner-text"></span>
+        <a class="steam-cta" id="you-banner-steam"
+           href="https://store.steampowered.com/app/4536720/Newtonia/?utm_source=newtonia_site&utm_medium=referral&utm_campaign=lb_would_place"
+           target="_blank" rel="noopener">COMPETE ON STEAM ▸</a>
+      </div>
+
       <div class="board-wrap">
         <table class="board" id="board" hidden>
           <thead>
@@ -194,7 +231,9 @@
         <div class="board-note" id="note">CONTACTING STATION&hellip;</div>
       </div>
 
-      <p class="note">Scores upload from the game on Steam, iOS and Android.
+      <p class="note">Scores upload from the game on
+        <a href="https://store.steampowered.com/app/4536720/Newtonia/?utm_source=newtonia_site&utm_medium=referral&utm_campaign=leaderboard"
+           target="_blank" rel="noopener">Steam</a>, iOS and Android.
         New scores appear within minutes. Click WATCH to replay a run in your browser.</p>
     </section>
   </main>
