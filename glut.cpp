@@ -578,6 +578,17 @@ void tick() {
               << " draws=" << s_last_frame_draws
               << " segs=" << s_last_frame_segs << std::endl;
   check_controller();
+  // check_controller's SDL_PollEvent pumps the whole THREAD's Win32 message
+  // queue (SDL peeks with a NULL hwnd), so on Windows a click on the title
+  // bar's close button is dispatched to freeglut's wndproc from inside the
+  // call above: freeglut destroys the window right there, mid-tick. Ticking
+  // on would end with glutPostRedisplay() on a window that no longer exists
+  // — a freeglut fgError ("no current window defined") that turns every
+  // close-button quit into an error + exit(1). Bail out instead; freeglut's
+  // main loop sees the empty window list and leaves through the normal
+  // atexit teardown. Linux/macOS SDL pumps only its own display connection,
+  // so the guard never fires there.
+  if (glutGetWindow() == 0) return;
 #ifdef __linux__
   touch_listener_poll();
   check_linux_focus();
