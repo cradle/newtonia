@@ -891,6 +891,18 @@ void Menu::draw() {
     rows.push_back({"HIGH SCORE", std::to_string(high_score), false});
     rows.push_back({"ASTEROIDS DESTROYED",
                     std::to_string(Stats::lifetime_kills()), false});
+    // Shots are primary discharges only (scatter = 1, each burst emission
+    // = 1, no turret/secondaries — stats.h), which is what makes the
+    // accuracy line mean "the pilot's own trigger". It can honestly
+    // exceed 100%: one lance pulse or scatter discharge kills many.
+    uint32_t shots = Stats::shots_fired();
+    rows.push_back({"SHOTS FIRED", std::to_string(shots), false});
+    rows.push_back({"ACCURACY",
+                    shots == 0 ? std::string("-")
+                               : std::to_string((uint32_t)(
+                                     (uint64_t)Stats::lifetime_kills() * 100 /
+                                     shots)) + "%",
+                    false});
     // 13 glyphs: the label column ends at -360 + 2*sz*len, and the longest
     // label must clear the value column at 160 ("ASTEROIDS DESTROYED", 19
     // glyphs, ends at 96 desktop; "SPECIAL TYPES DESTROYED" at 23 glyphs

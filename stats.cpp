@@ -22,21 +22,25 @@ static const char *ST_APP  = "newtonia";
 static const char *ST_FILE = "stats.dat";
 
 static const uint32_t ST_MAGIC   = 0x4E575354;  // "NWST"
-static const uint16_t ST_VERSION = 1;
+static const uint16_t ST_VERSION = 2;  // v2 appends shots_fired
 
 // Batch kill increments so heavy combat doesn't hit the disk (and, on web,
 // IndexedDB) on every kill. The save/game-over paths call flush(), so at most
-// a few seconds of kills are ever at risk.
+// a few seconds of kills are ever at risk. Shots batch coarser: an automatic
+// discharges ~10/s, so the kill cadence would write every second.
 static const uint32_t KILLS_PER_WRITE = 10;
+static const uint32_t SHOTS_PER_WRITE = 50;
 
 namespace {
 
 bool     loaded = false;
 bool     dirty = false;
 uint32_t unsaved_kills = 0;
+uint32_t unsaved_shots = 0;
 
 uint32_t kills = 0;
 uint32_t special_mask = 0;
+uint32_t shots = 0;
 
 std::string stats_path() {
   char *dir = SDL_GetPrefPath(ST_ORG, ST_APP);
@@ -61,6 +65,8 @@ void load() {
     uint32_t v = 0;
     if (fread(&v, sizeof(v), 1, f) == 1) kills = v;
     if (fread(&v, sizeof(v), 1, f) == 1) special_mask = v;
+    // v2: shots_fired. A v1 file ends here and the default 0 stands.
+    if (version >= 2 && fread(&v, sizeof(v), 1, f) == 1) shots = v;
   }
   fclose(f);
 }
@@ -73,11 +79,13 @@ void save() {
   bool ok = fwrite(&ST_MAGIC, sizeof(ST_MAGIC), 1, f) == 1
          && fwrite(&ST_VERSION, sizeof(ST_VERSION), 1, f) == 1
          && fwrite(&kills, sizeof(kills), 1, f) == 1
-         && fwrite(&special_mask, sizeof(special_mask), 1, f) == 1;
+         && fwrite(&special_mask, sizeof(special_mask), 1, f) == 1
+         && fwrite(&shots, sizeof(shots), 1, f) == 1;
   fclose(f);
   if (!ok) return;
   dirty = false;
   unsaved_kills = 0;
+  unsaved_shots = 0;
   // Persist to IndexedDB so the stats survive a page refresh.
   web_fs_sync("stats");
 }
@@ -88,6 +96,7 @@ namespace Stats {
 
 uint32_t lifetime_kills()    { load(); return kills; }
 uint32_t special_kill_mask() { load(); return special_mask; }
+uint32_t shots_fired()       { load(); return shots; }
 
 void add_kill() {
   load();
@@ -95,6 +104,14 @@ void add_kill() {
   unsaved_kills++;
   dirty = true;
   if (unsaved_kills >= KILLS_PER_WRITE) save();
+}
+
+void add_shot() {
+  load();
+  shots++;
+  unsaved_shots++;
+  dirty = true;
+  if (unsaved_shots >= SHOTS_PER_WRITE) save();
 }
 
 void note_special_kill(Special s) {

@@ -5,6 +5,8 @@
 #include "../particle.h"
 #include "../point.h"
 #include "../ship.h"
+#include "../stats.h"
+#include "../achievements.h"
 
 #include <math.h>
 #include <sstream>
@@ -141,6 +143,14 @@ namespace Weapon {
     if (!sim_only)
       Ship::replay_pews.push_back(
           Point(ship->position.x(), ship->position.y()));
+    // Lifetime SHOTS FIRED: one per DISCHARGE — a scatter level is one shot
+    // however many barrels the switch below mints, and each burst emission
+    // arrives here on its own clock. Local players only (enemies fire this
+    // same weapon, and the host's replica of a remote gun runs this
+    // bookkeeping too — is_local_player is false for both), frozen for
+    // cheated games like the kill counters (credit_asteroid_kill's rule).
+    if (ship->is_local_player && !Achievements::unlocks_suppressed())
+      Stats::add_shot();
     Point dir = Point(ship->facing);
     switch(level) {
       case(0):

@@ -29,8 +29,16 @@ enum Special {
 
 uint32_t lifetime_kills();     // asteroids ever destroyed by local players
 uint32_t special_kill_mask();  // bitmask of Special values ever destroyed
+// Primary-weapon discharges by local players (v2 field; a v1 file reads
+// back 0). One per DISCHARGE: a scatter level is one shot however many
+// barrels it mints, each burst emission is its own, and beam/lance/shock
+// bolts count one each. Turret-drone bullets and secondaries are
+// deliberately excluded — the companion ACCURACY readout is about the
+// pilot's own trigger.
+uint32_t shots_fired();
 
 void add_kill();                    // one asteroid kill; disk writes are batched
+void add_shot();                    // one primary discharge; writes are batched
 void note_special_kill(Special s); // writes through immediately if new
 void flush();                       // persist pending changes to stats.dat now
 

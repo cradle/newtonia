@@ -1,6 +1,8 @@
 #include "shock.h"
 #include "../asset_path.h"
 #include "../ship.h"
+#include "../stats.h"
+#include "../achievements.h"
 #include "../asteroid.h"
 #include "../grid.h"
 #include "../seek.h"
@@ -271,6 +273,9 @@ void Shock::try_fire() {
     return;
   }
   _ammo--;
+  // Lifetime SHOTS FIRED — one per bolt, same gates as Default::fire.
+  if (ship->is_local_player && !Achievements::unlocks_suppressed())
+    Stats::add_shot();
   if (sim_only) return;
   ship->shocks.push_back(ShockBolt(ship->gun(), ship->facing.normalized(), ship));
   if (shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
