@@ -129,6 +129,17 @@ jobs:
           # timeout-minutes stays the backstop for the truly pathological.
           apt_bounded() { sudo apt-get -o Acquire::Retries=3 \
                     -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
+          # ...and the timeouts still can't catch a mirror that TAR-PITS —
+          # keeps the socket alive at a trickle, so the inactivity timeout
+          # never fires and the fetch wedges until timeout-minutes kills the
+          # job (two 30-minute cancels on 2026-08-19, both with an
+          # azure.archive Packages fetch as the last line while
+          # archive.ubuntu.com answered in milliseconds). The runner asks
+          # azure.archive FIRST via the mirror+file list, so point that list
+          # straight at the archive that answers and the dead mirror is
+          # never asked at all.
+          echo 'https://archive.ubuntu.com/ubuntu/	priority:1' \
+            | sudo tee /etc/apt/apt-mirrors.txt
           try apt_bounded update
           try apt_bounded install -y \
             libsdl2-dev \
@@ -246,6 +257,17 @@ jobs:
           # timeout-minutes stays the backstop for the truly pathological.
           apt_bounded() { sudo apt-get -o Acquire::Retries=3 \
                     -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
+          # ...and the timeouts still can't catch a mirror that TAR-PITS —
+          # keeps the socket alive at a trickle, so the inactivity timeout
+          # never fires and the fetch wedges until timeout-minutes kills the
+          # job (two 30-minute cancels on 2026-08-19, both with an
+          # azure.archive Packages fetch as the last line while
+          # archive.ubuntu.com answered in milliseconds). The runner asks
+          # azure.archive FIRST via the mirror+file list, so point that list
+          # straight at the archive that answers and the dead mirror is
+          # never asked at all.
+          echo 'https://archive.ubuntu.com/ubuntu/	priority:1' \
+            | sudo tee /etc/apt/apt-mirrors.txt
           try apt_bounded update
           try apt_bounded install -y \
             libsdl2-2.0-0 \
@@ -326,6 +348,17 @@ jobs:
           # timeout-minutes stays the backstop for the truly pathological.
           apt_bounded() { sudo apt-get -o Acquire::Retries=3 \
                     -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
+          # ...and the timeouts still can't catch a mirror that TAR-PITS —
+          # keeps the socket alive at a trickle, so the inactivity timeout
+          # never fires and the fetch wedges until timeout-minutes kills the
+          # job (two 30-minute cancels on 2026-08-19, both with an
+          # azure.archive Packages fetch as the last line while
+          # archive.ubuntu.com answered in milliseconds). The runner asks
+          # azure.archive FIRST via the mirror+file list, so point that list
+          # straight at the archive that answers and the dead mirror is
+          # never asked at all.
+          echo 'https://archive.ubuntu.com/ubuntu/	priority:1' \
+            | sudo tee /etc/apt/apt-mirrors.txt
           try apt_bounded update
           try apt_bounded install -y \
             libsdl2-2.0-0 \
