@@ -1773,7 +1773,7 @@ void GLGame::add_remote_player(uint8_t seat) {
 // pair where at least one is elastic (reflective asteroids carry
 // elastic=true). Pairs are processed once via inner iterator starting
 // after outer. ONE definition for two callers: the host simulates it for
-// real (announce=true: bounce ting + EV_ROID_BOUNCE), and the net client
+// real (announce=true: bounce ting + EV_ROID_BOUNCE_AT), and the net client
 // mirrors it silently each visual step — bounces are position-and-
 // pairing-dependent, so without the mirror every one of them was a
 // surprise the authoritative records corrected 100 ms later (the last
@@ -1854,10 +1854,21 @@ void GLGame::collide_elastic_pair(Asteroid *a, Asteroid *b, bool announce) {
       // across the world.
       float vol = sound_volume_for_point(contact);
       if(vol > 0.0f) {
+        // Two limits, different jobs. The global 125 ms floor spaces
+        // simultaneous hits; the per-ROCK refractory is what actually
+        // quiets a late generation — a dozen elastic rocks in loose
+        // contact produce a steady stream of HONEST collisions that
+        // sailed through the impulse floor at up to 8 rings/s, so a rock
+        // that just rang stays quiet for a couple of seconds and only a
+        // pair of fresh rocks can ring. Stamped on both partners.
+        static const Uint32 kRockRingRefractoryMs = 2000;
         static Uint32 last_asteroid_ting_tick = UINT32_MAX;
         Uint32 now = SDL_GetTicks();
-        if(now - last_asteroid_ting_tick >= 125) {
+        if(now - last_asteroid_ting_tick >= 125 &&
+           now - a->last_bounce_ring >= kRockRingRefractoryMs &&
+           now - b->last_bounce_ring >= kRockRingRefractoryMs) {
           last_asteroid_ting_tick = now;
+          a->last_bounce_ring = b->last_bounce_ring = now;
           WorldSound::play(Asteroid::asteroid_ting_sound, contact, ring_base);
           net_send_event(Net::EV_ROID_BOUNCE_AT,
                          Net::pack_pos_vol(contact.x(), contact.y(), ring_base,
