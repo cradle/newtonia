@@ -509,10 +509,13 @@ int main(int argc, char *argv[]) {
                 try {
                     var k = UTF8ToString($0);
                     var val = new URLSearchParams(location.search).get(k);
-                    if (val === null || val === '') {
+                    // "" not '': EM_ASM bodies pass through the C
+                    // preprocessor, which tokenizes '' as an empty char
+                    // constant and warns (-Winvalid-pp-token).
+                    if (val === null || val === "") {
                         try { val = localStorage.getItem(k); } catch (e) {}
                     }
-                    if (val === null || val === '') return -1;
+                    if (val === null || val === "") return -1;
                     var n = parseInt(val, 10);
                     return isNaN(n) ? -1 : n;
                 } catch (e) { return -1; }
