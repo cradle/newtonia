@@ -20,7 +20,7 @@ using namespace std;
 // player shot destroys it for a fixed point reward (handled in GLGame).
 class GLMiniStation : public Ship {
 public:
-  GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Object*>* asteroids = NULL);
+  GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Object*>* asteroids = NULL, float aim_lead = 0.0f);
   virtual ~GLMiniStation();
 
   void draw(bool minimap = false) const;
@@ -44,6 +44,12 @@ private:
   float inner_rotation, outer_rotation, outer_rotation_speed, inner_rotation_speed;
 
   list<GLShip*>* players;
+
+  // How much of the perfect intercept lead the shot aims with
+  // (GLGame::hostile_aim_lead — 0 at the gen-10 intro, so the first
+  // station a player meets still fires straight at them; recreated each
+  // rollover, so the value tracks the generation with no saved state).
+  float aim_lead;
 
   float time_until_next_shot;
   static const float SHOOT_INTERVAL;   // ms between shots

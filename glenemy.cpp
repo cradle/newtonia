@@ -10,7 +10,7 @@
 
 using namespace std;
 
-GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, float difficulty, list<Object*>* asteroids) : GLShip(grid, false) {
+GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, float difficulty, list<Object*>* asteroids, float aim_lead) : GLShip(grid, false) {
   list<Ship*>* ships = new list<Ship*>;
   list<GLShip*>::iterator s;
   for(s = targets->begin(); s != targets->end(); s++) {
@@ -23,7 +23,7 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
   // onto the first alive enemy. The host's mint is authoritative; a
   // client replica's is overwritten from the extras on every apply.
   ship->net_ship_id = ++Ship::net_next_ship_id;
-  ship->behaviours.push_back(new Follower(ship, (list<Object*>*)ships, asteroids, difficulty));
+  ship->behaviours.push_back(new Follower(ship, (list<Object*>*)ships, asteroids, difficulty, aim_lead));
   ship->position = WrappedPoint(x,y);
   ship->thrust_force = 0.129 + difficulty*0.00025 + rand()%50/10000.0;
   ship->rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;

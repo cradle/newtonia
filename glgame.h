@@ -1311,6 +1311,20 @@ private:
 
   static const int step_size = 8;
 
+  // How much of the perfect intercept lead the hostiles' guns aim with at
+  // this generation (the mini-station's snipe, the station wave ships'
+  // Follower): 0 through the mini-station's gen-10 intro — the first
+  // shooting hostile a player meets fires straight at them, as it always
+  // did — then a linear climb to a perfect turret-style lead by gen 18.
+  // The stations are recreated on every rollover, so passing this at
+  // construction tracks the generation with no saved or replicated state.
+  static float hostile_aim_lead(int generation) {
+    float t = (generation - 10) / 8.0f;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return t;
+  }
+
   Point world;
 
   int generation;
