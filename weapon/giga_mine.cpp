@@ -37,6 +37,7 @@ namespace Weapon {
         return;
       } else {
         _ammo--;
+        stat_secondary_used(ship);
         // Drop giga-mine at ship's tail; slow rotation, long TTL like regular mine
         ship->giga_mines.push_back(Particle(ship->tail(), ship->facing*-0.1 + ship->velocity*0.1, 30000.0, 0.15f));
         // Deploy click: the ship's own cue, scaled like every gun play

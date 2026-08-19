@@ -385,6 +385,18 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
     Achievements::note_cheat_used();
   }
 
+  // Lifetime GAMES PLAYED: one per fresh start (a CONTINUE resumes the same
+  // game through the save ctor and never lands here). After EVERY cheat
+  // determination — the dev generation start above is the last one — so a
+  // suppressed game doesn't count, matching the other lifetime counters.
+  // The NEWTONIA_SHOT guard is the screenshot harness's sandbox: it can only
+  // latch the cheat flag AFTER this constructor returns (new_game_started
+  // above lifts any earlier latch), and its generation-0 scenes carry no
+  // dev-start mark of their own, so this ctor-time counter needs the env
+  // check the tick-time counters don't.
+  if (!Achievements::unlocks_suppressed() && !SDL_getenv("NEWTONIA_SHOT"))
+    Stats::add_game_played();
+
   // Mid-game hazards accumulated by this generation (none at generation 0).
   add_hazards();
 
@@ -5394,6 +5406,12 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
       // The world rebuild itself rides the next snapshot (client side);
       // the event just drives the banner.
       net_set_generation_banner((int)arg);
+      // Lifetime HIGHEST LEVEL, the client's copy of the host rollover
+      // hook. NetClient ONLY: replay playback replays this same event
+      // stream, and a watched run must bank nothing (the same rule as
+      // every other lifetime counter).
+      if (net_mode_ == NetClient && !Achievements::unlocks_suppressed())
+        Stats::note_level_reached(arg + 1);
       break;
     case Net::EV_BYE:
       // B5: the goodbye marks the SENDING peer lost — on the host that is
@@ -8228,6 +8246,13 @@ void GLGame::tick(int delta) {
     current_time += delta;
     return;
   }
+  // Lifetime TIME PLAYED: wall time actively at the controls — not paused,
+  // not the game-over card, never replay playback, and frozen for cheated
+  // games like every lifetime counter (accumulation and write batching in
+  // Stats::add_play_time).
+  if (net_mode_ != NetReplay && running && !game_over &&
+      !Achievements::unlocks_suppressed())
+    Stats::add_play_time(delta);
   if (net_mode_ == NetClient || net_mode_ == NetReplay) {
     if (net_mode_ == NetReplay) {
       // Playback speed scales time itself — clock, extrapolation and
@@ -8695,6 +8720,12 @@ void GLGame::tick(int delta) {
     } else {
       generation++;
       update_presence();
+      // Lifetime HIGHEST LEVEL (displayed number = generation + 1). The
+      // cheat freeze keeps a skip-level or dev-start run from banking a
+      // best the pilot never flew; the client's copy of this moment is
+      // the EV_GENERATION_START handler.
+      if (!Achievements::unlocks_suppressed())
+        Stats::note_level_reached((uint32_t)generation + 1);
       // The enemy station arrives at generation 14 (displayed level 15) and
       // the world takes its one big growth jump to make room for it.
       if(generation == 14) {

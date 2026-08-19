@@ -149,7 +149,11 @@ namespace Weapon {
     // same weapon, and the host's replica of a remote gun runs this
     // bookkeeping too — is_local_player is false for both), frozen for
     // cheated games like the kill counters (credit_asteroid_kill's rule).
-    if (ship->is_local_player && !Achievements::unlocks_suppressed())
+    // !sim_only is belt-and-braces on top: replay playback marks EVERY
+    // ship net_remote_gun — including the recorder's own seat, which
+    // keeps is_local_player — so watching can never count.
+    if (ship->is_local_player && !sim_only &&
+        !Achievements::unlocks_suppressed())
       Stats::add_shot();
     Point dir = Point(ship->facing);
     switch(level) {

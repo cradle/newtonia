@@ -182,6 +182,7 @@ namespace Weapon {
         return;
       } else {
         _ammo--;
+        stat_secondary_used(ship);
         // Deploy at the tail like a mine, drifting gently with the ship's
         // momentum; the barrel opens facing the way the ship faces.
         ship->turrets.push_back(TurretDrone(

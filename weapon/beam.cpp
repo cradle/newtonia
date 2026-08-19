@@ -66,7 +66,8 @@ namespace Weapon {
     }
     _ammo--;
     // Lifetime SHOTS FIRED — one per bolt, same gates as Default::fire.
-    if (ship->is_local_player && !Achievements::unlocks_suppressed())
+    if (ship->is_local_player && !sim_only &&
+        !Achievements::unlocks_suppressed())
       Stats::add_shot();
     if(sim_only) return;
     if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {

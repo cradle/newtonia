@@ -36,10 +36,29 @@ uint32_t special_kill_mask();  // bitmask of Special values ever destroyed
 // deliberately excluded — the companion ACCURACY readout is about the
 // pilot's own trigger.
 uint32_t shots_fired();
+// v3 fields (a v2 file reads them back 0). All share the attribution
+// rule and the cheat freeze; the callers' gate is
+// is_local_player && !net_remote_gun (replay playback marks every ship
+// net_remote_gun, including the recorder's own seat, so watching can
+// never bank anything).
+uint32_t ship_kills();         // enemy ships destroyed (friendly fire excluded)
+uint32_t deaths();             // times a local ship was destroyed
+uint32_t games_played();       // fresh NEW GAME starts (continues resume one)
+uint32_t highest_level();      // max displayed level ever reached (gen + 1)
+uint32_t play_seconds();       // active play time (not paused/menus/replays)
+uint32_t secondaries_used();   // successful secondary activations (no nova)
+uint32_t novas_detonated();
 
 void add_kill();                    // one asteroid kill; disk writes are batched
 void add_shot();                    // one primary discharge; writes are batched
 void note_special_kill(Special s); // writes through immediately if new
+void add_ship_kill();               // batched (waves come in bursts)
+void add_death();                   // rare: writes through
+void add_game_played();             // rare: writes through
+void note_level_reached(uint32_t displayed_level);  // writes through on a new max
+void add_play_time(int ms);         // accumulates; writes every ~60 s accrued
+void add_secondary_used();          // batched
+void add_nova();                    // rare: writes through
 void flush();                       // persist pending changes to stats.dat now
 
 } // namespace Stats

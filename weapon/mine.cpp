@@ -37,6 +37,7 @@ namespace Weapon {
         return;
       } else {
         _ammo--;
+        stat_secondary_used(ship);
         ship->mines.push_back(Particle(ship->tail(),  ship->facing*-0.1 + ship->velocity*0.1, 30000.0, 0.2f));
         // Deploy click: the ship's own cue, scaled like every gun play
         // site (full in your cockpit, faded for the far co-op partner).

@@ -274,7 +274,8 @@ void Shock::try_fire() {
   }
   _ammo--;
   // Lifetime SHOTS FIRED — one per bolt, same gates as Default::fire.
-  if (ship->is_local_player && !Achievements::unlocks_suppressed())
+  if (ship->is_local_player && !sim_only &&
+      !Achievements::unlocks_suppressed())
     Stats::add_shot();
   if (sim_only) return;
   ship->shocks.push_back(ShockBolt(ship->gun(), ship->facing.normalized(), ship));

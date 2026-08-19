@@ -889,8 +889,25 @@ void Menu::draw() {
     struct StatRow { std::string label, value; bool indent; };
     std::vector<StatRow> rows;
     rows.push_back({"HIGH SCORE", std::to_string(high_score), false});
+    uint32_t best_lvl = Stats::highest_level();
+    rows.push_back({"HIGHEST LEVEL",
+                    best_lvl == 0 ? std::string("-")
+                                  : std::to_string(best_lvl), false});
+    rows.push_back({"GAMES PLAYED",
+                    std::to_string(Stats::games_played()), false});
+    // H/M, no seconds: a lifetime total moves too slowly for seconds to
+    // say anything, and the shorter string keeps the value column tidy.
+    uint32_t secs = Stats::play_seconds();
+    rows.push_back({"TIME PLAYED",
+                    secs >= 3600
+                        ? std::to_string(secs / 3600) + "H " +
+                              std::to_string((secs % 3600) / 60) + "M"
+                        : std::to_string(secs / 60) + "M", false});
+    rows.push_back({"DEATHS", std::to_string(Stats::deaths()), false});
     rows.push_back({"ASTEROIDS DESTROYED",
                     std::to_string(Stats::lifetime_kills()), false});
+    rows.push_back({"SHIPS DESTROYED",
+                    std::to_string(Stats::ship_kills()), false});
     // Shots are primary discharges only (scatter = 1, each burst emission
     // = 1, no turret/secondaries — stats.h), which is what makes the
     // accuracy line mean "the pilot's own trigger". It can honestly
@@ -903,6 +920,10 @@ void Menu::draw() {
                                      (uint64_t)Stats::lifetime_kills() * 100 /
                                      shots)) + "%",
                     false});
+    rows.push_back({"SECONDARIES USED",
+                    std::to_string(Stats::secondaries_used()), false});
+    rows.push_back({"NOVAS DETONATED",
+                    std::to_string(Stats::novas_detonated()), false});
     // 13 glyphs: the label column ends at -360 + 2*sz*len, and the longest
     // label must clear the value column at 160 ("ASTEROIDS DESTROYED", 19
     // glyphs, ends at 96 desktop; "SPECIAL TYPES DESTROYED" at 23 glyphs
