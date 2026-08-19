@@ -222,6 +222,46 @@
       transform: translate(-50%, -50%) scale(0.93);
     }
 
+    /* Game-over promo banner (built by main.ts, shown via window.newtGameOver
+       from the game's game-over latch): the run just ended — offer the site
+       leaderboard ("where would this score rank?") and the Steam store, the
+       two things the free web build doesn't have. Sits above the tap-to-
+       continue overlay; its own links/button still receive the pointer. */
+    #go-banner {
+      position: absolute;
+      left: 50%;
+      bottom: 3.2rem;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.65rem 2.2rem 0.65rem 1rem;
+      background: rgba(0, 10, 4, 0.88);
+      border: 1px solid rgba(40, 255, 120, 0.45);
+      font-size: 0.8rem;
+      letter-spacing: 0.06em;
+      max-width: 92vw;
+      text-align: center;
+    }
+    #go-banner a { color: #2aff78; text-decoration: none; }
+    #go-banner a:hover { color: #8dffb9; text-decoration: underline; }
+    #go-banner a.go-steam { color: #9ec3ff; }
+    #go-banner a.go-steam:hover { color: #cfe2ff; }
+    #go-banner button {
+      position: absolute;
+      top: 0.1rem;
+      right: 0.35rem;
+      background: none;
+      border: 0;
+      color: #6a8f78;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    #go-banner button:hover { color: #fff; }
+
     {{{ STYLE }}}
   </style>
 </head>

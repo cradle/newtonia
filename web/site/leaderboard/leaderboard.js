@@ -46,6 +46,24 @@
   var players = params.get('players') === '2' ? 2 : 1;
   var season = params.get('season') || '';
 
+  // A run handed over by the web game (?score= — the game-over banner in
+  // web/main.ts links here): the page answers "where would this run have
+  // placed?" against the LIVE board of the players count the game passed,
+  // with a COMPETE ON STEAM CTA beside the answer (the web build itself
+  // can't submit — LEADERBOARD.md's no-web decision). Digits-only and
+  // bounded: the value only ever lands via textContent, but a nonsense
+  // score should hide the feature, not chart a lie.
+  var yourScore = (function () {
+    var raw = params.get('score');
+    if (raw === null || !/^[0-9]{1,10}$/.test(raw)) return null;
+    var n = parseInt(raw, 10);
+    return (n > 0 && n <= 2000000000) ? n : null;
+  })();
+  var yourPlayers = players;           // the board the run belongs to
+
+  var elYouBanner = document.getElementById('you-banner');
+  var elYouText = document.getElementById('you-banner-text');
+
   function boardsFor(p) {
     return (snapshot.boards || []).filter(function (b) {
       return b.players === p;
@@ -66,6 +84,9 @@
     elBoard.hidden = true;
     elNote.hidden = false;
     elNote.textContent = text;
+    // Every note path replaces the table wholesale — a stale "would place"
+    // banner from the previous render must not outlive it.
+    if (elYouBanner) elYouBanner.hidden = true;
   }
 
   // Display names are player-chosen. The worker strips control bytes, but
@@ -134,6 +155,14 @@
       season = '';
       syncUrl();
       note('NO SCORES YET — BE THE FIRST');
+      // An empty board still answers a handed-over run — with the best
+      // possible pitch (note() just hid the banner, so re-show).
+      if (elYouBanner && elYouText &&
+          yourScore !== null && players === yourPlayers) {
+        elYouText.textContent = 'THIS RUN (SCORE ' + fmtScore(yourScore) +
+            ') WOULD PLACE #1';
+        elYouBanner.hidden = false;
+      }
       return;
     }
     season = b.season;
@@ -147,7 +176,52 @@
       return;
     }
     elRows.innerHTML = '';
-    b.rows.slice(0, MAX_ROWS).forEach(function (r) {
+    var shown = b.rows.slice(0, MAX_ROWS);
+
+    // "Would place" (?score= from the web game): rows already ranked above
+    // the handed-over score. Existing entries with an EQUAL score outrank
+    // it — they were there first — so the place is 1 + count(score >=
+    // yours). Only the LIVE board of the run's own players count answers;
+    // a browsed old season or the other board shows neither banner nor row.
+    var youAbove = -1;
+    if (yourScore !== null && players === yourPlayers && b.live) {
+      youAbove = 0;
+      for (var yi = 0; yi < shown.length; yi++)
+        if (Number(shown[yi].score) >= yourScore) youAbove++;
+    }
+
+    // The seat the run would take, as a highlighted row at its exact place
+    // in the table (the number in the banner, made physical). Dashes where
+    // a submitted row has data — this run never uploaded, that's the point.
+    function appendYouRow(place) {
+      var tr = document.createElement('tr');
+      tr.className = 'you-row';
+      function td(cls, text) {
+        var c = document.createElement('td');
+        if (cls) c.className = cls;
+        c.textContent = text;
+        tr.appendChild(c);
+      }
+      td('rank', '#' + place);
+      var pilot = document.createElement('td');
+      var name = document.createElement('span');
+      name.textContent = 'YOU — THIS RUN';
+      pilot.appendChild(name);
+      var badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = 'WEB';
+      pilot.appendChild(badge);
+      tr.appendChild(pilot);
+      td('score num', fmtScore(yourScore));
+      td('num', '—');
+      td('num', '—');
+      td('', '—');
+      tr.appendChild(document.createElement('td'));  // no WATCH — no replay
+      elRows.appendChild(tr);
+    }
+
+    shown.forEach(function (r, ri) {
+      if (ri === youAbove) appendYouRow(youAbove + 1);
       var tr = document.createElement('tr');
       if (r.rank === 1) tr.className = 'top1';
 
@@ -198,6 +272,21 @@
       tr.appendChild(actions);
       elRows.appendChild(tr);
     });
+
+    if (youAbove >= 0) {
+      // Below every shown row: exact only when the table isn't truncated
+      // (a slice at MAX_ROWS means real rows exist beyond what we can see).
+      var exact = youAbove < shown.length || shown.length < MAX_ROWS;
+      if (exact && youAbove === shown.length) appendYouRow(youAbove + 1);
+      if (elYouText) {
+        elYouText.textContent = exact
+            ? 'THIS RUN WOULD PLACE #' + (youAbove + 1) + ' THIS SEASON'
+            : 'THIS RUN IS BELOW THE TOP ' + shown.length + ' THIS SEASON';
+      }
+      if (elYouBanner) elYouBanner.hidden = false;
+    } else if (elYouBanner) {
+      elYouBanner.hidden = true;
+    }
 
     elNote.hidden = true;
     elBoard.hidden = false;

@@ -220,6 +220,8 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.friendly_fire = (val[0] == '1');
     } else if (strcmp(key, "allow_anonymous") == 0) {
         g_prefs.allow_anonymous = (val[0] == '1');
+    } else if (strcmp(key, "review_prompt_done") == 0) {
+        g_prefs.review_prompt_done = (val[0] == '1');
     } else if (strcmp(key, "auto_record_replays") == 0) {
         g_prefs.auto_record_replays = (val[0] == '1');
     } else if (strcmp(key, "leaderboard_prompts") == 0) {
@@ -306,6 +308,7 @@ void save_preferences() {
     fprintf(f, "rotate_view=%d\n",             g_prefs.player_keys[0].rotate_view ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
     fprintf(f, "allow_anonymous=%d\n",         g_prefs.allow_anonymous    ? 1 : 0);
+    fprintf(f, "review_prompt_done=%d\n",      g_prefs.review_prompt_done ? 1 : 0);
     fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "leaderboard_prompts=%d\n",     g_prefs.leaderboard_prompts ? 1 : 0);
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);

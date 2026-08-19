@@ -127,6 +127,15 @@ jobs:
           # install that was 8 minutes from succeeding, three times over.
           # Slow-but-moving must be allowed to finish; the job's own
           # timeout-minutes stays the backstop for the truly pathological.
+          # UPDATE is the exception: index fetches are a few MB, so a
+          # minute is already pathological. The mirror rewrite below stops
+          # the runner asking the mirror that tar-pitted on 2026-08-19; the
+          # hard 180 s cap per UPDATE attempt is the guard for whichever
+          # mirror tar-pits next (2026-08-18 it was archive.ubuntu.com
+          # itself, on jammy-security InRelease) — it kills the dribble the
+          # Acquire timeouts can't see (bytes still flowing) so try() gets
+          # its retry, and a thrice-dead update falls through to install on
+          # the runner image's baked lists rather than dying in the fetch.
           apt_bounded() { sudo apt-get -o Acquire::Retries=3 \
                     -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
           # ...and the timeouts still can't catch a mirror that TAR-PITS —
@@ -140,7 +149,9 @@ jobs:
           # never asked at all.
           echo 'https://archive.ubuntu.com/ubuntu/	priority:1' \
             | sudo tee /etc/apt/apt-mirrors.txt
-          try apt_bounded update
+          apt_update_capped() { sudo timeout 180 apt-get -o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update; }
+          try apt_update_capped || echo "apt-get update failed; using the image's baked lists"
           try apt_bounded install -y \
             libsdl2-dev \
             freeglut3-dev \
@@ -255,6 +266,15 @@ jobs:
           # install that was 8 minutes from succeeding, three times over.
           # Slow-but-moving must be allowed to finish; the job's own
           # timeout-minutes stays the backstop for the truly pathological.
+          # UPDATE is the exception: index fetches are a few MB, so a
+          # minute is already pathological. The mirror rewrite below stops
+          # the runner asking the mirror that tar-pitted on 2026-08-19; the
+          # hard 180 s cap per UPDATE attempt is the guard for whichever
+          # mirror tar-pits next (2026-08-18 it was archive.ubuntu.com
+          # itself, on jammy-security InRelease) — it kills the dribble the
+          # Acquire timeouts can't see (bytes still flowing) so try() gets
+          # its retry, and a thrice-dead update falls through to install on
+          # the runner image's baked lists rather than dying in the fetch.
           apt_bounded() { sudo apt-get -o Acquire::Retries=3 \
                     -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
           # ...and the timeouts still can't catch a mirror that TAR-PITS —
@@ -268,7 +288,9 @@ jobs:
           # never asked at all.
           echo 'https://archive.ubuntu.com/ubuntu/	priority:1' \
             | sudo tee /etc/apt/apt-mirrors.txt
-          try apt_bounded update
+          apt_update_capped() { sudo timeout 180 apt-get -o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update; }
+          try apt_update_capped || echo "apt-get update failed; using the image's baked lists"
           try apt_bounded install -y \
             libsdl2-2.0-0 \
             freeglut3 \
@@ -346,6 +368,15 @@ jobs:
           # install that was 8 minutes from succeeding, three times over.
           # Slow-but-moving must be allowed to finish; the job's own
           # timeout-minutes stays the backstop for the truly pathological.
+          # UPDATE is the exception: index fetches are a few MB, so a
+          # minute is already pathological. The mirror rewrite below stops
+          # the runner asking the mirror that tar-pitted on 2026-08-19; the
+          # hard 180 s cap per UPDATE attempt is the guard for whichever
+          # mirror tar-pits next (2026-08-18 it was archive.ubuntu.com
+          # itself, on jammy-security InRelease) — it kills the dribble the
+          # Acquire timeouts can't see (bytes still flowing) so try() gets
+          # its retry, and a thrice-dead update falls through to install on
+          # the runner image's baked lists rather than dying in the fetch.
           apt_bounded() { sudo apt-get -o Acquire::Retries=3 \
                     -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
           # ...and the timeouts still can't catch a mirror that TAR-PITS —
@@ -359,7 +390,9 @@ jobs:
           # never asked at all.
           echo 'https://archive.ubuntu.com/ubuntu/	priority:1' \
             | sudo tee /etc/apt/apt-mirrors.txt
-          try apt_bounded update
+          apt_update_capped() { sudo timeout 180 apt-get -o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update; }
+          try apt_update_capped || echo "apt-get update failed; using the image's baked lists"
           try apt_bounded install -y \
             libsdl2-2.0-0 \
             freeglut3 \

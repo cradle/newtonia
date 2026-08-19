@@ -263,10 +263,70 @@ declare const Module: {
     if (!isMenu) {
       _resizeFn?.(); // Ensure buttons are correctly sized when they become visible
       _positionJoyPlaceholder?.();
+      hideGameOverBanner(); // a new run started — last run's promo is stale
     }
     if (_menuOverlay) _menuOverlay.style.display = isMenu ? "block" : "none";
   }
   (window as any).setMenuMode = setMenuMode;
+
+  // ---- Game-over promo banner ----------------------------------------
+  // The web build deliberately has no netplay or leaderboard (LEADERBOARD.md:
+  // NetBoard::create() is null on web) — this banner is where the free
+  // version finally says so, at the moment the run ends. glgame.cpp's
+  // game-over latches call window.newtGameOver(score, players); the banner
+  // offers the site leaderboard with ?score= (the page shows where the run
+  // WOULD have placed) and the Steam store, UTM-tagged so Steam's traffic
+  // report attributes web-game referrals. Absolute URLs on both: the
+  // itch.io deploy serves this same bundle off-domain.
+  let _goBanner: HTMLElement | null = null;
+  let _goRank: HTMLAnchorElement | null = null;
+
+  function hideGameOverBanner(): void {
+    if (_goBanner) _goBanner.style.display = "none";
+  }
+
+  function showGameOverBanner(score: number, playerCount: number): void {
+    score = Math.max(0, Math.floor(Number(score) || 0));
+    // The board keeps one co-op slot: every run with >= 2 players competes
+    // on the players=2 board (FOURPLAYER.md D10).
+    const boardPlayers = playerCount >= 2 ? 2 : 1;
+    if (!_goBanner) {
+      const el = document.createElement("div");
+      el.id = "go-banner";
+      const rank = document.createElement("a");
+      rank.target = "_blank";
+      rank.rel = "noopener";
+      const steam = document.createElement("a");
+      steam.className = "go-steam";
+      steam.target = "_blank";
+      steam.rel = "noopener";
+      steam.href =
+          "https://store.steampowered.com/app/4536720/Newtonia/" +
+          "?utm_source=newtonia_webgame&utm_medium=referral&utm_campaign=gameover";
+      steam.textContent = "ONLINE CO-OP + LEADERBOARDS — GET IT ON STEAM";
+      const close = document.createElement("button");
+      close.textContent = "✕";
+      close.setAttribute("aria-label", "Dismiss");
+      close.addEventListener("click", () => {
+        hideGameOverBanner();
+        canvas.focus(); // hand the keys back to the game
+      });
+      el.appendChild(rank);
+      el.appendChild(steam);
+      el.appendChild(close);
+      document.getElementById("game-container")!.appendChild(el);
+      _goBanner = el;
+      _goRank = rank;
+    }
+    _goRank!.href =
+        "https://newtonia.metonymous.com/leaderboard/" +
+        `?score=${score}&players=${boardPlayers}` +
+        "&utm_source=newtonia_webgame&utm_medium=referral&utm_campaign=gameover";
+    _goRank!.textContent =
+        `SCORE ${score.toLocaleString("en-US")} — SEE WHERE YOU'D RANK`;
+    _goBanner.style.display = "flex";
+  }
+  (window as any).newtGameOver = showGameOverBanner;
 
   // Builds the touch UI and returns a resize handler.
   // The caller is responsible for adding/removing the resize listener.
