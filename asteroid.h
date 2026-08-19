@@ -45,6 +45,15 @@ public:
   uint32_t net_id;
   static uint32_t next_net_id;
 
+  // When this rock last rang the elastic-bounce ting (SDL_GetTicks ms;
+  // 0 = never). Cosmetic only — not serialized. A crowded late-generation
+  // cluster of elastic rocks produces a steady stream of honest
+  // collisions, so the cue needs a per-ROCK refractory on top of the
+  // global rate limit and the impulse floor (glgame.cpp's elastic pass):
+  // a rock that just rang stays quiet for a while, while a fresh
+  // collision elsewhere still sounds.
+  Uint32 last_bounce_ring = 0;
+
   const static int max_radius;
 
   static Mix_Chunk *explode_sound, *thud_sound, *ting_sound, *asteroid_ting_sound;

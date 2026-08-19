@@ -17,7 +17,7 @@
 
 using namespace std;
 
-GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids) : Ship(grid, false), objects(objects), targets(targets), asteroids(asteroids) {
+GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids, float aim_lead) : Ship(grid, false), objects(objects), targets(targets), asteroids(asteroids), aim_lead(aim_lead) {
   position = Point(0,0);
   radius = 200.0;
   time_until_respawn = 0;
@@ -252,7 +252,7 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
       ge = (GLEnemy *)*oi;
       ++oi;
     } else {
-      ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids);
+      ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids, aim_lead);
       objects->push_back(ge);
       // Skip the initial 2.5s lock delay — enemy is already deployed at
       // the recorded position.
@@ -313,7 +313,8 @@ void GLStation::step(float delta, const Grid &grid) {
         new GLEnemy(
           grid,
           position.x() + distance*cos(rotation),
-          position.y() + distance*sin(rotation), targets, difficulty, asteroids
+          position.y() + distance*sin(rotation), targets, difficulty, asteroids,
+          aim_lead
         )
       );
     }

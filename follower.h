@@ -12,7 +12,7 @@ class Follower : public Behaviour {
 public:
   Follower(Ship *ship);
   Follower(Ship *ship, list<Object *> *targets);
-  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f);
+  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f, float aim_lead = 0.0f);
   virtual ~Follower();
 
   virtual void step(int delta);
@@ -28,6 +28,7 @@ private:
   list<Object *> *targets;
   list<Object *> *asteroids;  // non-owning pointer
   float difficulty;
+  float aim_lead;  // 0 = steer/shoot at the target now, 1 = perfect intercept
   int time_until_next_lock, time_between_locks;
   int shoot_timer;
   Object *target;

@@ -358,9 +358,11 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
     if (generation >= 13)
       black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
     if (generation >= 10)
-      mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+      mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects,
+                                       hostile_aim_lead(generation));
     if (generation >= 14)
-      station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+      station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
+                              hostile_aim_lead(generation));
     Achievements::note_cheat_used();
   }
 
@@ -810,7 +812,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   }
 
   if (save.station.present) {
-    station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+    station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
+                            hostile_aim_lead(generation));
     station->restore_state(save.station, grid);
   } else {
     station = NULL;
@@ -820,7 +823,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   // was saved. If it had already been destroyed there is none to restore — the
   // next generation will spawn a fresh one as usual.
   if (save.mini_station.present && save.mini_station.alive) {
-    mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+    mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects,
+                                     hostile_aim_lead(generation));
     mini_station->restore_state(save.mini_station);
   } else {
     mini_station = NULL;
@@ -1769,7 +1773,7 @@ void GLGame::add_remote_player(uint8_t seat) {
 // pair where at least one is elastic (reflective asteroids carry
 // elastic=true). Pairs are processed once via inner iterator starting
 // after outer. ONE definition for two callers: the host simulates it for
-// real (announce=true: bounce ting + EV_ROID_BOUNCE), and the net client
+// real (announce=true: bounce ting + EV_ROID_BOUNCE_AT), and the net client
 // mirrors it silently each visual step — bounces are position-and-
 // pairing-dependent, so without the mirror every one of them was a
 // surprise the authoritative records corrected 100 ms later (the last
@@ -1821,20 +1825,59 @@ void GLGame::collide_elastic_pair(Asteroid *a, Asteroid *b, bool announce) {
     b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
 
     // Play a deep metallic ting when an asteroid strikes a reflective one,
-    // but only if the collision is visible to any player.
-    if(announce && (a->reflective || b->reflective) &&
+    // but only if the collision is visible to any player — and only as
+    // loud as the hit was hard. -vrel_n is the closing speed along the
+    // contact normal (vrel_n < 0 here, or we returned above): a full ring
+    // needs an honest impact (~a fast rock's whole speed, max_speed/radius
+    // tops out at 0.3), and below the floor the cue is skipped entirely.
+    // Without the scaling, a crowd of elastic rocks jostling at near-zero
+    // relative speed — the normal state of a late generation, where a
+    // dozen of them share the level — rang every graze like a hammer blow
+    // (Glenn's level 25). The base rides the wire too, so the client
+    // hears the same hardness.
+    static const float kBounceRingSpeed = 0.15f;  // closing speed of a full ring
+    static const float kBounceMinBase   = 0.25f;  // quieter than this: skip
+    float ring_base = -vrel_n / kBounceRingSpeed;
+    if(ring_base > 1.0f) ring_base = 1.0f;
+    if(announce && ring_base >= kBounceMinBase &&
+       (a->reflective || b->reflective) &&
        Asteroid::asteroid_ting_sound != NULL) {
       Point contact(
         (a->position.x() + b->position.x()) * 0.5f,
         (a->position.y() + b->position.y()) * 0.5f);
+      // Audible to ANYONE seated (players holds the remote replicas too):
+      // worth a local play and a wire event. WorldSound attenuates the
+      // local play against THIS machine's camera; the client re-attenuates
+      // the event against its own (EV_ROID_BOUNCE_AT) — the old event
+      // carried this max-over-listeners volume as the playback level, so
+      // a bounce beside the host rang at full volume on a client parked
+      // across the world.
       float vol = sound_volume_for_point(contact);
       if(vol > 0.0f) {
+        // Two limits, different jobs. The global cadence cap bounds how
+        // often the WORLD can ring, whatever the population: the pass
+        // fires for elastic-vs-ANY pairs, so a late generation's dozen
+        // reflective rocks plough through hundreds of ordinary ones and
+        // per-collision gates alone (the impulse floor, the per-rock
+        // refractory below) still let a cluster ring several times a
+        // second — the cap makes the ting a sparse texture at any
+        // density. The per-ROCK refractory then keeps the sparse rings
+        // honest: a rock that just rang stays quiet for a couple of
+        // seconds, so the cadence budget goes to fresh collisions
+        // instead of one jostling pair. Stamped on both partners.
+        static const Uint32 kBounceGlobalCadenceMs = 800;
+        static const Uint32 kRockRingRefractoryMs = 2000;
         static Uint32 last_asteroid_ting_tick = UINT32_MAX;
         Uint32 now = SDL_GetTicks();
-        if(now - last_asteroid_ting_tick >= 125) {
+        if(now - last_asteroid_ting_tick >= kBounceGlobalCadenceMs &&
+           now - a->last_bounce_ring >= kRockRingRefractoryMs &&
+           now - b->last_bounce_ring >= kRockRingRefractoryMs) {
           last_asteroid_ting_tick = now;
-          WorldSound::play(Asteroid::asteroid_ting_sound, contact);
-          net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
+          a->last_bounce_ring = b->last_bounce_ring = now;
+          WorldSound::play(Asteroid::asteroid_ting_sound, contact, ring_base);
+          net_send_event(Net::EV_ROID_BOUNCE_AT,
+                         Net::pack_pos_vol(contact.x(), contact.y(), ring_base,
+                                           world.x(), world.y()));
         }
       }
     }
@@ -5458,14 +5501,28 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
         net_pickup_latch_[arg] = 12;
       break;
     case Net::EV_ROID_BOUNCE:
-      // Asteroid-vs-reflective bounce; arg is the volume the host
-      // computed for the nearest player.
+      // LEGACY decode only (old replay files, old hosts): the superseded
+      // bounce event carried a playback VOLUME — the loudest listener's,
+      // not ours — and no position, so flat chunk-volume play is all it
+      // can support. New writers send EV_ROID_BOUNCE_AT below.
       if (Asteroid::asteroid_ting_sound) {
         Mix_VolumeChunk(Asteroid::asteroid_ting_sound,
                         (int)(arg & 0xff) * MIX_MAX_VOLUME / 255);
         Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
       }
       break;
+    case Net::EV_ROID_BOUNCE_AT: {
+      // Asteroid-vs-reflective bounce at a packed contact position, with
+      // the host's impulse loudness. Re-attenuated against THIS machine's
+      // camera like every other world cue — the legacy event above played
+      // the host's own loudness flat, which put every bounce beside the
+      // host at full volume in this cockpit.
+      float ix, iy, ring_base;
+      Net::unpack_pos_vol(arg, ix, iy, ring_base, world.x(), world.y());
+      WorldSound::play(Asteroid::asteroid_ting_sound, Point(ix, iy),
+                       ring_base);
+      break;
+    }
     // (EV_REMOTE_SHOT retired at PROTO 25 — nothing wrote it since the
     // PROTO 17 MSG_SHOT echo; a code 12 in an old replay's records falls
     // to the default case and is dropped silently.)
@@ -7668,7 +7725,10 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // the client near 15 fps at gen 20+; see glstation.cpp).
   if (s.station.present) {
     if (!station)
-      station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects);
+      // Client replica: its enemies never steer or shoot (the host owns
+      // that), so the lead value is cosmetic here — passed for symmetry.
+      station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects,
+                              hostile_aim_lead(generation));
     station->restore_state(s.station, grid);
   } else if (station) {
     while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
@@ -7687,7 +7747,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // (bootstrap mid-fade) starts dead with no burst.
     bool watched_alive = mini_station != NULL && mini_station->is_alive();
     if (!mini_station)
-      mini_station = new GLMiniStation(grid, players, (std::list<Object *> *)objects);
+      mini_station = new GLMiniStation(grid, players, (std::list<Object *> *)objects,
+                                       hostile_aim_lead(generation));
     if (watched_alive && !s.mini_station.alive) {
       // Burst at the authoritative death spot, not the extrapolated one.
       mini_station->position =
@@ -8618,7 +8679,8 @@ void GLGame::tick(int delta) {
       if(generation >= 14) {
         if(station != NULL)
           delete station;
-        station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+        station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
+                                hostile_aim_lead(generation));
       }
       if(station != NULL) {
         station->reset();
@@ -8644,7 +8706,8 @@ void GLGame::tick(int delta) {
       if(generation >= 10) {
         if(mini_station != NULL)
           delete mini_station;
-        mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+        mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects,
+                                         hostile_aim_lead(generation));
       }
       // Rebuild the mid-game hazards for the new generation (fresh positions,
       // like the mini-station gets a fresh heading each level).

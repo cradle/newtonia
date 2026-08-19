@@ -7,7 +7,7 @@
 
 class GLEnemy : public GLShip {
 public:
-  GLEnemy(const Grid &grid, float x, float y, std::list<GLShip*> * target, float difficulty = 1, std::list<Object*> *asteroids = NULL);
+  GLEnemy(const Grid &grid, float x, float y, std::list<GLShip*> * target, float difficulty = 1, std::list<Object*> *asteroids = NULL, float aim_lead = 0.0f);
   virtual ~GLEnemy();
 };
 

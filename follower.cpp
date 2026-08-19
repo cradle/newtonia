@@ -1,21 +1,22 @@
 #include "follower.h"
 #include "behaviour.h"
 
+#include "seek.h"
 #include "ship.h"
 #include <iostream>
 #include <cstdlib>
 #include <cmath>
 using namespace std;
 
-Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f) {
+Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f) {
+Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty) {
+Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead) {
   common_init();
 }
 
@@ -112,6 +113,22 @@ void Follower::step(int delta) {
       ship->thrust_analog = 1.0f;
       ship->thrust(true);
       WrappedPoint target_point = target->position;
+      if(aim_lead > 0.0f) {
+        // Lead the target: steer toward (and gate the shot on) the point the
+        // shared intercept solve picks, blended by aim_lead — the generation
+        // ramp GLGame hands down through the station. The gun mints bullets
+        // at 0.615 units/ms with 0.99 of the ship's drift and a 2000 ms TTL
+        // (weapon/default.cpp fire_shot) — the same kinematics the turret
+        // leads with. The ship both flies and shoots along its facing, so
+        // steering at the intercept also turns tail-chasing into cut-offs.
+        Point self = ship->position.closest_to(target_point);
+        Point rel(target_point.x() - self.x(), target_point.y() - self.y());
+        Point rel_vel(target->velocity.x() - ship->velocity.x() * 0.99f,
+                      target->velocity.y() - ship->velocity.y() * 0.99f);
+        Point off = intercept_offset(rel, rel_vel, 0.615f, 2000.0f, aim_lead);
+        target_point = WrappedPoint(target_point.x() + off.x(),
+                                    target_point.y() + off.y());
+      }
       float angle = (ship->heading() - (ship->position.closest_to(target_point) - target_point).normalized().direction());
       angle = (angle < 0.0) ? (360.0 + angle) : angle;
       if(angle >= 0 && angle < 180) {
