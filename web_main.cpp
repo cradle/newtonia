@@ -133,6 +133,24 @@ static void finger_up(SDL_FingerID id, float x, float y) {
     }
 }
 
+// Stroke weight vs display density.  The emulated thick-line core
+// (gles2_compat.cpp) is measured in PHYSICAL buffer pixels, and the buffer is
+// CSS size × devicePixelRatio, so a fixed core factor can't fit both ends: at
+// dpr 1 (a standard desktop monitor) the old web-wide 0.5 factor drew ships
+// and asteroids ~2x fatter than the native desktop build on the same screen
+// (field report: Firefox on Linux), while at phone/Retina densities the
+// desktop's legacy 0.1 factor is a hairline — the reason web moved to 0.5
+// (the native mobile apps' full-width aliased-line weight) in the first
+// place.  Blend between the two references: desktop weight at dpr 1, the
+// w-pixels mobile weight from dpr 2 up.  Typer text is unaffected (it pins
+// its own 0.1 around every text draw).
+static void apply_line_core_scale(double dpr) {
+    float t = (float)dpr - 1.0f;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    gles2_set_line_core_scale(0.1f + 0.4f * t);
+}
+
 // ============================================================
 // Main loop — called by Emscripten once per animation frame
 // ============================================================
@@ -237,6 +255,10 @@ static void main_loop() {
                     SDL_SetWindowSize(s_window, s_w, s_h);
                     s_game->resize(s_w, s_h);
                     Typer::resize(s_w, s_h);
+                    // dpr changes arrive as a resize too (browser zoom, a
+                    // move to a differently-scaled monitor): the buffer size
+                    // moves with it, so this branch is the re-derive point.
+                    apply_line_core_scale(dpr);
                     SDL_Log("web: resize css %.0fx%.0f dpr %.2f buffer %dx%d",
                             css_w, css_h, dpr, s_w, s_h);
                 }
@@ -444,6 +466,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
             s_w = (int)(css_w * dpr);
             s_h = (int)(css_h * dpr);
             SDL_SetWindowSize(s_window, s_w, s_h);
+            apply_line_core_scale(dpr);
         }
     }
     // IDBFS is now populated — load preferences before constructing the
@@ -558,6 +581,7 @@ int main(int argc, char *argv[]) {
     SDL_GL_SetSwapInterval(1); // vsync
 
     gles2_init();
+    apply_line_core_scale(emscripten_get_device_pixel_ratio());
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

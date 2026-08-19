@@ -261,9 +261,17 @@ static float         s_color[4]     = {1,1,1,1};
 static float         s_point_size   = 1.0f;
 static float         s_line_width   = 1.0f;
 // Fraction of the line width forming the solid core (see gles2_compat.h).
-// Web (WebGL) strokes read too thin at the legacy 0.1 factor, so default to the
-// conventional glLineWidth(w) == w-pixels semantics there; every other platform
-// keeps the original 0.1.  Typer overrides this to keep HUD text thin.
+// The core is measured in PHYSICAL buffer pixels, so one fixed factor can't
+// fit every display density: web strokes read too thin at the legacy 0.1
+// factor on dense (devicePixelRatio >= 2) phone/Retina buffers — hence the
+// conventional glLineWidth(w) == w-pixels 0.5 default there, matching the
+// native mobile apps' full-width aliased lines — but that same 0.5 on a
+// dpr-1 desktop monitor drew ships/asteroids ~2x fatter than the native
+// desktop build (field report: Firefox on Linux, 2026-08-19).  web_main.cpp
+// re-derives the value from the real devicePixelRatio at startup and on
+// resize (0.1 at dpr 1, ramping to 0.5 from dpr 2 up); the 0.5 here is only
+// the pre-init fallback.  Every other platform keeps the original 0.1.
+// Typer overrides this to keep HUD text thin.
 #ifdef __EMSCRIPTEN__
 static float         s_line_core_scale = 0.5f;
 #else
