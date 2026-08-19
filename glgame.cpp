@@ -1854,17 +1854,22 @@ void GLGame::collide_elastic_pair(Asteroid *a, Asteroid *b, bool announce) {
       // across the world.
       float vol = sound_volume_for_point(contact);
       if(vol > 0.0f) {
-        // Two limits, different jobs. The global 125 ms floor spaces
-        // simultaneous hits; the per-ROCK refractory is what actually
-        // quiets a late generation — a dozen elastic rocks in loose
-        // contact produce a steady stream of HONEST collisions that
-        // sailed through the impulse floor at up to 8 rings/s, so a rock
-        // that just rang stays quiet for a couple of seconds and only a
-        // pair of fresh rocks can ring. Stamped on both partners.
+        // Two limits, different jobs. The global cadence cap bounds how
+        // often the WORLD can ring, whatever the population: the pass
+        // fires for elastic-vs-ANY pairs, so a late generation's dozen
+        // reflective rocks plough through hundreds of ordinary ones and
+        // per-collision gates alone (the impulse floor, the per-rock
+        // refractory below) still let a cluster ring several times a
+        // second — the cap makes the ting a sparse texture at any
+        // density. The per-ROCK refractory then keeps the sparse rings
+        // honest: a rock that just rang stays quiet for a couple of
+        // seconds, so the cadence budget goes to fresh collisions
+        // instead of one jostling pair. Stamped on both partners.
+        static const Uint32 kBounceGlobalCadenceMs = 800;
         static const Uint32 kRockRingRefractoryMs = 2000;
         static Uint32 last_asteroid_ting_tick = UINT32_MAX;
         Uint32 now = SDL_GetTicks();
-        if(now - last_asteroid_ting_tick >= 125 &&
+        if(now - last_asteroid_ting_tick >= kBounceGlobalCadenceMs &&
            now - a->last_bounce_ring >= kRockRingRefractoryMs &&
            now - b->last_bounce_ring >= kRockRingRefractoryMs) {
           last_asteroid_ting_tick = now;
