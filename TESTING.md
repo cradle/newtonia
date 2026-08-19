@@ -26,8 +26,8 @@ touches the Steam API against it:
 
 ```sh
 g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 \
-    net_lobby.cpp menu.cpp glgame.cpp steam_presence.cpp steam_invites.cpp \
-    steam_keyboard.cpp steam_identity.cpp steam_identity_verify.cpp
+    net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp steam_keyboard.cpp \
+    steam_identity.cpp steam_identity_verify.cpp
 ```
 
 When adding a Steamworks call: verify the signature against the SDK docs /

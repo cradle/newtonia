@@ -104,11 +104,6 @@ struct Preferences {
     // door. Note this is strict by design: a room of desktop builds attests
     // nobody, so turning it off there closes the room to everyone.
     bool allow_anonymous     = true;
-    // The pause menu's one-shot LEAVE A REVIEW row (Steam builds only —
-    // steam_can_review): set once the player has opened the review form,
-    // which retires the row for good. Lives in the INI rather than in
-    // Steam cloud state so a reinstall asks again at most once.
-    bool review_prompt_done  = false;
     // Auto-record replays (REPLAY.md). Default ON since 2026-07-28: the
     // low-end field pass cleared the recorder on real hardware across all
     // four axes (Moto E14 for CPU/RAM/lifecycle, Moto G05 for storage
