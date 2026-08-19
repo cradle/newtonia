@@ -874,27 +874,24 @@ void Menu::draw() {
     Typer::draw_centered(0, menu_screen_heading_y(), "STATS", touch ? 30 : 26);
     // Read-only rows over the same band geometry the options list uses
     // (opt_row_center — one layout rule for every sub-screen). Label left,
-    // value right; the checklist marks each killable special type a local
-    // player has ever destroyed (stats.dat's mask — reflective and
-    // invincible are deliberately absent from it, they die only to god
-    // mode, so they are bonus kills rather than requirements).
-    static const char *kSpecialNames[Stats::SPECIAL_COUNT] = {
-      "NORMAL", "TELEPORTING", "INVISIBLE", "QUANTUM",
-      "TOUGH", "ARMOURED", "PHASING",
-    };
+    // value right. SPECIAL TYPES is the count over stats.dat's kill mask
+    // (reflective and invincible are deliberately absent from it — they
+    // die only to god mode, bonus kills rather than requirements); the
+    // per-type checklist was tried and CUT — nineteen rows crammed the
+    // band (field, 2026-08-19), and the count carries the progress.
     uint32_t mask = Stats::special_kill_mask();
     int found = 0;
     for (int i = 0; i < Stats::SPECIAL_COUNT; i++)
       if (mask & (1u << i)) found++;
-    struct StatRow { std::string label, value; bool indent; };
+    struct StatRow { std::string label, value; };
     std::vector<StatRow> rows;
-    rows.push_back({"HIGH SCORE", std::to_string(high_score), false});
+    rows.push_back({"HIGH SCORE", std::to_string(high_score)});
     uint32_t best_lvl = Stats::highest_level();
     rows.push_back({"HIGHEST LEVEL",
                     best_lvl == 0 ? std::string("-")
-                                  : std::to_string(best_lvl), false});
+                                  : std::to_string(best_lvl)});
     rows.push_back({"GAMES PLAYED",
-                    std::to_string(Stats::games_played()), false});
+                    std::to_string(Stats::games_played())});
     // H/M, no seconds: a lifetime total moves too slowly for seconds to
     // say anything, and the shorter string keeps the value column tidy.
     uint32_t secs = Stats::play_seconds();
@@ -902,28 +899,27 @@ void Menu::draw() {
                     secs >= 3600
                         ? std::to_string(secs / 3600) + "H " +
                               std::to_string((secs % 3600) / 60) + "M"
-                        : std::to_string(secs / 60) + "M", false});
-    rows.push_back({"DEATHS", std::to_string(Stats::deaths()), false});
+                        : std::to_string(secs / 60) + "M"});
+    rows.push_back({"DEATHS", std::to_string(Stats::deaths())});
     rows.push_back({"ASTEROIDS DESTROYED",
-                    std::to_string(Stats::lifetime_kills()), false});
+                    std::to_string(Stats::lifetime_kills())});
     rows.push_back({"SHIPS DESTROYED",
-                    std::to_string(Stats::ship_kills()), false});
+                    std::to_string(Stats::ship_kills())});
     // Shots are primary discharges only (scatter = 1, each burst emission
     // = 1, no turret/secondaries — stats.h), which is what makes the
     // accuracy line mean "the pilot's own trigger". It can honestly
     // exceed 100%: one lance pulse or scatter discharge kills many.
     uint32_t shots = Stats::shots_fired();
-    rows.push_back({"SHOTS FIRED", std::to_string(shots), false});
+    rows.push_back({"SHOTS FIRED", std::to_string(shots)});
     rows.push_back({"ACCURACY",
                     shots == 0 ? std::string("-")
                                : std::to_string((uint32_t)(
                                      (uint64_t)Stats::lifetime_kills() * 100 /
-                                     shots)) + "%",
-                    false});
+                                     shots)) + "%"});
     rows.push_back({"SECONDARIES USED",
-                    std::to_string(Stats::secondaries_used()), false});
+                    std::to_string(Stats::secondaries_used())});
     rows.push_back({"NOVAS DETONATED",
-                    std::to_string(Stats::novas_detonated()), false});
+                    std::to_string(Stats::novas_detonated())});
     // 13 glyphs: the label column ends at -360 + 2*sz*len, and the longest
     // label must clear the value column at 160 ("ASTEROIDS DESTROYED", 19
     // glyphs, ends at 96 desktop; "SPECIAL TYPES DESTROYED" at 23 glyphs
@@ -931,20 +927,16 @@ void Menu::draw() {
     // options name column).
     rows.push_back({"SPECIAL TYPES",
                     std::to_string(found) + " OF " +
-                        std::to_string((int)Stats::SPECIAL_COUNT), false});
-    for (int i = 0; i < Stats::SPECIAL_COUNT; i++)
-      rows.push_back({kSpecialNames[i],
-                      (mask & (1u << i)) ? "[X]" : "[ ]", true});
+                        std::to_string((int)Stats::SPECIAL_COUNT)});
     int n = (int)rows.size();
     float top    = touch ? touch_opt_top()    : desk_opt_top();
     float bottom = touch ? touch_opt_bottom() : desk_opt_bottom();
     const int sz = touch ? 13 : 12;
     for (int i = 0; i < n; i++) {
       int y = opt_row_center(i, n, top, bottom);
-      // Checklist entries indent under their header; values share one
-      // right column ("ASTEROIDS DESTROYED" at 19 glyphs ends at 2*sz*19
-      // - 360 = 96 desktop, well clear of the value column at 160).
-      Typer::draw(rows[i].indent ? -320 : -360, y, rows[i].label.c_str(), sz);
+      // Values share one right column ("ASTEROIDS DESTROYED" at 19 glyphs
+      // ends at 2*sz*19 - 360 = 96 desktop, clear of the column at 160).
+      Typer::draw(-360, y, rows[i].label.c_str(), sz);
       Typer::draw(160, y, rows[i].value.c_str(), sz);
     }
     // The band is this screen's only interactive element, so it always
