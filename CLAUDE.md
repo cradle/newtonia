@@ -391,6 +391,16 @@ Every change lands through a pull request. Concretely:
 
 ## Scheduled check-ins (Routines / `send_later`)
 
+**Report every time in the maintainer's local timezone, never UTC.** The
+maintainer is at **UTC+10 (AEST)** — their own git commits carry the live
+offset (`git log --format='%ad' --date=iso`, ignore the `+0000` container
+commits), so check a recent one if unsure or if DST might apply. The session
+container's clock, `run_once_at`, and `cron_expression` are all UTC, which is
+exactly why every reported time has been wrong: quoting the scheduling value
+back is off by ten hours. Convert before saying anything user-facing — "I'll
+check back at 21:30 AEST", not "at 11:30". Label the timezone. The reverse
+conversion (local → UTC) still applies when *writing* a cron or `run_once_at`.
+
 **Watch a PR until it is GREEN, then stop.** The default end condition for PR
 babysitting is *CI green with nothing unanswered* — not "merged or closed".
 Once every check on the head commit has passed (skipped counts as passed) and
