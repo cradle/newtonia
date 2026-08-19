@@ -31,21 +31,13 @@ public:
 struct NewUrlLaunchParameters_t { int m_unused; };
 // Posted when the Deck's floating keyboard is dismissed — steam_keyboard.cpp.
 struct FloatingGamepadTextInputDismissed_t { int m_unused; };
-// Overlay web-page mode for ActivateGameOverlayToWebPage — the review
-// nudge (steam_build.h steam_open_review_page) uses the default.
-enum EActivateGameOverlayToWebPageMode {
-  k_EActivateGameOverlayToWebPageMode_Default = 0,
-  k_EActivateGameOverlayToWebPageMode_Modal = 1,
-};
 // Rich Presence surface used by steam_presence.cpp and steam_invites.cpp;
-// persona name used by steam_identity.cpp; overlay web page by the review
-// nudge (steam_build.h).
+// persona name used by steam_identity.cpp.
 class ISteamFriends {
 public:
   virtual const char *GetPersonaName() = 0;
   virtual void SetRichPresence( const char *pchKey, const char *pchValue ) = 0;
   virtual void ClearRichPresence() = 0;
-  virtual void ActivateGameOverlayToWebPage( const char *pchURL, EActivateGameOverlayToWebPageMode eMode = k_EActivateGameOverlayToWebPageMode_Default ) = 0;
 };
 // Fired when a friend accepts an invite while the game is already running;
 // m_rgchConnect carries the advertised "connect" string (steam_invites.cpp).

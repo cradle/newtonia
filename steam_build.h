@@ -67,28 +67,6 @@ inline void steam_dismiss_floating_keyboard() {
 // to prove it. Always false on non-Steam builds. (steam_keyboard.cpp)
 bool steam_floating_keyboard_dismissed();
 
-// Review nudge (the pause menu's LEAVE A REVIEW row): true when the Steam
-// overlay is there to open the review form — Steam build with the client
-// running. Always false everywhere else, which is what hides the row.
-inline bool steam_can_review() {
-#ifdef STEAM_BUILD
-  return SteamFriends() != nullptr;
-#else
-  return false;
-#endif
-}
-
-// Open the store's write-a-review form for this game in the Steam overlay.
-// The app id matches the Makefile's STEAM_APPID and the store links on the
-// site (web/site). No-op without the overlay (steam_can_review gates the UI).
-inline void steam_open_review_page() {
-#ifdef STEAM_BUILD
-  if (SteamFriends())
-    SteamFriends()->ActivateGameOverlayToWebPage(
-        "https://store.steampowered.com/recommended/recommendgame/4536720");
-#endif
-}
-
 // Returns the Steam beta branch the user is running on (e.g. "beta",
 // "experimental"), or an empty string when on the default/public branch or
 // when STEAM_BUILD is not defined.
