@@ -219,31 +219,16 @@ private:
   void toggle_pause(bool broadcast = true);  // broadcast=false: applying a
                                              // peer's PAUSE/RESUME event
   // Pause-screen menu, drawn by Overlay::paused. Every pause opens on
-  // RESUME — never on the exit row left armed by the last one. Two rows are
-  // conditional — PLAYERS (the seat roster, offline/host only) and LEAVE A
-  // REVIEW (Steam with real playtime, one-shot; pause_review_available) —
-  // so pause_row_at builds the drawn-order row list and maps a selection
-  // index onto the right action; pause_row_count is its length.
-  enum PauseRow { PAUSE_RESUME = 0, PAUSE_PLAYERS = 1, PAUSE_REVIEW = 2,
-                  PAUSE_EXIT = 3, PAUSE_ROWS = 4 };
+  // RESUME — never on the exit row left armed by the last one. PLAYERS
+  // (the seat roster) only exists offline, so the row list is 3 or 2 long
+  // and pause_row_at maps a selection index onto the right action.
+  enum PauseRow { PAUSE_RESUME = 0, PAUSE_PLAYERS = 1, PAUSE_EXIT = 2,
+                  PAUSE_ROWS = 3 };
   int pause_selection_ = PAUSE_RESUME;
-  bool pause_review_available() const;
-  int pause_row_count() const {
-    return 2 + (roster_available() ? 1 : 0) +
-           (pause_review_available() ? 1 : 0);
-  }
+  int pause_row_count() const { return roster_available() ? 3 : 2; }
   PauseRow pause_row_at(int sel) const {
-    PauseRow rows[PAUSE_ROWS];
-    int n = 0;
-    rows[n++] = PAUSE_RESUME;
-    if (roster_available()) rows[n++] = PAUSE_PLAYERS;
-    if (pause_review_available()) rows[n++] = PAUSE_REVIEW;
-    rows[n++] = PAUSE_EXIT;
-    // Clamp rather than trust: activating REVIEW retires its row while the
-    // menu is still up, so a stale selection index may now be off the end.
-    if (sel < 0) sel = 0;
-    if (sel >= n) sel = n - 1;
-    return rows[sel];
+    if (roster_available()) return (PauseRow)sel;
+    return sel <= 0 ? PAUSE_RESUME : PAUSE_EXIT;
   }
 
   // ---- Seat input roster (offline) -----------------------------------

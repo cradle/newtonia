@@ -1279,17 +1279,6 @@ bool GLGame::pause_menu_active() const {
   return true;
 }
 
-// The pause menu's LEAVE A REVIEW row: only where the Steam overlay can
-// actually open the form (steam_can_review — false everywhere but a Steam
-// build with the client up), only until used once, and only after enough
-// real play that the ask is earned. Lifetime kills is the playtime proxy:
-// it already exists (stats.h), roams with the player, and can't be reset
-// by starting a new game — ~300 kills is a solid session or two.
-bool GLGame::pause_review_available() const {
-  return steam_can_review() && !g_prefs.review_prompt_done &&
-         Stats::lifetime_kills() >= 300;
-}
-
 void GLGame::pause_nav(unsigned char key) {
   if (MenuSelect::move(key, pause_selection_, pause_row_count())) return;
   if (!MenuSelect::is_confirm(key)) return;
@@ -1300,16 +1289,6 @@ void GLGame::pause_nav(unsigned char key) {
     case PAUSE_PLAYERS:
       roster_active_ = true;
       roster_selection_ = 0;
-      break;
-    case PAUSE_REVIEW:
-      // One shot: opening the form retires the row for good (the flag is
-      // saved immediately — a crash later must not resurrect the ask). The
-      // overlay opens over the paused game; selection resets because the
-      // row list just shrank under the cursor.
-      steam_open_review_page();
-      g_prefs.review_prompt_done = true;
-      save_preferences();
-      pause_selection_ = PAUSE_RESUME;
       break;
     default:
       // Exactly what the menu key does — save first, then hand over.
