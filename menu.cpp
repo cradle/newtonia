@@ -354,6 +354,15 @@ Menu::Menu() :
       Mix_PlayMusic(music, -1);
     }
   }
+  // Re-push the stored volume levels now that audio is certainly OPEN:
+  // Mix_OpenAudio RESETS the music volume to full (measured on 2.8 — the
+  // master level survives, the music level does not), and the platform
+  // entry points call load_preferences() before they open audio, so the
+  // apply() riding the load was silently wiped — the field symptom was
+  // settings that showed in the menu but never sounded on launch. Every
+  // startup path passes through this constructor after audio init, so
+  // this is the one platform-neutral point that is always late enough.
+  AudioVolume::apply();
 }
 
 Menu::~Menu() {

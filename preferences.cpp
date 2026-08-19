@@ -299,9 +299,12 @@ void load_preferences() {
         parse_line(key, val);
     }
     fclose(f);
-    // Push the loaded volume levels onto the mixer here, so every platform
-    // entry point inherits them without its own call. The early returns
-    // above skip this deliberately: struct defaults (full volume) match
+    // Push the loaded volume levels onto the mixer. NOT sufficient at
+    // startup on its own: the entry points load preferences BEFORE they
+    // open audio, and Mix_OpenAudio resets the music volume — the Menu
+    // constructor re-applies at the first certainly-after-open point.
+    // This call covers pref reloads once audio is up. The early returns
+    // above skip it deliberately: struct defaults (full volume) match
     // the mixer's own defaults, so there is nothing to push.
     AudioVolume::apply();
 }

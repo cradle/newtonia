@@ -18,9 +18,12 @@
 //    their own chunk volume by music_scale() (master reaches them through
 //    the channel master volume, so the fraction here excludes it).
 //
-// apply() is safe before Mix_OpenAudio — both levels are process-global
-// state the mixer keeps — and is called from load_preferences() so every
-// platform entry point inherits the stored levels, and from the AUDIO
+// apply() is called from load_preferences() (covers any later pref
+// reload), from the Menu constructor (the one platform-neutral point
+// that is certainly AFTER Mix_OpenAudio — the open RESETS the music
+// volume to full, so an apply() that ran before it was silently wiped;
+// measured on 2.8, and the field symptom was stored settings that
+// showed in the menu but never sounded on launch), and from the AUDIO
 // rows as they change so the menu music answers the adjustment audibly.
 namespace AudioVolume {
   void apply();
