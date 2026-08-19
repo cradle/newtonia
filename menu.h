@@ -107,6 +107,10 @@ private:
   int  menu_row_at(float ny) const;  // -1 when the tap misses every row
   void open_options();
   void close_options();
+  // AUDIO sub-screen (volume rows, drawn with the options row machinery).
+  // Opened from the options list's AUDIO row; back returns to options.
+  void open_audio();
+  void close_audio();
   void adjust_active_row(int delta, bool wrap = false);
 
   int currentTime;
@@ -162,7 +166,10 @@ private:
   int  camera_index_[MAX_PLAYERS]      = {1, 1, 1, 1};  // per-player: 0=FIXED, 1=ROTATE
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
   int  leaderboard_index_    = 1;       // 0=OFF, 1=ON (Preferences::leaderboard_prompts)
-  int  active_row_ = 0;                 // index into the options row list (see opt_row)
+  int  master_volume_index_  = 4;       // index into VOLUME_VALUES (4=FULL)
+  int  music_volume_index_   = 4;       // index into VOLUME_VALUES (4=FULL)
+  bool audio_mode_ = false;             // AUDIO sub-screen up (options_mode_ stays true under it)
+  int  active_row_ = 0;                 // index into the current row list (options or audio)
   WrappedPoint viewpoint;
   GLStarfield *starfield;
   static const int default_world_width, default_world_height;

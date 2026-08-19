@@ -2,6 +2,7 @@
 #include "glgame.h"
 #include "menu.h"
 #include "asset_path.h"
+#include "audio_volume.h"
 #include "preferences.h"
 #include "asteroid.h"
 #include "asteroid_drawer.h"
@@ -37,6 +38,13 @@ Intro::Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_astero
   if (music_sound == NULL) {
     std::cout << "Unable to load intro.wav (" << Mix_GetError() << ")" << std::endl;
   } else {
+    // The tune follows the MUSIC volume (audio_volume.h; master reaches it
+    // through the channel master volume like every channel). Chunk-level,
+    // not channel-level: the chunk is this state's own, so it can't
+    // retro-level anything else, and a lowered dynamic CHANNEL would leak
+    // its volume to whoever is allocated that channel next.
+    Mix_VolumeChunk(music_sound,
+                    (int)(MIX_MAX_VOLUME * AudioVolume::music_scale() + 0.5f));
     music_channel = Mix_PlayChannel(-1, music_sound, -1);
   }
 }

@@ -5,6 +5,7 @@
 #include "steam_build.h"
 #include <cstdlib>
 #include "asset_path.h"
+#include "audio_volume.h"
 #include "sound_cache.h"
 #include "highscore.h"
 #include "stats.h"
@@ -1229,6 +1230,11 @@ void GLGame::toggle_pause(bool broadcast) {
     // The pause tune starts after the pause so its own channel keeps playing.
     Mix_Pause(-1);
     if (pause_music_sound != NULL) {
+      // Follows the MUSIC volume (audio_volume.h) — chunk-level, like the
+      // intro tune: this chunk is this game's own, and a lowered dynamic
+      // CHANNEL would leak its volume to the channel's next user.
+      Mix_VolumeChunk(pause_music_sound,
+                      (int)(MIX_MAX_VOLUME * AudioVolume::music_scale() + 0.5f));
       pause_music_channel = Mix_PlayChannel(-1, pause_music_sound, -1);
     }
   }

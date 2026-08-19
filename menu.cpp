@@ -1,5 +1,6 @@
 #include "typer.h"
 #include "asset_path.h"
+#include "audio_volume.h"
 #include "highscore.h"
 #include "glstarfield.h"
 #include "glgame.h"
@@ -44,6 +45,13 @@ static const float STAR_DENSITY_MULTIPLIERS[] = {0.1f, 0.25f, 0.5f, 0.75f, 1.0f}
 static const char* STAR_DENSITY_LABELS[] = {"MINIMAL", "SPARSE", "MEDIUM", "MANY", "FULL"};
 static const int NUM_STAR_DENSITY = 5;
 
+// The AUDIO sub-menu's volume steps (Preferences::master_volume /
+// music_volume, pushed onto the mixer by AudioVolume::apply). Step 1 is a
+// true OFF — 0 silences outright, it does not merely duck.
+static const float VOLUME_VALUES[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+static const char* VOLUME_LABELS[] = {"OFF", "QUIET", "HALF", "LOUD", "FULL"};
+static const int NUM_VOLUME = 5;
+
 // Per-player camera: index 0 = FIXED (view locked to the world), 1 = ROTATE
 // (view follows the ship's heading). Stored as PlayerKeys::rotate_view.
 static const char* CAMERA_LABELS[] = {"FIXED", "ROTATE"};
@@ -66,10 +74,13 @@ static const char* LEADERBOARD_LABELS[] = {"AUTO", "ASK"};
 static const int NUM_LEADERBOARD = 2;
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
-// 2=camera, 3=star density, 4=auto-record replays. P2 rows are desktop-only
-// — mobile (touch) shows Player 1 plus the shared options. Options is
-// desktop/controller-only today (see Menu::show_options_row), so the touch
-// list is future-proofing.
+// 2=camera, 3=star density, 4=auto-record replays, 5=leaderboard prompts,
+// 6=master volume, 7=music volume (the two AUDIO sub-menu rows), 8=the
+// AUDIO row itself — a sub-menu OPENER, the options list's first: it
+// cycles nothing, draws no steps, and confirm/tap/left/right all open the
+// audio screen. P2 rows are desktop-only — mobile (touch) shows Player 1
+// plus the shared options. Options is desktop/controller-only today (see
+// Menu::show_options_row), so the touch list is future-proofing.
 namespace { struct OptRow { int kind; int player; const char *name; }; }
 static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 0, "P1  SENSITIVITY"}, {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  CAMERA"},
@@ -77,6 +88,7 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 2, "P3  SENSITIVITY"}, {1, 2, "P3  SMOOTHING"}, {2, 2, "P3  CAMERA"},
   {0, 3, "P4  SENSITIVITY"}, {1, 3, "P4  SMOOTHING"}, {2, 3, "P4  CAMERA"},
   {3, 0, "STAR  DENSITY"},
+  {8, 0, "AUDIO"},
   {4, 0, "RECORD  REPLAYS"},
   // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
   {5, 0, "LEADERBOARD  UPLOAD"},
@@ -85,9 +97,27 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
 static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
+  {8, 0, "AUDIO"},
   {4, 0, "RECORD REPLAYS"},
   {5, 0, "LEADERBOARD UPLOAD"},  // LAST — see the desktop table
 };
+// The AUDIO sub-screen's rows, drawn by the same row loop the options list
+// uses (same columns, same band geometry — a sub-screen that hand-rolled
+// its own layout is exactly the drift menu_select.h exists to prevent).
+static const OptRow OPT_ROWS_AUDIO_DESKTOP[] = {
+  {6, 0, "MASTER  VOLUME"},
+  {7, 0, "MUSIC  VOLUME"},
+};
+static const OptRow OPT_ROWS_AUDIO_TOUCH[] = {
+  {6, 0, "MASTER VOLUME"},
+  {7, 0, "MUSIC VOLUME"},
+};
+static int audio_row_count() {
+  return (int)(sizeof(OPT_ROWS_AUDIO_DESKTOP) / sizeof(OPT_ROWS_AUDIO_DESKTOP[0]));
+}
+static const OptRow &audio_row(int r) {
+  return is_touch_mode() ? OPT_ROWS_AUDIO_TOUCH[r] : OPT_ROWS_AUDIO_DESKTOP[r];
+}
 static int opt_row_count() {
   int n = is_touch_mode()
               ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
@@ -279,6 +309,17 @@ static int smoothing_index_for(float value) {
   return best;
 }
 
+static int volume_index_for(float value) {
+  int best = NUM_VOLUME - 1;
+  float best_dist = 1e6f;
+  for (int i = 0; i < NUM_VOLUME; i++) {
+    float d = value > VOLUME_VALUES[i] ? value - VOLUME_VALUES[i]
+                                        : VOLUME_VALUES[i] - value;
+    if (d < best_dist) { best_dist = d; best = i; }
+  }
+  return best;
+}
+
 const int Menu::default_world_width = 5000;
 const int Menu::default_world_height = 5000;
 
@@ -298,6 +339,8 @@ Menu::Menu() :
   star_density_index_   = star_density_index_for(g_prefs.star_density);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
+  master_volume_index_  = volume_index_for(g_prefs.master_volume);
+  music_volume_index_   = volume_index_for(g_prefs.music_volume);
   scan_replays();
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__
@@ -679,10 +722,13 @@ void Menu::draw() {
         currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
-    Typer::draw_centered(0, menu_screen_heading_y(), "OPTIONS",
-                         touch ? 30 : 26);
+    // The AUDIO sub-screen is the same row machinery over its own table —
+    // same columns, same band, same tap zones; only the heading, the row
+    // source and where BACK leads differ.
+    Typer::draw_centered(0, menu_screen_heading_y(),
+                         audio_mode_ ? "AUDIO" : "OPTIONS", touch ? 30 : 26);
 
-    int n = opt_row_count();
+    int n = audio_mode_ ? audio_row_count() : opt_row_count();
     // Desktop: one line per option, using the horizontal room — name on the
     // left, numbered choices in the middle, value description on the right.
     // Touch: one big tappable row per option, name left / value right (tap
@@ -714,10 +760,11 @@ void Menu::draw() {
               VALUE_X = 265, CURSOR_R = 457;
 
     for (int row = 0; row < n; row++) {
-      const OptRow &r = opt_row(row);
+      const OptRow &r = audio_mode_ ? audio_row(row) : opt_row(row);
 
       int num_steps, cur_idx;
       int rec_override = -1;  // >=0 on the RECORD REPLAYS row when forced
+      bool opener = false;    // the AUDIO row: no steps, no value — it opens
       const char* const *lbl;
       switch (r.kind) {
         case 0: num_steps = NUM_SENSITIVITY;  cur_idx = sensitivity_index_[r.player]; lbl = SENSITIVITY_LABELS;   break;
@@ -725,6 +772,9 @@ void Menu::draw() {
         case 2: num_steps = NUM_CAMERA;       cur_idx = camera_index_[r.player];      lbl = CAMERA_LABELS;        break;
         case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
         case 5: num_steps = NUM_LEADERBOARD;  cur_idx = leaderboard_index_;           lbl = LEADERBOARD_LABELS;   break;
+        case 6: num_steps = NUM_VOLUME;       cur_idx = master_volume_index_;         lbl = VOLUME_LABELS;        break;
+        case 7: num_steps = NUM_VOLUME;       cur_idx = music_volume_index_;          lbl = VOLUME_LABELS;        break;
+        case 8: num_steps = 0; cur_idx = 0; lbl = NULL; opener = true; break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -740,6 +790,13 @@ void Menu::draw() {
 
       if (touch) {
         int cy = touch_opt_center(row, n);
+        if (opener) {
+          // Sub-menu opener: name + an ellipsis where a value would sit,
+          // the row-list idiom for "this opens a screen".
+          Typer::draw(-360, cy, r.name, 13);
+          Typer::draw_centered(320, cy, "...", 18);
+          continue;
+        }
         // Name left, value right. Name font sized so the LONGEST label fits
         // clear of the value column: Typer's advance is 2x the size, so at
         // size 13 "LEADERBOARD PROMPT" (18 glyphs) spans -360..+108, clear
@@ -762,6 +819,10 @@ void Menu::draw() {
       MenuSelect::draw_row_cursor(active_row_ == row, CURSOR_L, CURSOR_R, y,
                                 12);
       Typer::draw(NAME_X, y, r.name, 12);                // name, left
+      if (opener) {
+        Typer::draw(VALUE_X, y, "...", 12);              // opens a sub-screen
+        continue;
+      }
       const float step_sz = 13.0f;
       for (int i = 0; i < num_steps; i++) {              // numbered choices, mid
         int x = STEP_CX + (int)((i - (num_steps - 1) * 0.5f) * STEP_GAP);
@@ -785,13 +846,18 @@ void Menu::draw() {
 
     // Tappable exit on both layouts — see the replays band note above.
     // Desktop: also the selectable row after the last option (index ==
-    // opt_row_count()); confirm on it closes, confirm on an option row
-    // cycles that value (matching the touch tap).
+    // the row count); confirm on it closes, confirm on an option row
+    // cycles that value (matching the touch tap). On the AUDIO sub-screen
+    // the band backs out ONE level, to options, and says so.
     menu_exit_band().draw(
-        touch ? Typer::cursored("EXIT TO MENU", true).c_str()
-              : Typer::cursored("BACK TO MENU",
-                                active_row_ == opt_row_count())
-                    .c_str(),
+        audio_mode_
+            ? Typer::cursored("BACK TO OPTIONS",
+                              touch || active_row_ == audio_row_count())
+                  .c_str()
+            : touch ? Typer::cursored("EXIT TO MENU", true).c_str()
+                    : Typer::cursored("BACK TO MENU",
+                                      active_row_ == opt_row_count())
+                          .c_str(),
         currentTime);
   } else {
     Typer::draw_centered(0, menu_title_y(), "Newtonia", 80);
@@ -1007,24 +1073,31 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     return;
   }
   if (options_mode_) {
-    // One extra index past the rows: the BACK TO MENU band (see draw).
-    if (MenuSelect::move(key, active_row_, opt_row_count() + 1)) {
+    // The AUDIO sub-screen shares this ladder over its own row count; the
+    // only structural difference is where back leads (one level up, to
+    // options) — adjust_active_row already reads the right table.
+    int rows = audio_mode_ ? audio_row_count() : opt_row_count();
+    // One extra index past the rows: the BACK band (see draw).
+    if (MenuSelect::move(key, active_row_, rows + 1)) {
       // moved
     } else if (MenuSelect::is_left(key)) {
-      if (active_row_ < opt_row_count()) adjust_active_row(-1);
+      if (active_row_ < rows) adjust_active_row(-1);
     } else if (MenuSelect::is_right(key)) {
-      if (active_row_ < opt_row_count()) adjust_active_row(1);
+      if (active_row_ < rows) adjust_active_row(1);
     } else if (MenuSelect::is_back(key)) {
-      close_options();
+      if (audio_mode_) close_audio();
+      else close_options();
     } else if (confirm) {
       // Confirm on the band exits; on an option row it cycles the value
       // (the touch tap's behaviour) — Enter used to close from anywhere,
       // which made the rows the only list in the game confirm did nothing
       // useful on.
-      if (active_row_ >= opt_row_count())
-        close_options();
-      else
+      if (active_row_ >= rows) {
+        if (audio_mode_) close_audio();
+        else close_options();
+      } else {
         adjust_active_row(1, /*wrap=*/true);
+      }
     }
     return;
   }
@@ -1130,7 +1203,8 @@ extern void app_move_to_background();
 
 bool Menu::back_pressed() {
   if (options_mode_) {
-    close_options();  // persists and returns to the menu
+    if (audio_mode_) close_audio();  // one level: audio -> options
+    else close_options();            // persists and returns to the menu
     return true;
   }
   if (replays_mode_) {
@@ -1183,14 +1257,20 @@ void Menu::touch_tap(float nx, float ny) {
   }
   if (options_mode_) {
     // Tapping a row cycles that option to its next value, wrapping at the
-    // end; the bottom strip exits (and persists via close_options) on both
-    // layouts — the band is drawn on desktop too, where its zone sits well
-    // below the deeper desktop rows (rows end ~-285, band reach tops ~-370).
-    if (menu_exit_hit().contains(nx, ny)) { close_options(); return; }
+    // end (the AUDIO row opens its sub-screen instead — adjust_active_row
+    // owns that fork); the bottom strip exits — one level, so audio backs
+    // out to options — on both layouts. The band is drawn on desktop too,
+    // where its zone sits well below the deeper desktop rows (rows end
+    // ~-285, band reach tops ~-370).
+    if (menu_exit_hit().contains(nx, ny)) {
+      if (audio_mode_) close_audio();
+      else close_options();
+      return;
+    }
+    int rows = audio_mode_ ? audio_row_count() : opt_row_count();
     int row = is_touch_mode()
-                  ? touch_opt_row_at(ny, opt_row_count())
-                  : opt_row_at(ny, opt_row_count(), desk_opt_top(),
-                               desk_opt_bottom());
+                  ? touch_opt_row_at(ny, rows)
+                  : opt_row_at(ny, rows, desk_opt_top(), desk_opt_bottom());
     if (row >= 0) {
       active_row_ = row;
       adjust_active_row(+1, /*wrap=*/true);
@@ -1367,6 +1447,22 @@ int Menu::online_row_index() const {
 
 void Menu::open_options() {
   options_mode_ = true;
+}
+
+void Menu::open_audio() {
+  audio_mode_ = true;
+  active_row_ = 0;
+}
+
+void Menu::close_audio() {
+  audio_mode_ = false;
+  // Land the cursor back on the AUDIO row that opened the screen, so
+  // sub-menu round trips don't teleport the selection to the top.
+  active_row_ = 0;
+  for (int i = 0; i < opt_row_count(); i++)
+    if (opt_row(i).kind == 8) { active_row_ = i; break; }
+  // The adjusted values are already live (adjust_active_row applies them);
+  // persistence rides close_options with everything else.
 }
 
 // Build the replays list from disk (REPLAY.md R3). A readable header makes
@@ -1930,7 +2026,7 @@ void Menu::board_poll() {
 }
 
 void Menu::adjust_active_row(int delta, bool wrap) {
-  const OptRow &r = opt_row(active_row_);
+  const OptRow &r = audio_mode_ ? audio_row(active_row_) : opt_row(active_row_);
   int *idx, num;
   switch (r.kind) {
     case 0: idx = &sensitivity_index_[r.player]; num = NUM_SENSITIVITY;  break;
@@ -1938,6 +2034,13 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 2: idx = &camera_index_[r.player];      num = NUM_CAMERA;       break;
     case 3: idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
     case 5: idx = &leaderboard_index_;           num = NUM_LEADERBOARD;  break;
+    case 6: idx = &master_volume_index_;         num = NUM_VOLUME;       break;
+    case 7: idx = &music_volume_index_;          num = NUM_VOLUME;       break;
+    case 8:
+      // The AUDIO row has no value to cycle — every adjust gesture
+      // (left/right, confirm, tap) opens the sub-screen instead.
+      open_audio();
+      return;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -1948,9 +2051,18 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     if (*idx < 0)    *idx = 0;
     if (*idx >= num) *idx = num - 1;
   }
+  if (r.kind == 6 || r.kind == 7) {
+    // Volumes apply LIVE, not on close: the menu music is playing right
+    // now, and hearing the step land is the whole feedback loop (the
+    // stored prefs are written with the rest by close_options).
+    g_prefs.master_volume = VOLUME_VALUES[master_volume_index_];
+    g_prefs.music_volume  = VOLUME_VALUES[music_volume_index_];
+    AudioVolume::apply();
+  }
 }
 
 void Menu::close_options() {
+  audio_mode_ = false;  // safety: closing options closes its sub-screen too
   for (int i = 0; i < MAX_PLAYERS; i++) {
     g_prefs.player_keys[i].keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[i]];
     g_prefs.player_keys[i].camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[i]];
@@ -1959,6 +2071,8 @@ void Menu::close_options() {
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
+  g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
+  g_prefs.music_volume                 = VOLUME_VALUES[music_volume_index_];
   save_preferences();
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),
