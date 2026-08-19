@@ -1,5 +1,6 @@
 #include "web_fs.h"
 #include "preferences.h"
+#include "audio_volume.h"
 #include <SDL.h>
 #include <cstdio>
 #include <cstdlib>
@@ -227,6 +228,12 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "star_density") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f) g_prefs.star_density = v;
+    } else if (strcmp(key, "master_volume") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.0f && v <= 1.0f) g_prefs.master_volume = v;
+    } else if (strcmp(key, "music_volume") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.0f && v <= 1.0f) g_prefs.music_volume = v;
     } else if (strcmp(key, "lan_visible") == 0) {
         g_prefs.lan_visible = (val[0] == '1');
     } else if (strcmp(key, "signal_url") == 0) {
@@ -290,6 +297,14 @@ void load_preferences() {
         parse_line(key, val);
     }
     fclose(f);
+    // Push the loaded volume levels onto the mixer. NOT sufficient at
+    // startup on its own: the entry points load preferences BEFORE they
+    // open audio, and Mix_OpenAudio resets the music volume — the Menu
+    // constructor re-applies at the first certainly-after-open point.
+    // This call covers pref reloads once audio is up. The early returns
+    // above skip it deliberately: struct defaults (full volume) match
+    // the mixer's own defaults, so there is nothing to push.
+    AudioVolume::apply();
 }
 
 void save_preferences() {
@@ -309,6 +324,8 @@ void save_preferences() {
     fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "leaderboard_prompts=%d\n",     g_prefs.leaderboard_prompts ? 1 : 0);
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
+    fprintf(f, "master_volume=%.4f\n",          g_prefs.master_volume);
+    fprintf(f, "music_volume=%.4f\n",           g_prefs.music_volume);
     fprintf(f, "lan_visible=%d\n",             g_prefs.lan_visible        ? 1 : 0);
     if (!g_prefs.signal_url.empty())
         fprintf(f, "signal_url=%s\n",             g_prefs.signal_url.c_str());

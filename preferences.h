@@ -133,6 +133,12 @@ struct Preferences {
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;
     float star_density       = 1.0f;   // star-count multiplier; user-editable in INI
+    // AUDIO sub-menu (Options): overall mixer level, and the music level
+    // relative to it (title stream + the intro/pause tune loops — see
+    // audio_volume.h for what each covers). 0..1; both default full, the
+    // behaviour that always existed, so a missing key changes nothing.
+    float master_volume      = 1.0f;
+    float music_volume       = 1.0f;
     bool  lan_visible        = true;   // broadcast this host on the local network
                                        // (NETPLAY.md LAN play): when false the lobby
                                        // and mid-game re-host skip the UDP beacon +
