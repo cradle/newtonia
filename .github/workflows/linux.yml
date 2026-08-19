@@ -25,8 +25,22 @@ jobs:
                     if "$@"; then return 0; fi
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          try sudo apt-get update
-          try sudo apt-get install -y \
+          # Same apt hardening as e2e.yml (2026-08-19). The runner asks the
+          # azure.archive mirror first through its mirror+file list, and
+          # during outages that mirror TAR-PITS — keeps the socket alive at
+          # a trickle, so no inactivity timeout fires and apt wedges until
+          # the job dies (two 30-minute e2e cancels while archive.ubuntu.com
+          # answered in milliseconds). Point the list at the archive that
+          # answers, and bound each fetch so a SILENT mirror fails into
+          # try()'s retry instead of hanging. deploy-steam's linux job
+          # deliberately has neither: it runs inside the steamrt container,
+          # whose apt never touches the runner's mirrorlist.
+          echo 'https://archive.ubuntu.com/ubuntu/	priority:1' \
+            | sudo tee /etc/apt/apt-mirrors.txt
+          apt_bounded() { sudo apt-get -o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 "$@"; }
+          try apt_bounded update
+          try apt_bounded install -y \
             libsdl2-dev \
             freeglut3-dev \
             libgl1-mesa-dev \
