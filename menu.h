@@ -68,6 +68,11 @@ private:
   int  board_row_index() const;    // -1 when hidden
   void open_board();
   void close_board();
+  // STATS screen: read-only lifetime numbers (stats.dat + the high score)
+  // with the killable-special-type checklist. Always shown — zeros are an
+  // honest answer on a fresh install.
+  bool show_stats_row() const { return true; }
+  int  stats_row_index() const;    // -1 when hidden
   // Structured board-screen geometry (one definition for draw AND taps):
   // a compact control pair up top, a fixed-pitch score table under column
   // headers, the UPLOAD action and status footer anchored at the bottom —
@@ -123,6 +128,7 @@ private:
   int  menu_selection = 0;
   bool options_mode_ = false;
   bool replays_mode_ = false;
+  bool stats_mode_   = false;      // STATS screen up (read-only; band exits)
   int  replay_sel_ = 0;                 // cursor in the replays list
   std::vector<ReplayRow> replay_rows_;  // rebuilt by scan_replays()
   // ---- leaderboard screen state (LEADERBOARD.md L3) ----

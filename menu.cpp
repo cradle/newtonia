@@ -15,6 +15,7 @@
 #include "preferences.h"
 #include "presence.h"
 #include "replay.h"
+#include "stats.h"
 #include "gl_compat.h"
 #include "mat4.h"
 #include "steam_build.h"
@@ -868,6 +869,57 @@ void Menu::draw() {
                                       active_row_ == opt_row_count())
                           .c_str(),
         currentTime);
+  } else if (stats_mode_) {
+    bool touch = is_touch_mode();
+    Typer::draw_centered(0, menu_screen_heading_y(), "STATS", touch ? 30 : 26);
+    // Read-only rows over the same band geometry the options list uses
+    // (opt_row_center — one layout rule for every sub-screen). Label left,
+    // value right; the checklist marks each killable special type a local
+    // player has ever destroyed (stats.dat's mask — reflective and
+    // invincible are deliberately absent from it, they die only to god
+    // mode, so they are bonus kills rather than requirements).
+    static const char *kSpecialNames[Stats::SPECIAL_COUNT] = {
+      "NORMAL", "TELEPORTING", "INVISIBLE", "QUANTUM",
+      "TOUGH", "ARMOURED", "PHASING",
+    };
+    uint32_t mask = Stats::special_kill_mask();
+    int found = 0;
+    for (int i = 0; i < Stats::SPECIAL_COUNT; i++)
+      if (mask & (1u << i)) found++;
+    struct StatRow { std::string label, value; bool indent; };
+    std::vector<StatRow> rows;
+    rows.push_back({"HIGH SCORE", std::to_string(high_score), false});
+    rows.push_back({"ASTEROIDS DESTROYED",
+                    std::to_string(Stats::lifetime_kills()), false});
+    // 13 glyphs: the label column ends at -360 + 2*sz*len, and the longest
+    // label must clear the value column at 160 ("ASTEROIDS DESTROYED", 19
+    // glyphs, ends at 96 desktop; "SPECIAL TYPES DESTROYED" at 23 glyphs
+    // ran to 192 and collided — the same count-the-glyphs rule as the
+    // options name column).
+    rows.push_back({"SPECIAL TYPES",
+                    std::to_string(found) + " OF " +
+                        std::to_string((int)Stats::SPECIAL_COUNT), false});
+    for (int i = 0; i < Stats::SPECIAL_COUNT; i++)
+      rows.push_back({kSpecialNames[i],
+                      (mask & (1u << i)) ? "[X]" : "[ ]", true});
+    int n = (int)rows.size();
+    float top    = touch ? touch_opt_top()    : desk_opt_top();
+    float bottom = touch ? touch_opt_bottom() : desk_opt_bottom();
+    const int sz = touch ? 13 : 12;
+    for (int i = 0; i < n; i++) {
+      int y = opt_row_center(i, n, top, bottom);
+      // Checklist entries indent under their header; values share one
+      // right column ("ASTEROIDS DESTROYED" at 19 glyphs ends at 2*sz*19
+      // - 360 = 96 desktop, well clear of the value column at 160).
+      Typer::draw(rows[i].indent ? -320 : -360, y, rows[i].label.c_str(), sz);
+      Typer::draw(160, y, rows[i].value.c_str(), sz);
+    }
+    // The band is this screen's only interactive element, so it always
+    // carries the cursor marks.
+    menu_exit_band().draw(
+        Typer::cursored(touch ? "EXIT TO MENU" : "BACK TO MENU", true)
+            .c_str(),
+        currentTime);
   } else {
     Typer::draw_centered(0, menu_title_y(), "Newtonia", 80);
     if (high_score > 0) {
@@ -878,7 +930,7 @@ void Menu::draw() {
     }
   }
 
-  if (!options_mode_ && !replays_mode_ && !board_mode_) {
+  if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
         // Centered between the title bottom (size 80 descends 160) and the
@@ -929,10 +981,11 @@ void Menu::draw() {
       if (show_options_row()) rows.push_back("OPTIONS");
       if (show_replays_row()) rows.push_back("REPLAYS");
       if (show_board_row()) rows.push_back("LEADERBOARD");
+      if (show_stats_row()) rows.push_back("STATS");
       draw_menu_rows(rows);
     }
   }
-  if (!options_mode_ && !replays_mode_ && !board_mode_)
+  if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_)
     Typer::draw_centered(0, menu_copyright_y(high_score > 0),
                          "© 2008-2026 METONYMOUS", 13, currentTime);
 }
@@ -1110,6 +1163,12 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     }
     return;
   }
+  if (stats_mode_) {
+    // Read-only screen: any exit gesture leaves (the band is the only
+    // interactive element, so confirm needs no row test).
+    if (MenuSelect::is_back(key) || confirm) stats_mode_ = false;
+    return;
+  }
   if (board_mode_) {
     if (MenuSelect::move(key, board_sel_, board_entry_count())) {
       board_ensure_visible();
@@ -1194,6 +1253,8 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
         open_replays();
       } else if (menu_selection == board_row_index()) {
         open_board();
+      } else if (menu_selection == stats_row_index()) {
+        stats_mode_ = true;
       } else {
         confirm_selection(src);
       }
@@ -1218,6 +1279,10 @@ bool Menu::back_pressed() {
   }
   if (replays_mode_) {
     replays_mode_ = false;
+    return true;
+  }
+  if (stats_mode_) {
+    stats_mode_ = false;
     return true;
   }
   if (board_mode_) {
@@ -1284,6 +1349,10 @@ void Menu::touch_tap(float nx, float ny) {
       active_row_ = row;
       adjust_active_row(+1, /*wrap=*/true);
     }
+    return;
+  }
+  if (stats_mode_) {
+    if (menu_exit_hit().contains(nx, ny)) stats_mode_ = false;
     return;
   }
   if (board_mode_) {
@@ -1373,6 +1442,10 @@ void Menu::touch_tap(float nx, float ny) {
     open_board();
     return;
   }
+  if (row == stats_row_index()) {
+    stats_mode_ = true;
+    return;
+  }
   confirm_selection(nullptr);
 }
 
@@ -1394,6 +1467,7 @@ int Menu::max_menu_items() const {
   if (show_options_row()) n++;
   if (show_replays_row()) n++;
   if (show_board_row()) n++;
+  if (show_stats_row()) n++;
   return n;
 }
 
@@ -1597,6 +1671,16 @@ int Menu::board_row_index() const {
   if (show_online_row()) i++;
   if (show_options_row()) i++;
   if (show_replays_row()) i++;
+  return i;
+}
+
+int Menu::stats_row_index() const {
+  if (!show_stats_row()) return -1;
+  int i = base_menu_rows();
+  if (show_online_row()) i++;
+  if (show_options_row()) i++;
+  if (show_replays_row()) i++;
+  if (show_board_row()) i++;
   return i;
 }
 
