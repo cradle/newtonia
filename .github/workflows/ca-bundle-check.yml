@@ -105,7 +105,12 @@ jobs:
 
           This check stays red weekly until the regenerated bundle lands.
           EOF
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
+          # Assign the maintainer: assignment notifies regardless of watch
+          # settings, unlike the red run — cron-run failure mails go to the
+          # workflow file's last modifier, and these commits are authored by
+          # the Claude app identity, which maps to no inbox.
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+            --body-file "$body" --assignee cradle
 
       - name: Flag the run red
         if: steps.diff.outputs.stale == 'true'
