@@ -30,6 +30,7 @@ namespace Weapon {
         return;
       }
       _ammo--;
+      stat_secondary_used(ship);
       ship->add_behaviour(new ShieldBehaviour(ship, 1000));
     }
   }

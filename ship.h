@@ -661,4 +661,12 @@ class Ship : public CompositeObject {
     std::list<Object*> *shock_targets = nullptr;  // enemies/stations for bolt seeking
 };
 
+// Lifetime SECONDARIES USED (STATS screen): each secondary weapon calls this
+// at its post-ammo-check success point (mine/giga/missile/shield/turret; nova
+// counts separately at detonation). A free function beside Ship rather than a
+// Weapon::Base method because base.h cannot include ship.h (ship.h includes
+// the weapon headers). Gates match the shot counters — genuinely
+// locally-piloted ships only, cheat-frozen — and live in ship.cpp.
+void stat_secondary_used(Ship *ship);
+
 #endif

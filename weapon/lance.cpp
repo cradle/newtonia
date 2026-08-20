@@ -1,6 +1,8 @@
 #include "lance.h"
 #include "../asset_path.h"
 #include "../ship.h"
+#include "../stats.h"
+#include "../achievements.h"
 
 #include <iostream>
 using namespace std;
@@ -58,6 +60,10 @@ namespace Weapon {
       return;
     }
     _ammo--;
+    // Lifetime SHOTS FIRED — one per pulse, same gates as Default::fire.
+    if (ship->is_local_player && !sim_only &&
+        !Achievements::unlocks_suppressed())
+      Stats::add_shot();
     if(sim_only) return;
     if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
       Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));

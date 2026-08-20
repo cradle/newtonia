@@ -749,9 +749,26 @@ void Ship::credit_ship_kill(Ship *other) {
   score += other->value * multiplier();
   if (!is_local_player) return;
   Achievements::progress("score_3m", score / 30000);
-  if (other->is_local_player) return;  // friendly fire: no enemy credit
+  // Friendly fire: no enemy credit. Keyed on player_ship, not
+  // is_local_player — online the partner is a REPLICA on this machine
+  // (is_local_player false), and the old test let a friendly-fire kill of
+  // the partner bank as an enemy ship (enemies_10 progress + the lifetime
+  // SHIPS DESTROYED counter). player_ship is true for every player-piloted
+  // hull, replicas included, and false for enemies and stations.
+  if (other->player_ship) return;
   enemy_kills += 1;
   Achievements::progress("enemies_10", enemy_kills * 10);  // 10 ships == 100%
+  // Lifetime SHIPS DESTROYED — same freeze as the asteroid counters.
+  if (!Achievements::unlocks_suppressed()) Stats::add_ship_kill();
+}
+
+void stat_secondary_used(Ship *ship) {
+  // See ship.h: !net_remote_gun excludes the host's replica of a remote
+  // pilot (its INPUT replay runs the same weapon sims) and every
+  // replay-playback ship.
+  if (ship->is_local_player && !ship->net_remote_gun &&
+      !Achievements::unlocks_suppressed())
+    Stats::add_secondary_used();
 }
 
 // WeaponEntry::Kind values double as bit positions in weapons_fired_mask.
@@ -798,8 +815,13 @@ int Ship::nova_ammo() const {
 }
 
 void Ship::nova_detonate() {
-  if (is_local_player)
+  if (is_local_player) {
     Achievements::unlock("nova_detonated");
+    // Lifetime NOVAS DETONATED — !net_remote_gun for the same reason as
+    // the death counter: a replayed or replicated detonation is a rerun.
+    if (!net_remote_gun && !Achievements::unlocks_suppressed())
+      Stats::add_nova();
+  }
 
   // World cue: the blast belongs to where the ship is, not to whichever
   // volume the chunk was last left at (WorldSound doc in CLAUDE.md).
@@ -1287,6 +1309,13 @@ void Ship::reset(bool was_killed) {
 bool Ship::kill() {
   if(CompositeObject::kill()) {
     died_this_generation = true;  // no-damage/black-hole-survivor tracking
+    // Lifetime DEATHS: a genuinely locally-piloted ship only —
+    // !net_remote_gun excludes the host's replica of a remote pilot AND
+    // every replay-playback ship (playback marks all of them, including
+    // the recorder's own seat, which keeps is_local_player for the HUD).
+    if (is_local_player && !net_remote_gun &&
+        !Achievements::unlocks_suppressed())
+      Stats::add_death();
     thrusting = false;
     reversing = false;
     rotation_direction = NONE;

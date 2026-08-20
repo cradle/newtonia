@@ -149,6 +149,7 @@ void Missile::shoot(bool on) {
   }
 
   _ammo--;
+  stat_secondary_used(ship);
   ship->missiles.push_back(
     MissileShot(ship->gun(), ship->facing.normalized(), ship->velocity)
   );

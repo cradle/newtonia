@@ -15,6 +15,7 @@
 #include "preferences.h"
 #include "presence.h"
 #include "replay.h"
+#include "stats.h"
 #include "gl_compat.h"
 #include "mat4.h"
 #include "steam_build.h"
@@ -868,6 +869,82 @@ void Menu::draw() {
                                       active_row_ == opt_row_count())
                           .c_str(),
         currentTime);
+  } else if (stats_mode_) {
+    bool touch = is_touch_mode();
+    Typer::draw_centered(0, menu_screen_heading_y(), "STATS", touch ? 30 : 26);
+    // Read-only rows over the same band geometry the options list uses
+    // (opt_row_center — one layout rule for every sub-screen). Label left,
+    // value right. SPECIAL TYPES is the count over stats.dat's kill mask
+    // (reflective and invincible are deliberately absent from it — they
+    // die only to god mode, bonus kills rather than requirements); the
+    // per-type checklist was tried and CUT — nineteen rows crammed the
+    // band (field, 2026-08-19), and the count carries the progress.
+    uint32_t mask = Stats::special_kill_mask();
+    int found = 0;
+    for (int i = 0; i < Stats::SPECIAL_COUNT; i++)
+      if (mask & (1u << i)) found++;
+    struct StatRow { std::string label, value; };
+    std::vector<StatRow> rows;
+    rows.push_back({"HIGH SCORE", std::to_string(high_score)});
+    uint32_t best_lvl = Stats::highest_level();
+    rows.push_back({"HIGHEST LEVEL",
+                    best_lvl == 0 ? std::string("-")
+                                  : std::to_string(best_lvl)});
+    rows.push_back({"GAMES PLAYED",
+                    std::to_string(Stats::games_played())});
+    // H/M, no seconds: a lifetime total moves too slowly for seconds to
+    // say anything, and the shorter string keeps the value column tidy.
+    uint32_t secs = Stats::play_seconds();
+    rows.push_back({"TIME PLAYED",
+                    secs >= 3600
+                        ? std::to_string(secs / 3600) + "H " +
+                              std::to_string((secs % 3600) / 60) + "M"
+                        : std::to_string(secs / 60) + "M"});
+    rows.push_back({"DEATHS", std::to_string(Stats::deaths())});
+    rows.push_back({"ASTEROIDS DESTROYED",
+                    std::to_string(Stats::lifetime_kills())});
+    rows.push_back({"SHIPS DESTROYED",
+                    std::to_string(Stats::ship_kills())});
+    // Shots are primary discharges only (scatter = 1, each burst emission
+    // = 1, no turret/secondaries — stats.h), which is what makes the
+    // accuracy line mean "the pilot's own trigger". It can honestly
+    // exceed 100%: one lance pulse or scatter discharge kills many.
+    uint32_t shots = Stats::shots_fired();
+    rows.push_back({"SHOTS FIRED", std::to_string(shots)});
+    rows.push_back({"ACCURACY",
+                    shots == 0 ? std::string("-")
+                               : std::to_string((uint32_t)(
+                                     (uint64_t)Stats::lifetime_kills() * 100 /
+                                     shots)) + "%"});
+    rows.push_back({"SECONDARIES USED",
+                    std::to_string(Stats::secondaries_used())});
+    rows.push_back({"NOVAS DETONATED",
+                    std::to_string(Stats::novas_detonated())});
+    // 13 glyphs: the label column ends at -360 + 2*sz*len, and the longest
+    // label must clear the value column at 160 ("ASTEROIDS DESTROYED", 19
+    // glyphs, ends at 96 desktop; "SPECIAL TYPES DESTROYED" at 23 glyphs
+    // ran to 192 and collided — the same count-the-glyphs rule as the
+    // options name column).
+    rows.push_back({"SPECIAL TYPES",
+                    std::to_string(found) + " OF " +
+                        std::to_string((int)Stats::SPECIAL_COUNT)});
+    int n = (int)rows.size();
+    float top    = touch ? touch_opt_top()    : desk_opt_top();
+    float bottom = touch ? touch_opt_bottom() : desk_opt_bottom();
+    const int sz = touch ? 13 : 12;
+    for (int i = 0; i < n; i++) {
+      int y = opt_row_center(i, n, top, bottom);
+      // Values share one right column ("ASTEROIDS DESTROYED" at 19 glyphs
+      // ends at 2*sz*19 - 360 = 96 desktop, clear of the column at 160).
+      Typer::draw(-360, y, rows[i].label.c_str(), sz);
+      Typer::draw(160, y, rows[i].value.c_str(), sz);
+    }
+    // The band is this screen's only interactive element, so it always
+    // carries the cursor marks.
+    menu_exit_band().draw(
+        Typer::cursored(touch ? "EXIT TO MENU" : "BACK TO MENU", true)
+            .c_str(),
+        currentTime);
   } else {
     Typer::draw_centered(0, menu_title_y(), "Newtonia", 80);
     if (high_score > 0) {
@@ -878,7 +955,7 @@ void Menu::draw() {
     }
   }
 
-  if (!options_mode_ && !replays_mode_ && !board_mode_) {
+  if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
         // Centered between the title bottom (size 80 descends 160) and the
@@ -929,10 +1006,11 @@ void Menu::draw() {
       if (show_options_row()) rows.push_back("OPTIONS");
       if (show_replays_row()) rows.push_back("REPLAYS");
       if (show_board_row()) rows.push_back("LEADERBOARD");
+      if (show_stats_row()) rows.push_back("STATS");
       draw_menu_rows(rows);
     }
   }
-  if (!options_mode_ && !replays_mode_ && !board_mode_)
+  if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_)
     Typer::draw_centered(0, menu_copyright_y(high_score > 0),
                          "© 2008-2026 METONYMOUS", 13, currentTime);
 }
@@ -1110,6 +1188,12 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     }
     return;
   }
+  if (stats_mode_) {
+    // Read-only screen: any exit gesture leaves (the band is the only
+    // interactive element, so confirm needs no row test).
+    if (MenuSelect::is_back(key) || confirm) stats_mode_ = false;
+    return;
+  }
   if (board_mode_) {
     if (MenuSelect::move(key, board_sel_, board_entry_count())) {
       board_ensure_visible();
@@ -1194,6 +1278,8 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
         open_replays();
       } else if (menu_selection == board_row_index()) {
         open_board();
+      } else if (menu_selection == stats_row_index()) {
+        stats_mode_ = true;
       } else {
         confirm_selection(src);
       }
@@ -1218,6 +1304,10 @@ bool Menu::back_pressed() {
   }
   if (replays_mode_) {
     replays_mode_ = false;
+    return true;
+  }
+  if (stats_mode_) {
+    stats_mode_ = false;
     return true;
   }
   if (board_mode_) {
@@ -1284,6 +1374,10 @@ void Menu::touch_tap(float nx, float ny) {
       active_row_ = row;
       adjust_active_row(+1, /*wrap=*/true);
     }
+    return;
+  }
+  if (stats_mode_) {
+    if (menu_exit_hit().contains(nx, ny)) stats_mode_ = false;
     return;
   }
   if (board_mode_) {
@@ -1373,6 +1467,10 @@ void Menu::touch_tap(float nx, float ny) {
     open_board();
     return;
   }
+  if (row == stats_row_index()) {
+    stats_mode_ = true;
+    return;
+  }
   confirm_selection(nullptr);
 }
 
@@ -1394,6 +1492,7 @@ int Menu::max_menu_items() const {
   if (show_options_row()) n++;
   if (show_replays_row()) n++;
   if (show_board_row()) n++;
+  if (show_stats_row()) n++;
   return n;
 }
 
@@ -1597,6 +1696,16 @@ int Menu::board_row_index() const {
   if (show_online_row()) i++;
   if (show_options_row()) i++;
   if (show_replays_row()) i++;
+  return i;
+}
+
+int Menu::stats_row_index() const {
+  if (!show_stats_row()) return -1;
+  int i = base_menu_rows();
+  if (show_online_row()) i++;
+  if (show_options_row()) i++;
+  if (show_replays_row()) i++;
+  if (show_board_row()) i++;
   return i;
 }
 
@@ -2136,6 +2245,11 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
+      // A resumed run has REACHED its level (the rollover-only note left
+      // "-" for anyone who never cleared one). Here at the menu, not in
+      // the save ctor: the replay-playback ctor delegates through it, and
+      // watching must bank nothing.
+      if (!s.cheated) Stats::note_level_reached((uint32_t)s.generation + 1);
       request_state_change(new GLGame(s, code, token, ctrl));
       return;
     }
@@ -2156,6 +2270,8 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
       decline_net_resume();
+      // Same reached-level note as the RESUME HOSTING path above.
+      if (!s.cheated) Stats::note_level_reached((uint32_t)s.generation + 1);
       request_state_change(new GLGame(s, ctrl));
       return;
     }
