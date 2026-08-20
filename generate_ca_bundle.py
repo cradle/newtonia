@@ -19,7 +19,8 @@ include four of the largest public CAs anyway. The security win here is
 VERIFICATION, not pinning.
 
 The output is committed so no build ever needs the network. Rerun after a
-Mozilla root-program change (a year or two apart in practice):
+Mozilla root-program change — .github/workflows/ca-bundle-check.yml watches
+for one weekly and files an issue when the shipped roots drift:
 
     ./generate_ca_bundle.py            # fetch + regenerate
     ./generate_ca_bundle.py FILE.pem   # regenerate from a local copy

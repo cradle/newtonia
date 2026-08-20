@@ -1,0 +1,114 @@
+name: CA bundle check
+
+# Watches https://curl.se/ca/cacert.pem (curl's build of the Mozilla root
+# program) for drift from the roots shipped in net_ca_bundle.cpp — the ONLY
+# trust anchors the netplay/leaderboard WebSockets have on the MbedTLS
+# platforms (macOS universal, iOS, Android, Xbox) and on Windows, where
+# OpenSSL reaches no system store either (LEADERBOARD.md S1). Alert-only by
+# design: a trust-store change deserves eyes, so staleness turns this run red
+# and files a tracking issue — the fix is `./generate_ca_bundle.py` landed
+# through an ordinary reviewed PR, never an auto-commit from here. While the
+# issue is already open the run just stays red without filing another.
+
+on:
+  schedule:
+    # Sundays 23:00 UTC = Monday morning in Melbourne (09:00 AEST / 10:00
+    # AEDT). Weekly is generous — the root program moves a few times a year —
+    # but the check is one fetch, and a removed root is worth knowing about
+    # inside a release cycle, not a quarter later.
+    - cron: '0 23 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same retry convention as the build workflows: a transient curl.se or
+      # network blip should not page anyone. A failure HERE (after retries)
+      # means "could not fetch upstream", which is a different problem from
+      # the stale-bundle red the later step raises.
+      - name: Regenerate the bundle from upstream
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try python3 generate_ca_bundle.py
+
+      - name: Compare with the committed bundle
+        id: diff
+        run: |
+          # The generator restamps its header every run: the `regenerated`
+          # date always moves, and the source sha256 moves on ANY upstream
+          # edit including comment-only ones (the sha is taken before curl's
+          # commentary is stripped). Only the embedded certificate payload
+          # decides staleness, so those two header lines are ignored — a
+          # comment-only upstream change stays green. Both directions of this
+          # -I filter are exercised in the repo's history (2026-08-20).
+          if git diff --exit-code -I'^//   regenerated' -I'^//   sha256' \
+               -- net_ca_bundle.cpp >/dev/null; then
+            echo "net_ca_bundle.cpp matches the current Mozilla root program"
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            old_certs=$(git show HEAD:net_ca_bundle.cpp | sed -n 's|^//   certificates: ||p')
+            new_certs=$(sed -n 's|^//   certificates: ||p' net_ca_bundle.cpp)
+            old_sha=$(git show HEAD:net_ca_bundle.cpp | sed -n 's|^//   sha256      : \([0-9a-f]*\).*|\1|p')
+            new_sha=$(sed -n 's|^//   sha256      : \([0-9a-f]*\).*|\1|p' net_ca_bundle.cpp)
+            echo "shipped roots are stale: $old_certs certificates ($old_sha)"
+            echo "         upstream now  : $new_certs certificates ($new_sha)"
+            { echo "stale=true"
+              echo "old_certs=$old_certs"; echo "new_certs=$new_certs"
+              echo "old_sha=$old_sha"; echo "new_sha=$new_sha"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: File the tracking issue
+        if: steps.diff.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD_CERTS: ${{ steps.diff.outputs.old_certs }}
+          NEW_CERTS: ${{ steps.diff.outputs.new_certs }}
+          OLD_SHA: ${{ steps.diff.outputs.old_sha }}
+          NEW_SHA: ${{ steps.diff.outputs.new_sha }}
+        run: |
+          title='CA bundle behind the Mozilla root program'
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+                       --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "issue #$existing already open - not filing another"
+            exit 0
+          fi
+          body=$(mktemp)
+          cat > "$body" <<EOF
+          The weekly CA bundle check found the roots shipped in \`net_ca_bundle.cpp\` no longer match https://curl.se/ca/cacert.pem:
+
+          - committed: $OLD_CERTS certificates, source sha256 \`$OLD_SHA\`
+          - upstream: $NEW_CERTS certificates, source sha256 \`$NEW_SHA\`
+
+          These are the only trust anchors the netplay/leaderboard sockets have on the MbedTLS platforms (macOS universal, iOS, Android, Xbox) and on Windows (LEADERBOARD.md S1), so drift eventually becomes a field TLS failure the game can only report as "could not connect".
+
+          To fix (deliberately not automated — the diff is a trust-store change and deserves eyes):
+
+          1. \`./generate_ca_bundle.py\`
+          2. Review which roots came and went in the regenerated \`net_ca_bundle.cpp\`
+          3. Land it through the usual PR flow — the netplay TLS self-tests gate it in CI
+
+          This check stays red weekly until the regenerated bundle lands.
+          EOF
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
+
+      - name: Flag the run red
+        if: steps.diff.outputs.stale == 'true'
+        run: |
+          echo "::error::net_ca_bundle.cpp is behind the Mozilla root program - rerun ./generate_ca_bundle.py and land the diff (see the tracking issue)"
+          exit 1
