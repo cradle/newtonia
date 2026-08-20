@@ -39,21 +39,24 @@ stop_hard $P
 echo "== menu -> REPLAYS -> play -> Esc -> menu -> REPLAYS -> Esc"
 
 # Rows with a save + a replay: CONTINUE, NEW GAME, [ONLINE], OPTIONS, REPLAYS,
-# [LEADERBOARD]. REPLAYS is NOT reliably last: a netplay build that can reach
-# the board worker appends LEADERBOARD after it (Menu::show_board_row), a
-# netless one does not — so overshooting to the bottom lands on a different
-# row per build, which is how this driver silently started opening the
-# leaderboard instead. Overshoot, then step UP past whatever sits below
-# REPLAYS; $UPS is probed on a FRESH process (blind keys on an unknown screen
-# drift into the quit confirmation) and reused for the second visit.
-UPS=0
+# [LEADERBOARD], STATS. REPLAYS is NOT reliably placed from the bottom: STATS
+# is always last (2026-08 stats screen), and a netplay build that can reach
+# the board worker keeps LEADERBOARD between them (Menu::show_board_row) while
+# a netless one does not — so REPLAYS sits 2 up from the bottom on netplay
+# builds and 1 up on netless ones (overshooting straight to the bottom is how
+# this driver silently opened the leaderboard for weeks, and the STATS row
+# re-broke the fixed offsets the same way). Overshoot, then step UP past
+# whatever sits below REPLAYS; $UPS is probed on a FRESH process (blind keys
+# on an unknown screen drift into the quit confirmation) and reused for the
+# second visit.
+UPS=1
 goto_replays() {                                 # cursor -> the REPLAYS row
   local i
   for i in $(seq 1 8); do key "$W" s; done       # clamps at the bottom row
   for i in $(seq 1 "$UPS"); do key "$W" w; done
 }
 
-for UPS in 0 1; do
+for UPS in 1 2; do
   P=$(launch_game menu); sleep 2; W=$(win)
   key "$W" Return; sleep 0.5                     # attract
   goto_replays
@@ -62,7 +65,7 @@ for UPS in 0 1; do
   shot "$W" replays-list
   key "$W" Return; sleep 2                       # select CURRENT RUN
   grep -q "replay: playback started" "$OUT/menu.log" && break
-  if [ "$UPS" = 1 ]; then
+  if [ "$UPS" = 2 ]; then                        # last probe value
     fail "selecting the row did not start playback"
     break
   fi
