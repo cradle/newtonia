@@ -169,7 +169,8 @@ static void finger_down(SDL_FingerID id, float x, float y) {
             g_touch_controls.shoot_pressed = true;
             g_touch_controls.shoot_finger  = id;
             s_game->keyboard(' ', 0, 0);
-        } else if(!g_touch_controls.mine_pressed &&
+        } else if(g_touch_controls.mine_available &&
+                  !g_touch_controls.mine_pressed &&
                   tc_dist(px, py,
                           g_touch_controls.mine_cx,
                           g_touch_controls.mine_cy) <= g_touch_controls.btn_hit_radius) {
