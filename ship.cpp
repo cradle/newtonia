@@ -749,7 +749,13 @@ void Ship::credit_ship_kill(Ship *other) {
   score += other->value * multiplier();
   if (!is_local_player) return;
   Achievements::progress("score_3m", score / 30000);
-  if (other->is_local_player) return;  // friendly fire: no enemy credit
+  // Friendly fire: no enemy credit. Keyed on player_ship, not
+  // is_local_player — online the partner is a REPLICA on this machine
+  // (is_local_player false), and the old test let a friendly-fire kill of
+  // the partner bank as an enemy ship (enemies_10 progress + the lifetime
+  // SHIPS DESTROYED counter). player_ship is true for every player-piloted
+  // hull, replicas included, and false for enemies and stations.
+  if (other->player_ship) return;
   enemy_kills += 1;
   Achievements::progress("enemies_10", enemy_kills * 10);  // 10 ships == 100%
   // Lifetime SHIPS DESTROYED — same freeze as the asteroid counters.

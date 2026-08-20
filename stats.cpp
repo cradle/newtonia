@@ -22,8 +22,17 @@ static const char *ST_APP  = "newtonia";
 static const char *ST_FILE = "stats.dat";
 
 static const uint32_t ST_MAGIC   = 0x4E575354;  // "NWST"
-static const uint16_t ST_VERSION = 3;  // v2 appends shots_fired; v3 the
-                                       // ship-kills..novas block (stats.h)
+// Newest layout this reader UNDERSTANDS (v2 appended shots_fired; v3 the
+// ship-kills..novas block — stats.h). The DISK stamp stays 1 forever:
+// shipped v1 readers reject any newer version and truncate-rewrite, so a
+// bumped stamp meant one branch-switch (or Steam Auto-Cloud sync to an
+// older install) zero-wiped the whole file, kills and specials_7 progress
+// included. Stamping 1 keeps a downgrade reading — and preserving — the
+// v1 fields; its rewrite drops only the appended counters. Appended
+// fields are read by fread success (EOF just leaves defaults), which is
+// why the format must stay strictly append-only.
+static const uint16_t ST_VERSION      = 3;
+static const uint16_t ST_DISK_VERSION = 1;
 
 // Batch kill increments so heavy combat doesn't hit the disk (and, on web,
 // IndexedDB) on every kill. The save/game-over paths call flush(), so at most
@@ -75,18 +84,17 @@ void load() {
     uint32_t v = 0;
     if (fread(&v, sizeof(v), 1, f) == 1) kills = v;
     if (fread(&v, sizeof(v), 1, f) == 1) special_mask = v;
-    // v2: shots_fired. A v1 file ends here and the default 0 stands.
-    if (version >= 2 && fread(&v, sizeof(v), 1, f) == 1) shots = v;
-    // v3: the ship-kills..novas block, in write order below.
-    if (version >= 3) {
-      if (fread(&v, sizeof(v), 1, f) == 1) shipk = v;
-      if (fread(&v, sizeof(v), 1, f) == 1) death_count = v;
-      if (fread(&v, sizeof(v), 1, f) == 1) games = v;
-      if (fread(&v, sizeof(v), 1, f) == 1) best_level = v;
-      if (fread(&v, sizeof(v), 1, f) == 1) play_secs = v;
-      if (fread(&v, sizeof(v), 1, f) == 1) secondaries = v;
-      if (fread(&v, sizeof(v), 1, f) == 1) novas = v;
-    }
+    // Appended fields, by fread success rather than the version stamp
+    // (the stamp stays 1 on disk — see ST_DISK_VERSION): a shorter file
+    // just stops early and the later defaults stand.
+    if (fread(&v, sizeof(v), 1, f) == 1) shots = v;        // v2
+    if (fread(&v, sizeof(v), 1, f) == 1) shipk = v;        // v3...
+    if (fread(&v, sizeof(v), 1, f) == 1) death_count = v;
+    if (fread(&v, sizeof(v), 1, f) == 1) games = v;
+    if (fread(&v, sizeof(v), 1, f) == 1) best_level = v;
+    if (fread(&v, sizeof(v), 1, f) == 1) play_secs = v;
+    if (fread(&v, sizeof(v), 1, f) == 1) secondaries = v;
+    if (fread(&v, sizeof(v), 1, f) == 1) novas = v;
   }
   fclose(f);
 }
@@ -97,7 +105,7 @@ void save() {
   FILE *f = fopen(path.c_str(), "wb");
   if (!f) return;
   bool ok = fwrite(&ST_MAGIC, sizeof(ST_MAGIC), 1, f) == 1
-         && fwrite(&ST_VERSION, sizeof(ST_VERSION), 1, f) == 1
+         && fwrite(&ST_DISK_VERSION, sizeof(ST_DISK_VERSION), 1, f) == 1
          && fwrite(&kills, sizeof(kills), 1, f) == 1
          && fwrite(&special_mask, sizeof(special_mask), 1, f) == 1
          && fwrite(&shots, sizeof(shots), 1, f) == 1

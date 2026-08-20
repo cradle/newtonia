@@ -2245,6 +2245,11 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
+      // A resumed run has REACHED its level (the rollover-only note left
+      // "-" for anyone who never cleared one). Here at the menu, not in
+      // the save ctor: the replay-playback ctor delegates through it, and
+      // watching must bank nothing.
+      if (!s.cheated) Stats::note_level_reached((uint32_t)s.generation + 1);
       request_state_change(new GLGame(s, code, token, ctrl));
       return;
     }
@@ -2265,6 +2270,8 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
       decline_net_resume();
+      // Same reached-level note as the RESUME HOSTING path above.
+      if (!s.cheated) Stats::note_level_reached((uint32_t)s.generation + 1);
       request_state_change(new GLGame(s, ctrl));
       return;
     }

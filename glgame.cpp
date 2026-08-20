@@ -394,8 +394,14 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
   // above lifts any earlier latch), and its generation-0 scenes carry no
   // dev-start mark of their own, so this ctor-time counter needs the env
   // check the tick-time counters don't.
-  if (!Achievements::unlocks_suppressed() && !SDL_getenv("NEWTONIA_SHOT"))
+  if (!Achievements::unlocks_suppressed() && !SDL_getenv("NEWTONIA_SHOT")) {
     Stats::add_game_played();
+    // Starting a game REACHES its opening level — the rollover-only note
+    // showed "-" beside GAMES PLAYED 3 for a pilot who never cleared one.
+    // generation is 0 here unless the dev start above ran, and that path
+    // is suppressed.
+    Stats::note_level_reached((uint32_t)generation + 1);
+  }
 
   // Mid-game hazards accumulated by this generation (none at generation 0).
   add_hazards();
@@ -5406,12 +5412,11 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
       // The world rebuild itself rides the next snapshot (client side);
       // the event just drives the banner.
       net_set_generation_banner((int)arg);
-      // Lifetime HIGHEST LEVEL, the client's copy of the host rollover
-      // hook. NetClient ONLY: replay playback replays this same event
-      // stream, and a watched run must bank nothing (the same rule as
-      // every other lifetime counter).
-      if (net_mode_ == NetClient && !Achievements::unlocks_suppressed())
-        Stats::note_level_reached(arg + 1);
+      // Deliberately NO lifetime-level banking here: this event is sent
+      // at the rollover instant and beats the snapshot that carries
+      // s.cheated, so a host's skip-level could bank on an innocent
+      // client. The client notes its level from net_apply_state, where
+      // generation and the cheat flag arrive in the same record.
       break;
     case Net::EV_BYE:
       // B5: the goodbye marks the SENDING peer lost — on the host that is
@@ -5670,6 +5675,17 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   // the lobby's post-construction attestation/context hand-over.
   net_banner_ms_ = 3000;
   net_refresh_join_banner();
+  // Lifetime GAMES PLAYED + starting level for the JOINER: the fresh-game
+  // counter only runs on the host's ctor path, so a join-only player
+  // showed GAMES PLAYED 0 beside nonzero deaths and time. The delegated
+  // ctor already applied snapshot.cheated, so the gate holds; a re-join
+  // from the menu after a disconnect counts again, which is honest
+  // enough. The replay ctor deliberately has no twin of this — watching
+  // is not playing.
+  if (!Achievements::unlocks_suppressed()) {
+    Stats::add_game_played();
+    Stats::note_level_reached((uint32_t)snapshot.generation + 1);
+  }
   net_assembler_ = new Net::SnapshotAssembler();
   // B4b: the host's snapshot lists every seat in seat order, so on a 3-4
   // player roster OUR hull isn't necessarily last. The whole client keeps
@@ -6131,6 +6147,11 @@ void GLGame::tick_net_client(int delta) {
       // serializes the replica that just showed the last death, so
       // playback reaches the ended world.
       replay_finish(true);
+      // The stats contract's "flush at game over" (CLAUDE.md) — the host's
+      // game-over path flushes, and without this twin the client dropped
+      // up to a minute of batched TIME PLAYED when the app was quit from
+      // the GAME OVER card (the normal mobile exit).
+      Stats::flush();
       board_maybe_start();  // new personal best -> leaderboard prompt
       NET_LOG("net: game over (all players out) - showing GAME OVER card\n");
 #ifdef __EMSCRIPTEN__
@@ -6164,6 +6185,7 @@ void GLGame::tick_net_client(int delta) {
       spectate_death_time_ = -1;
       // Terminal for the recording too — nothing will ever append again.
       replay_finish(true);
+      Stats::flush();  // the client game-over flush — see the all-out twin
       board_maybe_start();  // new personal best -> leaderboard prompt
       NET_LOG("net: host lost while spectating - GAME OVER\n");
     }
@@ -7357,6 +7379,14 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // the rebuild it causes is evaluated below. NetClient only: WATCHING a
   // cheated replay must not poison the viewer's session flag.
   if (net_mode_ == NetClient && s.cheated) Achievements::note_cheat_used();
+  // Lifetime HIGHEST LEVEL, banked from the SNAPSHOT rather than
+  // EV_GENERATION_START: the event beats the record carrying s.cheated on
+  // the wire, so banking there let a host's skip-level launder a level
+  // into this client's stats. Here generation and the cheat flag arrive
+  // together (the cheat apply is the line above). note_level_reached
+  // early-outs at or below the stored max, so the 10 Hz call is a compare.
+  if (net_mode_ == NetClient && !Achievements::unlocks_suppressed())
+    Stats::note_level_reached((uint32_t)s.generation + 1);
 
   // Generation rollover: the world grew — rebuild boundaries, grid and
   // starfield, drop every stale object (mirrors the host's rollover block;
