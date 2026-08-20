@@ -25,6 +25,7 @@
 #include "preferences.h"
 #include "invites.h"
 #include "replay.h"
+#include "touch_controls.h"
 #include "world_sound.h"
 
 #include <cmath>
@@ -77,7 +78,11 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
         if (norm_y < 0.65f) return 0;  // dead zone above buttons
         if (norm_x < 0.60f) return 0;  // gap between pause zone and buttons
         if (norm_x < 0.80f) return ' ';  // shoot
-        return 'x';                      // mine
+        // Mine zone only exists while a secondary is equipped: with none,
+        // the HTML circle is hidden (main.ts setMineAvailable) and this
+        // fallback zone must go dead too, or the invisible region would
+        // still answer taps.
+        return g_touch_controls.mine_available ? 'x' : 0;  // mine
     }
 }
 

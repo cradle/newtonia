@@ -250,13 +250,24 @@ declare const Module: {
   let _joyPlaceholderEls: HTMLElement[] = [];
   let _positionJoyPlaceholder: (() => void) | null = null;
   let _inMenuMode = true;
+  // The mine button only exists while the local ship has a secondary
+  // equipped — C++ pushes changes via EM_ASM (glgame.cpp GLGame::tick),
+  // the same bridge setMenuMode rides. Starts false: a fresh ship has no
+  // secondary until a pickup grants one.
+  let _mineAvailable = false;
+
+  function applyCircleButtonVisibility(): void {
+    for (const el of _circleButtonEls) {
+      const hide = _inMenuMode ||
+          (!_mineAvailable && el.classList.contains("touch-mine"));
+      el.style.display = hide ? "none" : "";
+    }
+  }
 
   // Called from C++ via EM_ASM when game state changes.
   function setMenuMode(isMenu: boolean): void {
     _inMenuMode = isMenu;
-    for (const el of _circleButtonEls) {
-      el.style.display = isMenu ? "none" : "";
-    }
+    applyCircleButtonVisibility();
     for (const el of _joyPlaceholderEls) {
       el.style.display = isMenu ? "none" : "";
     }
@@ -268,6 +279,14 @@ declare const Module: {
     if (_menuOverlay) _menuOverlay.style.display = isMenu ? "block" : "none";
   }
   (window as any).setMenuMode = setMenuMode;
+
+  // Called from C++ via EM_ASM when the local ship gains its first
+  // secondary or fires off its last one.
+  function setMineAvailable(available: number | boolean): void {
+    _mineAvailable = !!available;
+    applyCircleButtonVisibility();
+  }
+  (window as any).setMineAvailable = setMineAvailable;
 
   // ---- Game-over promo banner ----------------------------------------
   // The web build deliberately has no netplay or leaderboard (LEADERBOARD.md:

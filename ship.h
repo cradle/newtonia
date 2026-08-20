@@ -238,6 +238,9 @@ class Ship : public CompositeObject {
     void next_weapon();
     void previous_weapon();
     void next_secondary_weapon();
+    // True while any secondary is equipped (the list empties when the last
+    // one runs dry — see fire_secondary). Gates the touch OSD's mine button.
+    bool has_secondary() const { return !secondary_weapons.empty(); }
     void add_weapon(int weapon_index);
     // Random gun-drop pool: draws from weapon_configs[] minus the slow
     // semi-auto rows — one shot per trigger pull AND a 200ms re-press limit

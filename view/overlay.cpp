@@ -1315,7 +1315,10 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   }
 
   // ---- Mine button ----
-  {
+  // Only while a secondary is equipped (GLGame::tick keeps the flag; the
+  // entry points gate their hit test on the same flag, so the region and
+  // the circle appear and vanish together).
+  if (tc.mine_available) {
     float bx = ox(tc.mine_cx);
     float by = oy(tc.mine_cy);
     float br = sr(tc.mine_radius);

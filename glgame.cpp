@@ -8236,6 +8236,26 @@ void GLGame::tick(int delta) {
   // to is a SIMULATED one — draw() banks it from here rather than reading a
   // clock (see the note there).
   camera_delta_pending_ += delta;
+  // Touch OSD: the mine button only exists while the local pilot has a
+  // secondary to fire (touch_controls.h). Written here — ahead of the mode
+  // early-returns, so net clients and replay playback stay current too —
+  // and read by the overlay draw and the entry points' hit tests.
+  {
+    GLShip *lp = local_player();
+    bool has_secondary = lp && lp->ship->has_secondary();
+    g_touch_controls.mine_available = has_secondary;
+#ifdef __EMSCRIPTEN__
+    // The web build's circle buttons are HTML (web/main.ts), so mirror the
+    // flag across the same bridge setMenuMode rides, on change only.
+    static bool web_mine_pushed = false, web_mine_last = false;
+    if (!web_mine_pushed || web_mine_last != has_secondary) {
+      web_mine_pushed = true;
+      web_mine_last = has_secondary;
+      EM_ASM({ if (window.setMineAvailable) window.setMineAvailable($0); },
+             has_secondary ? 1 : 0);
+    }
+#endif
+  }
   // Replay recording starts on the first tick — the earliest point that
   // knows the game's mode (the net ctors delegate to the offline ctors and
   // set net_mode_ only afterwards). Offline AND online games record

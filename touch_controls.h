@@ -42,6 +42,14 @@ struct TouchControlsState {
     float mine_cx, mine_cy, mine_radius;
     bool  mine_pressed;
     SDL_FingerID mine_finger;
+    // The mine button only exists while the local ship has a secondary
+    // equipped (secondaries come from pickups and drop off the ship when
+    // the last one runs dry). GLGame::tick writes this each frame; the
+    // overlay draw and the entry points' hit tests both read it, so the
+    // region can never answer a finger the circle isn't showing. Zero-init
+    // false: in the menus nothing updates it, and the 'x' key the region
+    // would send is inert there anyway.
+    bool  mine_available;
 
     // ---- Shared hit-test radius for shoot & mine ----
     // Half the distance between the two button centres so the touch regions are
