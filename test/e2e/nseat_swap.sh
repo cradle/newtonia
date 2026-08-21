@@ -91,10 +91,20 @@ for _ in $(seq 1 45); do
 done
 ROOM_PIDS[2]=$P3; ROOM_WINS[2]=$W3
 [ -n "$ok" ] || room_fail "SEAT 3'S PILOT NEVER REJOINED" host
-grep -aq "bootstrap adopted" "$OUT/rejoin4.log" ||
-  room_fail "REJOIN4 NO BOOTSTRAP" rejoin4
-grep -aq "bootstrap adopted" "$OUT/rejoin3.log" ||
+# Poll, never one-shot: the host's "rejoined" marks adoption and each
+# client's bootstrap lands a beat later (next 10 Hz keyframe slot + chunk +
+# apply — see nseat_rejoin_flap_swap.sh, which lost this race on CI).
+BOOT=
+for _ in $(seq 1 30); do
+  grep -aq "bootstrap adopted" "$OUT/rejoin4.log" &&
+    grep -aq "bootstrap adopted" "$OUT/rejoin3.log" && { BOOT=1; break; }
+  sleep 1
+done
+[ -n "$BOOT" ] || {
+  grep -aq "bootstrap adopted" "$OUT/rejoin4.log" ||
+    room_fail "REJOIN4 NO BOOTSTRAP" rejoin4
   room_fail "REJOIN3 NO BOOTSTRAP" rejoin3
+}
 echo "pilot PILOT2 landed back on seat 3"
 
 sleep 3
