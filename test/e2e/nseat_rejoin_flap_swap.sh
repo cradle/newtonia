@@ -207,8 +207,17 @@ grep -aq "rejoin identity-matched seat 4 (door was 3)" "$OUT/host.log" ||
   room_fail "PILOT3 WAS SEATED BY DOOR ORDER - NO RE-MAP" host
 grep -aq "$DROP_LINE" "$OUT/host.log" &&
   room_fail "THE ADOPTION WAS DROPPED AFTER ALL" host
-grep -aq "bootstrap adopted" "$OUT/rejoin4.log" ||
-  room_fail "REJOIN4 NO BOOTSTRAP" rejoin4
+# Poll, never one-shot: the host's "rejoined" line marks ADOPTION, and the
+# client's bootstrap lands a beat later — the keyframe only goes out on the
+# next 10 Hz snapshot slot, then chunks across and applies (~1.2 s on a dev
+# box with NOTHING logged in between, longer on a loaded runner). A one-shot
+# grep here lost that race twice in one CI run (master, 2026-08-21).
+BOOT=
+for _ in $(seq 1 30); do
+  grep -aq "bootstrap adopted" "$OUT/rejoin4.log" && { BOOT=1; break; }
+  sleep 1
+done
+[ -n "$BOOT" ] || { hold_diag; room_fail "REJOIN4 NO BOOTSTRAP" rejoin4; }
 echo "PILOT3 landed back on seat 4 through the re-map"
 
 sleep 3

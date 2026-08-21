@@ -53,8 +53,15 @@ for i in $(seq 1 45); do
 done
 ROOM_PIDS[2]=$PR; ROOM_WINS[2]=$WR   # back in the roster for teardown
 [ -n "$REJOINED" ] || room_fail "SEAT 3 NEVER REJOINED" host
-grep -aq "bootstrap adopted" "$OUT/rejoiner.log" ||
-  room_fail "REJOINER NO BOOTSTRAP" rejoiner
+# Poll, never one-shot: the host's "rejoined" marks adoption and the
+# client's bootstrap lands a beat later (next 10 Hz keyframe slot + chunk +
+# apply — see nseat_rejoin_flap_swap.sh, which lost this race on CI).
+BOOT=
+for _ in $(seq 1 30); do
+  grep -aq "bootstrap adopted" "$OUT/rejoiner.log" && { BOOT=1; break; }
+  sleep 1
+done
+[ -n "$BOOT" ] || room_fail "REJOINER NO BOOTSTRAP" rejoiner
 echo "seat 3 rejoined"
 
 sleep 3
