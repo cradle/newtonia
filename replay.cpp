@@ -1,5 +1,6 @@
 #include "web_fs.h"
 #include "replay.h"
+#include "preferences.h"
 #include "savegame.h"
 
 #include <SDL.h>
@@ -834,6 +835,11 @@ int recording_override() {
     if (env_flag_set("NEWTONIA_REPLAY_DISABLE")) return 0;  // disable wins
     if (env_flag_set("NEWTONIA_REPLAY_ENABLE")) return 1;
     return -1;
+}
+
+bool recording_enabled() {
+    int ov = recording_override();
+    return ov >= 0 ? ov == 1 : g_prefs.auto_record_replays;
 }
 
 // Stop growing a recording that has outrun its storage, keeping everything

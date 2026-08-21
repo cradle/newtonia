@@ -654,6 +654,15 @@ void Menu::draw() {
       Typer::draw_centered(0, fy, "REPLAY NO LONGER STORED", fsz);
     } else if (sel_row && !net_board_replay_watchable(*sel_row)) {
       Typer::draw_centered(0, fy, "REPLAY FROM ANOTHER VERSION", fsz);
+    } else if (!Replay::recording_enabled() && net_board_can_submit()) {
+      // With recording off there is nothing to submit, so the game-over
+      // prompt and the UPLOAD row silently never appear (LEADERBOARD.md
+      // L7) — say why, ahead of the rank line: the standing config
+      // problem outranks the standing rank. One line at size 10, not the
+      // footer size: 38 glyphs x 10 = 380 fits the portrait 400-unit
+      // half-width envelope (the count-the-glyphs rule).
+      Typer::draw_centered(0, fy, "TURN ON RECORD REPLAYS TO ENTER SCORES",
+                           10);
     } else if (board_your_rank_ > 0 && !board_best_on_board()) {
       // The player's standing whenever their best is NOT already one of
       // the visible rows (rank-of is a projection of the un-uploaded best,

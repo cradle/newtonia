@@ -255,6 +255,19 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // shows it whenever the game is over), so the row would just repeat it.
     if (!is_touch_mode())
       MenuSelect::draw_row(-80, "EXIT TO MENU", 16, true);
+    // The offline card's recording notice, on the shared card too
+    // (LEADERBOARD.md L7 — the field case was exactly this screen: a co-op
+    // host with recording off, mystified while the peer's phone charted).
+    // Not during playback — a watched replay's ending is not the moment
+    // for options advice. Below the exit row (-80 descends to -112), above
+    // the hoisted per-seat score rows (they top out at -231 stacking up
+    // from vhb+255 at four seats).
+    if (glgame->net_mode_ != GLGame::NetReplay &&
+        !Replay::recording_enabled() && net_board_can_submit()) {
+      int sz = is_touch_mode() ? 13 : 11;
+      Typer::draw_centered(0, -150, "TURN ON RECORD REPLAYS", sz);
+      Typer::draw_centered(0, -150 - 3 * sz, "TO ENTER SCORES", sz);
+    }
     return;
   }
 
@@ -1184,7 +1197,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
           Typer::draw_centered(0, top_y, "player 2 press enter to join", 8);
 #endif
       }
-    } else if(!is_touch_mode()) {
+    } else {
       // Game over: the same row, at the same size, that the online GAME
       // OVER card and the disconnect card draw — one exit affordance across
       // every end-state instead of a hint naming a different key per
@@ -1194,8 +1207,22 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       // "GameOver" at y 80..0 and the score at -20..-60 in this space, so
       // -100 clears both. Suppressed while a leaderboard flow owns the
       // card (board_prompt draws its own heading + EXIT TO MENU row).
-      if (glgame->board_phase_ == GLGame::BoardOff)
+      // Touch has no row — the tap band at the screen edge is the exit.
+      if (!is_touch_mode() && glgame->board_phase_ == GLGame::BoardOff)
         MenuSelect::draw_row(-100, "EXIT TO MENU", 16, true);
+      // The upload prompt this card would carry can never appear with
+      // recording off — there is nothing to submit — and the silence read
+      // as a bug in the field (LEADERBOARD.md L7): say why, once the whole
+      // game is over (P1's wreck alone must not nag a live P2 run). Two
+      // lines so each fits every aspect; below the exit row (-100 descends
+      // to -132), clear of the touch band's reach (~-370 up).
+      if (glgame->board_phase_ == GLGame::BoardOff &&
+          glgame->all_players_out() && !Replay::recording_enabled() &&
+          net_board_can_submit()) {
+        int sz = is_touch_mode() ? 13 : 11;
+        Typer::draw_centered(0, -170, "TURN ON RECORD REPLAYS", sz);
+        Typer::draw_centered(0, -170 - 3 * sz, "TO ENTER SCORES", sz);
+      }
     }
   } else {
     // Keep these clear of the bottom edge: Typer glyphs extend ~2x the

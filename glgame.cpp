@@ -4470,7 +4470,7 @@ void GLGame::replay_start() {
   // start so a mid-run change never orphans a half-written file — an
   // existing current.nrp is simply left untouched.
   int override_ = Replay::recording_override();
-  bool enabled = override_ >= 0 ? override_ == 1 : g_prefs.auto_record_replays;
+  bool enabled = Replay::recording_enabled();
   if (override_ >= 0)
     SDL_Log("replay: NEWTONIA_REPLAY_%s overrides the preference (%s)",
             override_ == 1 ? "ENABLE" : "DISABLE", enabled ? "ON" : "OFF");

@@ -170,6 +170,13 @@ uint64_t new_run_id();  // never returns 0
 // warning instead of the value doing it.
 int recording_override();
 
+// Whether the next run will record, by replay_start's own resolution: the
+// env override wins, else Preferences::auto_record_replays. The leaderboard
+// surfaces (board screen footer, game-over cards) use this to say WHY no
+// upload prompt can appear — no recording means nothing to submit
+// (LEADERBOARD.md L7).
+bool recording_enabled();
+
 // Why a file's header would not load. The replays list shows these to the
 // player, so they are kept apart rather than collapsed into one "can't read
 // it": a file from a newer build tells the player something they can act on
