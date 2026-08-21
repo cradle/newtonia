@@ -18,6 +18,7 @@
 #include "weapon/beam.h"
 #include "weapon/lance.h"
 #include "weapon/god_mode.h"
+#include "weapon/nova.h"
 #include "net_resume.h"
 #include "net_signal.h"
 #include "net_transport.h"
@@ -7653,15 +7654,16 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     if (is_local)
       for (auto *w : ship->primary_weapons)
         pre_primary_ammo[w->name()] = w->ammo();
-    // The predicted pickup's twin: the LIVE local ammo of the predicted
-    // secondary, captured fresh each apply — it already reflects every
-    // shot fired since, so pinning to it below never snaps a spent round
-    // back (a frozen floor did exactly that: "flicking back and forth",
-    // field 2026-08-21, and it refunded the rounds too).
-    int pre_sel_ammo = -1;
-    if (is_local && net_sel_grace_ > 0)
+    // The secondaries' twin, captured fresh each apply — it already
+    // reflects every shot fired since, so pinning/clamping to it below
+    // never snaps a spent round back (a frozen floor did exactly that:
+    // "flicking back and forth", field 2026-08-21, and refunded the
+    // rounds too). Feeds both the predicted-pickup pin and the general
+    // in-flight lag clamp.
+    std::map<std::string, int> pre_secondary_ammo;
+    if (is_local)
       for (auto *w : ship->secondary_weapons)
-        if (net_sel_name_ == w->name()) { pre_sel_ammo = w->ammo(); break; }
+        pre_secondary_ammo[w->name()] = w->ammo();
 
     ship->restore_state(s.players[i], grid);
     if (is_local) ship->bullets.swap(kept_bullets);
@@ -7729,9 +7731,10 @@ void GLGame::net_apply_state(const Save::GameState &s) {
           ship->secondary = wit;
           // The local value wins outright during the grace (the snapshot
           // was built before the host saw the pickup, and it also lags our
-          // in-flight shots): pre_sel_ammo is this apply's live capture,
-          // so the count just decrements smoothly as the pilot fires.
-          if (pre_sel_ammo >= 0) (*wit)->set_ammo(pre_sel_ammo);
+          // in-flight shots): this apply's live capture, so the count just
+          // decrements smoothly as the pilot fires.
+          auto si = pre_secondary_ammo.find(net_sel_name_);
+          if (si != pre_secondary_ammo.end()) (*wit)->set_ammo(si->second);
           break;
         }
       }
@@ -7773,6 +7776,22 @@ void GLGame::net_apply_state(const Save::GameState &s) {
           else
             w->set_ammo(pre);        // lag blip: suppress the upward flicker
         }
+      }
+      // The secondaries' twin (extended 2026-08-21): the snapshot lags
+      // in-flight presses, so rapid secondary fire blipped the count UP
+      // for a beat after every deploy. No latch needed here: a mag-based
+      // secondary's only gain source is a pickup, and the local pilot's
+      // pickups are PREDICTED — the local value carries the gain before
+      // any snapshot does — so an upward snapshot correction is always
+      // the lag blip. Nova is exempt: its charges also rise from kills
+      // the HOST credits that the client never saw (a clone kill the
+      // local copy missed), a legitimate rise nothing latches — clamping
+      // it would pin real charges low indefinitely.
+      for (auto *w : ship->secondary_weapons) {
+        if (dynamic_cast<Weapon::Nova *>(w)) continue;
+        auto si = pre_secondary_ammo.find(w->name());
+        if (si == pre_secondary_ammo.end()) continue;
+        if (w->ammo() > si->second) w->set_ammo(si->second);
       }
     } else if (is_local && world_rebuilt) {
       // Level transition: keep the authoritative new-level pose and do NOT
