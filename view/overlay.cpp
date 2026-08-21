@@ -258,16 +258,15 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // The offline card's recording notice, on the shared card too
     // (LEADERBOARD.md L7 — the field case was exactly this screen: a co-op
     // host with recording off, mystified while the peer's phone charted).
-    // Not during playback — a watched replay's ending is not the moment
-    // for options advice. Below the exit row (-80 descends to -112), above
-    // the hoisted per-seat score rows (they top out at -231 stacking up
-    // from vhb+255 at four seats).
+    // Same lowercase hint register — an aside under the card, not a card
+    // row. Not during playback — a watched replay's ending is not the
+    // moment for options advice. Below the exit row (-80 descends to
+    // -112), above the hoisted per-seat score rows (top out at -231).
     if (glgame->net_mode_ != GLGame::NetReplay &&
-        !Replay::recording_enabled() && net_board_can_submit()) {
-      int sz = is_touch_mode() ? 13 : 11;
-      Typer::draw_centered(0, -150, "TURN ON RECORD REPLAYS", sz);
-      Typer::draw_centered(0, -150 - 3 * sz, "TO ENTER SCORES", sz);
-    }
+        !Replay::recording_enabled() && net_board_can_submit())
+      Typer::draw_centered(0, -150,
+                           "turn on record replays to enter scores",
+                           is_touch_mode() ? 10 : 8);
     return;
   }
 
@@ -1213,16 +1212,16 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       // The upload prompt this card would carry can never appear with
       // recording off — there is nothing to submit — and the silence read
       // as a bug in the field (LEADERBOARD.md L7): say why, once the whole
-      // game is over (P1's wreck alone must not nag a live P2 run). Two
-      // lines so each fits every aspect; below the exit row (-100 descends
-      // to -132), clear of the touch band's reach (~-370 up).
+      // game is over (P1's wreck alone must not nag a live P2 run). In the
+      // lowercase hint register ("show controls with F1"), one small line
+      // — an aside, not part of the card — below the exit row (-100
+      // descends to -132), clear of the touch band's reach (~-370 up).
       if (glgame->board_phase_ == GLGame::BoardOff &&
           glgame->all_players_out() && !Replay::recording_enabled() &&
-          net_board_can_submit()) {
-        int sz = is_touch_mode() ? 13 : 11;
-        Typer::draw_centered(0, -170, "TURN ON RECORD REPLAYS", sz);
-        Typer::draw_centered(0, -170 - 3 * sz, "TO ENTER SCORES", sz);
-      }
+          net_board_can_submit())
+        Typer::draw_centered(0, -170,
+                             "turn on record replays to enter scores",
+                             is_touch_mode() ? 10 : 8);
     }
   } else {
     // Keep these clear of the bottom edge: Typer glyphs extend ~2x the

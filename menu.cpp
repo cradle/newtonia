@@ -658,11 +658,12 @@ void Menu::draw() {
       // With recording off there is nothing to submit, so the game-over
       // prompt and the UPLOAD row silently never appear (LEADERBOARD.md
       // L7) — say why, ahead of the rank line: the standing config
-      // problem outranks the standing rank. One line at size 10, not the
-      // footer size: 38 glyphs x 10 = 380 fits the portrait 400-unit
-      // half-width envelope (the count-the-glyphs rule).
-      Typer::draw_centered(0, fy, "TURN ON RECORD REPLAYS TO ENTER SCORES",
-                           10);
+      // problem outranks the standing rank. In the lowercase hint
+      // register, deliberately quieter than the footer's status texts —
+      // an aside, not a status — and 38 glyphs x 10 = 380 fits the
+      // portrait 400-unit half-width envelope (count-the-glyphs rule).
+      Typer::draw_centered(0, fy, "turn on record replays to enter scores",
+                           touch ? 10 : 8);
     } else if (board_your_rank_ > 0 && !board_best_on_board()) {
       // The player's standing whenever their best is NOT already one of
       // the visible rows (rank-of is a projection of the un-uploaded best,
