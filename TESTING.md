@@ -443,6 +443,17 @@ test/e2e/missile_net.sh # client-fired deploys (host launches with
                      # INPUT, the shape a lost-packet stall delivers on
                      # recovery; 12 of 18 were lost before the host queued
                      # secondary presses like it queues primary ones.
+test/e2e/pickup_switch_net.sh # predicted pickup collection: the host drops
+                     # MinePickups AHEAD of the joiner's ship on a timer
+                     # (NEWTONIA_NET_TEST_MINE_PICKUP_MS) while it fires a
+                     # missile burst through them. Asserts the joiner
+                     # PREDICTED at least one grab ("pickup predicted" —
+                     # armed the mine locally at contact, not a round trip
+                     # later via the restore), both weapon types were
+                     # confirmed by host echoes, and NOT ONE deploy aged out
+                     # unmade — the press-stream-aligned switch leaves no
+                     # type-mismatch window (the load-gated arsenal
+                     # divergence, 2026-08-21).
 test/e2e/turret_net.sh # turret drones over the wire (PROTO 26). The host
                      # launches with NEWTONIA_NET_TEST_GRANT_TURRETS=1 (runtime
                      # hook, host-side like GRANT_WEAPONS): both ships get the
