@@ -917,7 +917,11 @@ private:
   static const int NET_PICKUP_GRACE_APPLIES = 10;  // ~1 s of applies
   int net_sel_grace_ = 0;       // applies left preserving the selection
   std::string net_sel_name_;    // predicted selected secondary's name()
-  int net_sel_ammo_floor_ = 0;  // its predicted ammo, floored during grace
+  // During the grace the predicted weapon's ammo is pinned to the LIVE
+  // local value captured just before each restore — never a frozen
+  // number: a static floor snapped every shot fired during the grace
+  // back up on the next apply ("flicking back and forth", field
+  // 2026-08-21) and quietly refunded the spent rounds.
   // RX watchdog (both roles): last current_time anything arrived from the
   // peer. A one-way path death (Deck wifi sleep) otherwise leaves a ghost
   // world extrapolating for the ~45 s the transport takes to give up —

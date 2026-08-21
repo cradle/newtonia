@@ -6676,7 +6676,6 @@ void GLGame::tick_net_client(int delta) {
           if (pme->secondary != pme->secondary_weapons.end()) {
             net_sel_grace_ = NET_PICKUP_GRACE_APPLIES;
             net_sel_name_ = (*pme->secondary)->name();
-            net_sel_ammo_floor_ = (*pme->secondary)->ammo();
           }
           NET_LOG("net: pickup predicted (%s) - armed locally\n",
                   net_sel_name_.c_str());
@@ -7654,6 +7653,15 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     if (is_local)
       for (auto *w : ship->primary_weapons)
         pre_primary_ammo[w->name()] = w->ammo();
+    // The predicted pickup's twin: the LIVE local ammo of the predicted
+    // secondary, captured fresh each apply — it already reflects every
+    // shot fired since, so pinning to it below never snaps a spent round
+    // back (a frozen floor did exactly that: "flicking back and forth",
+    // field 2026-08-21, and it refunded the rounds too).
+    int pre_sel_ammo = -1;
+    if (is_local && net_sel_grace_ > 0)
+      for (auto *w : ship->secondary_weapons)
+        if (net_sel_name_ == w->name()) { pre_sel_ammo = w->ammo(); break; }
 
     ship->restore_state(s.players[i], grid);
     if (is_local) ship->bullets.swap(kept_bullets);
@@ -7719,8 +7727,11 @@ void GLGame::net_apply_state(const Save::GameState &s) {
              wit != ship->secondary_weapons.end(); ++wit) {
           if (net_sel_name_ != (*wit)->name()) continue;
           ship->secondary = wit;
-          if ((*wit)->ammo() < net_sel_ammo_floor_)
-            (*wit)->set_ammo(net_sel_ammo_floor_);
+          // The local value wins outright during the grace (the snapshot
+          // was built before the host saw the pickup, and it also lags our
+          // in-flight shots): pre_sel_ammo is this apply's live capture,
+          // so the count just decrements smoothly as the pilot fires.
+          if (pre_sel_ammo >= 0) (*wit)->set_ammo(pre_sel_ammo);
           break;
         }
       }
