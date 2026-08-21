@@ -898,6 +898,30 @@ private:
   // asteroid ids): applied where the extras re-stamp the rebuilt
   // replicas' ids each apply.
   std::map<uint32_t, int> net_predicted_ship_kills_;
+  // Predicted pickup collection (client, tick_net_client): the pilot's
+  // ship applies a secondary-arsenal pickup the moment IT touches it — the
+  // host applies the same pickup ~RTT/2 later from the same
+  // (client-authoritative) trajectory, so both machines switch the armed
+  // secondary at the same point in the press stream and deploys stay
+  // type-matched. Without this, the host's switch reached the pilot a
+  // round trip late via the restore, and every press in the skew window
+  // deployed a type the other machine never fired (the load-gated
+  // "arsenal divergence", 2026-08-21). Entries track the predicted spots:
+  // one GONE from a snapshot was confirmed (host collected it too); one
+  // still present burns applies_left and reverts at zero (misprediction).
+  // net_sel_* preserve the predicted selection + that weapon's ammo floor
+  // across restores for the same grace, since snapshots built before the
+  // host saw the pickup still carry the old arsenal.
+  struct NetPredictedPickup { float x, y; int applies_left; };
+  std::vector<NetPredictedPickup> net_predicted_pickups_;
+  static const int NET_PICKUP_GRACE_APPLIES = 10;  // ~1 s of applies
+  int net_sel_grace_ = 0;       // applies left preserving the selection
+  std::string net_sel_name_;    // predicted selected secondary's name()
+  // During the grace the predicted weapon's ammo is pinned to the LIVE
+  // local value captured just before each restore — never a frozen
+  // number: a static floor snapped every shot fired during the grace
+  // back up on the next apply ("flicking back and forth", field
+  // 2026-08-21) and quietly refunded the spent rounds.
   // RX watchdog (both roles): last current_time anything arrived from the
   // peer. A one-way path death (Deck wifi sleep) otherwise leaves a ghost
   // world extrapolating for the ~45 s the transport takes to give up —

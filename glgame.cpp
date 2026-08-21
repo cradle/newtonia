@@ -18,6 +18,7 @@
 #include "weapon/beam.h"
 #include "weapon/lance.h"
 #include "weapon/god_mode.h"
+#include "weapon/nova.h"
 #include "net_resume.h"
 #include "net_signal.h"
 #include "net_transport.h"
@@ -6636,6 +6637,51 @@ void GLGame::tick_net_client(int delta) {
         }
         bolt.struck.clear();  // fully drained — never carry a pointer to next frame
       }
+
+      // Predicted pickup collection: the pilot's pose is authoritative
+      // (the host adopts it from every INPUT), so the host's collection
+      // verdict for OUR ship is a delayed replay of this same trajectory.
+      // Predict the secondary-arsenal pickups locally at contact — exactly
+      // like deploys, kills and aim — and both machines switch the armed
+      // secondary at the same point in the press stream; the host's switch
+      // used to reach the pilot a round trip late via the restore, and
+      // every press in that window deployed a type the other machine never
+      // fired (the load-gated arsenal divergence, 2026-08-21). Only
+      // pickups whose apply() is pure ship arsenal are predicted; world
+      // effects (revive, time slow), lives and the primaries stay
+      // host-driven as before. No sound here — EV_PICKUP plays it, as
+      // always, so nothing doubles. net_apply_state confirms or reverts
+      // (NET_PICKUP_GRACE_APPLIES); the position memory stops a snapshot
+      // rebuild's recreated pickup object from being applied twice.
+      Ship *pme = players->back()->ship;
+      if (pme->is_alive()) {
+        for (auto *pk : *pickups) {
+          if (pk->collected || !pk->collide(*pme)) continue;
+          bool arsenal_kind =
+              dynamic_cast<MinePickup *>(pk) != nullptr ||
+              dynamic_cast<GigaMinePickup *>(pk) != nullptr ||
+              dynamic_cast<MissilePickup *>(pk) != nullptr ||
+              dynamic_cast<ShieldPickup *>(pk) != nullptr ||
+              dynamic_cast<TurretPickup *>(pk) != nullptr ||
+              dynamic_cast<NovaChargePickup *>(pk) != nullptr;
+          if (!arsenal_kind) continue;
+          pk->collected = true;  // hidden + inert; reverted on mispredict
+          bool already = false;
+          for (auto &pp : net_predicted_pickups_)
+            if (fabsf(pp.x - pk->position.x()) < 0.5f &&
+                fabsf(pp.y - pk->position.y()) < 0.5f) { already = true; break; }
+          if (already) continue;
+          pk->apply(pme);
+          net_predicted_pickups_.push_back(
+              {pk->position.x(), pk->position.y(), NET_PICKUP_GRACE_APPLIES});
+          if (pme->secondary != pme->secondary_weapons.end()) {
+            net_sel_grace_ = NET_PICKUP_GRACE_APPLIES;
+            net_sel_name_ = (*pme->secondary)->name();
+          }
+          NET_LOG("net: pickup predicted (%s) - armed locally\n",
+                  net_sel_name_.c_str());
+        }
+      }
     }
 
     // Local-ship render-jump detector: the camera rides this pose, so a
@@ -7608,6 +7654,16 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     if (is_local)
       for (auto *w : ship->primary_weapons)
         pre_primary_ammo[w->name()] = w->ammo();
+    // The secondaries' twin, captured fresh each apply — it already
+    // reflects every shot fired since, so pinning/clamping to it below
+    // never snaps a spent round back (a frozen floor did exactly that:
+    // "flicking back and forth", field 2026-08-21, and refunded the
+    // rounds too). Feeds both the predicted-pickup pin and the general
+    // in-flight lag clamp.
+    std::map<std::string, int> pre_secondary_ammo;
+    if (is_local)
+      for (auto *w : ship->secondary_weapons)
+        pre_secondary_ammo[w->name()] = w->ammo();
 
     ship->restore_state(s.players[i], grid);
     if (is_local) ship->bullets.swap(kept_bullets);
@@ -7658,6 +7714,30 @@ void GLGame::net_apply_state(const Save::GameState &s) {
         Weapon::Shock *sw = dynamic_cast<Weapon::Shock *>(*ship->primary);
         if (sw) sw->set_cooldown(shock_cooldown);
       }
+      // Predicted pickup selection (see tick_net_client): the restore just
+      // rewrote the armed secondary from a snapshot the host built BEFORE
+      // it saw the pickup we predicted. Re-point at the predicted weapon
+      // (and floor its ammo to the predicted value) while the grace runs —
+      // the host catches up within an apply or two and this becomes a
+      // no-op; a misprediction zeroes the grace in the pickup reconcile
+      // below and the next restore reverts the arsenal to the host's
+      // truth. Runs before the re-arms so a held secondary arms the
+      // predicted weapon, not the stale one.
+      if (net_sel_grace_ > 0) {
+        net_sel_grace_--;
+        for (auto wit = ship->secondary_weapons.begin();
+             wit != ship->secondary_weapons.end(); ++wit) {
+          if (net_sel_name_ != (*wit)->name()) continue;
+          ship->secondary = wit;
+          // The local value wins outright during the grace (the snapshot
+          // was built before the host saw the pickup, and it also lags our
+          // in-flight shots): this apply's live capture, so the count just
+          // decrements smoothly as the pilot fires.
+          auto si = pre_secondary_ammo.find(net_sel_name_);
+          if (si != pre_secondary_ammo.end()) (*wit)->set_ammo(si->second);
+          break;
+        }
+      }
       ship->shoot(armed_shoot);
       ship->fire_secondary(armed_secondary);
       if ((shot_cooldown > 0 || shot_burst_pending > 0) &&
@@ -7697,6 +7777,22 @@ void GLGame::net_apply_state(const Save::GameState &s) {
             w->set_ammo(pre);        // lag blip: suppress the upward flicker
         }
       }
+      // The secondaries' twin (extended 2026-08-21): the snapshot lags
+      // in-flight presses, so rapid secondary fire blipped the count UP
+      // for a beat after every deploy. No latch needed here: a mag-based
+      // secondary's only gain source is a pickup, and the local pilot's
+      // pickups are PREDICTED — the local value carries the gain before
+      // any snapshot does — so an upward snapshot correction is always
+      // the lag blip. Nova is exempt: its charges also rise from kills
+      // the HOST credits that the client never saw (a clone kill the
+      // local copy missed), a legitimate rise nothing latches — clamping
+      // it would pin real charges low indefinitely.
+      for (auto *w : ship->secondary_weapons) {
+        if (dynamic_cast<Weapon::Nova *>(w)) continue;
+        auto si = pre_secondary_ammo.find(w->name());
+        if (si == pre_secondary_ammo.end()) continue;
+        if (w->ammo() > si->second) w->set_ammo(si->second);
+      }
     } else if (is_local && world_rebuilt) {
       // Level transition: keep the authoritative new-level pose and do NOT
       // re-apply the held state — the host cleared the remote ship's
@@ -7730,6 +7826,29 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     for (const auto &sp : s.pickups) {
       Pickup *p = make_pickup(sp);
       if (p) pickups->push_back(p);
+    }
+  }
+  // Predicted pickup bookkeeping (see tick_net_client): a predicted spot
+  // GONE from the snapshot was confirmed — the host collected it too. One
+  // still present burns applies_left (a rebuild recreated the object with
+  // collected=false, so re-hide it while the grace runs); at zero the host
+  // never agreed — unhide the pickup and zero the selection grace, and the
+  // next restore reverts the arsenal to the host's truth by itself.
+  for (auto ppit = net_predicted_pickups_.begin();
+       ppit != net_predicted_pickups_.end();) {
+    Pickup *match = nullptr;
+    for (auto *p : *pickups)
+      if (fabsf(p->position.x() - ppit->x) < 0.5f &&
+          fabsf(p->position.y() - ppit->y) < 0.5f) { match = p; break; }
+    if (!match) { ppit = net_predicted_pickups_.erase(ppit); continue; }
+    match->collected = true;
+    if (--ppit->applies_left <= 0) {
+      NET_LOG("net: pickup prediction expired - reverting\n");
+      match->collected = false;
+      net_sel_grace_ = 0;
+      ppit = net_predicted_pickups_.erase(ppit);
+    } else {
+      ++ppit;
     }
   }
 
@@ -8516,6 +8635,42 @@ void GLGame::tick(int delta) {
           NET_LOG("net: TEST dropping revive pickup near the living player\n");
           pickups->push_back(new RevivePickup(
               gs->ship->position + Point((float)test_revive_drop_dist, 0)));
+          break;
+        }
+      }
+    }
+  }
+  // Drop a MinePickup AHEAD of the first living remote player — repeating
+  // every N ms, at most 8 total — so the e2e can force the predicted
+  // pickup-switch path mid-burst (test/e2e/pickup_switch_net.sh; the
+  // time-slow hook's pattern). Ahead, not on the ship: a pickup spawned on
+  // the ship is collected host-side before a snapshot ever shows it to the
+  // client, so the client could never predict it. Inert without the env var.
+  {
+    static int test_mine_pickup_ms = -2, test_mine_pickup_left = 8;
+    static int test_mine_pickup_timer = 0;
+    if (test_mine_pickup_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_MINE_PICKUP_MS");
+      test_mine_pickup_ms = e ? atoi(e) : -1;
+      test_mine_pickup_timer = test_mine_pickup_ms;
+    }
+    if (test_mine_pickup_ms > 0 && test_mine_pickup_left > 0) {
+      test_mine_pickup_timer -= delta;
+      if (test_mine_pickup_timer <= 0) {
+        test_mine_pickup_timer = test_mine_pickup_ms;
+        for (auto *gs : *players) {
+          Ship *sh = gs->ship;
+          if (!sh->is_alive() || sh->is_local_player) continue;
+          test_mine_pickup_left--;
+          // ~400 ms of travel ahead (velocity is per-ms), or a couple of
+          // ship-lengths along the facing when it is drifting slowly.
+          Point lead = sh->velocity * 400.0f;
+          if (lead.magnitude() < sh->radius * 2.0f)
+            lead = sh->facing * (sh->radius * 4.0f);
+          NET_LOG("net: TEST dropping mine pickup ahead of the remote player\n");
+          pickups->push_back(new MinePickup(
+              WrappedPoint(sh->position.x() + lead.x(),
+                           sh->position.y() + lead.y())));
           break;
         }
       }
@@ -10153,6 +10308,11 @@ void GLGame::draw_objects(float direction, bool minimap,
                              cam_x, cam_y, cull_r);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
+    // Collected = gone. The host erases collected pickups the same tick so
+    // this never fires there; on a net client a PREDICTED collection marks
+    // the pickup collected ~RTT before the snapshot removes it, and the
+    // instant disappearance is the feedback that the grab landed.
+    if ((*pi)->collected) continue;
     if (cull_r > 0) {
       // Glow halos extend past the pickup radius — cull generously.
       float reach = cull_r + (*pi)->radius * 4.0f;
