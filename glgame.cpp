@@ -10320,13 +10320,20 @@ void GLGame::draw_objects(float direction, bool minimap,
     (*bhi)->draw(minimap);
   }
 
-  for(auto* h : *hazards) {
-    h->draw(minimap);
-  }
-
   AsteroidDrawer::draw_batch(objects, dead_objects, direction, minimap,
                              minimap ? world.x() : 0, minimap ? world.y() : 0,
                              cam_x, cam_y, cull_r);
+
+  // Hazards draw AFTER the asteroids, like the ships and stations below:
+  // they used to draw before, and the rocks' opaque fills painted over
+  // them — a seeker crossing a rock (it passes through) vanished behind
+  // it, and a seeker killed over one had its death burst swallowed, which
+  // in a late-game field half-covered in asteroid fill read as "no debris
+  // about half the time" (field, 2026-08-23; the sim was blameless — the
+  // burst spawned, animated and reaped on schedule every single kill).
+  for(auto* h : *hazards) {
+    h->draw(minimap);
+  }
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
     // Collected = gone. The host erases collected pickups the same tick so
@@ -11571,6 +11578,45 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
     if (!t->is_alive()) continue;
     if (first_hit(t, 0, &where) && t->kill_stop())
       firer->credit_ship_kill(t);
+  }
+
+  // Mid-game hazards: the pulse only ray-marches asteroids, so it used to
+  // pass through all three kinds doing nothing (field, 2026-08-23). Same
+  // rules as the shock arc: a seeker dies outright for its bounty, a comet
+  // takes a hit and sheds chunks, a pulsar takes a hit, break-ups pay out.
+  // The polyline is already resolved, so like enemies (and unlike bullets)
+  // nothing here shortens the pulse. Host-side like the rest of this
+  // resolver — a client firer's destruction replicates via the snapshot.
+  auto first_hit_at = [&](const Point &pos, float radius, Point *w) {
+    for (size_t s = 0; s + 1 < pts.size(); s++)
+      if (lance_seg_circle_entry(pts[s], pts[s + 1], pos, radius, w))
+        return true;
+    return false;
+  };
+  for (auto *h : *hazards) {
+    if (!h->is_alive()) continue;
+    if (!first_hit_at(h->position, h->radius, &where)) continue;
+    firer->explode(where, h->velocity);
+    if (h->kind_of() == Hazard::SEEKER) {
+      h->destroy();
+      firer->score += Hazard::SEEKER_REWARD;
+      play_priority_chunk(station_explode_sound, world_volume(h->position));
+    } else {
+      h->hit();
+      if (h->kind_of() == Hazard::COMET) {
+        shed_comet_fragment(h);   // knock a couple of chunks loose
+        shed_comet_fragment(h);
+      }
+      if (h->is_alive()) {
+        play_hazard_hit_sound(h->kind_of() == Hazard::COMET
+                                ? Asteroid::explode_sound
+                                : Asteroid::thud_sound);
+      } else {
+        firer->score += (h->kind_of() == Hazard::COMET)
+                          ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+        play_priority_chunk(station_explode_sound, world_volume(h->position));
+      }
+    }
   }
 
   // Mini-station: dies to any hit, flat bounty — mirror of the bullet
