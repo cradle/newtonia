@@ -48,16 +48,18 @@ Intro::Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_astero
     // the hull of a dead ship, so without this the intro showed an empty
     // starfield with a name under it.
     display_enemy_->ship->alive = true;
-    // A ship's true radius (15) is a speck under the intro camera — the
-    // asteroid/station intros only read because those objects are big.
-    // Radius drives GLShip::draw_ship's model scale, and the display copy
-    // never collides, so inflating it is purely a zoom.
-    display_enemy_->ship->radius = 55.0f;
     // mute_engine() is protected (the stations reach it by inheriting
     // Ship); zeroing the scale and re-leveling the looping hum channel is
     // the public equivalent for the intro's 5 seconds.
     display_enemy_->ship->sound_volume_scale = 0.0f;
     display_enemy_->ship->update_boost_volume();
+    // Thrusting pose: the hull holds still (never stepped, so the thrust
+    // force moves nothing) while tick() animates the exhaust trail behind
+    // it. Silenced above, so thrust(true)'s hum re-level stays at zero.
+    // Nose to the right: the default nose-up pose streamed the plume down
+    // through the name caption below.
+    display_enemy_->ship->facing = Point(1.0f, 0.0f);
+    display_enemy_->ship->thrust(true);
   }
   // Silence looping effects (e.g. the respawn shield hum) while the intro is
   // up; the world is frozen so their sources are frozen too. The intro tune
@@ -146,10 +148,10 @@ void Intro::tick(int delta) {
   step_accum += delta;
   while (step_accum >= GLGame::step_size) {
     if (asteroid != NULL) asteroid->step(GLGame::step_size);
-    // Spin the display interceptor like the asteroid displays spin
-    // (facing drives GLShip's draw rotation; ~50 deg/s).
+    // The display interceptor holds its pose; only its exhaust animates
+    // (the hull is display-only and never stepped — see the intro.h note).
     if (kind == INTERCEPTOR && display_enemy_ != NULL)
-      display_enemy_->ship->facing.rotate(0.0009f * GLGame::step_size);
+      display_enemy_->step_trails(GLGame::step_size);
     if (kind == BLACK_HOLE) {
       for (auto bhi = game->black_holes->begin(); bhi != game->black_holes->end(); bhi++)
         (*bhi)->step(GLGame::step_size);

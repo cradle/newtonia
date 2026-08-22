@@ -227,6 +227,10 @@ void GLShip::step(int delta, const Grid &grid) {
     if(!has_turret) ship->add_turret_ammo(999);
   }
 
+  step_trails(delta);
+}
+
+void GLShip::step_trails(int delta) {
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
   }

@@ -24,6 +24,11 @@ public:
   GLShip(const Grid &grid, bool has_friction, const float *tint = NULL);
   virtual ~GLShip();
   void step(int delta, const Grid &grid);
+  // Step only the exhaust trails. For a display-only hull (the Intro's
+  // interceptor): the ship itself is never stepped — the frozen world must
+  // stay frozen and its Follower must not run — but a thrusting pose needs
+  // its plume to animate.
+  void step_trails(int delta);
   virtual void input(unsigned char key, bool pressed = true);
   virtual void controller_input(SDL_Event event);
   virtual void controller_axis_input(SDL_Event event);

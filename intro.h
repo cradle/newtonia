@@ -70,8 +70,9 @@ private:
   // Owned; display-only (Kind INTERCEPTOR): the station deploys the real
   // ones mid-level, so unlike the station/mini-station intros there is no
   // live world object to point the camera at — the intro shows its own
-  // hull, spinning like the asteroid displays, silenced and never stepped
-  // (its Follower would chase the frozen world's players).
+  // hull at actual size, silenced and never stepped (its Follower would
+  // chase the frozen world's players; thrust moves nothing). It holds a
+  // thrusting pose and only its exhaust trail animates (step_trails).
   GLEnemy *display_enemy_ = nullptr;
   int time = 0;        // ms since the intro appeared (drives flash + spin)
   int step_accum = 0;  // accumulates delta into fixed steps for the spin
