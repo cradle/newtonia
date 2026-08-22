@@ -1094,6 +1094,23 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_phasing; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, false, false, true));
   }
+  // TOUGH ELITES (generation >= 16): TOUGH stacked with a second special.
+  // Three combos, all killable with the plain gun per the late-game design
+  // rule — reflective is excluded (its ctor forces invincible), and
+  // invisible+teleporting was cut for readability. The lead combo rotates
+  // with the generation so early counts (1-2) still show variety.
+  int num_elite = (generation >= 16) ? (generation - 16) / 2 + 1 : 0;
+  for(int i = 0; i < num_elite; i++) {
+    switch((i + generation) % 3) {
+      // (invincible, invisible, reflective, teleporting, quantum, tough, armoured, phasing)
+      case 0: objects->push_back(new Asteroid(false, false, false, false, false, true, true));
+              break;  // armoured+tough: five hits through the rotating gap
+      case 1: objects->push_back(new Asteroid(false, false, false, true, false, true));
+              break;  // teleporting+tough: banked cracks keep escaping
+      case 2: objects->push_back(new Asteroid(false, false, false, false, true, true));
+              break;  // quantum+tough: observing it is a five-hit commitment
+    }
+  }
 }
 
 void GLGame::add_hazards() {
@@ -1183,6 +1200,8 @@ void GLGame::maybe_start_intro() {
     case 13: if (!black_holes->empty()) { kind = Intro::BLACK_HOLE;   name = "BLACK HOLE"; }    break;
     case 14: if (station != NULL)       { kind = Intro::STATION;      name = "ENEMY STATION"; } break;
     case 15: if (station != NULL)       { kind = Intro::INTERCEPTOR;  name = "INTERCEPTOR"; }   break;
+    case 16: display = new Asteroid(false, false, false, false, false, true, true);
+             name = "TOUGH ELITES"; break;
     default: return;
   }
   if (name == NULL) return;
