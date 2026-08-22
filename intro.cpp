@@ -57,8 +57,12 @@ Intro::Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_astero
     // force moves nothing) while tick() animates the exhaust trail behind
     // it. Silenced above, so thrust(true)'s hum re-level stays at zero.
     // Nose to the right: the default nose-up pose streamed the plume down
-    // through the name caption below.
+    // through the name caption below. A cruise velocity makes it FLY:
+    // tick() integrates it with Object::step (position only — never
+    // Ship::step, see the intro.h note), the camera focus tracks the hull,
+    // and the parallax starfield streaming past sells the motion.
     display_enemy_->ship->facing = Point(1.0f, 0.0f);
+    display_enemy_->ship->velocity = Point(0.3f, 0.0f);
     display_enemy_->ship->thrust(true);
   }
   // Silence looping effects (e.g. the respawn shield hum) while the intro is
@@ -148,10 +152,13 @@ void Intro::tick(int delta) {
   step_accum += delta;
   while (step_accum >= GLGame::step_size) {
     if (asteroid != NULL) asteroid->step(GLGame::step_size);
-    // The display interceptor holds its pose; only its exhaust animates
-    // (the hull is display-only and never stepped — see the intro.h note).
-    if (kind == INTERCEPTOR && display_enemy_ != NULL)
+    // The display interceptor cruises (position integration only — the
+    // qualified call must never reach Ship::step, see the intro.h note)
+    // while its exhaust animates; the camera tracks it via focus().
+    if (kind == INTERCEPTOR && display_enemy_ != NULL) {
+      display_enemy_->ship->Object::step(GLGame::step_size);
       display_enemy_->step_trails(GLGame::step_size);
+    }
     if (kind == BLACK_HOLE) {
       for (auto bhi = game->black_holes->begin(); bhi != game->black_holes->end(); bhi++)
         (*bhi)->step(GLGame::step_size);
