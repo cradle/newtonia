@@ -450,11 +450,22 @@ void Hazard::draw(bool minimap) const {
       // noise floor almost immediately. Hotter (whiter) while bright.
       float al = d.aliveness();
       float a = al > 0.6f ? 1.0f : al / 0.6f;
-      float h = 5.0f + 3.0f * a;  // world units; embers shrink as they cool
       float x = d.position.x(), y = d.position.y();
+      // Each ember is a tiny diamond, near point-sized (a couple of world
+      // units — 2-3 px at typical zoom), faintly streaked along its own
+      // velocity so it still reads as a spark, shrinking as it cools.
+      // Big flat quads read as blocky confetti (field, 2026-08-23).
+      float vx = d.velocity.x(), vy = d.velocity.y();
+      float vm = sqrtf(vx * vx + vy * vy);
+      float dx = vm > 1e-5f ? vx / vm : 1.0f;
+      float dy = vm > 1e-5f ? vy / vm : 0.0f;
+      float len = 2.8f * (0.5f + 0.5f * a);
+      float wid = 1.8f * (0.5f + 0.5f * a);
+      float px_ = -dy * wid, py_ = dx * wid;
+      float hx = dx * len, hy = dy * len;
       mb.color(1.0f, 0.45f + 0.45f * a, 0.2f, a);
-      mb.vertex(x - h, y - h); mb.vertex(x + h, y - h); mb.vertex(x + h, y + h);
-      mb.vertex(x - h, y - h); mb.vertex(x + h, y + h); mb.vertex(x - h, y + h);
+      mb.vertex(x + hx, y + hy); mb.vertex(x + px_, y + py_); mb.vertex(x - hx, y - hy);
+      mb.vertex(x + hx, y + hy); mb.vertex(x - hx, y - hy); mb.vertex(x - px_, y - py_);
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
