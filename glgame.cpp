@@ -382,7 +382,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
                                        hostile_aim_lead(generation));
     if (generation >= 14)
       station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                              hostile_aim_lead(generation));
+                              hostile_aim_lead(generation), generation);
     Achievements::note_cheat_used();
   }
 
@@ -851,7 +851,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   if (save.station.present) {
     station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                            hostile_aim_lead(generation));
+                            hostile_aim_lead(generation), generation);
     station->restore_state(save.station, grid);
   } else {
     station = NULL;
@@ -1182,6 +1182,7 @@ void GLGame::maybe_start_intro() {
              hazard_kind = Hazard::SEEKER; } break;
     case 13: if (!black_holes->empty()) { kind = Intro::BLACK_HOLE;   name = "BLACK HOLE"; }    break;
     case 14: if (station != NULL)       { kind = Intro::STATION;      name = "ENEMY STATION"; } break;
+    case 15: if (station != NULL)       { kind = Intro::INTERCEPTOR;  name = "INTERCEPTOR"; }   break;
     default: return;
   }
   if (name == NULL) return;
@@ -7922,7 +7923,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       // Client replica: its enemies never steer or shoot (the host owns
       // that), so the lead value is cosmetic here — passed for symmetry.
       station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects,
-                              hostile_aim_lead(generation));
+                              hostile_aim_lead(generation), generation);
     station->restore_state(s.station, grid);
   } else if (station) {
     while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
@@ -8943,7 +8944,7 @@ void GLGame::tick(int delta) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                                hostile_aim_lead(generation));
+                                hostile_aim_lead(generation), generation);
       }
       if(station != NULL) {
         station->reset();

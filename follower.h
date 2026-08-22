@@ -12,7 +12,7 @@ class Follower : public Behaviour {
 public:
   Follower(Ship *ship);
   Follower(Ship *ship, list<Object *> *targets);
-  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f, float aim_lead = 0.0f);
+  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f, float aim_lead = 0.0f, int shoot_interval_ms = 3000);
   virtual ~Follower();
 
   virtual void step(int delta);
@@ -29,6 +29,13 @@ private:
   list<Object *> *asteroids;  // non-owning pointer
   float difficulty;
   float aim_lead;  // 0 = steer/shoot at the target now, 1 = perfect intercept
+  // Ms between shot windows (burst_shooting_step). 3000 for the standard
+  // wave ship; the interceptor's tighter cadence (1500) is its real
+  // weapon — see the late-game design rule in CLAUDE.md: pressure comes
+  // from being shot at more while it is near, never from a speed the
+  // player cannot escape with plain thrust. Host-simulated only (client
+  // replicas never run behaviours), so this needs no serialization.
+  int shoot_interval_ms;
   int time_until_next_lock, time_between_locks;
   int shoot_timer;
   Object *target;

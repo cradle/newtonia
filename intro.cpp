@@ -1,5 +1,6 @@
 #include "intro.h"
 #include "glgame.h"
+#include "glenemy.h"
 #include "menu.h"
 #include "asset_path.h"
 #include "audio_volume.h"
@@ -30,6 +31,34 @@ Intro::Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_astero
     asteroid->position = WrappedPoint(game->world.x() / 2.0f, game->world.y() / 2.0f);
     asteroid->velocity = Point(0, 0);
   }
+  if (kind == INTERCEPTOR) {
+    // Display-only hull at the world centre (see the member note in
+    // intro.h). An empty target list keeps its Follower inert; the Ship
+    // constructor starts the looping engine hum, so silence it like the
+    // stations do.
+    std::list<GLShip *> no_targets;
+    display_enemy_ = new GLEnemy(game->grid,
+                                 game->world.x() / 2.0f,
+                                 game->world.y() / 2.0f,
+                                 &no_targets, 0.0f, NULL, 0.0f,
+                                 /*interceptor=*/true);
+    // A Ship constructs dead and only comes alive through step()'s respawn
+    // (never run here — the world is frozen) or a direct raise, which is
+    // exactly how the station deploys its wave ships. GLShip::draw skips
+    // the hull of a dead ship, so without this the intro showed an empty
+    // starfield with a name under it.
+    display_enemy_->ship->alive = true;
+    // A ship's true radius (15) is a speck under the intro camera — the
+    // asteroid/station intros only read because those objects are big.
+    // Radius drives GLShip::draw_ship's model scale, and the display copy
+    // never collides, so inflating it is purely a zoom.
+    display_enemy_->ship->radius = 110.0f;
+    // mute_engine() is protected (the stations reach it by inheriting
+    // Ship); zeroing the scale and re-leveling the looping hum channel is
+    // the public equivalent for the intro's 5 seconds.
+    display_enemy_->ship->sound_volume_scale = 0.0f;
+    display_enemy_->ship->update_boost_volume();
+  }
   // Silence looping effects (e.g. the respawn shield hum) while the intro is
   // up; the world is frozen so their sources are frozen too. The intro tune
   // starts after the pause so its own channel keeps playing.
@@ -59,6 +88,7 @@ Intro::~Intro() {
   if (asteroid != NULL) {
     delete asteroid;
   }
+  delete display_enemy_;
   // Still owning the game means we left to the menu (or shut down) without
   // handing it back; deleting it saves progress.
   if (!handed_back && game != NULL) {
@@ -116,6 +146,10 @@ void Intro::tick(int delta) {
   step_accum += delta;
   while (step_accum >= GLGame::step_size) {
     if (asteroid != NULL) asteroid->step(GLGame::step_size);
+    // Spin the display interceptor like the asteroid displays spin
+    // (facing drives GLShip's draw rotation; ~50 deg/s).
+    if (kind == INTERCEPTOR && display_enemy_ != NULL)
+      display_enemy_->ship->facing.rotate(0.0009f * GLGame::step_size);
     if (kind == BLACK_HOLE) {
       for (auto bhi = game->black_holes->begin(); bhi != game->black_holes->end(); bhi++)
         (*bhi)->step(GLGame::step_size);
@@ -135,6 +169,7 @@ Point Intro::focus() const {
     case BLACK_HOLE:   return game->black_holes->front()->position;
     case MINI_STATION: return game->mini_station->position;
     case STATION:      return game->station->position;
+    case INTERCEPTOR:  return display_enemy_->ship->position;
     case HAZARD: {
       Hazard *h = game->first_hazard((Hazard::Kind)hazard_kind);
       if (h != NULL) return h->position;
@@ -193,6 +228,7 @@ void Intro::draw() {
     case BLACK_HOLE:   game->black_holes->front()->draw(false); break;
     case MINI_STATION: game->mini_station->draw(false);         break;
     case STATION:      game->station->draw(false);              break;
+    case INTERCEPTOR:  display_enemy_->draw(false);             break;
     case HAZARD: {
       Hazard *h = game->first_hazard((Hazard::Kind)hazard_kind);
       if (h != NULL) h->draw(false);

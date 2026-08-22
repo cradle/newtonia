@@ -8,15 +8,15 @@
 #include <cmath>
 using namespace std;
 
-Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f) {
+Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f) {
+Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead) {
+Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead, int shoot_interval_ms) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead), shoot_interval_ms(shoot_interval_ms) {
   common_init();
 }
 
@@ -144,7 +144,6 @@ void Follower::step(int delta) {
 void Follower::burst_shooting_step(int delta, float angle, const WrappedPoint &target_point) {
   static const float SHOOT_RANGE   = 600.0f;
   static const float FACING_CONE   = 25.0f;
-  static const int   SHOOT_INTERVAL = 3000;
 
   shoot_timer -= delta;
   if(shoot_timer > 0) return;
@@ -154,7 +153,7 @@ void Follower::burst_shooting_step(int delta, float angle, const WrappedPoint &t
 
   if(in_range && facing) {
     ship->shoot(true);
-    shoot_timer = SHOOT_INTERVAL;
+    shoot_timer = shoot_interval_ms;
   }
 }
 
