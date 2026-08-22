@@ -198,16 +198,21 @@ void Hazard::destroy() {
   // Drop any lingering trail/impact debris so the death reads as one clean
   // radial burst rather than a streak that keeps drifting off.
   debris_.clear();
-  int count = 60;
+  // 90 slow particles: the old 60 at up to 0.47 u/ms dispersed into
+  // star-noise confetti within ~300 ms — at normal viewing the seeker's
+  // death read as "no explosion about half the time" (field, 2026-08-23,
+  // confirmed frame-stepping the reporter's replay). A death burst has to
+  // stay a coherent fireball for most of its life.
+  int count = 90;
   debris_.reserve(debris_.size() + count);
   for (int i = 0; i < count; i++) {
     float angle = frand() * 2.0f * (float)M_PI;
     float dist  = frand() * radius;
     Point start(position.x() + dist * cosf(angle),
                 position.y() + dist * sinf(angle));
-    float speed = 0.12f + frand() * 0.35f;
+    float speed = 0.05f + frand() * 0.16f;
     Point vel(speed * cosf(angle), speed * sinf(angle));
-    debris_.push_back(Particle(start, vel, 900.0f + frand() * 600.0f));
+    debris_.push_back(Particle(start, vel, 1100.0f + frand() * 700.0f));
   }
 }
 
@@ -432,12 +437,17 @@ void Hazard::draw(bool minimap) const {
     mb.clear();
     mb.begin(GL_POINTS);
     for (const auto &d : debris_) {
-      mb.color(1.0f, 0.5f, 0.2f, d.aliveness());
+      // Hold full brightness for the first ~40% of a particle's life, then
+      // fade — a linear fade dropped the whole burst under the starfield's
+      // noise floor almost immediately. Hotter (whiter) while bright.
+      float al = d.aliveness();
+      float a = al > 0.6f ? 1.0f : al / 0.6f;
+      mb.color(1.0f, 0.45f + 0.45f * a, 0.2f, a);
       mb.vertex(d.position.x(), d.position.y());
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw(3.0f);
+    mesh.draw(6.0f);
   }
 }
 
