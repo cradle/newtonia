@@ -52,7 +52,7 @@ Intro::Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_astero
     // asteroid/station intros only read because those objects are big.
     // Radius drives GLShip::draw_ship's model scale, and the display copy
     // never collides, so inflating it is purely a zoom.
-    display_enemy_->ship->radius = 110.0f;
+    display_enemy_->ship->radius = 55.0f;
     // mute_engine() is protected (the stations reach it by inheriting
     // Ship); zeroing the scale and re-leveling the looping hum channel is
     // the public equivalent for the intro's 5 seconds.
