@@ -17,7 +17,7 @@
 
 using namespace std;
 
-GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids, float aim_lead) : Ship(grid, false), objects(objects), targets(targets), asteroids(asteroids), aim_lead(aim_lead) {
+GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids, float aim_lead, int generation) : Ship(grid, false), objects(objects), targets(targets), asteroids(asteroids), aim_lead(aim_lead), generation(generation) {
   position = Point(0,0);
   radius = 200.0;
   time_until_respawn = 0;
@@ -147,6 +147,13 @@ int GLStation::level() const {
   return wave;
 }
 
+int GLStation::wave_interceptors() const {
+  if (generation < 15) return 0;
+  int allowed = 1 + (generation - 15);
+  int cap = (ships_this_wave + 1) / 2;
+  return allowed < cap ? allowed : cap;
+}
+
 void GLStation::draw(bool minimap) const {
   float px = position.x(), py = position.y();
 
@@ -252,7 +259,14 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
       ge = (GLEnemy *)*oi;
       ++oi;
     } else {
-      ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids, aim_lead);
+      // Re-derive the variant from the stats the record already carries
+      // (glenemy.h: the interceptor IS its stats, no serialized flag).
+      // Order-based reconcile means a rare transient mesh/stat mismatch
+      // when deaths shuffle the pairing mid-wave; the stats below are
+      // still overwritten every apply, so behaviour is always right.
+      ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty,
+                       asteroids, aim_lead,
+                       se.thrust_force >= GLEnemy::INTERCEPTOR_THRUST_MIN);
       objects->push_back(ge);
       // Skip the initial 2.5s lock delay — enemy is already deployed at
       // the recorded position.
@@ -307,6 +321,11 @@ void GLStation::step(float delta, const Grid &grid) {
     } else if (time_until_next_ship <= 0) {
       time_until_next_ship += time_between_ships;
       ships_left_to_deploy--;
+      // Interceptors launch FIRST — a fast vanguard ahead of the slow
+      // line gives each wave a shape (and they would arrive first
+      // anyway). Deploy order counts up from 0 as ships_left counts down.
+      int deploy_index = ships_this_wave - 1 - ships_left_to_deploy;
+      bool interceptor = deploy_index < wave_interceptors();
       float rotation = 360.0/ships_this_wave*ships_left_to_deploy*M_PI/180;
       float distance = 30 + radius;
       objects->push_back(
@@ -314,7 +333,7 @@ void GLStation::step(float delta, const Grid &grid) {
           grid,
           position.x() + distance*cos(rotation),
           position.y() + distance*sin(rotation), targets, difficulty, asteroids,
-          aim_lead
+          aim_lead, interceptor
         )
       );
     }

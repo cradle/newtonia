@@ -12,7 +12,7 @@ using namespace std;
 
 class GLStation : public Ship {
 public:
-  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids = NULL, float aim_lead = 0.0f);
+  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids = NULL, float aim_lead = 0.0f, int generation = 0);
   virtual ~GLStation();
 
   void draw(bool minimap = false) const;
@@ -47,6 +47,17 @@ private:
   // so the value tracks the generation with no saved state). Handed to each
   // deployed GLEnemy's Follower at spawn.
   float aim_lead;
+  // The generation this station was built for (same recreated-per-rollover
+  // contract as aim_lead — never persisted). Drives wave COMPOSITION:
+  // interceptors join from generation 15, their per-wave allotment growing
+  // with it (wave_interceptors). NOT the `difficulty` member below — that
+  // counter only moves past the 50-ship wave cap and resets with the
+  // station every level, so it never actually climbs.
+  int generation;
+  // How many of this wave's ships deploy as interceptors: none before
+  // gen 15, then 1 + (generation - 15), capped at half the wave (rounded
+  // up) so the standard line always outnumbers-or-matches the vanguard.
+  int wave_interceptors() const;
 };
 
 #endif
