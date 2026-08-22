@@ -198,16 +198,21 @@ void Hazard::destroy() {
   // Drop any lingering trail/impact debris so the death reads as one clean
   // radial burst rather than a streak that keeps drifting off.
   debris_.clear();
-  int count = 60;
+  // 90 slow particles: the old 60 at up to 0.47 u/ms dispersed into
+  // star-noise confetti within ~300 ms — at normal viewing the seeker's
+  // death read as "no explosion about half the time" (field, 2026-08-23,
+  // confirmed frame-stepping the reporter's replay). A death burst has to
+  // stay a coherent fireball for most of its life.
+  int count = 90;
   debris_.reserve(debris_.size() + count);
   for (int i = 0; i < count; i++) {
     float angle = frand() * 2.0f * (float)M_PI;
     float dist  = frand() * radius;
     Point start(position.x() + dist * cosf(angle),
                 position.y() + dist * sinf(angle));
-    float speed = 0.12f + frand() * 0.35f;
+    float speed = 0.05f + frand() * 0.16f;
     Point vel(speed * cosf(angle), speed * sinf(angle));
-    debris_.push_back(Particle(start, vel, 900.0f + frand() * 600.0f));
+    debris_.push_back(Particle(start, vel, 1100.0f + frand() * 700.0f));
   }
 }
 
@@ -427,17 +432,44 @@ void Hazard::draw(bool minimap) const {
     map_mesh_.draw_tinted_with_model(1.0f, 0.9f, 0.3f, blink, m);
   }
   if (!debris_.empty()) {
+    // TRIANGLE quads, not GL_POINTS: the reporter's GPU rendered this
+    // block's point-sprite burst as nothing at all (same build and replay
+    // drew fine under llvmpipe — a driver-side point-size lottery the
+    // asteroid/ship debris happens to win at size 3 and this burst lost
+    // at 6). Triangles rasterize identically everywhere, and world-unit
+    // sizing keeps the burst's weight independent of window resolution —
+    // the same class of fix as the line emulation's devicePixelRatio
+    // scaling (gles2_compat).
     static MeshBuilder mb;
     static Mesh mesh;
     mb.clear();
-    mb.begin(GL_POINTS);
+    mb.begin(GL_TRIANGLES);
     for (const auto &d : debris_) {
-      mb.color(1.0f, 0.5f, 0.2f, d.aliveness());
-      mb.vertex(d.position.x(), d.position.y());
+      // Hold full brightness for the first ~40% of a particle's life, then
+      // fade — a linear fade dropped the whole burst under the starfield's
+      // noise floor almost immediately. Hotter (whiter) while bright.
+      float al = d.aliveness();
+      float a = al > 0.6f ? 1.0f : al / 0.6f;
+      float x = d.position.x(), y = d.position.y();
+      // Each ember is a tiny diamond, near point-sized (a couple of world
+      // units — 2-3 px at typical zoom), faintly streaked along its own
+      // velocity so it still reads as a spark, shrinking as it cools.
+      // Big flat quads read as blocky confetti (field, 2026-08-23).
+      float vx = d.velocity.x(), vy = d.velocity.y();
+      float vm = sqrtf(vx * vx + vy * vy);
+      float dx = vm > 1e-5f ? vx / vm : 1.0f;
+      float dy = vm > 1e-5f ? vy / vm : 0.0f;
+      float len = 2.8f * (0.5f + 0.5f * a);
+      float wid = 1.8f * (0.5f + 0.5f * a);
+      float px_ = -dy * wid, py_ = dx * wid;
+      float hx = dx * len, hy = dy * len;
+      mb.color(1.0f, 0.45f + 0.45f * a, 0.2f, a);
+      mb.vertex(x + hx, y + hy); mb.vertex(x + px_, y + py_); mb.vertex(x - hx, y - hy);
+      mb.vertex(x + hx, y + hy); mb.vertex(x - hx, y - hy); mb.vertex(x - px_, y - py_);
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw(3.0f);
+    mesh.draw();
   }
 }
 

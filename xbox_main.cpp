@@ -405,7 +405,7 @@ int main(int argc, char *argv[])
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
     // 64 channels; reserved: 2 for must-hear booms + WorldSound's
     // per-channel-volume pool — see glut.cpp / world_sound.h.
-    Mix_AllocateChannels(64);
+    Mix_AllocateChannels(128);
     Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
 
     // Open all (up to 2) game controllers present at startup; hot-plugged

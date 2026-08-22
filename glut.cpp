@@ -632,7 +632,7 @@ void init_controllers_and_audio() {
     // for must-hear booms (see play_priority_chunk in glgame.cpp), plus
     // WorldSound's per-channel-volume pool behind them (world_sound.h).
     if(ENABLE_AUDIO) {
-      Mix_AllocateChannels(64);
+      Mix_AllocateChannels(128);
       Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
     }
     SDL_JoystickEventState(SDL_ENABLE);

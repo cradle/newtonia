@@ -535,7 +535,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     }
     // 64 channels; reserved: 2 for must-hear booms + WorldSound's
     // per-channel-volume pool — see glut.cpp / world_sound.h.
-    Mix_AllocateChannels(64);
+    Mix_AllocateChannels(128);
     Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
 
     // Pre-warm the audio pipeline so the first real sound plays without delay.

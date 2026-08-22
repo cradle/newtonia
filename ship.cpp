@@ -87,12 +87,15 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   if(boost_sound == NULL) {
     boost_sound = load_wav_cached("audio/boost.wav");
   }
-  if(boost_sound != NULL) {
-    Mix_VolumeChunk(boost_sound, 0);
-    boost_channel = Mix_PlayChannel(-1, boost_sound, -1);
-  } else {
+  if(boost_sound == NULL) {
     std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
+  // No boost channel yet: update_boost_volume() acquires one lazily the
+  // first time the hum is audible and releases it when it goes quiet. The
+  // old always-started loop held a mixing channel per Ship for its whole
+  // life — a late-game 50-ship wave pinned essentially every dynamic
+  // channel, and Mix_PlayChannel(-1) one-shots (the local GUN among them)
+  // were silently dropped (field, gen 16+).
   if(missile_explode_sound == NULL) {
     missile_explode_sound = load_wav_cached("audio/missile_explode.wav");
     if(missile_explode_sound == NULL) {
@@ -1323,9 +1326,7 @@ bool Ship::kill() {
     still_rotating_right = false;
     temperature = 0.0;
     time_until_respawn = respawn_time;
-    if(boost_sound != NULL) {
-      Mix_VolumeChunk(boost_sound, 0);
-    }
+    mute_engine();
     set_shield_hum(false);
     stop_god_mode_music();
     if(explode_sound != NULL && sound_volume_scale > 0.0f) {
@@ -1360,7 +1361,7 @@ void Ship::quiet_unspawn() {
   still_rotating_left = false;
   still_rotating_right = false;
   bullets.clear();  // the restore's respawn-detonate flash (real bullets)
-  if(boost_sound != NULL) Mix_VolumeChunk(boost_sound, 0);
+  mute_engine();
   set_shield_hum(false);
   stop_god_mode_music();
 }
@@ -1403,7 +1404,21 @@ void Ship::update_boost_volume() {
           rotation_direction != NONE) level = 1.0f/16.0f;
   float scale = sound_volume_scale < 0.0f ? 0.0f
               : sound_volume_scale > 1.0f ? 1.0f : sound_volume_scale;
-  Mix_VolumeChunk(boost_sound, (int)(MIX_MAX_VOLUME * level * scale));
+  int vol = (int)(MIX_MAX_VOLUME * level * scale);
+  if(vol <= 0) {
+    // Quiet: RELEASE the channel instead of looping at volume zero — see
+    // the channel-starvation note in the constructor. Runs per tick, so a
+    // ship that goes audible again just re-acquires below.
+    mute_engine();
+    return;
+  }
+  // Chunk volume is per-ship (load_wav_cached hands each ship its own
+  // QuickLoad header), so leveling the chunk can't retro-level anyone else.
+  Mix_VolumeChunk(boost_sound, vol);
+  if(boost_channel < 0) {
+    // Pool exhausted leaves it -1; the next per-tick update retries.
+    boost_channel = Mix_PlayChannel(-1, boost_sound, -1);
+  }
 }
 
 // The missile fly loop is a LOOPING channel shared by every missile the

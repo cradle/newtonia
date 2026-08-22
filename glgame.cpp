@@ -1094,6 +1094,19 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_phasing; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, false, false, true));
   }
+  // TOUGH ELITES (generation >= 16): TOUGH stacked with a second special.
+  // Every set spawns one of each combo so every elite level carries all
+  // three — matching the intro, which shows all three in a row. All are
+  // killable with the plain gun per the late-game design rule; reflective
+  // is excluded (its ctor forces invincible) and invisible+teleporting was
+  // cut for readability.
+  int num_elite_sets = (generation >= 16) ? (generation - 16) / 2 + 1 : 0;
+  for(int i = 0; i < num_elite_sets; i++) {
+    // (invincible, invisible, reflective, teleporting, quantum, tough, armoured, phasing)
+    objects->push_back(new Asteroid(false, false, false, false, false, true, true));  // armoured+tough: five hits through the rotating gap
+    objects->push_back(new Asteroid(false, false, false, true, false, true));         // teleporting+tough: banked cracks keep escaping
+    objects->push_back(new Asteroid(false, false, false, false, true, true));         // quantum+tough: observing it is a five-hit commitment
+  }
 }
 
 void GLGame::add_hazards() {
@@ -1153,25 +1166,25 @@ void GLGame::maybe_start_intro() {
   // "PRESS FIRE TO START"; caught by the e2e's time-cheated S5).
   if (game_over) return;
   const char *name = NULL;
-  Asteroid *display = NULL;
+  std::vector<Asteroid *> display;
   Intro::Kind kind = Intro::ASTEROID;
   int hazard_kind = -1;  // Hazard::Kind for Intro::HAZARD, else unused
   switch (generation) {
-    case 1:  display = new Asteroid(true);
+    case 1:  display.push_back(new Asteroid(true));
              name = "INVINCIBLE";  break;
-    case 2:  display = new Asteroid(false, false, true);
+    case 2:  display.push_back(new Asteroid(false, false, true));
              name = "REFLECTIVE";  break;
-    case 3:  display = new Asteroid(false, false, false, true);
+    case 3:  display.push_back(new Asteroid(false, false, false, true));
              name = "TELEPORTING"; break;
-    case 4:  display = new Asteroid(false, true);
+    case 4:  display.push_back(new Asteroid(false, true));
              name = "INVISIBLE";   break;
-    case 5:  display = new Asteroid(false, false, false, false, true);
+    case 5:  display.push_back(new Asteroid(false, false, false, false, true));
              name = "QUANTUM";     break;
-    case 6:  display = new Asteroid(false, false, false, false, false, true);
+    case 6:  display.push_back(new Asteroid(false, false, false, false, false, true));
              name = "TOUGH";       break;
-    case 7:  display = new Asteroid(false, false, false, false, false, false, true);
+    case 7:  display.push_back(new Asteroid(false, false, false, false, false, false, true));
              name = "ARMOURED";    break;
-    case 8:  display = new Asteroid(false, false, false, false, false, false, false, true);
+    case 8:  display.push_back(new Asteroid(false, false, false, false, false, false, false, true));
              name = "PHASING";     break;
     case 9:  if (first_hazard(Hazard::PULSAR)) { kind = Intro::HAZARD; name = "PULSAR";
              hazard_kind = Hazard::PULSAR; } break;
@@ -1183,6 +1196,13 @@ void GLGame::maybe_start_intro() {
     case 13: if (!black_holes->empty()) { kind = Intro::BLACK_HOLE;   name = "BLACK HOLE"; }    break;
     case 14: if (station != NULL)       { kind = Intro::STATION;      name = "ENEMY STATION"; } break;
     case 15: if (station != NULL)       { kind = Intro::INTERCEPTOR;  name = "INTERCEPTOR"; }   break;
+    case 16:
+      // All three combos, in a row — matching what add_asteroids spawns
+      // (one of each per set), so the level shows nothing the intro didn't.
+      display.push_back(new Asteroid(false, false, false, false, false, true, true));
+      display.push_back(new Asteroid(false, false, false, true, false, true));
+      display.push_back(new Asteroid(false, false, false, false, true, true));
+      name = "TOUGH ELITES"; break;
     default: return;
   }
   if (name == NULL) return;
@@ -10300,13 +10320,20 @@ void GLGame::draw_objects(float direction, bool minimap,
     (*bhi)->draw(minimap);
   }
 
-  for(auto* h : *hazards) {
-    h->draw(minimap);
-  }
-
   AsteroidDrawer::draw_batch(objects, dead_objects, direction, minimap,
                              minimap ? world.x() : 0, minimap ? world.y() : 0,
                              cam_x, cam_y, cull_r);
+
+  // Hazards draw AFTER the asteroids, like the ships and stations below:
+  // they used to draw before, and the rocks' opaque fills painted over
+  // them — a seeker crossing a rock (it passes through) vanished behind
+  // it, and a seeker killed over one had its death burst swallowed, which
+  // in a late-game field half-covered in asteroid fill read as "no debris
+  // about half the time" (field, 2026-08-23; the sim was blameless — the
+  // burst spawned, animated and reaped on schedule every single kill).
+  for(auto* h : *hazards) {
+    h->draw(minimap);
+  }
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
     // Collected = gone. The host erases collected pickups the same tick so
@@ -11551,6 +11578,45 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
     if (!t->is_alive()) continue;
     if (first_hit(t, 0, &where) && t->kill_stop())
       firer->credit_ship_kill(t);
+  }
+
+  // Mid-game hazards: the pulse only ray-marches asteroids, so it used to
+  // pass through all three kinds doing nothing (field, 2026-08-23). Same
+  // rules as the shock arc: a seeker dies outright for its bounty, a comet
+  // takes a hit and sheds chunks, a pulsar takes a hit, break-ups pay out.
+  // The polyline is already resolved, so like enemies (and unlike bullets)
+  // nothing here shortens the pulse. Host-side like the rest of this
+  // resolver — a client firer's destruction replicates via the snapshot.
+  auto first_hit_at = [&](const Point &pos, float radius, Point *w) {
+    for (size_t s = 0; s + 1 < pts.size(); s++)
+      if (lance_seg_circle_entry(pts[s], pts[s + 1], pos, radius, w))
+        return true;
+    return false;
+  };
+  for (auto *h : *hazards) {
+    if (!h->is_alive()) continue;
+    if (!first_hit_at(h->position, h->radius, &where)) continue;
+    firer->explode(where, h->velocity);
+    if (h->kind_of() == Hazard::SEEKER) {
+      h->destroy();
+      firer->score += Hazard::SEEKER_REWARD;
+      play_priority_chunk(station_explode_sound, world_volume(h->position));
+    } else {
+      h->hit();
+      if (h->kind_of() == Hazard::COMET) {
+        shed_comet_fragment(h);   // knock a couple of chunks loose
+        shed_comet_fragment(h);
+      }
+      if (h->is_alive()) {
+        play_hazard_hit_sound(h->kind_of() == Hazard::COMET
+                                ? Asteroid::explode_sound
+                                : Asteroid::thud_sound);
+      } else {
+        firer->score += (h->kind_of() == Hazard::COMET)
+                          ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+        play_priority_chunk(station_explode_sound, world_volume(h->position));
+      }
+    }
   }
 
   // Mini-station: dies to any hit, flat bounty — mirror of the bullet
