@@ -432,22 +432,33 @@ void Hazard::draw(bool minimap) const {
     map_mesh_.draw_tinted_with_model(1.0f, 0.9f, 0.3f, blink, m);
   }
   if (!debris_.empty()) {
+    // TRIANGLE quads, not GL_POINTS: the reporter's GPU rendered this
+    // block's point-sprite burst as nothing at all (same build and replay
+    // drew fine under llvmpipe — a driver-side point-size lottery the
+    // asteroid/ship debris happens to win at size 3 and this burst lost
+    // at 6). Triangles rasterize identically everywhere, and world-unit
+    // sizing keeps the burst's weight independent of window resolution —
+    // the same class of fix as the line emulation's devicePixelRatio
+    // scaling (gles2_compat).
     static MeshBuilder mb;
     static Mesh mesh;
     mb.clear();
-    mb.begin(GL_POINTS);
+    mb.begin(GL_TRIANGLES);
     for (const auto &d : debris_) {
       // Hold full brightness for the first ~40% of a particle's life, then
       // fade — a linear fade dropped the whole burst under the starfield's
       // noise floor almost immediately. Hotter (whiter) while bright.
       float al = d.aliveness();
       float a = al > 0.6f ? 1.0f : al / 0.6f;
+      float h = 5.0f + 3.0f * a;  // world units; embers shrink as they cool
+      float x = d.position.x(), y = d.position.y();
       mb.color(1.0f, 0.45f + 0.45f * a, 0.2f, a);
-      mb.vertex(d.position.x(), d.position.y());
+      mb.vertex(x - h, y - h); mb.vertex(x + h, y - h); mb.vertex(x + h, y + h);
+      mb.vertex(x - h, y - h); mb.vertex(x + h, y + h); mb.vertex(x - h, y + h);
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw(6.0f);
+    mesh.draw();
   }
 }
 
