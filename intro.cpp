@@ -17,19 +17,21 @@
 #include <iostream>
 #include <list>
 
-Intro::Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_asteroid,
-             int hazard_kind) :
+Intro::Intro(GLGame *game, Kind kind, const char *name,
+             std::vector<Asteroid *> display_asteroids, int hazard_kind) :
   State(),
   game(game),
   kind(kind),
   name(name),
-  asteroid(display_asteroid),
+  asteroids_(std::move(display_asteroids)),
   hazard_kind(hazard_kind) {
-  if (asteroid != NULL) {
-    // Park the display asteroid at the world centre so the fixed intro camera
-    // (which looks at the focus point) keeps it centre-screen while it spins.
-    asteroid->position = WrappedPoint(game->world.x() / 2.0f, game->world.y() / 2.0f);
-    asteroid->velocity = Point(0, 0);
+  for (Asteroid *a : asteroids_) {
+    // Park the display asteroids at the world centre so the fixed intro
+    // camera (which looks at the focus point) keeps them on screen while
+    // they spin; draw() spreads a multi-rock row out from here once the
+    // window aspect is known.
+    a->position = WrappedPoint(game->world.x() / 2.0f, game->world.y() / 2.0f);
+    a->velocity = Point(0, 0);
   }
   if (kind == INTERCEPTOR) {
     // Display-only hull at the world centre (see the member note in
@@ -91,8 +93,8 @@ Intro::~Intro() {
   if (music_sound != NULL) {
     Mix_FreeChunk(music_sound);
   }
-  if (asteroid != NULL) {
-    delete asteroid;
+  for (Asteroid *a : asteroids_) {
+    delete a;
   }
   delete display_enemy_;
   // Still owning the game means we left to the menu (or shut down) without
@@ -151,7 +153,7 @@ void Intro::tick(int delta) {
   }
   step_accum += delta;
   while (step_accum >= GLGame::step_size) {
-    if (asteroid != NULL) asteroid->step(GLGame::step_size);
+    for (Asteroid *a : asteroids_) a->step(GLGame::step_size);
     // The display interceptor cruises (position integration only — the
     // qualified call must never reach Ship::step, see the intro.h note)
     // while its exhaust animates; the camera tracks it via focus().
@@ -185,7 +187,10 @@ Point Intro::focus() const {
       return Point(game->world.x() / 2.0f, game->world.y() / 2.0f);
     }
     case ASTEROID:
-    default:           return asteroid->position;
+    default:
+      // The display row is centred on the world centre (single rock: parked
+      // exactly there), so the camera looks at the centre either way.
+      return Point(game->world.x() / 2.0f, game->world.y() / 2.0f);
   }
 }
 
@@ -221,17 +226,32 @@ void Intro::draw() {
   mat4_translate(center_vp, pv, -focus_point.x(), -focus_point.y(), 0.0f);
   gles2_set_vp(center_vp);
 
-  bool invisible_intro = (kind == ASTEROID && asteroid->invisible);
+  // Spread a multi-rock row (the TOUGH ELITES intro) around the focus.
+  // Done here, not the ctor: the spacing follows the window aspect so the
+  // row fits portrait phones, and `window` is only set once the state is
+  // installed. Re-done every frame, which also tracks live resizes; the
+  // rocks' own step() never moves them (velocity zero), only tumbles them.
+  if (kind == ASTEROID && asteroids_.size() > 1) {
+    float aspect = window.y() > 0.0f ? window.x() / window.y() : 1.6f;
+    float spread = 820.0f * (aspect < 1.6f ? aspect / 1.6f : 1.0f);
+    for (size_t i = 0; i < asteroids_.size(); i++)
+      asteroids_[i]->position = WrappedPoint(
+          game->world.x() / 2.0f + ((float)i - (asteroids_.size() - 1) / 2.0f) * spread,
+          game->world.y() / 2.0f);
+  }
+
+  bool invisible_intro = (kind == ASTEROID && asteroids_.size() == 1 &&
+                          asteroids_[0]->invisible);
   if (invisible_intro) {
-    AsteroidDrawer::draw_invisible_mask(asteroid, focus_point.x(), focus_point.y());
-    game->starfield->draw_stars_near(focus_point.x(), focus_point.y(), asteroid->radius);
+    AsteroidDrawer::draw_invisible_mask(asteroids_[0], focus_point.x(), focus_point.y());
+    game->starfield->draw_stars_near(focus_point.x(), focus_point.y(), asteroids_[0]->radius);
   }
 
   switch (kind) {
     case ASTEROID: {
-      list<Asteroid*> one, none;
-      one.push_back(asteroid);
-      AsteroidDrawer::draw_batch(&one, &none, 0.0f, false);
+      list<Asteroid*> row, none;
+      for (Asteroid *a : asteroids_) row.push_back(a);
+      AsteroidDrawer::draw_batch(&row, &none, 0.0f, false);
       break;
     }
     case BLACK_HOLE:   game->black_holes->front()->draw(false); break;
@@ -257,11 +277,11 @@ void Intro::draw() {
 
   if (invisible_intro) {
     gles2_set_vp(center_vp);
-    game->starfield->draw_front_stars_near(focus_point.x(), focus_point.y(), asteroid->radius);
+    game->starfield->draw_front_stars_near(focus_point.x(), focus_point.y(), asteroids_[0]->radius);
     GLint vp[4];
     glGetIntegerv(GL_VIEWPORT, vp);
     game->warp_pass_->capture(vp[0], vp[1], vp[2], vp[3]);
-    game->warp_pass_->draw(asteroid, focus_point.x(), focus_point.y(), vp[0], vp[1], vp[2], vp[3]);
+    game->warp_pass_->draw(asteroids_[0], focus_point.x(), focus_point.y(), vp[0], vp[1], vp[2], vp[3]);
   }
 
   // Text overlay: flashing prompt at the top, object name below the object.
@@ -329,11 +349,12 @@ void Intro::keyboard_up(unsigned char key, int x, int y) {
     // its destructor decrements on teardown, leaving the count at -1.
     // Every branch of the level-clear ladder is gated on num_killable == 0,
     // so the skipped level then never rolled over: an empty world stuck on
-    // the CLEARED banner (asteroid intros only, gens 1-8 — the black hole /
-    // station intros have no display copy). Pre-count the copy so its
-    // destructor nets to zero.
-    if (asteroid != NULL && !asteroid->invincible)
-      Asteroid::num_killable++;
+    // the CLEARED banner (asteroid intros only — the black hole / station
+    // intros have no display copies). Pre-count each copy so its destructor
+    // nets to zero.
+    for (Asteroid *a : asteroids_)
+      if (!a->invincible)
+        Asteroid::num_killable++;
     dismiss();
   }
 }

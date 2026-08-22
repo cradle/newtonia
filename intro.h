@@ -4,6 +4,7 @@
 #include "state.h"
 #include <SDL.h>
 #include <SDL_mixer.h>
+#include <vector>
 
 class GLGame;
 class GLEnemy;
@@ -23,13 +24,15 @@ public:
   enum Kind { ASTEROID, BLACK_HOLE, MINI_STATION, STATION, HAZARD, INTERCEPTOR };
 
   // Takes ownership of `game` (handed back to the StateManager on dismissal,
-  // or deleted — which auto-saves — when leaving to the menu) and of
-  // `display_asteroid` (only for Kind ASTEROID, NULL otherwise; display-only,
-  // it never enters the game's object lists or collision grid).
-  // `hazard_kind` selects which live hazard to focus on for Kind HAZARD
-  // (a Hazard::Kind value); ignored otherwise.
-  Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_asteroid,
-        int hazard_kind = -1);
+  // or deleted — which auto-saves — when leaving to the menu) and of every
+  // asteroid in `display_asteroids` (Kind ASTEROID only, empty otherwise;
+  // display-only, they never enter the game's object lists or collision
+  // grid). One rock spins centre-screen; several — the TOUGH ELITES intro —
+  // are laid out in a row around the focus. `hazard_kind` selects which live
+  // hazard to focus on for Kind HAZARD (a Hazard::Kind value); ignored
+  // otherwise.
+  Intro(GLGame *game, Kind kind, const char *name,
+        std::vector<Asteroid *> display_asteroids, int hazard_kind = -1);
   virtual ~Intro();
 
   void draw() override;
@@ -65,7 +68,10 @@ private:
   bool handed_back = false;  // dismiss() ran: the StateManager owns the game
   Kind kind;
   const char *name;
-  Asteroid *asteroid;  // owned; display-only (Kind ASTEROID)
+  // Owned; display-only (Kind ASTEROID). Row positions are computed in
+  // draw(), not the ctor: they depend on the window aspect, and `window`
+  // is only set once the StateManager installs the state and resize() runs.
+  std::vector<Asteroid *> asteroids_;
   int hazard_kind;     // Hazard::Kind to focus on (Kind HAZARD), else -1
   // Owned; display-only (Kind INTERCEPTOR): the station deploys the real
   // ones mid-level, so unlike the station/mini-station intros there is no

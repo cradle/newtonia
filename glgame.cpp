@@ -1095,21 +1095,17 @@ void GLGame::add_asteroids() {
     objects->push_back(new Asteroid(false, false, false, false, false, false, false, true));
   }
   // TOUGH ELITES (generation >= 16): TOUGH stacked with a second special.
-  // Three combos, all killable with the plain gun per the late-game design
-  // rule — reflective is excluded (its ctor forces invincible), and
-  // invisible+teleporting was cut for readability. The lead combo rotates
-  // with the generation so early counts (1-2) still show variety.
-  int num_elite = (generation >= 16) ? (generation - 16) / 2 + 1 : 0;
-  for(int i = 0; i < num_elite; i++) {
-    switch((i + generation) % 3) {
-      // (invincible, invisible, reflective, teleporting, quantum, tough, armoured, phasing)
-      case 0: objects->push_back(new Asteroid(false, false, false, false, false, true, true));
-              break;  // armoured+tough: five hits through the rotating gap
-      case 1: objects->push_back(new Asteroid(false, false, false, true, false, true));
-              break;  // teleporting+tough: banked cracks keep escaping
-      case 2: objects->push_back(new Asteroid(false, false, false, false, true, true));
-              break;  // quantum+tough: observing it is a five-hit commitment
-    }
+  // Every set spawns one of each combo so every elite level carries all
+  // three — matching the intro, which shows all three in a row. All are
+  // killable with the plain gun per the late-game design rule; reflective
+  // is excluded (its ctor forces invincible) and invisible+teleporting was
+  // cut for readability.
+  int num_elite_sets = (generation >= 16) ? (generation - 16) / 2 + 1 : 0;
+  for(int i = 0; i < num_elite_sets; i++) {
+    // (invincible, invisible, reflective, teleporting, quantum, tough, armoured, phasing)
+    objects->push_back(new Asteroid(false, false, false, false, false, true, true));  // armoured+tough: five hits through the rotating gap
+    objects->push_back(new Asteroid(false, false, false, true, false, true));         // teleporting+tough: banked cracks keep escaping
+    objects->push_back(new Asteroid(false, false, false, false, true, true));         // quantum+tough: observing it is a five-hit commitment
   }
 }
 
@@ -1170,25 +1166,25 @@ void GLGame::maybe_start_intro() {
   // "PRESS FIRE TO START"; caught by the e2e's time-cheated S5).
   if (game_over) return;
   const char *name = NULL;
-  Asteroid *display = NULL;
+  std::vector<Asteroid *> display;
   Intro::Kind kind = Intro::ASTEROID;
   int hazard_kind = -1;  // Hazard::Kind for Intro::HAZARD, else unused
   switch (generation) {
-    case 1:  display = new Asteroid(true);
+    case 1:  display.push_back(new Asteroid(true));
              name = "INVINCIBLE";  break;
-    case 2:  display = new Asteroid(false, false, true);
+    case 2:  display.push_back(new Asteroid(false, false, true));
              name = "REFLECTIVE";  break;
-    case 3:  display = new Asteroid(false, false, false, true);
+    case 3:  display.push_back(new Asteroid(false, false, false, true));
              name = "TELEPORTING"; break;
-    case 4:  display = new Asteroid(false, true);
+    case 4:  display.push_back(new Asteroid(false, true));
              name = "INVISIBLE";   break;
-    case 5:  display = new Asteroid(false, false, false, false, true);
+    case 5:  display.push_back(new Asteroid(false, false, false, false, true));
              name = "QUANTUM";     break;
-    case 6:  display = new Asteroid(false, false, false, false, false, true);
+    case 6:  display.push_back(new Asteroid(false, false, false, false, false, true));
              name = "TOUGH";       break;
-    case 7:  display = new Asteroid(false, false, false, false, false, false, true);
+    case 7:  display.push_back(new Asteroid(false, false, false, false, false, false, true));
              name = "ARMOURED";    break;
-    case 8:  display = new Asteroid(false, false, false, false, false, false, false, true);
+    case 8:  display.push_back(new Asteroid(false, false, false, false, false, false, false, true));
              name = "PHASING";     break;
     case 9:  if (first_hazard(Hazard::PULSAR)) { kind = Intro::HAZARD; name = "PULSAR";
              hazard_kind = Hazard::PULSAR; } break;
@@ -1200,8 +1196,13 @@ void GLGame::maybe_start_intro() {
     case 13: if (!black_holes->empty()) { kind = Intro::BLACK_HOLE;   name = "BLACK HOLE"; }    break;
     case 14: if (station != NULL)       { kind = Intro::STATION;      name = "ENEMY STATION"; } break;
     case 15: if (station != NULL)       { kind = Intro::INTERCEPTOR;  name = "INTERCEPTOR"; }   break;
-    case 16: display = new Asteroid(false, false, false, false, false, true, true);
-             name = "TOUGH ELITES"; break;
+    case 16:
+      // All three combos, in a row — matching what add_asteroids spawns
+      // (one of each per set), so the level shows nothing the intro didn't.
+      display.push_back(new Asteroid(false, false, false, false, false, true, true));
+      display.push_back(new Asteroid(false, false, false, true, false, true));
+      display.push_back(new Asteroid(false, false, false, false, true, true));
+      name = "TOUGH ELITES"; break;
     default: return;
   }
   if (name == NULL) return;
