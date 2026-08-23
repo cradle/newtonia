@@ -26,7 +26,7 @@ public:
   void hit();
   void destroy();
 
-  // Gen-19+ hardening (the SHIELD STATION, level 20): a bright shield
+  // Gen-19+ hardening (the ARMOURED STATION, level 20): a bright shield
   // arc rotating with the outer ring deflects incoming fire — the
   // armoured-asteroid vocabulary at boss scale, taught at gen 7 and
   // reinforced by the gen-16 elites. The gap is the weak window, so the
