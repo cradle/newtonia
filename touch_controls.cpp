@@ -54,7 +54,7 @@ void touch_controls_resize(int w, int h) {
     // trigger), hit radius capped by the vertical gap to the pair's row so
     // the three regions never overlap.
     g_touch_controls.boost_cx     = (shoot_cx + mine_cx) * 0.5f;
-    g_touch_controls.boost_cy     = btn_cy - 2.6f * btnR;
+    g_touch_controls.boost_cy     = btn_cy - 2.2f * btnR;
     g_touch_controls.boost_radius = btnR * 0.85f;
     g_touch_controls.boost_hit_radius =
         std::min(g_touch_controls.btn_hit_radius, 1.3f * btnR);
