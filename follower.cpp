@@ -30,6 +30,7 @@ void Follower::common_init() {
   time_until_next_lock = 2500.0 + rand()%500;
   time_between_locks = 900 + rand()%1000;
   shoot_timer = 0;
+  backing_off = false;
   target = NULL;
   done = false;
 }
@@ -110,12 +111,58 @@ void Follower::step(int delta) {
       ship->thrust_analog = t;
       ship->thrust(true);
     } else if(target) {
+      float dist = ship->position.distance_to(target->position);
+
+      // Attack runs (see the header note): the ship bores in ON TARGET
+      // from outside gun range, fires through the closing window, breaks
+      // off before the pass becomes a ram, and extends back out for the
+      // next run. The break stretches with CLOSING SPEED (a fast
+      // interceptor turns away much further out than the plodding
+      // standard ship) but is CAPPED below the 600 gun range — an
+      // uncapped stretch broke off at the edge of gun range and the ship
+      // never spent a moment on target (field, 2026-08-23). The resume
+      // sits beyond gun range and beyond any possible break, so the
+      // hysteresis can never re-break instantly and every re-engage is a
+      // full firing pass.
+      static const float BREAK_RANGE        = 180.0f;
+      static const float BREAK_MAX          = 350.0f;
+      static const float RESUME_RANGE       = 750.0f;
+      static const float BREAK_LOOKAHEAD_MS = 800.0f;
+      Point to_target = (ship->position.closest_to(target->position) -
+                         target->position).normalized() * -1.0f;
+      Point rel_vel = ship->velocity - target->velocity;
+      float closing = rel_vel.x() * to_target.x() + rel_vel.y() * to_target.y();
+      float brk = BREAK_RANGE +
+                  (closing > 0.0f ? closing * BREAK_LOOKAHEAD_MS : 0.0f);
+      if(brk > BREAK_MAX) brk = BREAK_MAX;
+      if(!backing_off && dist < brk)                backing_off = true;
+      else if(backing_off && dist >= RESUME_RANGE)  backing_off = false;
+
+      if(backing_off) {
+        // Same angle convention as the pursuit below (180 = nose on the
+        // target, 0 = tail-on), driven the opposite way: turn until the
+        // target is astern, thrusting the whole way through — the break
+        // starts early enough (the lookahead above) that the continuous-
+        // thrust arc clears a stationary target, so the flyby reads as a
+        // strafing curve, never an engine cut. No shot gate — the gun
+        // only fires facing the target, which we no longer are.
+        float angle = (ship->heading() - (ship->position.closest_to(target->position) - target->position).normalized().direction());
+        angle = (angle < 0.0) ? (360.0 + angle) : angle;
+        if(angle >= 0 && angle < 180) {
+          ship->rotate_right(true);
+        } else {
+          ship->rotate_left(true);
+        }
+        ship->thrust_analog = 1.0f;
+        ship->thrust(true);
+        return;
+      }
+
       // BOMBER: artillery stands off. Thrust cuts inside STANDOFF_RANGE so
-      // it drifts and turns to aim rather than diving into ram range — the
-      // approach is how every other wave ship ends up a suicide ship.
+      // it drifts and turns to aim rather than closing to the keep-distance
+      // band at all.
       static const float STANDOFF_RANGE = 700.0f;
-      bool advance = mode != BOMBER ||
-                     ship->position.distance_to(target->position) > STANDOFF_RANGE;
+      bool advance = mode != BOMBER || dist > STANDOFF_RANGE;
       ship->thrust_analog = 1.0f;
       ship->thrust(advance);
       WrappedPoint target_point = target->position;

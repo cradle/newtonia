@@ -1151,19 +1151,34 @@ void GLShip::draw_debris() const {
   static MeshBuilder mb;
   static Mesh mesh;
 
+  // Tiny velocity-streaked diamonds, not GL_POINTS: the field GPU that
+  // silently dropped the hazard-debris point draw (the seeker saga,
+  // 2026-08-23) drops this one too — death explosions vanished at level
+  // 20 while llvmpipe rendered them fine. Same ember geometry as
+  // Hazard::draw's burst, in the ship's flickering colours.
   bool any_points = false, any_streaks = false;
   mb.clear();
-  mb.begin(GL_POINTS);
+  mb.begin(GL_TRIANGLES);
   for(auto d = ship->debris.begin(); d != ship->debris.end(); d++) {
     if(d->streak) { any_streaks = true; continue; }
-    mb.color(color[0], flicker[idx++ % 64], color[2], d->aliveness());
-    mb.vertex(d->position.x(), d->position.y());
+    float al = d->aliveness();
+    float x = d->position.x(), y = d->position.y();
+    float vx = d->velocity.x(), vy = d->velocity.y();
+    float vm = sqrtf(vx * vx + vy * vy);
+    float dx = vm > 1e-5f ? vx / vm : 1.0f;
+    float dy = vm > 1e-5f ? vy / vm : 0.0f;
+    float len = 2.6f, wid = 1.6f;
+    float px_ = -dy * wid, py_ = dx * wid;
+    float hx = dx * len, hy = dy * len;
+    mb.color(color[0], flicker[idx++ % 64], color[2], al);
+    mb.vertex(x + hx, y + hy); mb.vertex(x + px_, y + py_); mb.vertex(x - hx, y - hy);
+    mb.vertex(x + hx, y + hy); mb.vertex(x - hx, y - hy); mb.vertex(x - px_, y - py_);
     any_points = true;
   }
   mb.end();
   if(any_points) {
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw(2.5f);
+    mesh.draw();
   }
 
   // Streak-flagged debris (the peer's mine blast on a net client) draws

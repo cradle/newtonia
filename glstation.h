@@ -85,9 +85,10 @@ private:
   // up) so the standard line always outnumbers-or-matches the vanguard.
   int wave_interceptors() const;
   // How many of this wave's ships deploy as bombers: none before gen 17,
-  // then 1 + (generation - 17), capped only by what the interceptor
-  // vanguard leaves — in a small opening push the bomber replaces the
-  // standard line entirely, so the intro's promise shows up by wave 2.
+  // then 1 + (generation - 17), capped by what the interceptor vanguard
+  // leaves MINUS one reserved standard slot in waves of 3+ ships (so the
+  // green line never vanishes from the late-game mix); waves of 1-2 skip
+  // the reservation so the gen-17 bomber still debuts by wave 2.
   int wave_bombers() const;
 };
 

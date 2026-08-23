@@ -1469,6 +1469,11 @@ private:
   list<Object*> *shock_targets; // enemies + stations (as Object*) for shock-bolt seeking
   bool all_weapons_cheat = false;  // NEWTONIA_ALL_WEAPONS: grant full arsenal each life
   int all_weapons_ammo = 999;      // rounds per weapon; a numeric env value > 1 overrides
+  // NEWTONIA_GOD: debug cheat keeping every player permanently invincible
+  // (the plain time_left_invincible spawn protection, topped up per tick —
+  // NOT the god-mode weapon with its shockwaves and music). The black hole
+  // still eats you: the horizon crossing kills through invincibility.
+  bool god_cheat = false;
   // Screenshot harness (`hud off`): skip the HUD overlay and the minimap so
   // a composed shot is just the world. Only ShotScene ever sets it.
   bool shot_hide_hud_ = false;

@@ -220,13 +220,17 @@ int GLStation::wave_interceptors() const {
 
 int GLStation::wave_bombers() const {
   // The rear-line artillery joins from generation 17, its allotment
-  // growing like the interceptors'. The cap only stops it eating into
-  // the interceptor vanguard — in the level's small opening pushes the
-  // bomber replaces the standard line entirely, so the artillery the
-  // intro just announced shows up by the second wave, not the fourth.
+  // growing like the interceptors'. The cap stops it eating into the
+  // interceptor vanguard, and any wave of 3+ ships RESERVES one standard
+  // slot — by gen 19 the two specialist allotments (interceptors 5,
+  // bombers 3) otherwise swallowed every wave up to size 7 and the green
+  // line vanished until wave 8 (field, 2026-08-23). Waves of 1-2 skip
+  // the reservation so the gen-17 bomber still debuts by wave 2, the
+  // promise its intro just made.
   if (generation < 17) return 0;
   int allowed = 1 + (generation - 17);
-  int cap = ships_this_wave - wave_interceptors();
+  int reserve = ships_this_wave >= 3 ? 1 : 0;
+  int cap = ships_this_wave - wave_interceptors() - reserve;
   if (cap < 0) cap = 0;
   return allowed < cap ? allowed : cap;
 }
