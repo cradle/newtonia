@@ -1167,7 +1167,9 @@ void Ship::init(bool no_friction) {
   retro_heat_rate = heat_rate * -reverse_force / thrust_force;
   cool_rate = retro_heat_rate * 0.9;
   boost_heat = 0.000;
-  boost_force = 4.0;
+  // Doubled from 4.0 (field: "not much of a thrust change") — one press
+  // is now a real kick, and the 2 s cooldown is what keeps it honest.
+  boost_force = 8.0;
   boosting = false;
   rotation_scale = 1.0f;
   thrust_analog  = 1.0f;

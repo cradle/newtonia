@@ -49,13 +49,12 @@ void touch_controls_resize(int w, int h) {
     float mineEdge  = (float)w - g_touch_controls.mine_cx;
     g_touch_controls.btn_hit_radius = (halfGap < mineEdge) ? halfGap : mineEdge;
 
-    // Boost: above and between the shoot/mine pair — the thumb triangle.
-    // Slightly smaller than the pair (a secondary movement action, not the
-    // trigger), hit radius capped by the vertical gap to the pair's row so
-    // the three regions never overlap.
+    // Boost: above and between the shoot/mine pair — the thumb triangle,
+    // at the pair's full size; hit radius capped by the vertical gap to
+    // the pair's row so the three regions never overlap.
     g_touch_controls.boost_cx     = (shoot_cx + mine_cx) * 0.5f;
     g_touch_controls.boost_cy     = btn_cy - 2.2f * btnR;
-    g_touch_controls.boost_radius = btnR * 0.85f;
+    g_touch_controls.boost_radius = btnR;
     g_touch_controls.boost_hit_radius =
         std::min(g_touch_controls.btn_hit_radius, 1.3f * btnR);
 

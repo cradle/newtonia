@@ -534,7 +534,7 @@ declare const Module: {
       { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75, d: 1.0 },
       // Boost: above and between the pair (the thumb triangle), matching
       // the native OSD layout in touch_controls.cpp.
-      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.63, d: 0.85 },
+      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.63, d: 1.0 },
       // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25).
       { el: container.querySelector<HTMLElement>(".touch-pause")!, cx: 0.875, cy: 0.12, d: 0.62 },
     ];
