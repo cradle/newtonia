@@ -113,28 +113,30 @@ void Follower::step(int delta) {
     } else if(target) {
       float dist = ship->position.distance_to(target->position);
 
-      // Keep-distance (see the header note): break off inside the break
-      // range, re-engage past the resume range. Every mode gets it — the
-      // gunner and interceptor stop pressing the approach into a suicide
-      // ram, and a bomber the player charges waddles away instead of
-      // drifting into the collision it can never win. Both thresholds
-      // stretch with CLOSING SPEED (the lookahead term): a fixed 180 was
-      // tuned by the standard ship's plod, and the interceptor arrived so
-      // hot it turned too late and ploughed through a stationary player —
-      // the fast dart now breaks off hundreds of units out. Stretching
-      // BOTH thresholds by the same term keeps the hysteresis gap.
+      // Attack runs (see the header note): the ship bores in ON TARGET
+      // from outside gun range, fires through the closing window, breaks
+      // off before the pass becomes a ram, and extends back out for the
+      // next run. The break stretches with CLOSING SPEED (a fast
+      // interceptor turns away much further out than the plodding
+      // standard ship) but is CAPPED below the 600 gun range — an
+      // uncapped stretch broke off at the edge of gun range and the ship
+      // never spent a moment on target (field, 2026-08-23). The resume
+      // sits beyond gun range and beyond any possible break, so the
+      // hysteresis can never re-break instantly and every re-engage is a
+      // full firing pass.
       static const float BREAK_RANGE        = 180.0f;
-      static const float RESUME_RANGE       = 300.0f;
-      static const float BREAK_LOOKAHEAD_MS = 1400.0f;
+      static const float BREAK_MAX          = 350.0f;
+      static const float RESUME_RANGE       = 750.0f;
+      static const float BREAK_LOOKAHEAD_MS = 800.0f;
       Point to_target = (ship->position.closest_to(target->position) -
                          target->position).normalized() * -1.0f;
       Point rel_vel = ship->velocity - target->velocity;
       float closing = rel_vel.x() * to_target.x() + rel_vel.y() * to_target.y();
-      float lookahead = closing > 0.0f ? closing * BREAK_LOOKAHEAD_MS : 0.0f;
-      if(!backing_off && dist < BREAK_RANGE + lookahead)
-        backing_off = true;
-      else if(backing_off && dist >= RESUME_RANGE + lookahead)
-        backing_off = false;
+      float brk = BREAK_RANGE +
+                  (closing > 0.0f ? closing * BREAK_LOOKAHEAD_MS : 0.0f);
+      if(brk > BREAK_MAX) brk = BREAK_MAX;
+      if(!backing_off && dist < brk)                backing_off = true;
+      else if(backing_off && dist >= RESUME_RANGE)  backing_off = false;
 
       if(backing_off) {
         // Same angle convention as the pursuit below (180 = nose on the
