@@ -113,21 +113,37 @@ void Follower::step(int delta) {
     } else if(target) {
       float dist = ship->position.distance_to(target->position);
 
-      // Keep-distance (see the header note): break off inside BREAK_RANGE,
-      // re-engage past RESUME_RANGE. Every mode gets it — the gunner and
-      // interceptor stop pressing the approach into a suicide ram, and a
-      // bomber the player charges waddles away instead of drifting into
-      // the collision it can never win.
-      static const float BREAK_RANGE  = 180.0f;
-      static const float RESUME_RANGE = 300.0f;
-      if(!backing_off && dist < BREAK_RANGE)        backing_off = true;
-      else if(backing_off && dist >= RESUME_RANGE)  backing_off = false;
+      // Keep-distance (see the header note): break off inside the break
+      // range, re-engage past the resume range. Every mode gets it — the
+      // gunner and interceptor stop pressing the approach into a suicide
+      // ram, and a bomber the player charges waddles away instead of
+      // drifting into the collision it can never win. Both thresholds
+      // stretch with CLOSING SPEED (the lookahead term): a fixed 180 was
+      // tuned by the standard ship's plod, and the interceptor arrived so
+      // hot it turned too late and ploughed through a stationary player —
+      // the fast dart now breaks off hundreds of units out. Stretching
+      // BOTH thresholds by the same term keeps the hysteresis gap.
+      static const float BREAK_RANGE        = 180.0f;
+      static const float RESUME_RANGE       = 300.0f;
+      static const float BREAK_LOOKAHEAD_MS = 800.0f;
+      Point to_target = (ship->position.closest_to(target->position) -
+                         target->position).normalized() * -1.0f;
+      Point rel_vel = ship->velocity - target->velocity;
+      float closing = rel_vel.x() * to_target.x() + rel_vel.y() * to_target.y();
+      float lookahead = closing > 0.0f ? closing * BREAK_LOOKAHEAD_MS : 0.0f;
+      if(!backing_off && dist < BREAK_RANGE + lookahead)
+        backing_off = true;
+      else if(backing_off && dist >= RESUME_RANGE + lookahead)
+        backing_off = false;
 
       if(backing_off) {
         // Same angle convention as the pursuit below (180 = nose on the
         // target, 0 = tail-on), driven the opposite way: turn until the
-        // target is astern, thrusting out the whole time. No shot gate —
-        // the gun only fires facing the target, which we no longer are.
+        // target is astern. Thrust only once the nose is at least
+        // broadside-off (within 90 of tail-on) — thrusting mid-turn with
+        // the nose still on the target is what a late break-off needs
+        // least, more speed toward the ram. No shot gate — the gun only
+        // fires facing the target, which we no longer are.
         float angle = (ship->heading() - (ship->position.closest_to(target->position) - target->position).normalized().direction());
         angle = (angle < 0.0) ? (360.0 + angle) : angle;
         if(angle >= 0 && angle < 180) {
@@ -135,8 +151,9 @@ void Follower::step(int delta) {
         } else {
           ship->rotate_left(true);
         }
+        bool nose_clear = angle < 90.0f || angle > 270.0f;
         ship->thrust_analog = 1.0f;
-        ship->thrust(true);
+        ship->thrust(nose_clear);
         return;
       }
 
