@@ -30,6 +30,7 @@ void Follower::common_init() {
   time_until_next_lock = 2500.0 + rand()%500;
   time_between_locks = 900 + rand()%1000;
   shoot_timer = 0;
+  backing_off = false;
   target = NULL;
   done = false;
 }
@@ -110,12 +111,40 @@ void Follower::step(int delta) {
       ship->thrust_analog = t;
       ship->thrust(true);
     } else if(target) {
+      float dist = ship->position.distance_to(target->position);
+
+      // Keep-distance (see the header note): break off inside BREAK_RANGE,
+      // re-engage past RESUME_RANGE. Every mode gets it — the gunner and
+      // interceptor stop pressing the approach into a suicide ram, and a
+      // bomber the player charges waddles away instead of drifting into
+      // the collision it can never win.
+      static const float BREAK_RANGE  = 180.0f;
+      static const float RESUME_RANGE = 300.0f;
+      if(!backing_off && dist < BREAK_RANGE)        backing_off = true;
+      else if(backing_off && dist >= RESUME_RANGE)  backing_off = false;
+
+      if(backing_off) {
+        // Same angle convention as the pursuit below (180 = nose on the
+        // target, 0 = tail-on), driven the opposite way: turn until the
+        // target is astern, thrusting out the whole time. No shot gate —
+        // the gun only fires facing the target, which we no longer are.
+        float angle = (ship->heading() - (ship->position.closest_to(target->position) - target->position).normalized().direction());
+        angle = (angle < 0.0) ? (360.0 + angle) : angle;
+        if(angle >= 0 && angle < 180) {
+          ship->rotate_right(true);
+        } else {
+          ship->rotate_left(true);
+        }
+        ship->thrust_analog = 1.0f;
+        ship->thrust(true);
+        return;
+      }
+
       // BOMBER: artillery stands off. Thrust cuts inside STANDOFF_RANGE so
-      // it drifts and turns to aim rather than diving into ram range — the
-      // approach is how every other wave ship ends up a suicide ship.
+      // it drifts and turns to aim rather than closing to the keep-distance
+      // band at all.
       static const float STANDOFF_RANGE = 700.0f;
-      bool advance = mode != BOMBER ||
-                     ship->position.distance_to(target->position) > STANDOFF_RANGE;
+      bool advance = mode != BOMBER || dist > STANDOFF_RANGE;
       ship->thrust_analog = 1.0f;
       ship->thrust(advance);
       WrappedPoint target_point = target->position;

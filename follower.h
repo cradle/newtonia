@@ -46,6 +46,14 @@ private:
   Mode mode;
   int time_until_next_lock, time_between_locks;
   int shoot_timer;
+  // Keep-distance: inside BREAK_RANGE of the target the ship breaks off —
+  // turns away and thrusts back out — until it has opened RESUME_RANGE
+  // again (hysteresis, or the boundary flip-flops every tick). Wave ships
+  // used to press the approach all the way in and end their lives as
+  // suicide rams; rams still happen on momentum, never as the steady
+  // state (a deliberate rammer can be a future ship variant). Host-only
+  // transient like shoot_timer — never serialized.
+  bool backing_off;
   Object *target;
 };
 
