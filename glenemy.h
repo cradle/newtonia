@@ -7,19 +7,32 @@
 
 class GLEnemy : public GLShip {
 public:
-  // interceptor: the fast fragile flanker (station waves, generation >= 15).
-  // The variant is fully encoded in the stats Save::Enemy already carries —
-  // a restore/rebuild re-derives it as thrust_force >= INTERCEPTOR_THRUST_MIN
-  // (standard hulls top out ~0.135, interceptors start at 0.162), so no
-  // savegame or protocol change exists for it. Design rule (CLAUDE.md):
-  // its speed stays BELOW the player's plain thrust (0.2) — a straight-line
-  // fleeing player always escapes without boost, on every input device;
-  // the threat is its tighter fire cadence and corner-cutting intercept
-  // steering, never a chase the player cannot win.
-  GLEnemy(const Grid &grid, float x, float y, std::list<GLShip*> * target, float difficulty = 1, std::list<Object*> *asteroids = NULL, float aim_lead = 0.0f, bool interceptor = false);
+  // The station's wave ship variants. Each is FULLY encoded in the stats
+  // Save::Enemy already carries — a restore/rebuild re-derives it from the
+  // thrust band via variant_for_thrust() (the bands never overlap:
+  // bomber <= 0.12, standard ~0.129-0.135, interceptor >= 0.15), so no
+  // savegame or protocol change exists for any of them.
+  //
+  // INTERCEPTOR (generation >= 15): the fast fragile flanker. Design rule
+  // (CLAUDE.md): its speed stays BELOW the player's plain thrust (0.2) — a
+  // straight-line fleeing player always escapes without boost, on every
+  // input device; the threat is its tighter fire cadence and corner-cutting
+  // intercept steering, never a chase the player cannot win.
+  //
+  // BOMBER (generation >= 17): the slow rear-line artillery piece. Stands
+  // off (Follower::BOMBER) and lobs mortar shells that burst into flak
+  // rings (Ship::fire_bomb + GLGame's fuse pass); the counterplay is
+  // plain-thrust weaving through the ring gaps, per the same rule.
+  enum Variant { STANDARD, INTERCEPTOR, BOMBER };
+
+  GLEnemy(const Grid &grid, float x, float y, std::list<GLShip*> * target, float difficulty = 1, std::list<Object*> *asteroids = NULL, float aim_lead = 0.0f, Variant variant = STANDARD);
   virtual ~GLEnemy();
 
-  static const float INTERCEPTOR_THRUST_MIN;  // variant-derivation threshold
+  // Re-derive a hull's variant from the one stat that separates the bands.
+  static Variant variant_for_thrust(float thrust_force);
+
+  static const float INTERCEPTOR_THRUST_MIN;  // band floor: >= is an interceptor
+  static const float BOMBER_THRUST_MAX;       // band ceiling: <= is a bomber
 };
 
 #endif

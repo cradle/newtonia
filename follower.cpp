@@ -8,15 +8,15 @@
 #include <cmath>
 using namespace std;
 
-Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000) {
+Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000) {
+Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead, int shoot_interval_ms) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead), shoot_interval_ms(shoot_interval_ms) {
+Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead, int shoot_interval_ms, Mode mode) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead), shoot_interval_ms(shoot_interval_ms), mode(mode) {
   common_init();
 }
 
@@ -110,8 +110,14 @@ void Follower::step(int delta) {
       ship->thrust_analog = t;
       ship->thrust(true);
     } else if(target) {
+      // BOMBER: artillery stands off. Thrust cuts inside STANDOFF_RANGE so
+      // it drifts and turns to aim rather than diving into ram range — the
+      // approach is how every other wave ship ends up a suicide ship.
+      static const float STANDOFF_RANGE = 700.0f;
+      bool advance = mode != BOMBER ||
+                     ship->position.distance_to(target->position) > STANDOFF_RANGE;
       ship->thrust_analog = 1.0f;
-      ship->thrust(true);
+      ship->thrust(advance);
       WrappedPoint target_point = target->position;
       if(aim_lead > 0.0f) {
         // Lead the target: steer toward (and gate the shot on) the point the
@@ -143,16 +149,19 @@ void Follower::step(int delta) {
 
 void Follower::burst_shooting_step(int delta, float angle, const WrappedPoint &target_point) {
   static const float SHOOT_RANGE   = 600.0f;
+  static const float BOMBER_RANGE  = 900.0f;   // artillery reach: shell flight is 600, lead closes the rest
   static const float FACING_CONE   = 25.0f;
 
   shoot_timer -= delta;
   if(shoot_timer > 0) return;
 
-  bool in_range  = ship->position.distance_to(target_point) < SHOOT_RANGE;
+  float range = mode == BOMBER ? BOMBER_RANGE : SHOOT_RANGE;
+  bool in_range  = ship->position.distance_to(target_point) < range;
   bool facing    = angle > 180.0f - FACING_CONE && angle < 180.0f + FACING_CONE;
 
   if(in_range && facing) {
-    ship->shoot(true);
+    if(mode == BOMBER) ship->fire_bomb();
+    else               ship->shoot(true);
     shoot_timer = shoot_interval_ms;
   }
 }

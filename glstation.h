@@ -58,6 +58,11 @@ private:
   // gen 15, then 1 + (generation - 15), capped at half the wave (rounded
   // up) so the standard line always outnumbers-or-matches the vanguard.
   int wave_interceptors() const;
+  // How many of this wave's ships deploy as bombers: none before gen 17,
+  // then 1 + (generation - 17), capped so at least one standard ship
+  // always sits between the interceptor vanguard and the bomber rear line
+  // (which keeps small opening waves bomber-free).
+  int wave_bombers() const;
 };
 
 #endif

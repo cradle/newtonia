@@ -212,7 +212,12 @@ namespace Net {
 // the hazard record already carries kind + health — but a pre-hunter build
 // receiving kind=3 would construct a garbage hazard, so the bump makes
 // mixed sessions refuse cleanly at the handshake instead.
-const uint8_t PROTO_VERSION = 28;
+// PROTO 29: the gen-17 bomber (savegame v23). Snapshot enemy-bullet
+// records gained a per-bullet flags byte (v23-gated on the stream — see
+// nx_write_enemy_bullets; PROTO-28 builds write v22 streams without it),
+// and the flag byte's bit4 carries Particle::is_bomb so the client draws
+// the mortar-shell diamond; the fuse itself is host-only.
+const uint8_t PROTO_VERSION = 29;
 
 // Peer identity (badge metadata) rides HELLO/WELCOME as an APPEND, not a
 // PROTO bump: `u8 platform (NetPlatform), u8 name_len, name_len bytes

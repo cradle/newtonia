@@ -1067,8 +1067,29 @@ void GLShip::draw_particles() const {
       } else {
         mb.color(color[0], color[1], color[2]);
       }
-      // Beam bolts draw a longer streak to read as a lance.
+      if(b->is_bomb) {
+        // Bomber mortar shell: a near-ship-sized diamond, not a streak —
+        // the whole point of the shell is that it is seen coming and
+        // dodged, and at 0.25 u/ms a velocity-scaled streak is a one-pixel
+        // dot. Brightened over the hull violet so it pops against the
+        // starfield. Four segments in the same GL_LINES batch.
+        mb.color(1.0f, 0.75f, 1.0f);
+        const float R = 9.0f;
+        float bx = b->position.x(), by = b->position.y();
+        mb.vertex(bx - R, by); mb.vertex(bx, by + R);
+        mb.vertex(bx, by + R); mb.vertex(bx + R, by);
+        mb.vertex(bx + R, by); mb.vertex(bx, by - R);
+        mb.vertex(bx, by - R); mb.vertex(bx - R, by);
+        continue;
+      }
+      // Beam bolts draw a longer streak to read as a lance. Slow ordnance
+      // (the bomber's flak fragments, 0.3 u/ms — everything else flies at
+      // 0.7+) gets a floored streak length so it reads like a bullet
+      // instead of a star-sized dot.
       Point tail = b->position - b->velocity * (b->piercing ? 22 : 10);
+      float streak = (b->velocity * 10.0f).magnitude();
+      if (streak < 7.0f && streak > 0.0f)
+        tail = b->position - b->velocity.normalized() * 7.0f;
       mb.vertex(tail.x(), tail.y());
       mb.vertex(b->position.x(), b->position.y());
     }

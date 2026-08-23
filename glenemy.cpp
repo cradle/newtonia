@@ -10,14 +10,21 @@
 
 using namespace std;
 
-// The derivation threshold sits in the gap between the hull families:
-// standard wave ships top out ~0.135 (0.129 + noise + a dead difficulty
-// term), interceptors start at 0.162. Save/rebuild paths use it to pick
-// the variant back out of the stats, so if either band moves, keep the
-// threshold between them.
+// The derivation thresholds sit in the gaps between the hull families:
+// bombers top out at 0.115, standard wave ships run ~0.129-0.135 (0.129 +
+// noise + a dead difficulty term), interceptors start at 0.162. The
+// save/rebuild paths pick the variant back out of the stats with these,
+// so if any band moves, keep the thresholds between them.
 const float GLEnemy::INTERCEPTOR_THRUST_MIN = 0.15f;
+const float GLEnemy::BOMBER_THRUST_MAX      = 0.12f;
 
-GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, float difficulty, list<Object*>* asteroids, float aim_lead, bool interceptor) : GLShip(grid, false) {
+GLEnemy::Variant GLEnemy::variant_for_thrust(float thrust_force) {
+  if (thrust_force >= INTERCEPTOR_THRUST_MIN) return INTERCEPTOR;
+  if (thrust_force <= BOMBER_THRUST_MAX)      return BOMBER;
+  return STANDARD;
+}
+
+GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, float difficulty, list<Object*>* asteroids, float aim_lead, Variant variant) : GLShip(grid, false) {
   list<Ship*>* ships = new list<Ship*>;
   list<GLShip*>::iterator s;
   for(s = targets->begin(); s != targets->end(); s++) {
@@ -32,9 +39,13 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
   ship->net_ship_id = ++Ship::net_next_ship_id;
   ship->behaviours.push_back(new Follower(ship, (list<Object*>*)ships, asteroids,
                                           difficulty, aim_lead,
-                                          interceptor ? 1500 : 3000));
+                                          variant == INTERCEPTOR ? 1500
+                                          : variant == BOMBER    ? 4000
+                                                                 : 3000,
+                                          variant == BOMBER ? Follower::BOMBER
+                                                            : Follower::GUNNER));
   ship->position = WrappedPoint(x,y);
-  if (interceptor) {
+  if (variant == INTERCEPTOR) {
     // 0.162..0.170: fast enough to close on anyone hesitating, capped a
     // touch under 0.85x the player's plain thrust (0.2) so a committed
     // straight-line escape always wins — see the class comment's design
@@ -43,6 +54,13 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     ship->thrust_force = 0.162 + rand()%80/10000.0;
     ship->rotation_force = 0.30 + rand()%10/1000.0;
     ship->value = 150 + difficulty * 50;
+  } else if (variant == BOMBER) {
+    // 0.105..0.115: slower than every other hull — the artillery piece
+    // waddles, and once you close on it, it is dead meat. Sluggish
+    // turning to match; the value pays for the flak pressure.
+    ship->thrust_force = 0.105 + rand()%100/10000.0;
+    ship->rotation_force = 0.12 + rand()%10/1000.0;
+    ship->value = 250 + difficulty * 50;
   } else {
     ship->thrust_force = 0.129 + difficulty*0.00025 + rand()%50/10000.0;
     ship->rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
@@ -51,20 +69,51 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
   ship->lives = 1;
 
   // The interceptor runs a denser trail — the "something fast is coming"
-  // telegraph has to be visible before the hull detail is.
-  trails.push_back(new GLTrail(this, interceptor ? 0.02 : 0.05));
+  // telegraph has to be visible before the hull detail is. The bomber's
+  // is sparser: it barely moves.
+  trails.push_back(new GLTrail(this, variant == INTERCEPTOR ? 0.02
+                                     : variant == BOMBER    ? 0.08
+                                                            : 0.05));
 
-  if (interceptor) {
-    // Amber, against the standard ship's green: the two variants must
-    // read apart at a glance (late-game design rule: readability).
+  if (variant == INTERCEPTOR) {
+    // Amber, against the standard ship's green: the variants must read
+    // apart at a glance (late-game design rule: readability).
     color[0] = 1.0f; color[1] = 0.62f; color[2] = 0.1f;
+  } else if (variant == BOMBER) {
+    // Violet: the third family in the wave palette.
+    color[0] = 0.75f; color[1] = 0.35f; color[2] = 1.0f;
   } else {
     color[0] = color[2] = 0.0;
     color[1] = 255/255.0;
   }
 
-  {
+  if (variant == BOMBER) {
+    // A squat wide-bodied barge with a blunt prow — nothing dart-like
+    // about it, so the rear line reads at a glance.
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f);
+    mb.vertex( 0.0f,  0.9f); mb.vertex(-0.9f,  0.3f); mb.vertex(-0.9f, -0.6f);
+    mb.vertex( 0.0f, -0.9f); mb.vertex( 0.9f, -0.6f); mb.vertex( 0.9f,  0.3f);
+    mb.end();
+    body_fill.upload(mb);
+
+    mb.clear();
+    mb.begin(GL_LINE_LOOP);
+    mb.color(color[0], color[1], color[2]);
+    mb.vertex( 0.0f,  0.9f); mb.vertex(-0.9f,  0.3f); mb.vertex(-0.9f, -0.6f);
+    mb.vertex( 0.0f, -0.9f); mb.vertex( 0.9f, -0.6f); mb.vertex( 0.9f,  0.3f);
+    mb.end();
+    // The mortar tube: a short barrel line off the prow.
+    mb.begin(GL_LINES);
+    mb.color(color[0], color[1], color[2]);
+    mb.vertex(0.0f, 0.9f); mb.vertex(0.0f, 1.25f);
+    mb.end();
+    body_outline.upload(mb);
+    // jets mesh stays empty — enemy has no thruster effect
+  } else {
     // Interceptor: a longer, narrower dart; standard: the classic arrowhead.
+    const bool interceptor = variant == INTERCEPTOR;
     const float nose = interceptor ? 1.4f : 1.0f;
     const float half = interceptor ? 0.5f : 0.8f;
     const float tail = interceptor ? -1.0f : -0.9f;

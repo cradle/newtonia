@@ -154,6 +154,19 @@ int GLStation::wave_interceptors() const {
   return allowed < cap ? allowed : cap;
 }
 
+int GLStation::wave_bombers() const {
+  // The rear-line artillery joins from generation 17, its allotment
+  // growing like the interceptors'. The cap only stops it eating into
+  // the interceptor vanguard — in the level's small opening pushes the
+  // bomber replaces the standard line entirely, so the artillery the
+  // intro just announced shows up by the second wave, not the fourth.
+  if (generation < 17) return 0;
+  int allowed = 1 + (generation - 17);
+  int cap = ships_this_wave - wave_interceptors();
+  if (cap < 0) cap = 0;
+  return allowed < cap ? allowed : cap;
+}
+
 void GLStation::draw(bool minimap) const {
   float px = position.x(), py = position.y();
 
@@ -266,7 +279,7 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
       // still overwritten every apply, so behaviour is always right.
       ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty,
                        asteroids, aim_lead,
-                       se.thrust_force >= GLEnemy::INTERCEPTOR_THRUST_MIN);
+                       GLEnemy::variant_for_thrust(se.thrust_force));
       objects->push_back(ge);
       // Skip the initial 2.5s lock delay — enemy is already deployed at
       // the recorded position.
@@ -323,9 +336,14 @@ void GLStation::step(float delta, const Grid &grid) {
       ships_left_to_deploy--;
       // Interceptors launch FIRST — a fast vanguard ahead of the slow
       // line gives each wave a shape (and they would arrive first
-      // anyway). Deploy order counts up from 0 as ships_left counts down.
+      // anyway) — and bombers launch LAST, the rear line settling in
+      // behind everyone. Deploy order counts up from 0 as ships_left
+      // counts down; the caps guarantee the two allotments never overlap.
       int deploy_index = ships_this_wave - 1 - ships_left_to_deploy;
-      bool interceptor = deploy_index < wave_interceptors();
+      GLEnemy::Variant variant =
+          deploy_index < wave_interceptors()                ? GLEnemy::INTERCEPTOR
+        : deploy_index >= ships_this_wave - wave_bombers()  ? GLEnemy::BOMBER
+                                                            : GLEnemy::STANDARD;
       float rotation = 360.0/ships_this_wave*ships_left_to_deploy*M_PI/180;
       float distance = 30 + radius;
       objects->push_back(
@@ -333,7 +351,7 @@ void GLStation::step(float delta, const Grid &grid) {
           grid,
           position.x() + distance*cos(rotation),
           position.y() + distance*sin(rotation), targets, difficulty, asteroids,
-          aim_lead, interceptor
+          aim_lead, variant
         )
       );
     }

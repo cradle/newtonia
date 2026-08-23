@@ -235,7 +235,14 @@ struct GameState {
     // pre-hunter builds from loading a save whose hazard list carries the
     // unknown kind value (older or newer files are ignored, per the rule
     // below; the record itself is unchanged — `health` already rides).
-    static constexpr uint16_t VERSION = 22;
+    // v23: no field changes in the save body (the gen-17 bomber's variant is
+    // re-derived from the enemy stats, like the interceptor). The
+    // snapshot/replay ENEMY-BULLET records gained a per-bullet wire-flags
+    // byte (the bomber's mortar-shell glyph + trail on the remote view),
+    // read gated on THIS version like the v20 turret section — v22 hunter
+    // replays already exist without the byte, which is why it could not
+    // ride the v22 gate.
+    static constexpr uint16_t VERSION = 23;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of

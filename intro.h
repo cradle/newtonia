@@ -21,7 +21,7 @@ class Hazard;
 // one.
 class Intro : public State {
 public:
-  enum Kind { ASTEROID, BLACK_HOLE, MINI_STATION, STATION, HAZARD, INTERCEPTOR };
+  enum Kind { ASTEROID, BLACK_HOLE, MINI_STATION, STATION, HAZARD, INTERCEPTOR, BOMBER };
 
   // Takes ownership of `game` (handed back to the StateManager on dismissal,
   // or deleted — which auto-saves — when leaving to the menu) and of every
@@ -73,12 +73,13 @@ private:
   // is only set once the StateManager installs the state and resize() runs.
   std::vector<Asteroid *> asteroids_;
   int hazard_kind;     // Hazard::Kind to focus on (Kind HAZARD), else -1
-  // Owned; display-only (Kind INTERCEPTOR): the station deploys the real
-  // ones mid-level, so unlike the station/mini-station intros there is no
-  // live world object to point the camera at — the intro shows its own
-  // hull at actual size, silenced and never stepped (its Follower would
-  // chase the frozen world's players; thrust moves nothing). It holds a
-  // thrusting pose and only its exhaust trail animates (step_trails).
+  // Owned; display-only (Kinds INTERCEPTOR and BOMBER): the station
+  // deploys the real ones mid-level, so unlike the station/mini-station
+  // intros there is no live world object to point the camera at — the
+  // intro shows its own hull at actual size, silenced and never stepped
+  // (its Follower would chase the frozen world's players; thrust moves
+  // nothing). It holds a thrusting pose and only its exhaust trail
+  // animates (step_trails); the bomber cruises slower, being a barge.
   GLEnemy *display_enemy_ = nullptr;
   int time = 0;        // ms since the intro appeared (drives flash + spin)
   int step_accum = 0;  // accumulates delta into fixed steps for the spin

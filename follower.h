@@ -10,9 +10,16 @@ using namespace std;
 
 class Follower : public Behaviour {
 public:
+  // GUNNER is every ordinary wave ship: close to 600 and burst-fire the
+  // gun. BOMBER is the artillery piece: stand off (thrust cuts inside
+  // STANDOFF_RANGE so it drifts rather than diving in), engage from
+  // BOMBER_RANGE, and lob mortar shells (Ship::fire_bomb) instead of
+  // shooting.
+  enum Mode { GUNNER, BOMBER };
+
   Follower(Ship *ship);
   Follower(Ship *ship, list<Object *> *targets);
-  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f, float aim_lead = 0.0f, int shoot_interval_ms = 3000);
+  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f, float aim_lead = 0.0f, int shoot_interval_ms = 3000, Mode mode = GUNNER);
   virtual ~Follower();
 
   virtual void step(int delta);
@@ -36,6 +43,7 @@ private:
   // player cannot escape with plain thrust. Host-simulated only (client
   // replicas never run behaviours), so this needs no serialization.
   int shoot_interval_ms;
+  Mode mode;
   int time_until_next_lock, time_between_locks;
   int shoot_timer;
   Object *target;
