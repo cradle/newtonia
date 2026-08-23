@@ -125,7 +125,7 @@ void Follower::step(int delta) {
       // BOTH thresholds by the same term keeps the hysteresis gap.
       static const float BREAK_RANGE        = 180.0f;
       static const float RESUME_RANGE       = 300.0f;
-      static const float BREAK_LOOKAHEAD_MS = 800.0f;
+      static const float BREAK_LOOKAHEAD_MS = 1400.0f;
       Point to_target = (ship->position.closest_to(target->position) -
                          target->position).normalized() * -1.0f;
       Point rel_vel = ship->velocity - target->velocity;
@@ -139,11 +139,11 @@ void Follower::step(int delta) {
       if(backing_off) {
         // Same angle convention as the pursuit below (180 = nose on the
         // target, 0 = tail-on), driven the opposite way: turn until the
-        // target is astern. Thrust only once the nose is at least
-        // broadside-off (within 90 of tail-on) — thrusting mid-turn with
-        // the nose still on the target is what a late break-off needs
-        // least, more speed toward the ram. No shot gate — the gun only
-        // fires facing the target, which we no longer are.
+        // target is astern, thrusting the whole way through — the break
+        // starts early enough (the lookahead above) that the continuous-
+        // thrust arc clears a stationary target, so the flyby reads as a
+        // strafing curve, never an engine cut. No shot gate — the gun
+        // only fires facing the target, which we no longer are.
         float angle = (ship->heading() - (ship->position.closest_to(target->position) - target->position).normalized().direction());
         angle = (angle < 0.0) ? (360.0 + angle) : angle;
         if(angle >= 0 && angle < 180) {
@@ -151,9 +151,8 @@ void Follower::step(int delta) {
         } else {
           ship->rotate_left(true);
         }
-        bool nose_clear = angle < 90.0f || angle > 270.0f;
         ship->thrust_analog = 1.0f;
-        ship->thrust(nose_clear);
+        ship->thrust(true);
         return;
       }
 
