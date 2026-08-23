@@ -177,6 +177,15 @@ static void finger_down(SDL_FingerID id, float x, float y) {
             g_touch_controls.mine_pressed = true;
             g_touch_controls.mine_finger  = id;
             s_game->keyboard('x', 0, 0);
+        } else if(!g_touch_controls.boost_pressed &&
+                  tc_dist(px, py,
+                          g_touch_controls.boost_cx,
+                          g_touch_controls.boost_cy) <= g_touch_controls.boost_hit_radius) {
+            // Presses during the cooldown land and no-op in Ship::boost();
+            // the overlay's dimmed circle is the feedback.
+            g_touch_controls.boost_pressed = true;
+            g_touch_controls.boost_finger  = id;
+            s_game->keyboard('e', 0, 0);
         }
         // Touches that don't hit a button are silently ignored.
     }
@@ -305,6 +314,11 @@ static void finger_up(SDL_FingerID id, float x, float y) {
     if(g_touch_controls.mine_pressed && g_touch_controls.mine_finger == id) {
         g_touch_controls.mine_pressed = false;
         s_game->keyboard_up('x', 0, 0);
+        return;
+    }
+    if(g_touch_controls.boost_pressed && g_touch_controls.boost_finger == id) {
+        g_touch_controls.boost_pressed = false;
+        s_game->keyboard_up('e', 0, 0);
         return;
     }
     // Legacy: release '\r' (sent without finger tracking; just always release)

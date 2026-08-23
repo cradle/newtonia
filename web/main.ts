@@ -288,6 +288,14 @@ declare const Module: {
   }
   (window as any).setMineAvailable = setMineAvailable;
 
+  // Called from C++ via EM_ASM while Ship::boost's cooldown runs — the
+  // button dims but stays pressable (presses no-op in Ship::boost()).
+  function setBoostReady(ready: number | boolean): void {
+    const el = document.querySelector<HTMLElement>(".touch-boost");
+    if (el) el.classList.toggle("cooldown", !ready);
+  }
+  (window as any).setBoostReady = setBoostReady;
+
   // ---- Game-over promo banner ----------------------------------------
   // The web build deliberately has no netplay or leaderboard (LEADERBOARD.md:
   // NetBoard::create() is null on web) — this banner is where the free
@@ -461,6 +469,7 @@ declare const Module: {
     const BUTTONS: BtnCfg[] = [
       { label: "",  key: " ", cls: "touch-btn touch-shoot" },
       { label: "",  key: "x", cls: "touch-btn touch-mine"  },
+      { label: "",  key: "e", cls: "touch-btn touch-boost" },
     ];
 
     BUTTONS.forEach(({ label, key, cls }) => {
@@ -517,6 +526,9 @@ declare const Module: {
     const circleButtons = [
       { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75 },
       { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75 },
+      // Boost: above and between the pair (the thumb triangle), matching
+      // the native OSD layout in touch_controls.cpp.
+      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.58 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
 

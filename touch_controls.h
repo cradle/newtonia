@@ -51,6 +51,22 @@ struct TouchControlsState {
     // would send is inert there anyway.
     bool  mine_available;
 
+    // ---- Boost button ----
+    // Above the shoot/mine pair (boost discoverability: touch had NO boost
+    // control at all — the late-game design rule has kept every escape
+    // possible on plain thrust, but the mechanic itself deserved a button).
+    // Always available, like shoot. Sends P1's boost key ('e'), the same
+    // hard-coded-default convention as shoot/mine/pause.
+    float boost_cx, boost_cy, boost_radius;
+    float boost_hit_radius;  // capped below the vertical gap to the pair
+    bool  boost_pressed;
+    // Ship::boost_ready() mirrored each frame by GLGame::tick (the
+    // mine_available pattern): the overlay dims the button while the
+    // cooldown runs. Presses during cooldown still land and no-op in
+    // Ship::boost() — the flag is presentation, not a gate.
+    bool  boost_ready;
+    SDL_FingerID boost_finger;
+
     // ---- Shared hit-test radius for shoot & mine ----
     // Half the distance between the two button centres so the touch regions are
     // as large as possible without overlapping each other.

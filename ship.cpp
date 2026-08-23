@@ -1452,7 +1452,13 @@ void Ship::update_missile_fly_volumes() {
     Mix_Volume(chs[j], (int)(MIX_MAX_VOLUME * vols[j]));
 }
 
+// See ship.h: the cooldown gates every path — key, pad bumper, touch
+// button, and the host's application of a net client's presses.
+const float Ship::BOOST_COOLDOWN_MS = 2000.0f;
+
 void Ship::boost() {
+  if (!boost_ready()) return;
+  boost_cooldown_left = BOOST_COOLDOWN_MS;
   net_boost_count++;
   boosting = true;
 }
@@ -2979,6 +2985,7 @@ void Ship::step(float delta, const Grid &grid) {
   	acceleration += ((facing * reverse_force * reverse_analog) / mass);
     temperature += retro_heat_rate * delta;
 	}
+  if(boost_cooldown_left > 0.0f) boost_cooldown_left -= delta;
   temperature -= cool_rate * delta;
   if(temperature <= 0)
     temperature = 0;

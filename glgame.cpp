@@ -8500,6 +8500,8 @@ void GLGame::tick(int delta) {
     GLShip *lp = local_player();
     bool has_secondary = lp && lp->ship->has_secondary();
     g_touch_controls.mine_available = has_secondary;
+    // Boost button feedback: dimmed while Ship's cooldown runs.
+    g_touch_controls.boost_ready = lp && lp->ship->boost_ready();
 #ifdef __EMSCRIPTEN__
     // The web build's circle buttons are HTML (web/main.ts), so mirror the
     // flag across the same bridge setMenuMode rides, on change only.
@@ -8509,6 +8511,13 @@ void GLGame::tick(int delta) {
       web_mine_last = has_secondary;
       EM_ASM({ if (window.setMineAvailable) window.setMineAvailable($0); },
              has_secondary ? 1 : 0);
+    }
+    static bool web_boost_pushed = false, web_boost_last = false;
+    if (!web_boost_pushed || web_boost_last != g_touch_controls.boost_ready) {
+      web_boost_pushed = true;
+      web_boost_last = g_touch_controls.boost_ready;
+      EM_ASM({ if (window.setBoostReady) window.setBoostReady($0); },
+             g_touch_controls.boost_ready ? 1 : 0);
     }
 #endif
   }

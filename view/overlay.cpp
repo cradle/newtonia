@@ -1254,6 +1254,27 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
     Typer::draw_centered(0, -vh + 85, hint, 8);
   }
+  // Boost discoverability (first-use hint): boost is the least-found
+  // control in the game, so until the pilot has boosted ONCE (ever —
+  // Preferences::boost_hint_done, latched by GLShip on any boost) the
+  // same bottom line names it on the help hint's ALTERNATE flash phase,
+  // so the two hints trade places instead of stacking. Keyboard names the
+  // binding; a pad pilot gets the bumper. Touch has its own button.
+  if(!is_touch_mode() && !glship->show_help && !g_prefs.boost_hint_done &&
+     !((glgame->current_time)/12000 % 2)) {
+    char hint[48];
+    if(glship->last_input_was_controller) {
+      snprintf(hint, sizeof(hint), "boost with left bumper");
+    } else {
+      int bk = glship->boost_key.primary();
+      if(bk >= 33 && bk <= 126)
+        snprintf(hint, sizeof(hint), "boost with %c", (char)bk);
+      else
+        hint[0] = '\0';
+    }
+    if(hint[0] != '\0')
+      Typer::draw_centered(0, -vh + 85, hint, 8);
+  }
   if(!glgame->running && glship->show_help) {
     const char* unpause = glship->has_controller() ? "press start to resume" : "press p to resume";
     Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
@@ -1352,6 +1373,45 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float alpha_outline = tc.mine_pressed ? 0.95f : 0.70f;
     draw_circle(bx, by, br, 28, true,  0.35f, 0.6f, 1.0f, alpha_fill);
     draw_circle(bx, by, br, 28, false, 0.35f, 0.6f, 1.0f, alpha_outline);
+  }
+
+  // ---- Boost button ----
+  // Above and between the shoot/mine pair. Amber; dimmed while Ship's
+  // cooldown runs (boost_ready, mirrored by GLGame::tick). The icon is a
+  // double up-chevron — "more speed" in one glyph.
+  {
+    float bx = ox(tc.boost_cx);
+    float by = oy(tc.boost_cy);
+    float br = sr(tc.boost_radius);
+    float dim = tc.boost_ready ? 1.0f : 0.35f;
+    float alpha_fill    = (tc.boost_pressed ? 0.55f : 0.25f) * dim;
+    float alpha_outline = (tc.boost_pressed ? 0.95f : 0.70f) * dim;
+    draw_circle(bx, by, br, 28, true,  1.0f, 0.75f, 0.3f, alpha_fill);
+    draw_circle(bx, by, br, 28, false, 1.0f, 0.75f, 0.3f, alpha_outline);
+
+    static MeshBuilder mb;
+    static Mesh mesh_icon;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(1.0f, 0.75f, 0.3f, alpha_outline);
+    // Two stacked chevrons pointing up, each a thin bent band of two quads.
+    float w2 = br * 0.42f, hh = br * 0.26f, th = br * 0.14f;
+    for (int c = 0; c < 2; c++) {
+      float cy0 = by - br * 0.28f + c * br * 0.42f;
+      // left stroke
+      mb.vertex(bx - w2, cy0 - hh);      mb.vertex(bx, cy0);
+      mb.vertex(bx - w2, cy0 - hh + th);
+      mb.vertex(bx - w2, cy0 - hh + th); mb.vertex(bx, cy0);
+      mb.vertex(bx, cy0 + th);
+      // right stroke
+      mb.vertex(bx + w2, cy0 - hh);      mb.vertex(bx, cy0);
+      mb.vertex(bx + w2, cy0 - hh + th);
+      mb.vertex(bx + w2, cy0 - hh + th); mb.vertex(bx, cy0);
+      mb.vertex(bx, cy0 + th);
+    }
+    mb.end();
+    mesh_icon.upload(mb, GL_DYNAMIC_DRAW);
+    mesh_icon.draw();
   }
 
   // ---- Pause button ----
