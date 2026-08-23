@@ -276,17 +276,33 @@ void GLMiniStation::draw(bool minimap) const {
     draw_bullets();
 
     if (!debris.empty()) {
+      // Hazard-style ember diamonds, not GL_POINTS: the field GPU that
+      // silently dropped the point-debris draws (seeker burst, player
+      // death, exhaust trail — all under late-game load) would take this
+      // explosion next. Same geometry and palette as Hazard::draw's burst.
       static MeshBuilder mb;
       static Mesh mesh;
       mb.clear();
-      mb.begin(GL_POINTS);
+      mb.begin(GL_TRIANGLES);
       for (const auto &d : debris) {
-        mb.color(1.0f, 0.7f, 0.2f, d.aliveness());
-        mb.vertex(d.position.x(), d.position.y());
+        float al = d.aliveness();
+        float a = al > 0.6f ? 1.0f : al / 0.6f;
+        float x = d.position.x(), y = d.position.y();
+        float vx = d.velocity.x(), vy = d.velocity.y();
+        float vm = sqrtf(vx * vx + vy * vy);
+        float dx = vm > 1e-5f ? vx / vm : 1.0f;
+        float dy = vm > 1e-5f ? vy / vm : 0.0f;
+        float len = 2.8f * (0.5f + 0.5f * a);
+        float wid = 1.8f * (0.5f + 0.5f * a);
+        float px_ = -dy * wid, py_ = dx * wid;
+        float hx = dx * len, hy = dy * len;
+        mb.color(1.0f, 0.45f + 0.45f * a, 0.2f, a);
+        mb.vertex(x + hx, y + hy); mb.vertex(x + px_, y + py_); mb.vertex(x - hx, y - hy);
+        mb.vertex(x + hx, y + hy); mb.vertex(x - hx, y - hy); mb.vertex(x - px_, y - py_);
       }
       mb.end();
       mesh.upload(mb, GL_DYNAMIC_DRAW);
-      mesh.draw(3.0f);
+      mesh.draw();
     }
   }
 }
