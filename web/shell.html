@@ -234,6 +234,20 @@
     .touch-boost.cooldown {
       opacity: 0.35;
     }
+    /* Double up-chevron ("more speed"), matching the native OSD's icon —
+       pseudo-elements like the pause bars, so no font is involved */
+    .touch-boost::before, .touch-boost::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      width: 34%;
+      height: 34%;
+      border-top: 3px solid rgba(255, 190, 80, 0.65);
+      border-left: 3px solid rgba(255, 190, 80, 0.65);
+      transform: translate(-50%, 0) rotate(45deg);
+    }
+    .touch-boost::before { top: 14%; }
+    .touch-boost::after  { top: 40%; }
     .touch-pause {
       border: 2px solid rgba(255, 255, 255, 0.30);
       background: rgba(255, 255, 255, 0.05);
