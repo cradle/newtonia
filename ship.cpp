@@ -945,6 +945,10 @@ static Save::WeaponEntry::Kind secondary_kind(Weapon::Base *w) {
 // needs ammo/selection, not a rebuild). Conservative: any GodMode weapon
 // (its ammo is a live countdown with music/warning state) forces the slow
 // path, as does any count or kind/index divergence.
+Save::WeaponEntry::Kind Ship::secondary_kind_of(Weapon::Base *w) {
+  return secondary_kind(w);
+}
+
 bool Ship::net_weapons_roster_matches(const Save::Player &p) const {
   if (primary_weapons.size() != p.primary_weapons.size()) return false;
   if (secondary_weapons.size() != p.secondary_weapons.size()) return false;

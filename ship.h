@@ -649,6 +649,9 @@ class Ship : public CompositeObject {
     bool has_last_primary = false;
     void record_primary_selection();  // call BEFORE switching the selection away
     static Save::WeaponEntry::Kind primary_kind_of(Weapon::Base *w, int *index_out);
+    // Same classification for a secondary (public twin of the roster-match
+    // helper) — the touch OSD's weapon-icon feed uses both.
+    static Save::WeaponEntry::Kind secondary_kind_of(Weapon::Base *w);
     // The one fallback policy for removing a primary (exhausted beam/lance/
     // shock, expired god mode): the remembered selection first, then the
     // previous list neighbour, wrapping forward only from the front.

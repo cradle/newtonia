@@ -50,6 +50,13 @@ struct TouchControlsState {
     // false: in the menus nothing updates it, and the 'x' key the region
     // would send is inert there anyway.
     bool  mine_available;
+    // Active-weapon icons: the shoot/mine circles carry a glyph naming the
+    // selected primary/secondary (Save::WeaponEntry::Kind values, mirrored
+    // each frame by GLGame::tick like mine_available; secondary_kind is
+    // meaningful only while mine_available). The web build receives the
+    // same pair over the setWeaponKinds bridge.
+    unsigned char primary_kind;
+    unsigned char secondary_kind;
 
     // ---- Boost button ----
     // Above the shoot/mine pair (boost discoverability: touch had NO boost

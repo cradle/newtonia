@@ -1312,6 +1312,121 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,
   mesh.draw();
 }
 
+// Weapon glyph for the shoot/mine circles: a small line icon naming the
+// selected primary/secondary (Save::WeaponEntry::Kind), in the weapon
+// family's own colour, echoing the pickup vocabulary (beam = violet star,
+// lance = amber star, turret = teal ring-with-barrel, ...). r is the icon
+// radius (a fraction of the button's), alpha follows the circle outline.
+static void draw_weapon_glyph(uint8_t kind, float cx, float cy, float r,
+                              float alpha) {
+  static MeshBuilder mb;
+  static Mesh mesh;
+  mb.clear();
+  mb.begin(GL_LINES);
+  auto seg = [&](float x0, float y0, float x1, float y1) {
+    mb.vertex(cx + x0 * r, cy + y0 * r);
+    mb.vertex(cx + x1 * r, cy + y1 * r);
+  };
+  auto circle = [&](float rad, int segs) {
+    for (int i = 0; i < segs; i++) {
+      float a0 = 2.0f * (float)M_PI * i / segs;
+      float a1 = 2.0f * (float)M_PI * (i + 1) / segs;
+      seg(rad * cosf(a0), rad * sinf(a0), rad * cosf(a1), rad * sinf(a1));
+    }
+  };
+  auto star4 = [&]() {  // the pickups' 4-point star
+    seg(0.0f, 1.0f, 0.3f, 0.3f);   seg(0.3f, 0.3f, 1.0f, 0.0f);
+    seg(1.0f, 0.0f, 0.3f, -0.3f);  seg(0.3f, -0.3f, 0.0f, -1.0f);
+    seg(0.0f, -1.0f, -0.3f, -0.3f); seg(-0.3f, -0.3f, -1.0f, 0.0f);
+    seg(-1.0f, 0.0f, -0.3f, 0.3f); seg(-0.3f, 0.3f, 0.0f, 1.0f);
+  };
+  switch ((Save::WeaponEntry::Kind)kind) {
+    case Save::WeaponEntry::Kind::Default:
+      // Gun: a crosshair.
+      mb.color(1.0f, 1.0f, 1.0f, alpha);
+      circle(0.55f, 12);
+      seg(0.0f, 0.55f, 0.0f, 1.0f);   seg(0.0f, -0.55f, 0.0f, -1.0f);
+      seg(0.55f, 0.0f, 1.0f, 0.0f);   seg(-0.55f, 0.0f, -1.0f, 0.0f);
+      break;
+    case Save::WeaponEntry::Kind::GodMode:
+      // Sun: circle + rays.
+      mb.color(1.0f, 0.85f, 0.3f, alpha);
+      circle(0.45f, 10);
+      for (int i = 0; i < 8; i++) {
+        float a = 2.0f * (float)M_PI * i / 8;
+        seg(0.6f * cosf(a), 0.6f * sinf(a), 1.0f * cosf(a), 1.0f * sinf(a));
+      }
+      break;
+    case Save::WeaponEntry::Kind::Beam:
+      mb.color(0.7f, 0.4f, 1.0f, alpha);  // violet star, like the pickup
+      star4();
+      break;
+    case Save::WeaponEntry::Kind::Lance:
+      mb.color(1.0f, 0.85f, 0.35f, alpha);  // amber star, like the pickup
+      star4();
+      break;
+    case Save::WeaponEntry::Kind::Shock:
+      // Lightning zigzag.
+      mb.color(0.6f, 0.9f, 1.0f, alpha);
+      seg(0.35f, 1.0f, -0.25f, 0.15f);
+      seg(-0.25f, 0.15f, 0.25f, -0.05f);
+      seg(0.25f, -0.05f, -0.35f, -1.0f);
+      break;
+    case Save::WeaponEntry::Kind::Mine:
+      // Naval mine: circle + spikes.
+      mb.color(1.0f, 1.0f, 1.0f, alpha);
+      circle(0.5f, 10);
+      for (int i = 0; i < 6; i++) {
+        float a = 2.0f * (float)M_PI * i / 6;
+        seg(0.5f * cosf(a), 0.5f * sinf(a), 0.95f * cosf(a), 0.95f * sinf(a));
+      }
+      break;
+    case Save::WeaponEntry::Kind::GigaMine:
+      // The mine, doubled up.
+      mb.color(1.0f, 1.0f, 1.0f, alpha);
+      circle(0.35f, 8);
+      circle(0.6f, 10);
+      for (int i = 0; i < 6; i++) {
+        float a = 2.0f * (float)M_PI * i / 6 + 0.26f;
+        seg(0.6f * cosf(a), 0.6f * sinf(a), 1.0f * cosf(a), 1.0f * sinf(a));
+      }
+      break;
+    case Save::WeaponEntry::Kind::Missile:
+      // Dart with fins, nose up.
+      mb.color(0.95f, 0.95f, 0.95f, alpha);
+      seg(0.0f, 1.0f, 0.3f, 0.3f);  seg(0.3f, 0.3f, 0.3f, -0.6f);
+      seg(0.0f, 1.0f, -0.3f, 0.3f); seg(-0.3f, 0.3f, -0.3f, -0.6f);
+      seg(0.3f, -0.6f, 0.7f, -1.0f); seg(-0.3f, -0.6f, -0.7f, -1.0f);
+      seg(-0.3f, -0.6f, 0.3f, -0.6f);
+      break;
+    case Save::WeaponEntry::Kind::Shield:
+      // Shield outline, point down.
+      mb.color(0.4f, 0.9f, 1.0f, alpha);
+      seg(-0.8f, 0.8f, 0.8f, 0.8f);
+      seg(-0.8f, 0.8f, -0.8f, -0.1f); seg(0.8f, 0.8f, 0.8f, -0.1f);
+      seg(-0.8f, -0.1f, 0.0f, -1.0f); seg(0.8f, -0.1f, 0.0f, -1.0f);
+      break;
+    case Save::WeaponEntry::Kind::Nova:
+      // Starburst: rays only, alternating lengths.
+      mb.color(1.0f, 0.6f, 0.2f, alpha);
+      for (int i = 0; i < 8; i++) {
+        float a = 2.0f * (float)M_PI * i / 8;
+        float len = (i % 2 == 0) ? 1.0f : 0.55f;
+        seg(0.15f * cosf(a), 0.15f * sinf(a), len * cosf(a), len * sinf(a));
+      }
+      break;
+    case Save::WeaponEntry::Kind::Turret:
+      // Ring with a barrel, like the pickup.
+      mb.color(0.3f, 0.9f, 0.8f, alpha);
+      circle(0.55f, 12);
+      seg(0.0f, 0.55f, 0.0f, 1.1f);
+      break;
+  }
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+}
+
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   // Touch platforms always; desktop only when the screenshot harness (or
   // the layout test hook) forces touch mode — see touch_osd_enabled().
@@ -1359,6 +1474,8 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float alpha_outline = tc.shoot_pressed ? 0.95f : 0.70f;
     draw_circle(bx, by, br, 28, true,  1.0f, 0.35f, 0.35f, alpha_fill);
     draw_circle(bx, by, br, 28, false, 1.0f, 0.35f, 0.35f, alpha_outline);
+    glLineWidth(2.5f);
+    draw_weapon_glyph(tc.primary_kind, bx, by, br * 0.45f, alpha_outline);
   }
 
   // ---- Mine button ----
@@ -1373,6 +1490,8 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float alpha_outline = tc.mine_pressed ? 0.95f : 0.70f;
     draw_circle(bx, by, br, 28, true,  0.35f, 0.6f, 1.0f, alpha_fill);
     draw_circle(bx, by, br, 28, false, 0.35f, 0.6f, 1.0f, alpha_outline);
+    glLineWidth(2.5f);
+    draw_weapon_glyph(tc.secondary_kind, bx, by, br * 0.45f, alpha_outline);
   }
 
   // ---- Boost button ----

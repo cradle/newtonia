@@ -296,6 +296,70 @@ declare const Module: {
   }
   (window as any).setBoostReady = setBoostReady;
 
+  // Active-weapon icons on the shoot/mine circles: C++ pushes the selected
+  // primary/secondary kinds (Save::WeaponEntry::Kind values; secondary -1 =
+  // none) via EM_ASM whenever they change, and the buttons carry a small
+  // inline-SVG glyph — the same vocabulary as the native OSD (crosshair
+  // gun, violet/amber pickup stars, teal turret ring, ...).
+  function weaponIconSvg(kind: number): string | null {
+    const S = (color: string, body: string) =>
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.6">${body}</svg>`;
+    const star = (color: string) => S(color,
+      '<path d="M12 2 L13.8 10.2 L22 12 L13.8 13.8 L12 22 L10.2 13.8 L2 12 L10.2 10.2 Z"/>');
+    const rays = (n: number, r0: number, r1: number, altR1?: number) => {
+      let d = "";
+      for (let i = 0; i < n; i++) {
+        const a = (2 * Math.PI * i) / n;
+        const rr = altR1 !== undefined && i % 2 ? altR1 : r1;
+        d += `M${12 + r0 * Math.cos(a)} ${12 + r0 * Math.sin(a)} L${12 + rr * Math.cos(a)} ${12 + rr * Math.sin(a)} `;
+      }
+      return `<path d="${d}"/>`;
+    };
+    switch (kind) {
+      case 0:  // Default gun: crosshair
+        return S("#ffffff", '<circle cx="12" cy="12" r="5"/>' + rays(4, 5, 9));
+      case 1:  // GodMode: sun
+        return S("#ffd94d", '<circle cx="12" cy="12" r="4"/>' + rays(8, 5.5, 9));
+      case 2:  // Mine
+        return S("#ffffff", '<circle cx="12" cy="12" r="4.5"/>' + rays(6, 4.5, 8.5));
+      case 3:  // GigaMine
+        return S("#ffffff", '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="5.5"/>' + rays(6, 5.5, 9));
+      case 4:  // Missile: dart with fins
+        return S("#f2f2f2", '<path d="M12 3 L15 9 L15 16 L18 20 M12 3 L9 9 L9 16 L6 20 M9 16 L15 16"/>');
+      case 5:  // Shield
+        return S("#66e5ff", '<path d="M5 5 L19 5 L19 12 L12 20 L5 12 Z"/>');
+      case 6:  // Nova: starburst
+        return S("#ff9933", rays(8, 2, 9.5, 5.5));
+      case 7:  // Beam: violet star (the pickup)
+        return star("#b366ff");
+      case 8:  // Lance: amber star (the pickup)
+        return star("#ffd966");
+      case 9:  // Shock: lightning
+        return S("#99e5ff", '<path d="M15 3 L9 13 L14 14 L9 21"/>');
+      case 10: // Turret: ring with barrel
+        return S("#4de5cc", '<circle cx="12" cy="12" r="5"/><path d="M12 7 L12 2"/>');
+    }
+    return null;
+  }
+  function applyWeaponIcon(sel: string, kind: number): void {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (!el) return;
+    const svg = kind >= 0 ? weaponIconSvg(kind) : null;
+    if (svg) {
+      el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+      el.style.backgroundRepeat = "no-repeat";
+      el.style.backgroundPosition = "center";
+      el.style.backgroundSize = "55% 55%";
+    } else {
+      el.style.backgroundImage = "";
+    }
+  }
+  function setWeaponKinds(primary: number, secondary: number): void {
+    applyWeaponIcon(".touch-shoot", primary);
+    applyWeaponIcon(".touch-mine", secondary);
+  }
+  (window as any).setWeaponKinds = setWeaponKinds;
+
   // ---- Game-over promo banner ----------------------------------------
   // The web build deliberately has no netplay or leaderboard (LEADERBOARD.md:
   // NetBoard::create() is null on web) — this banner is where the free
