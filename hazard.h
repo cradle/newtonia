@@ -27,9 +27,18 @@ class GLShip;
 //           world and trailing debris; lethal to any ship it strikes.
 //   SEEKER  a small drone that homes on the nearest player and rams it; dies to
 //           a single shot (worth SEEKER_REWARD) or on impact.
+//   HUNTER  the seeker's late-game elite (generation >= 18): bigger, takes
+//           HUNTER_HEALTH shots, and steers at the player's INTERCEPT point
+//           (the shared seek.h solver, like the turret and the aim ramp) so it
+//           cuts corners instead of tail-chasing. Its speed stays under the
+//           player's plain thrust per the locked late-game design rule — a
+//           committed straight-line escape always wins; the threat is that
+//           turning is no longer free.
 class Hazard : public Object {
 public:
-  enum Kind { PULSAR, COMET, SEEKER };
+  // HUNTER appended (savegame v22 / PROTO 28 gate the new wire value — the
+  // record itself is unchanged, `health` already rides for the comet).
+  enum Kind { PULSAR, COMET, SEEKER, HUNTER };
 
   // Spawns at a random position clear of the world centre (where the black hole
   // and the players' start sit). COMET/SEEKER get a starting velocity; the
@@ -52,9 +61,9 @@ public:
   // PULSAR: the radius the wavefront has reached (0 while charging).
   float wave_radius() const { return wave_radius_; }
 
-  // COMET / PULSAR: take one point of damage; spawns impact debris and, at zero
-  // health, destroys the hazard. No effect on the seeker (it dies in one shot
-  // via destroy()).
+  // COMET / PULSAR / HUNTER: take one point of damage; spawns impact debris
+  // and, at zero health, destroys the hazard. No effect on the seeker (it dies
+  // in one shot via destroy()).
   void hit();
 
   // Spawn a death burst and mark the hazard destroyed (PULSAR never dies).
@@ -66,6 +75,7 @@ public:
   static const int   SEEKER_REWARD;
   static const int   COMET_REWARD;
   static const int   PULSAR_REWARD;
+  static const int   HUNTER_REWARD;
 
   Save::Hazard capture_state() const;
   static Hazard *from_state(const Save::Hazard &s, const Point &world);
@@ -99,6 +109,8 @@ private:
   static const float COMET_SPEED;
   static const int   COMET_HEALTH;
   static const float SEEKER_SPEED;
+  static const float HUNTER_SPEED;
+  static const int   HUNTER_HEALTH;
 };
 
 #endif

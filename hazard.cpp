@@ -7,6 +7,7 @@
 #include "mat4.h"
 #include "glship.h"
 #include "ship.h"
+#include "seek.h"
 
 using namespace std;
 
@@ -27,9 +28,15 @@ const float Hazard::KNOCKBACK         = 0.0014f;
 const float Hazard::COMET_SPEED  = 0.28f;   // fast — a real dodge, not a drift
 const int   Hazard::COMET_HEALTH = 4;       // shots to break it up
 const float Hazard::SEEKER_SPEED = 0.135f;  // slow enough to out-fly
+// Faster than the seeker but capped well under the player's plain thrust
+// (0.2) like the interceptor's ~0.85x rule — a committed straight-line
+// escape always wins; the intercept steering is the whole upgrade.
+const float Hazard::HUNTER_SPEED  = 0.155f;
+const int   Hazard::HUNTER_HEALTH = 3;
 const int   Hazard::SEEKER_REWARD = 250;
 const int   Hazard::COMET_REWARD  = 500;
 const int   Hazard::PULSAR_REWARD = 750;
+const int   Hazard::HUNTER_REWARD = 600;
 
 static float frand() { return (float)(rand() % 100000) / 100000.0f; }
 
@@ -70,6 +77,12 @@ Hazard::Hazard(Kind kind, const Point &world) : kind_(kind) {
       velocity = Point(cosf(dir) * SEEKER_SPEED, sinf(dir) * SEEKER_SPEED);
       invincible = false;  // a single shot destroys it
       break;
+    case HUNTER:
+      radius = 30.0f;
+      velocity = Point(cosf(dir) * HUNTER_SPEED, sinf(dir) * HUNTER_SPEED);
+      invincible = false;
+      health_ = HUNTER_HEALTH;
+      break;
   }
   radius_squared = radius * radius;
   alive = true;
@@ -90,9 +103,9 @@ bool Hazard::is_removable() const {
 }
 
 void Hazard::hit() {
-  // The seeker dies in one shot via destroy(); only the comet and pulsar have
-  // a health pool to chip down here.
-  if ((kind_ != COMET && kind_ != PULSAR) || !alive) return;
+  // The seeker dies in one shot via destroy(); the comet, pulsar and hunter
+  // have a health pool to chip down here.
+  if (kind_ == SEEKER || !alive) return;
   // Chip off a puff of impact debris on every hit.
   for (int i = 0; i < 10; i++) {
     float a = frand() * 2.0f * (float)M_PI;
@@ -174,6 +187,45 @@ void Hazard::update(int delta, list<GLShip*> *players) {
         position += velocity * delta;
         position.wrap();
         rotation += 0.04f * delta;  // slow idle spin (deg/ms, ~9s per turn)
+        if (rotation >= 360.0f) rotation -= 360.0f;
+      }
+      break;
+    }
+
+    case HUNTER: {
+      if (alive) {
+        GLShip *nearest = NULL;
+        float best = 0.0f;
+        if (players != NULL) {
+          for (auto *gs : *players) {
+            if (!gs->ship->is_alive()) continue;
+            float d = position.distance_to(gs->ship->position);
+            if (nearest == NULL || d < best) { best = d; nearest = gs; }
+          }
+        }
+        if (nearest != NULL) {
+          Point self = position.closest_to(nearest->ship->position);
+          Point rel(nearest->ship->position.x() - self.x(),
+                    nearest->ship->position.y() - self.y());
+          // Steer at the INTERCEPT point, not the target: the shared
+          // seek.h solver at full lead, with the hunter itself as the
+          // "bullet". The horizon caps the prediction so a target it
+          // cannot cut off (fleeing faster, or too far) degrades to the
+          // seeker's plain chase instead of aiming at infinity.
+          Point offset = intercept_offset(rel, nearest->ship->velocity,
+                                          HUNTER_SPEED, 6000.0f, 1.0f);
+          Point aim(rel.x() + offset.x(), rel.y() + offset.y());
+          float m = aim.magnitude();
+          if (m > 1e-4f) {
+            Point desired = (aim / m) * HUNTER_SPEED;
+            float turn = (float)delta * 0.004f;
+            if (turn > 1.0f) turn = 1.0f;
+            velocity += (desired - velocity) * turn;
+          }
+        }
+        position += velocity * delta;
+        position.wrap();
+        rotation += 0.07f * delta;  // quicker spin than the seeker: menace
         if (rotation >= 360.0f) rotation -= 360.0f;
       }
       break;
@@ -301,6 +353,41 @@ void Hazard::build_meshes() {
     }
     mb.end();
     body_mesh_.upload(mb);
+  } else if (kind_ == HUNTER) {
+    // The seeker's elite: a bigger triple diamond in deeper crimson, with
+    // barbs off the four points — must read apart from the seeker at a
+    // glance (late-game design rule: readability).
+    MeshBuilder mb;
+    mb.begin(GL_LINE_LOOP);
+    mb.color(1.0f, 0.15f, 0.1f);
+    mb.vertex(0.0f, radius);
+    mb.vertex(radius, 0.0f);
+    mb.vertex(0.0f, -radius);
+    mb.vertex(-radius, 0.0f);
+    mb.end();
+    mb.begin(GL_LINE_LOOP);
+    mb.color(1.0f, 0.3f, 0.15f);
+    mb.vertex(0.0f, radius * 0.66f);
+    mb.vertex(radius * 0.66f, 0.0f);
+    mb.vertex(0.0f, -radius * 0.66f);
+    mb.vertex(-radius * 0.66f, 0.0f);
+    mb.end();
+    mb.begin(GL_LINE_LOOP);
+    mb.color(1.0f, 0.5f, 0.25f);
+    mb.vertex(0.0f, radius * 0.33f);
+    mb.vertex(radius * 0.33f, 0.0f);
+    mb.vertex(0.0f, -radius * 0.33f);
+    mb.vertex(-radius * 0.33f, 0.0f);
+    mb.end();
+    // Barbs: short spikes past each point of the outer diamond.
+    mb.begin(GL_LINES);
+    mb.color(1.0f, 0.15f, 0.1f);
+    mb.vertex(0.0f, radius);  mb.vertex(0.0f, radius * 1.35f);
+    mb.vertex(radius, 0.0f);  mb.vertex(radius * 1.35f, 0.0f);
+    mb.vertex(0.0f, -radius); mb.vertex(0.0f, -radius * 1.35f);
+    mb.vertex(-radius, 0.0f); mb.vertex(-radius * 1.35f, 0.0f);
+    mb.end();
+    body_mesh_.upload(mb);
   } else {  // SEEKER
     // Hostile-red drone: a diamond outline around a small core.
     MeshBuilder mb;
@@ -328,11 +415,12 @@ void Hazard::draw(bool minimap) const {
   float px = position.x(), py = position.y();
 
   if (minimap) {
-    if (kind_ == SEEKER && !alive) return;
+    if ((kind_ == SEEKER || kind_ == HUNTER) && !alive) return;
     switch (kind_) {
       case PULSAR: map_mesh_.draw_tinted_at(0.7f, 0.5f, 1.0f, 1.0f, px, py, 0.0f); break;
       case COMET:  map_mesh_.draw_tinted_at(0.7f, 0.9f, 1.0f, 1.0f, px, py, 0.0f); break;
       case SEEKER: map_mesh_.draw_tinted_at(1.0f, 0.3f, 0.2f, 1.0f, px, py, 0.0f); break;
+      case HUNTER: map_mesh_.draw_tinted_at(1.0f, 0.1f, 0.05f, 1.0f, px, py, 0.0f); break;
     }
     return;
   }
@@ -419,12 +507,17 @@ void Hazard::draw(bool minimap) const {
     return;
   }
 
-  // SEEKER
+  // SEEKER / HUNTER (the hunter shares the drone draw: its own bigger
+  // crimson mesh, and a blink that quickens with damage taken — the
+  // health readout, like the tough asteroids' cracks).
   if (alive) {
     glLineWidth(2.5f);
     body_mesh_.draw_at(px, py, rotation);  // slow idle spin
     // Blinking core light.
-    float blink = 0.5f + 0.5f * sinf(timer_ * 0.012f);
+    float blink_rate = kind_ == HUNTER
+        ? 0.012f * (float)(1 + (HUNTER_HEALTH - health_))
+        : 0.012f;
+    float blink = 0.5f + 0.5f * sinf(timer_ * blink_rate);
     float m[16];
     mat4_identity(m);
     mat4_translate(m, m, px, py, 0.0f);

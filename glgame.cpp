@@ -1115,12 +1115,28 @@ void GLGame::add_hazards() {
   //   PULSAR from generation 9  (displayed level 10)
   //   COMET  from generation 11 (displayed level 12)
   //   SEEKER from generation 12 (displayed level 13)
+  //   HUNTER from generation 18 (displayed level 19) — the seeker's elite
   int num_pulsar = (generation >= 9)  ? (generation - 9)  / 3 + 1 : 0;
   int num_comet  = (generation >= 11) ? (generation - 11) / 2 + 1 : 0;
   int num_seeker = (generation >= 12) ? (generation - 12) / 2 + 1 : 0;
+  int num_hunter = (generation >= 18) ? (generation - 18) / 2 + 1 : 0;
   for(int i = 0; i < num_pulsar; i++) hazards->push_back(new Hazard(Hazard::PULSAR, world));
   for(int i = 0; i < num_comet;  i++) hazards->push_back(new Hazard(Hazard::COMET,  world));
   for(int i = 0; i < num_seeker; i++) hazards->push_back(new Hazard(Hazard::SEEKER, world));
+  for(int i = 0; i < num_hunter; i++) hazards->push_back(new Hazard(Hazard::HUNTER, world));
+}
+
+// Flat bounty a hazard pays on break-up — one table for the bullet, missile,
+// shock and lance kill sites (three hand-kept ternaries drifted apart the
+// moment a fourth kind arrived). No default: a new Kind is a -Wswitch nudge.
+static int hazard_bounty(Hazard::Kind k) {
+  switch (k) {
+    case Hazard::SEEKER: return Hazard::SEEKER_REWARD;
+    case Hazard::COMET:  return Hazard::COMET_REWARD;
+    case Hazard::PULSAR: return Hazard::PULSAR_REWARD;
+    case Hazard::HUNTER: return Hazard::HUNTER_REWARD;
+  }
+  return 0;
 }
 
 Hazard *GLGame::first_hazard(Hazard::Kind kind) const {
@@ -1203,6 +1219,8 @@ void GLGame::maybe_start_intro() {
       display.push_back(new Asteroid(false, false, false, true, false, true));
       display.push_back(new Asteroid(false, false, false, false, true, true));
       name = "TOUGH ELITES"; break;
+    case 18: if (first_hazard(Hazard::HUNTER)) { kind = Intro::HAZARD; name = "HUNTER";
+             hazard_kind = Hazard::HUNTER; } break;
     default: return;
   }
   if (name == NULL) return;
@@ -2495,8 +2513,7 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
             shed_comet_fragment(h);
           }
           if (!h->is_alive()) {
-            firer->score += (h->kind_of() == Hazard::COMET)
-                                ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+            firer->score += hazard_bounty(h->kind_of());
             if (station_explode_sound != NULL)
               Mix_PlayChannel(-1, station_explode_sound, 0);
           }
@@ -9648,6 +9665,50 @@ void GLGame::tick(int delta) {
             Mix_PlayChannel(-1, station_explode_sound, 0);
           break;
         }
+        case Hazard::HUNTER: {
+          // The seeker's elite: rams like a seeker (lethal unless invincible,
+          // destroying itself), but soaks HUNTER_HEALTH shots like a comet.
+          // Passes through asteroids like the seeker.
+          if(!h->is_alive()) break;
+          for(o = players->begin(); o != players->end(); o++) {
+            Ship* s = (*o)->ship;
+            if(s->is_alive() && h->Object::collide(*s)) {
+              s->explode(s->position, h->velocity);
+              s->kill_stop();
+              if(!s->is_alive()) s->detonate();
+              h->destroy();
+              break;
+            }
+          }
+          for(o = players->begin(); o != players->end() && h->is_alive(); o++) {
+            Ship* s = (*o)->ship;
+            for(size_t i = 0; i < s->bullets.size();) {
+              if(h->is_alive() && h->Object::collide(s->bullets[i])) {
+                s->explode(s->bullets[i].position, h->velocity);
+                s->bullets[i] = std::move(s->bullets.back());
+                s->bullets.pop_back();
+                h->hit();
+                if(h->is_alive()) play_hazard_hit_sound(Asteroid::thud_sound);
+                else              s->score += Hazard::HUNTER_REWARD;
+              } else { ++i; }
+            }
+            for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
+              if(h->Object::collide(s->missiles[i])) {
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
+                if(s->missile_explode_sound != NULL)
+                  Mix_PlayChannel(-1, s->missile_explode_sound, 0);
+                s->missiles[i] = std::move(s->missiles.back());
+                s->missiles.pop_back();
+                h->hit();
+                if(h->is_alive()) play_hazard_hit_sound(Asteroid::thud_sound);
+                else              s->score += Hazard::HUNTER_REWARD;
+              } else { ++i; }
+            }
+          }
+          if(!h->is_alive() && station_explode_sound != NULL)
+            Mix_PlayChannel(-1, station_explode_sound, 0);
+          break;
+        }
       }
     }
     // Reap seekers whose debris burst has faded.
@@ -9801,8 +9862,7 @@ void GLGame::tick(int delta) {
                                           : Asteroid::thud_sound);
                   bolt.stop();  // comet/pulsar survived — arc ends here
                 } else {
-                  s->score += (h->kind_of() == Hazard::COMET)
-                                ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+                  s->score += hazard_bounty(h->kind_of());
                   if(station_explode_sound != NULL)
                     Mix_PlayChannel(-1, station_explode_sound, 0);
                 }
@@ -9850,7 +9910,7 @@ void GLGame::tick(int delta) {
         bool t_dead = false;
         for (auto *h : *hazards) {
           if (!h->is_alive()) continue;
-          if (h->kind_of() != Hazard::COMET && h->kind_of() != Hazard::SEEKER)
+          if (h->kind_of() == Hazard::PULSAR)
             continue;  // a pulsar's body shoves, it doesn't kill
           if (h->Object::collide(t)) { t_dead = true; break; }
         }
@@ -11612,8 +11672,7 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
                                 ? Asteroid::explode_sound
                                 : Asteroid::thud_sound);
       } else {
-        firer->score += (h->kind_of() == Hazard::COMET)
-                          ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+        firer->score += hazard_bounty(h->kind_of());
         play_priority_chunk(station_explode_sound, world_volume(h->position));
       }
     }

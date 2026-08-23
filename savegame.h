@@ -231,7 +231,11 @@ struct GameState {
     // 21 = per-player DEPLOYED turret lists appended at the end (PROTO 27):
     // a 60 s sentry that survives its owner's death deserved to survive a
     // save too. Pre-v21 files just load with empty batteries.
-    static constexpr uint16_t VERSION = 21;
+    // v22: no field changes — Hazard::Kind grew HUNTER, and the bump keeps
+    // pre-hunter builds from loading a save whose hazard list carries the
+    // unknown kind value (older or newer files are ignored, per the rule
+    // below; the record itself is unchanged — `health` already rides).
+    static constexpr uint16_t VERSION = 22;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of
