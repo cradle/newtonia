@@ -208,7 +208,11 @@ namespace Net {
 //     TurretDrone::fields_sane — the bootstrap bytes are a peer's. The
 //     body copy exists so save/continue — and the online host's resume
 //     slot — bring a battery back.
-const uint8_t PROTO_VERSION = 27;
+// PROTO 28: Hazard::Kind grew HUNTER (savegame v22). No wire-shape change —
+// the hazard record already carries kind + health — but a pre-hunter build
+// receiving kind=3 would construct a garbage hazard, so the bump makes
+// mixed sessions refuse cleanly at the handshake instead.
+const uint8_t PROTO_VERSION = 28;
 
 // Peer identity (badge metadata) rides HELLO/WELCOME as an APPEND, not a
 // PROTO bump: `u8 platform (NetPlatform), u8 name_len, name_len bytes
