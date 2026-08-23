@@ -3,24 +3,18 @@
 #include "gl_compat.h"
 
 ShieldPickup::ShieldPickup(WrappedPoint pos) : Pickup(pos) {
-  // Three bubble arcs around a core dot — the force-shield ring.
+  // Point-down shield outline — the same glyph the touch OSD's weapon
+  // icons use (view/overlay.cpp draw_weapon_glyph), in the same cyan.
   float s = radius * 0.8f;
   MeshBuilder mb;
-  build_glow_icon(mb, 0.8f, 0.2f, 1.0f, [s](MeshBuilder& b, float k) {
+  build_glow_icon(mb, 0.4f, 0.9f, 1.0f, [s](MeshBuilder& b, float k) {
     float d = s * k;
-    for (int arc = 0; arc < 3; arc++) {
-      b.begin(GL_LINE_STRIP);
-      for (int i = 0; i <= 6; i++) {
-        float a = (arc * 120.0f + i * 80.0f / 6.0f) * (float)M_PI / 180.0f;
-        b.vertex(cosf(a) * 0.95f * d, sinf(a) * 0.95f * d);
-      }
-      b.end();
-    }
-    b.begin(GL_LINE_LOOP);   // core
-    for (int i = 0; i < 6; i++) {
-      float a = i * 2.0f * (float)M_PI / 6.0f;
-      b.vertex(cosf(a) * 0.16f * d, sinf(a) * 0.16f * d);
-    }
+    b.begin(GL_LINE_LOOP);
+    b.vertex(-0.8f * d,  0.8f * d);
+    b.vertex( 0.8f * d,  0.8f * d);
+    b.vertex( 0.8f * d, -0.1f * d);
+    b.vertex( 0.0f * d, -1.0f * d);
+    b.vertex(-0.8f * d, -0.1f * d);
     b.end();
   });
   glow_mesh.upload(mb);
