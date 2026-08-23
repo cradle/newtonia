@@ -2730,7 +2730,18 @@ void Ship::fire_bomb() {
   // so net clients draw the incoming shell the same way for free.
   shell.has_trail = true;
   bullets.push_back(shell);
-  WorldSound::play(shoot_sound, muzzle);
+  // The launch thump is this SHIP's gun sound, so it follows the enemy-gun
+  // idiom (sound_volume_scale: 0.5 visible / 0 off-screen, set per tick by
+  // GLGame) — NOT WorldSound, whose on-screen plateau kept a mortar firing
+  // from 900 units out at full volume, twice any other enemy shot (field,
+  // 2026-08-23). The DETONATION stays a WorldSound: it happens at a place,
+  // like the mine and missile blasts.
+  if (shoot_sound != NULL && sound_volume_scale > 0.0f) {
+    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+    Mix_PlayChannel(-1, shoot_sound, 0);
+  }
+  // Replay recorder: playback re-attenuates the pew against its own camera.
+  replay_pews.push_back(Point(position.x(), position.y()));
 }
 
 // Retirement or destruction: the drone blows apart into hull debris (drawn
