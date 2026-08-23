@@ -470,6 +470,12 @@ declare const Module: {
       { label: "",  key: " ", cls: "touch-btn touch-shoot" },
       { label: "",  key: "x", cls: "touch-btn touch-mine"  },
       { label: "",  key: "e", cls: "touch-btn touch-boost" },
+      // Pause: the top-right tap zone (web_main.cpp finger_down) existed
+      // with NO visual — the comment there called it "the visible
+      // top-right button" but nothing ever drew it on web (the native
+      // OSD's pause circle only draws where touch_osd_enabled()). The
+      // bars are CSS pseudo-elements; 'p' is the pause toggle.
+      { label: "",  key: "p", cls: "touch-btn touch-pause" },
     ];
 
     BUTTONS.forEach(({ label, key, cls }) => {
@@ -524,11 +530,13 @@ declare const Module: {
     // was ~0.57, so a near-miss to its left hit the pause zone instead
     // (Glenn, 2026-07-17). Keep these in sync with touch_to_key's zones.
     const circleButtons = [
-      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75 },
-      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75 },
+      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75, d: 1.0 },
+      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75, d: 1.0 },
       // Boost: above and between the pair (the thumb triangle), matching
       // the native OSD layout in touch_controls.cpp.
-      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.58 },
+      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.58, d: 0.85 },
+      // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25).
+      { el: container.querySelector<HTMLElement>(".touch-pause")!, cx: 0.875, cy: 0.12, d: 0.62 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
 
@@ -552,9 +560,9 @@ declare const Module: {
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
       const diam = Math.min(r.width, r.height) * 0.19;
-      for (const { el, cx, cy } of circleButtons) {
-        el.style.width  = `${diam}px`;
-        el.style.height = `${diam}px`;
+      for (const { el, cx, cy, d } of circleButtons) {
+        el.style.width  = `${diam * d}px`;
+        el.style.height = `${diam * d}px`;
         el.style.left   = `${r.left + r.width * cx}px`;
         el.style.top    = `${r.top + r.height * cy}px`;
       }
