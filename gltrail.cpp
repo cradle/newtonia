@@ -32,7 +32,11 @@ void GLTrail::draw() {
   MeshBuilder mb;
   mb.begin(GL_TRIANGLES);
   for (const TrailPoint& p : trail) {
-    float a = p.aliveness();
+    // Alpha-hold (the hazard-ember trick): full brightness for the first
+    // ~40% of a puff's life, then fade — a straight linear fade left the
+    // whole trail dim against the starfield.
+    float al = p.aliveness();
+    float a = al > 0.6f ? 1.0f : al / 0.6f;
     float r = 2.2f * (0.5f + 0.5f * a);
     mb.color(cr, cg, cb, a);
     mb.vertex(p.x - r, p.y); mb.vertex(p.x, p.y + r); mb.vertex(p.x + r, p.y);
