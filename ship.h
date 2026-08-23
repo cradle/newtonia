@@ -491,7 +491,13 @@ class Ship : public CompositeObject {
     // 0) are killed HERE instantly (per-enemy ids make the claim exact
     // and the suppression map stops restores resurrecting them); the
     // stations just thud. targets carries only ALIVE candidates.
-    struct NetShipTarget { Object *obj; uint8_t kind; uint32_t id; };
+    // arc_cov_deg > 0 marks the gen-19 armoured station's shield arc
+    // (centred on arc_center_deg): a bullet landing on it bounces
+    // locally — ting, white ricochet, no consume, no claim — matching
+    // the host's own deflection, which then snaps our copy via
+    // MSG_BOUNCE. Pass 0 for everything unarmoured.
+    struct NetShipTarget { Object *obj; uint8_t kind; uint32_t id;
+                           float arc_center_deg; float arc_cov_deg; };
     struct NetShipHit { uint8_t kind; uint32_t bullet_id; uint32_t target_id;
                         float x, y; };
     static std::vector<NetShipHit> net_ship_hit_claims;  // client outbox

@@ -100,6 +100,70 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
     mb.end();
     map_body_mesh.upload(mb);
   }
+
+  if (armoured()) {
+    // Gen-19+ shield arc: a bright band just outside the ring in the
+    // armoured-asteroid indicator cyan, spanning arc_coverage_deg centred
+    // on local angle 0 — draw_at(outer_rotation) then puts the arc centre
+    // at world bearing outer_rotation, the exact span deflects() tests.
+    // Radial end caps mark the gap edges so the weak window reads at a
+    // glance.
+    MeshBuilder mb;
+    const float half = arc_coverage_deg() / 2.0f;
+    const float arc_r = radius * 1.12f;
+    mb.begin(GL_LINES);
+    mb.color(0.3f, 0.9f, 1.0f, 0.9f);
+    const int segs = 48;
+    for (int i = 0; i < segs; i++) {
+      float a0 = (-half + arc_coverage_deg() * i / segs) * (float)M_PI / 180.0f;
+      float a1 = (-half + arc_coverage_deg() * (i + 1) / segs) * (float)M_PI / 180.0f;
+      mb.vertex(arc_r * cosf(a0), arc_r * sinf(a0));
+      mb.vertex(arc_r * cosf(a1), arc_r * sinf(a1));
+    }
+    for (int e = -1; e <= 1; e += 2) {
+      float a = e * half * (float)M_PI / 180.0f;
+      mb.vertex(radius * 1.03f * cosf(a), radius * 1.03f * sinf(a));
+      mb.vertex(radius * 1.19f * cosf(a), radius * 1.19f * sinf(a));
+    }
+    mb.end();
+    arc_mesh.upload(mb);
+  }
+}
+
+const int GLStation::REWARD = 2500;
+
+bool GLStation::armoured() const {
+  return generation >= 19;
+}
+
+float GLStation::arc_coverage_deg() const {
+  // 240 at gen 19, +8 per generation after, capped so the gap the plain
+  // gun needs never shrinks below 60 degrees.
+  float cov = 240.0f + 8.0f * (generation - 19);
+  return cov < 300.0f ? cov : 300.0f;
+}
+
+float GLStation::arc_center_deg() const {
+  return outer_rotation;
+}
+
+int GLStation::bounty() const {
+  return armoured() ? REWARD : 0;
+}
+
+bool GLStation::deflects(const WrappedPoint &impact) const {
+  if (!armoured() || !alive) return false;
+  // Bearing of the impact point from the station centre (wrap-aware:
+  // measure against the station copy nearest the impact), against the
+  // arc span centred on outer_rotation — the drawn arc's own convention.
+  Point c = position.closest_to(impact);
+  float ix = impact.x() - c.x(), iy = impact.y() - c.y();
+  if (ix * ix + iy * iy < 1e-8f) return true;  // dead centre: call it shielded
+  float bearing = atan2f(iy, ix) * 180.0f / (float)M_PI;
+  float diff = fmodf(bearing - arc_center_deg(), 360.0f);
+  if (diff > 180.0f) diff -= 360.0f;
+  if (diff < -180.0f) diff += 360.0f;
+  return fabsf(diff) <= arc_coverage_deg() / 2.0f;
 }
 
 GLStation::~GLStation() {
@@ -181,6 +245,13 @@ void GLStation::draw(bool minimap) const {
     mat4_rotate_z(inner_model, inner_model, inner_rotation);
     mat4_scale(inner_model, inner_model, 0.8f, 0.8f, 1.0f);
     body_mesh.draw_with_model(inner_model);
+    if (armoured()) {
+      // The shield arc rides the outer ring's rotation — the same value
+      // deflects() tests, so the picture and the physics can't disagree.
+      glLineWidth(4.0f);
+      arc_mesh.draw_at(px, py, outer_rotation);
+      glLineWidth(2.5f);
+    }
   }
 
   if (!minimap && !debris.empty()) {
