@@ -307,6 +307,10 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
     int v = atoi(SDL_getenv("NEWTONIA_ALL_WEAPONS"));
     if(v > 1) all_weapons_ammo = v;
   }
+  // NEWTONIA_GOD: debug cheat — permanent invincibility (see glgame.h).
+  // Suppresses achievements for the game like the other cheat paths.
+  god_cheat = (SDL_getenv("NEWTONIA_GOD") != NULL);
+  if(god_cheat) Achievements::note_cheat_used();
   if(controller != NULL) {
     object->set_controller(controller);
   }
@@ -424,6 +428,33 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
     enemies->push_back(b);
     ship_objects->push_back(b->ship);
     Achievements::note_cheat_used();
+  }
+
+  // Dev/testing (beta builds only): NEWTONIA_TEST_STATION=N spawns a station
+  // built for generation N near the player at game start — N=1 (or bare)
+  // means 19, the armoured one, so the shield arc is testable without
+  // climbing 20 levels; 14..18 gives the plain station. Skipped when a
+  // station already exists (NEWTONIA_START_GENERATION >= 14 built the real
+  // one). Level-scoped like everything the rollover rebuilds: clearing the
+  // opening level sweeps it. Marked as a cheat like the other hooks.
+  {
+    const char *ts = SDL_getenv("NEWTONIA_TEST_STATION");
+    if (ts != NULL && is_beta_feature_enabled() && station == NULL &&
+        !players->empty()) {
+      int g = atoi(ts);
+      if (g <= 1) g = 19;
+      station = new GLStation(grid, enemies, players,
+                              (std::list<Object *> *)objects,
+                              hostile_aim_lead(g), g);
+      GLShip *p1 = players->front();
+      station->position = WrappedPoint(p1->ship->position.x() + 900.0f,
+                                       p1->ship->position.y());
+      // Parked, unlike the real one: a drifting test station wrapped the
+      // small gen-0 world into the (likely idle, likely NEWTONIA_GOD)
+      // player and ground itself to death on ram damage in ~20 s.
+      station->velocity = Point(0.0f, 0.0f);
+      Achievements::note_cheat_used();
+    }
   }
 
   update_presence();
@@ -763,6 +794,9 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     int v = atoi(SDL_getenv("NEWTONIA_ALL_WEAPONS"));
     if(v > 1) all_weapons_ammo = v;
   }
+  // NEWTONIA_GOD: debug cheat — permanent invincibility (see glgame.h).
+  god_cheat = (SDL_getenv("NEWTONIA_GOD") != NULL);
+  if(god_cheat) Achievements::note_cheat_used();
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -9224,6 +9258,18 @@ void GLGame::tick(int delta) {
         Ship* s = (*o)->ship;
         if(s->is_alive() && s->primary_weapons.size() <= 1 && s->secondary_weapons.empty())
           s->give_all_weapons(all_weapons_ammo);
+      }
+    }
+
+    // NEWTONIA_GOD: keep every player's invincibility topped up — the plain
+    // spawn-protection timer, so the flicker/ring visuals communicate the
+    // state and a respawn can't strip it. The black hole's horizon still
+    // kills through it, deliberately.
+    if(god_cheat) {
+      for(o = players->begin(); o != players->end(); o++) {
+        Ship* s = (*o)->ship;
+        if(s->is_alive() && s->time_left_invincible < 3600000)
+          s->time_left_invincible = 3600000;
       }
     }
 
