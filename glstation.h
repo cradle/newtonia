@@ -26,6 +26,31 @@ public:
   void hit();
   void destroy();
 
+  // Gen-19+ hardening (the ARMOURED STATION, level 20): a bright shield
+  // arc rotating with the outer ring deflects incoming fire — the
+  // armoured-asteroid vocabulary at boss scale, taught at gen 7 and
+  // reinforced by the gen-16 elites. The gap is the weak window, so the
+  // plain gun still kills it (locked late-game design rule); health is
+  // unchanged — the difficulty is timing and positioning, not sponge.
+  // Everything derives from state that already exists: presence from
+  // `generation` (the station is rebuilt every rollover, and both the
+  // save ctor and the net-client replica pass it), the arc angle from
+  // `outer_rotation` (stepped, saved and replicated since v1) — so no
+  // savegame or PROTO change.
+  bool armoured() const;             // generation >= 19
+  float arc_coverage_deg() const;    // 240 at gen 19, widening; gap never < 60
+  float arc_center_deg() const;      // = outer_rotation (draw_at degrees)
+  // Whether an impact at this point lands on the shield arc. The test is
+  // pure bearing-from-centre vs the arc span — the same convention the
+  // arc mesh is drawn with (local angle 0 = +x, rotated by draw_at), so
+  // the deflection can never disagree with the picture.
+  bool deflects(const WrappedPoint &impact) const;
+  // Destroying an ARMOURED station pays a bounty (plain gen-14..18
+  // stations stay achievement-only); awarded by GLGame at each kill site,
+  // hazard_bounty-style.
+  int bounty() const;                // REWARD when armoured, else 0
+  static const int REWARD;
+
   Save::Station capture_state() const;
   void restore_state(const Save::Station &s, const Grid &grid);
 
@@ -33,6 +58,7 @@ public:
 
 private:
   Mesh body_mesh, map_body_mesh;
+  Mesh arc_mesh;  // gen-19+ shield arc (built in the ctor when armoured)
   static const int NUM_SEGMENTS = 30;
   float inner_rotation, outer_rotation, outer_rotation_speed, inner_rotation_speed;
 
@@ -59,9 +85,9 @@ private:
   // up) so the standard line always outnumbers-or-matches the vanguard.
   int wave_interceptors() const;
   // How many of this wave's ships deploy as bombers: none before gen 17,
-  // then 1 + (generation - 17), capped so at least one standard ship
-  // always sits between the interceptor vanguard and the bomber rear line
-  // (which keeps small opening waves bomber-free).
+  // then 1 + (generation - 17), capped only by what the interceptor
+  // vanguard leaves — in a small opening push the bomber replaces the
+  // standard line entirely, so the intro's promise shows up by wave 2.
   int wave_bombers() const;
 };
 

@@ -1241,6 +1241,7 @@ void GLGame::maybe_start_intro() {
     case 17: if (station != NULL)       { kind = Intro::BOMBER;       name = "BOMBER"; }        break;
     case 18: if (first_hazard(Hazard::HUNTER)) { kind = Intro::HAZARD; name = "HUNTER";
              hazard_kind = Hazard::HUNTER; } break;
+    case 19: if (station != NULL)       { kind = Intro::STATION; name = "ARMOURED STATION"; } break;
     default: return;
   }
   if (name == NULL) return;
@@ -2501,9 +2502,18 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
       net_resolve_polyline_block(pts);
       if (station != NULL && station->is_alive() &&
           shock_bolt_reaches(pts, station->position, station->radius)) {
-        station->hit();
-        if (!station->is_alive() && firer->is_local_player)
-          Achievements::unlock("station_destroyed");
+        // Gen-19 shield arc: the polyline's endpoint is where the
+        // client's bolt stopped against the hull — absorbed on the arc,
+        // damage only through the gap (same tip test as the host's own
+        // bolts).
+        if (!station->deflects(WrappedPoint(pts.back().x(), pts.back().y()))) {
+          station->hit();
+          if (!station->is_alive()) {
+            firer->score += station->bounty();
+            if (firer->is_local_player)
+              Achievements::unlock("station_destroyed");
+          }
+        }
       }
       if (mini_station != NULL && mini_station->is_alive() &&
           shock_bolt_reaches(pts, mini_station->position, mini_station->radius)) {
@@ -2623,11 +2633,25 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
                   target_id);
         }
       } else if (kind == 1 && station != NULL && station->is_alive()) {
-        // Host-local hull-thud only — the claiming client already played
-        // its own cue at consume (relaying EV_ROID_THUD would double it).
-        WorldSound::play(Asteroid::thud_sound, station->position);
-        station->hit();
-        NET_LOG("net: ship hit claim honored (station)\n");
+        // Gen-19 shield arc: the claim carries the impact point, so the
+        // host runs the same deflection test its own bullets get. An
+        // honest client bounced instead of claiming — a claim landing on
+        // the arc is snapshot skew, and it earns no damage.
+        if (station->deflects(hit_pos)) {
+          NET_LOG("net: ship hit claim deflected (station arc)\n");
+        } else {
+          // Host-local hull-thud only — the claiming client already played
+          // its own cue at consume (relaying EV_ROID_THUD would double it).
+          WorldSound::play(Asteroid::thud_sound, station->position);
+          station->hit();
+          if (!station->is_alive()) {
+            remote->score += station->bounty();
+            if (NetPeer *pr = net_peer_for_ship(remote))
+              net_send_event_to(*pr, Net::EV_ACHIEVEMENT,
+                                Net::ACH_STATION_DESTROYED);
+          }
+          NET_LOG("net: ship hit claim honored (station)\n");
+        }
       } else if (kind == 2 && mini_station != NULL &&
                  mini_station->is_alive()) {
         remote->score += GLMiniStation::REWARD;
@@ -6537,11 +6561,19 @@ void GLGame::tick_net_client(int delta) {
       for (auto *ge : *enemies)
         if (ge->ship->is_alive())
           ship_targets.push_back(
-              {(Object *)ge->ship, (uint8_t)0, ge->ship->net_ship_id});
+              {(Object *)ge->ship, (uint8_t)0, ge->ship->net_ship_id,
+               0.0f, 0.0f});
       if (station != NULL && station->is_alive())
-        ship_targets.push_back({(Object *)station, (uint8_t)1, 0u});
+        // The replica's arc state: generation rode the construction and
+        // outer_rotation the restores, so the client's deflection matches
+        // the host's up to snapshot skew (MSG_BOUNCE reconciles).
+        ship_targets.push_back({(Object *)station, (uint8_t)1, 0u,
+                                station->arc_center_deg(),
+                                station->armoured() ? station->arc_coverage_deg()
+                                                    : 0.0f});
       if (mini_station != NULL && mini_station->is_alive())
-        ship_targets.push_back({(Object *)mini_station, (uint8_t)2, 0u});
+        ship_targets.push_back({(Object *)mini_station, (uint8_t)2, 0u,
+                                0.0f, 0.0f});
       players->back()->ship->net_cosmetic_ship_impacts(ship_targets);
 
       // PROTO 20: the local lance vs enemy replicas — the same instant
@@ -9521,24 +9553,30 @@ void GLGame::tick(int delta) {
         // Body collision: mirrors invincible-asteroid behaviour — impact
         // particles and velocity stop always; death particles only if killed.
         if (s->is_alive() && station->Object::collide(*s)) {
+          // A ram damages through the arc — you paid a life for it.
           station->hit();
           s->explode(s->position, station->velocity);
           s->kill_stop();
           if (!s->is_alive())
             s->detonate();
+          if (!station->is_alive())
+            s->score += station->bounty();
         }
         // Missile collision: consume missile, deal 1 damage, scatter debris
         // (debris bullets are then picked up by the bullet loop below)
         if (!station->is_alive()) break;
         for (size_t i = 0; i < s->missiles.size(); ) {
           if (station->Object::collide(s->missiles[i])) {
-            station->hit();
+            // Gen-19 shield arc: the missile still detonates against it —
+            // shrapnel, sound, consumed — but the hull takes nothing.
+            if (!station->deflects(s->missiles[i].position))
+              station->hit();
             s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
             if (s->missile_explode_sound != NULL)
               Mix_PlayChannel(-1, s->missile_explode_sound, 0);
             s->missiles[i] = std::move(s->missiles.back());
             s->missiles.pop_back();
-            if (!station->is_alive()) break;
+            if (!station->is_alive()) { s->score += station->bounty(); break; }
           } else {
             ++i;
           }
@@ -9547,6 +9585,44 @@ void GLGame::tick(int delta) {
         if (!station->is_alive()) break;
         for (size_t i = 0; i < s->bullets.size(); ) {
           if (station->Object::collide(s->bullets[i])) {
+            if (station->deflects(s->bullets[i].position)) {
+              // Gen-19 shield arc: bounce the bullet with the armoured-
+              // asteroid treatment — reflect off the radial normal, white
+              // ricochet recolour, ting — and no damage. Remote bullets'
+              // clones snap the owner's copy via the bounce report, the
+              // same path armoured-asteroid bounces use.
+              Point bpos = s->bullets[i].position;
+              Point normal = Point(bpos.x() - station->position.x(),
+                                   bpos.y() - station->position.y()).normalized();
+              Point rel_vel = s->bullets[i].velocity - station->velocity;
+              float rdot = normal.x() * rel_vel.x() + normal.y() * rel_vel.y();
+              s->bullets[i].velocity =
+                  station->velocity + (rel_vel - normal * (2.0f * rdot));
+              float push = rel_vel.magnitude() * 16.0f + 2.0f;
+              s->bullets[i].position = WrappedPoint(bpos.x() + normal.x() * push,
+                                                    bpos.y() + normal.y() * push);
+              // world_bullet (bit3) via the public flags accessor —
+              // Particle's fields are friend-only.
+              s->bullets[i].set_net_flags(s->bullets[i].net_flags() | 8);
+              if (Asteroid::ting_sound != NULL) {
+                static Uint32 last_arc_ting = UINT32_MAX;
+                Uint32 now = SDL_GetTicks();
+                if (now - last_arc_ting >= 125) {
+                  last_arc_ting = now;
+                  WorldSound::play(Asteroid::ting_sound, bpos);
+                  net_send_event(Net::EV_ROID_TING,
+                                 Net::pack_pos(bpos.x(), bpos.y(),
+                                               world.x(), world.y()));
+                }
+              }
+              if (Ship::net_report_bounces && s->bullets[i].net_id != 0)
+                Ship::net_bounce_reports.push_back({s->bullets[i].net_id,
+                    s->bullets[i].position.x(), s->bullets[i].position.y(),
+                    s->bullets[i].velocity.x(), s->bullets[i].velocity.y(),
+                    s->bullets[i].net_flags()});
+              ++i;
+              continue;
+            }
             // Reflect debris off the station surface normal
             Point bpos = s->bullets[i].position;
             Point bvel = s->bullets[i].velocity;
@@ -9575,6 +9651,7 @@ void GLGame::tick(int delta) {
             s->bullets[i] = std::move(s->bullets.back());
             s->bullets.pop_back();
             if (!station->is_alive()) {
+              s->score += station->bounty();
               if (s->is_local_player) Achievements::unlock("station_destroyed");
               else if (NetPeer *pr = net_peer_for_ship(s))
                 net_send_event_to(*pr, Net::EV_ACHIEVEMENT,
@@ -9908,8 +9985,17 @@ void GLGame::tick(int delta) {
             if(station_explode_sound != NULL)
               Mix_PlayChannel(-1, station_explode_sound, 0);
           } else if(station != NULL && obj == station && station->is_alive()) {
+            // Gen-19 shield arc: the bolt's tip is where the lightning
+            // met the hull — on the arc it is absorbed (spark, no
+            // damage) exactly like any other survivor.
+            if(station->deflects(WrappedPoint(bolt.points.back().x(),
+                                              bolt.points.back().y()))) {
+              bolt.stop();
+              continue;
+            }
             station->hit();
             if(!station->is_alive()) {
+              s->score += station->bounty();
               if(s->is_local_player)
                 Achievements::unlock("station_destroyed");
             } else {
@@ -11778,15 +11864,19 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
 
   // Station: the hull takes a chunk of damage (it survives the pulse
   // visually — a ring is plausible to lance through). Same thud cue and
-  // net relay as a hull bullet deflection.
+  // net relay as a hull bullet deflection. The gen-19 shield arc absorbs
+  // the pulse at the contact point — splash and thud, no damage.
   if (station != NULL && station->is_alive() &&
       first_hit(station, 0, &where)) {
     // Debris splash at the initial hull contact, like the bullet path's
     // deflection spray.
     firer->explode(where, station->velocity);
-    for (int i = 0; i < LANCE_STATION_DAMAGE && station->is_alive(); i++)
-      station->hit();
+    if (!station->deflects(WrappedPoint(where.x(), where.y()))) {
+      for (int i = 0; i < LANCE_STATION_DAMAGE && station->is_alive(); i++)
+        station->hit();
+    }
     if (!station->is_alive()) {
+      firer->score += station->bounty();
       if (firer->is_local_player) Achievements::unlock("station_destroyed");
       else if (NetPeer *pr = net_peer_for_ship(firer))
         net_send_event_to(*pr, Net::EV_ACHIEVEMENT,

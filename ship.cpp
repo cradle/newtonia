@@ -2334,6 +2334,43 @@ void Ship::net_cosmetic_ship_impacts(
     for (size_t t = 0; t < targets.size(); t++) {
       Object *o = targets[t].obj;
       if (!b.collide(*o)) continue;
+      if (targets[t].arc_cov_deg > 0.0f) {
+        // Armoured-station shield arc (gen 19+): test the impact bearing
+        // against the arc span, the same geometry the host's
+        // GLStation::deflects runs. On the arc: bounce the bullet off the
+        // radial normal with the armoured-asteroid treatment (white
+        // ricochet, ting) and neither consume nor claim — the host
+        // deflects its clone too and snaps ours via MSG_BOUNCE. In the
+        // gap: fall through to the normal consume + claim.
+        Point c = o->position.closest_to(b.position);
+        float ix = b.position.x() - c.x(), iy = b.position.y() - c.y();
+        float im = sqrtf(ix * ix + iy * iy);
+        if (im > 1e-4f) {
+          float bearing = atan2f(iy, ix) * 180.0f / (float)M_PI;
+          float diff = fmodf(bearing - targets[t].arc_center_deg, 360.0f);
+          if (diff > 180.0f) diff -= 360.0f;
+          if (diff < -180.0f) diff += 360.0f;
+          if (fabsf(diff) <= targets[t].arc_cov_deg / 2.0f) {
+            Point normal(ix / im, iy / im);
+            Point rel_vel = b.velocity - o->velocity;
+            float dot = normal.x() * rel_vel.x() + normal.y() * rel_vel.y();
+            b.velocity = o->velocity + (rel_vel - normal * (2.0f * dot));
+            float push = rel_vel.magnitude() * 16.0f + 2.0f;
+            b.position = WrappedPoint(b.position.x() + normal.x() * push,
+                                      b.position.y() + normal.y() * push);
+            b.world_bullet = true;
+            if (Asteroid::ting_sound != NULL) {
+              static Uint32 last_arc_ting = UINT32_MAX;
+              Uint32 now = SDL_GetTicks();
+              if (now - last_arc_ting >= 125) {
+                last_arc_ting = now;
+                WorldSound::play(Asteroid::ting_sound, b.position);
+              }
+            }
+            break;
+          }
+        }
+      }
       // Visible contact: stop the bullet here with the impact effects.
       b.net_sparked = true;
       b.time_left = 0.0f;
