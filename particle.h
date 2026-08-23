@@ -21,6 +21,15 @@ public:
   // 0 = not a reported shot (debris, host-native bullets).
   uint32_t net_id = 0;
 
+  // Bomber mortar shell (Ship::fire_bomb): GLGame's fuse pass detonates it
+  // into a flak ring at the end of its flight, or when a living player
+  // strays inside the proximity radius. The FUSE is host-only (clients
+  // never run that pass; fragments arrive as ordinary replicated bullets),
+  // but the flag rides the wire flag byte (bit4, PROTO 29) purely so a
+  // client draws the shell with the same diamond glyph. Not saved —
+  // in-flight shells die with a save/load like every other bullet.
+  bool is_bomb = false;
+
   // Net client, locally-deployed mine / giga mine the host has not echoed
   // back yet — see Ship::NET_DEPLOY_GRACE. Counts down one per snapshot
   // apply; while it is nonzero the snapshot rebuild holds this mine
@@ -30,18 +39,21 @@ public:
 
   // PROTO 18/19 wire flags (snapshot per-bullet byte): bit0 kills_invincible,
   // bit1 has_trail, bit2 piercing, bit3 world_bullet (P19: ricochets off
-  // reflective/armoured surfaces recolour white on the client too) — the
+  // reflective/armoured surfaces recolour white on the client too), bit4
+  // is_bomb (P29: the mortar-shell diamond draws on the client too) — the
   // free nx_* serializers are not friends, so the presentation-critical
   // flags cross the wire via these.
   uint8_t net_flags() const {
     return (uint8_t)((kills_invincible ? 1 : 0) | (has_trail ? 2 : 0) |
-                     (piercing ? 4 : 0) | (world_bullet ? 8 : 0));
+                     (piercing ? 4 : 0) | (world_bullet ? 8 : 0) |
+                     (is_bomb ? 16 : 0));
   }
   void set_net_flags(uint8_t f) {
     kills_invincible = (f & 1) != 0;
     has_trail = (f & 2) != 0;
     piercing = (f & 4) != 0;
     world_bullet = (f & 8) != 0;
+    is_bomb = (f & 16) != 0;
   }
 
   //TODO: Fix encapsulation, GLShip -> ParticleDrawer etc.

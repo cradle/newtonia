@@ -2708,6 +2708,42 @@ void Ship::fire_turret_bullet(TurretDrone &t) {
   net_report_last_bullet();
 }
 
+// Shell kinematics: 600 units of flight at 0.25 u/ms — slow enough to see
+// coming and weave past, per the locked late-game design rule. The flak
+// fragments reach another ~420 units in a ring of 8 with plain-thrust-sized
+// gaps between them.
+const float Ship::BOMB_SPEED       = 0.25f;
+const float Ship::BOMB_TTL_MS      = 2400.0f;   // 600 units
+const float Ship::BOMB_PROX_RADIUS = 90.0f;
+const int   Ship::BOMB_FRAGMENTS   = 8;
+const float Ship::BOMB_FRAG_SPEED  = 0.3f;
+const float Ship::BOMB_FRAG_TTL_MS = 1400.0f;   // ~420 units
+
+void Ship::fire_bomb() {
+  // Host-side only by construction: the Follower (the sole caller) never
+  // runs on net clients, so no is_local_player/net_remote_gun gate — this
+  // is a hostile's weapon, not a pilot's.
+  WrappedPoint muzzle(position + facing * radius);
+  Particle shell(muzzle, facing * BOMB_SPEED + velocity * 0.99f, BOMB_TTL_MS);
+  shell.is_bomb = true;
+  // The trail is the telegraph — and it rides the per-bullet wire flags,
+  // so net clients draw the incoming shell the same way for free.
+  shell.has_trail = true;
+  bullets.push_back(shell);
+  // The launch thump is this SHIP's gun sound, so it follows the enemy-gun
+  // idiom (sound_volume_scale: 0.5 visible / 0 off-screen, set per tick by
+  // GLGame) — NOT WorldSound, whose on-screen plateau kept a mortar firing
+  // from 900 units out at full volume, twice any other enemy shot (field,
+  // 2026-08-23). The DETONATION stays a WorldSound: it happens at a place,
+  // like the mine and missile blasts.
+  if (shoot_sound != NULL && sound_volume_scale > 0.0f) {
+    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+    Mix_PlayChannel(-1, shoot_sound, 0);
+  }
+  // Replay recorder: playback re-attenuates the pew against its own camera.
+  replay_pews.push_back(Point(position.x(), position.y()));
+}
+
 // Retirement or destruction: the drone blows apart into hull debris (drawn
 // in the owner's colour by draw_debris) with a compact bang. No damaging
 // blast — a sentry is not a mine.

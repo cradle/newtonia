@@ -23,6 +23,7 @@
 #include "net_signal.h"
 #include "net_transport.h"
 #include "glcar.h"
+#include "glenemy.h"
 #include "glstarfield.h"
 #include "wrapped_point.h"
 #include "intro.h"
@@ -406,6 +407,24 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
 
   // Mid-game hazards accumulated by this generation (none at generation 0).
   add_hazards();
+
+  // Dev/testing (beta builds only): NEWTONIA_TEST_BOMBER=1 spawns a lone
+  // bomber wave ship near the player, so the mortar/flak behaviour is
+  // testable without climbing to generation 17 (the same pattern as
+  // NEWTONIA_START_GENERATION above, and marked as a cheat like it — the
+  // ship is a free bounty).
+  if (SDL_getenv("NEWTONIA_TEST_BOMBER") != NULL && is_beta_feature_enabled() &&
+      !players->empty()) {
+    GLShip *p1 = players->front();
+    GLEnemy *b = new GLEnemy(grid, p1->ship->position.x() + 600.0f,
+                             p1->ship->position.y(), players, 1,
+                             (std::list<Object *> *)objects, 0.0f,
+                             GLEnemy::BOMBER);
+    b->ship->alive = true;  // a bare Ship starts dead awaiting respawn
+    enemies->push_back(b);
+    ship_objects->push_back(b->ship);
+    Achievements::note_cheat_used();
+  }
 
   update_presence();
 
@@ -1219,6 +1238,7 @@ void GLGame::maybe_start_intro() {
       display.push_back(new Asteroid(false, false, false, true, false, true));
       display.push_back(new Asteroid(false, false, false, false, true, true));
       name = "TOUGH ELITES"; break;
+    case 17: if (station != NULL)       { kind = Intro::BOMBER;       name = "BOMBER"; }        break;
     case 18: if (first_hazard(Hazard::HUNTER)) { kind = Intro::HAZARD; name = "HUNTER";
              hazard_kind = Hazard::HUNTER; } break;
     default: return;
@@ -4255,7 +4275,14 @@ void nx_write_enemy_bullets(Save::Stream &out, const std::list<GLShip *> *enemie
   for (auto *e : *enemies) {
     nx_write(out, e->ship->net_ship_id);
     nx_write(out, (uint16_t)e->ship->bullets.size());
-    for (const Particle &b : e->ship->bullets) nx_write_projectile(out, b);
+    for (const Particle &b : e->ship->bullets) {
+      nx_write_projectile(out, b);
+      // v23: the per-bullet wire flag byte, so a client replica draws the
+      // bomber's mortar shell (is_bomb diamond + has_trail smoke) like the
+      // host does. Reader gates on the stream's save version — pre-v23
+      // replays carry no byte here.
+      nx_write(out, b.net_flags());
+    }
   }
 }
 
@@ -8172,9 +8199,15 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
       if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) ||
           !nx_read(in, vy))
         return false;
-      ebs.push_back(Particle(
-          Point(x + vx * net_lead_ms(), y + vy * net_lead_ms()),
-          Point(vx, vy), 2000.0f));
+      // v23: per-bullet wire flags (the bomber's mortar-shell diamond +
+      // smoke trail). Absent from pre-v23 streams — v22 hunter replays
+      // predate the byte.
+      uint8_t bf = 0;
+      if (ver >= 23 && !nx_read(in, bf)) return false;
+      Particle eb(Point(x + vx * net_lead_ms(), y + vy * net_lead_ms()),
+                  Point(vx, vy), 2000.0f);
+      eb.set_net_flags(bf);
+      ebs.push_back(eb);
     }
     if (apply && ei != enemies->end()) {
       // One-shot field check that real ids are riding the wire — an
@@ -9268,6 +9301,50 @@ void GLGame::tick(int delta) {
       // Re-level the thruster hum after the step: thrust() inside it fires
       // only on a control change, and the distance in the scale has moved.
       s->update_boost_volume();
+    }
+
+    // Bomber mortar fuse pass (host-side by construction — net clients never
+    // run this loop, and fragments reach them as ordinary replicated enemy
+    // bullets). A shell (Particle::is_bomb, minted by Ship::fire_bomb)
+    // detonates into a ring of BOMB_FRAGMENTS plain bullets when its flight
+    // runs out (aliveness() would hit zero next step — Ship::step erases
+    // dead bullets, so the check must fire one step early) OR a living
+    // player strays inside BOMB_PROX_RADIUS after a short arming delay (an
+    // unarmed proximity fuse burst at the muzzle whenever a player charged
+    // the bomber point-blank). Fragments are ordinary bullets — collision,
+    // lethality, snapshot replication and replay all apply unchanged.
+    for(o = enemies->begin(); o != enemies->end(); o++) {
+      Ship* s = (*o)->ship;
+      std::vector<WrappedPoint> bursts;
+      for(auto bi = s->bullets.begin(); bi != s->bullets.end();) {
+        bool boom = false;
+        if(bi->is_bomb) {
+          float age_ms = (1.0f - bi->aliveness()) * Ship::BOMB_TTL_MS;
+          if(bi->aliveness() * Ship::BOMB_TTL_MS <= (float)step_size)
+            boom = true;  // fixed-distance fuse: end of flight
+          else if(age_ms >= 300.0f)
+            for(auto pi = players->begin(); pi != players->end(); pi++)
+              if((*pi)->ship->is_alive() &&
+                 bi->position.distance_to((*pi)->ship->position) <=
+                     Ship::BOMB_PROX_RADIUS) {
+                boom = true;  // proximity fuse
+                break;
+              }
+        }
+        if(boom) { bursts.push_back(bi->position); bi = s->bullets.erase(bi); }
+        else ++bi;
+      }
+      for(const auto &at : bursts) {
+        // Random ring phase so the gaps never sit on the same bearings twice.
+        float phase = (float)(rand() % 1000) / 1000.0f * 2.0f * (float)M_PI;
+        for(int f = 0; f < Ship::BOMB_FRAGMENTS; f++) {
+          float a = phase + 2.0f * (float)M_PI * f / Ship::BOMB_FRAGMENTS;
+          s->bullets.push_back(Particle(
+              at, Point(cosf(a), sinf(a)) * Ship::BOMB_FRAG_SPEED,
+              Ship::BOMB_FRAG_TTL_MS));
+        }
+        WorldSound::play(Asteroid::explode_sound, at);
+      }
     }
 
     /* UPDATE COLLISION MAP */

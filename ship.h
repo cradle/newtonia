@@ -319,6 +319,20 @@ class Ship : public CompositeObject {
     // gun's — see fire_bullet_from_gun) and the debris burst both live on
     // Ship because the drone can't reach bullets/debris itself.
     void fire_turret_bullet(TurretDrone &t);
+
+    // Bomber wave ship (Follower::BOMBER): lob a mortar shell along the
+    // facing — a slow, trailed bullet flagged is_bomb. GLGame's fuse pass
+    // detonates it into BOMB_FRAGMENTS ordinary bullets at the end of its
+    // flight or on player proximity, whichever first. Host-side only (the
+    // Follower never runs on clients); the shell and its fragments both
+    // replicate through the ordinary enemy-bullet snapshot feed.
+    void fire_bomb();
+    static const float BOMB_SPEED;        // shell velocity, units/ms
+    static const float BOMB_TTL_MS;       // flight time = fixed-range fuse
+    static const float BOMB_PROX_RADIUS;  // early fuse: player this close
+    static const int   BOMB_FRAGMENTS;    // flak ring size
+    static const float BOMB_FRAG_SPEED;
+    static const float BOMB_FRAG_TTL_MS;
     void turret_explode(const TurretDrone &t);
     // Shared blast for the two above: the local ship's goes into bullets
     // like the real detonate() (instant local kills + bullet_id-0 claims);
