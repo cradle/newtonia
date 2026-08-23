@@ -1516,7 +1516,10 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     // Two stacked chevrons pointing up, each a thin bent band of two quads.
     float w2 = br * 0.42f, hh = br * 0.26f, th = br * 0.14f;
     for (int c = 0; c < 2; c++) {
-      float cy0 = by - br * 0.31f + c * br * 0.42f;
+      // Base offset chosen so the two-chevron ink block (spanning cy0-hh of
+      // the lower chevron to cy0+th of the upper, 0.82*br tall) is centred
+      // on the circle.
+      float cy0 = by - br * 0.15f + c * br * 0.42f;
       // left stroke
       mb.vertex(bx - w2, cy0 - hh);      mb.vertex(bx, cy0);
       mb.vertex(bx - w2, cy0 - hh + th);
