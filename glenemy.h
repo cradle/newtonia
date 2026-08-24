@@ -41,6 +41,16 @@ public:
   // Re-derive a hull's variant from the one stat that separates the bands.
   static Variant variant_for_thrust(float thrust_force);
 
+  // The variant this hull was BUILT as (mesh, colour, trail). The net
+  // client's in-place reconcile compares it against the record's thrust
+  // band and rebuilds the replica on mismatch — stats alone are
+  // overwritten every apply, but the mesh is chosen once at construction.
+  Variant variant() const { return variant_; }
+
+private:
+  Variant variant_;
+
+public:
   static const float INTERCEPTOR_THRUST_MIN;  // band floor: >= is an interceptor
   static const float RAMMER_THRUST_MIN;       // band floor: >= (below interceptor's) is a rammer
   static const float BOMBER_THRUST_MAX;       // band ceiling: <= is a bomber

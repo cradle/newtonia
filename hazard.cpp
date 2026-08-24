@@ -581,6 +581,11 @@ Save::Hazard Hazard::capture_state() const {
 }
 
 Hazard *Hazard::from_state(const Save::Hazard &s, const Point &world) {
+  // A kind beyond the newest (doctored save, hostile snapshot) would build
+  // an alive hazard no draw or collision case can touch — invisible,
+  // unkillable, and permanently blocking the level-clear gate. Refuse it;
+  // both callers skip a NULL.
+  if (s.kind > (uint8_t)HUNTER) return NULL;
   Hazard *h = new Hazard((Kind)s.kind, world);
   h->position = WrappedPoint(s.pos_x, s.pos_y);
   h->velocity = Point(s.vel_x, s.vel_y);

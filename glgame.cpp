@@ -387,7 +387,8 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
                                        hostile_aim_lead(generation));
     if (generation >= 14)
       station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                              hostile_aim_lead(generation), generation);
+                              hostile_aim_lead(generation), generation,
+                              ship_objects);
     Achievements::note_cheat_used();
   }
 
@@ -445,7 +446,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
       if (g <= 1) g = 19;
       station = new GLStation(grid, enemies, players,
                               (std::list<Object *> *)objects,
-                              hostile_aim_lead(g), g);
+                              hostile_aim_lead(g), g, ship_objects);
       GLShip *p1 = players->front();
       station->position = WrappedPoint(p1->ship->position.x() + 900.0f,
                                        p1->ship->position.y());
@@ -845,7 +846,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   // Restore mid-game hazards (position, velocity and shockwave phase). A
   // seeker that had already been shot down was not saved, so nothing to make.
   for (const auto &sh : save.hazards) {
-    hazards->push_back(Hazard::from_state(sh, world));
+    if (Hazard *hz = Hazard::from_state(sh, world))
+      hazards->push_back(hz);
   }
 
   // Restore players — each seat gets its hull/tint (make_seat_ship). A
@@ -904,7 +906,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   if (save.station.present) {
     station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                            hostile_aim_lead(generation), generation);
+                            hostile_aim_lead(generation), generation,
+                            ship_objects);
     station->restore_state(save.station, grid);
   } else {
     station = NULL;
@@ -4330,8 +4333,16 @@ void nx_write_mini_station_bullets(Save::Stream &out, const GLMiniStation *ms) {
 // net_ship_id — the rebuilt replicas' only durable identity, re-stamped
 // on the client every apply, referenced by exact MSG_HIT_SHIP claims.
 void nx_write_enemy_bullets(Save::Stream &out, const std::list<GLShip *> *enemies) {
-  nx_write(out, (uint16_t)enemies->size());
+  // Alive ships only, matching Save::Station::capture_state — the reader
+  // pairs these records with the capture-rebuilt replicas IN ORDER, so a
+  // dead-but-lingering debris hull in this list (but not in that one)
+  // shifted every id/bullet pairing for its whole ~2 s window.
+  uint16_t alive_count = 0;
+  for (auto *e : *enemies)
+    if (e->ship->is_alive()) alive_count++;
+  nx_write(out, alive_count);
   for (auto *e : *enemies) {
+    if (!e->ship->is_alive()) continue;
     nx_write(out, e->ship->net_ship_id);
     nx_write(out, (uint16_t)e->ship->bullets.size());
     for (const Particle &b : e->ship->bullets) {
@@ -7624,6 +7635,21 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // The rollover wiped every id — predicted-kill suppression entries
     // are meaningless against the rebuilt world.
     net_predicted_kills_.clear();
+    // The station is GENERATION-scoped (arc presence/coverage, wave mix
+    // all derive from its construction-time generation): the host rebuilds
+    // it every rollover, so drop the replica too and let the next station
+    // apply recreate it fresh — kept across the rollover, a client
+    // crossing 18->19 played against an invisible shield arc. Its
+    // deployed replicas go with it, like the presence-transition path.
+    if (station) {
+      while (!enemies->empty()) {
+        ship_objects->remove(enemies->back()->ship);
+        delete enemies->back();
+        enemies->pop_back();
+      }
+      delete station;
+      station = NULL;
+    }
     // Local-ship bullets are client-owned (own_bullets): the rollover
     // wipe that used to arrive via the wholesale echo happens here now.
     // (Replay ghosts' bullets are record-owned — no wipe.)
@@ -8018,7 +8044,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
         used[best] = true;
         hazards->push_back(live[best]);
       } else {
-        hazards->push_back(Hazard::from_state(sh, world));
+        if (Hazard *hz = Hazard::from_state(sh, world))
+      hazards->push_back(hz);
         NET_LOG("net: hazard replica spawned (kind %d)\n", (int)sh.kind);
       }
     }
@@ -8054,10 +8081,15 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       // Client replica: its enemies never steer or shoot (the host owns
       // that), so the lead value is cosmetic here — passed for symmetry.
       station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects,
-                              hostile_aim_lead(generation), generation);
+                              hostile_aim_lead(generation), generation,
+                              ship_objects);
     station->restore_state(s.station, grid);
   } else if (station) {
-    while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
+    while (!enemies->empty()) {
+      ship_objects->remove(enemies->back()->ship);
+      delete enemies->back();
+      enemies->pop_back();
+    }
     delete station;
     station = NULL;
   }
@@ -9110,7 +9142,8 @@ void GLGame::tick(int delta) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                                hostile_aim_lead(generation), generation);
+                                hostile_aim_lead(generation), generation,
+                                ship_objects);
       }
       if(station != NULL) {
         station->reset();

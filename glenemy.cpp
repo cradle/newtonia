@@ -26,7 +26,7 @@ GLEnemy::Variant GLEnemy::variant_for_thrust(float thrust_force) {
   return STANDARD;
 }
 
-GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, float difficulty, list<Object*>* asteroids, float aim_lead, Variant variant) : GLShip(grid, false) {
+GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, float difficulty, list<Object*>* asteroids, float aim_lead, Variant variant) : GLShip(grid, false), variant_(variant) {
   list<Ship*>* ships = new list<Ship*>;
   list<GLShip*>::iterator s;
   for(s = targets->begin(); s != targets->end(); s++) {
@@ -46,7 +46,8 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
                                                                  : 3000,
                                           variant == BOMBER ? Follower::BOMBER
                                           : variant == RAMMER ? Follower::RAMMER
-                                                              : Follower::GUNNER));
+                                                              : Follower::GUNNER,
+                                          &grid));
   ship->position = WrappedPoint(x,y);
   if (variant == INTERCEPTOR) {
     // 0.162..0.170: fast enough to close on anyone hesitating, capped a
