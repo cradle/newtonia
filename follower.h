@@ -14,8 +14,14 @@ public:
   // gun. BOMBER is the artillery piece: stand off (thrust cuts inside
   // STANDOFF_RANGE so it drifts rather than diving in), engage from
   // BOMBER_RANGE, and lob mortar shells (Ship::fire_bomb) instead of
-  // shooting.
-  enum Mode { GUNNER, BOMBER };
+  // shooting. RAMMER is the deliberate rammer the attack-run note below
+  // reserved: no gun, no break-off — it steers at the intercept point and
+  // thrusts until it connects (Ship::collide kills both hulls, the same
+  // momentum-ram physics as ever). Its speed stays under the player's
+  // plain thrust per the late-game design rule, so a committed straight
+  // line always escapes; the threat is the attention it demands inside a
+  // wave that is also shooting.
+  enum Mode { GUNNER, BOMBER, RAMMER };
 
   Follower(Ship *ship);
   Follower(Ship *ship, list<Object *> *targets);
@@ -52,9 +58,9 @@ private:
   // extends back past RESUME_RANGE for the next run — thrusting
   // continuously throughout, like a pilot. Wave ships used to press the
   // approach all the way in and end their lives as suicide rams; rams
-  // still happen on momentum, never as the steady state (a deliberate
-  // rammer can be a future ship variant). Host-only transient like
-  // shoot_timer — never serialized.
+  // still happen on momentum, never as the steady state (the deliberate
+  // rammer is now its own Mode above, the one shape that skips this).
+  // Host-only transient like shoot_timer — never serialized.
   bool backing_off;
   Object *target;
 };

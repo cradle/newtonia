@@ -21,7 +21,7 @@ class Hazard;
 // one.
 class Intro : public State {
 public:
-  enum Kind { ASTEROID, BLACK_HOLE, MINI_STATION, STATION, HAZARD, INTERCEPTOR, BOMBER };
+  enum Kind { ASTEROID, BLACK_HOLE, MINI_STATION, STATION, HAZARD, INTERCEPTOR, BOMBER, RAMMER };
 
   // Takes ownership of `game` (handed back to the StateManager on dismissal,
   // or deleted — which auto-saves — when leaving to the menu) and of every
@@ -73,7 +73,7 @@ private:
   // is only set once the StateManager installs the state and resize() runs.
   std::vector<Asteroid *> asteroids_;
   int hazard_kind;     // Hazard::Kind to focus on (Kind HAZARD), else -1
-  // Owned; display-only (Kinds INTERCEPTOR and BOMBER): the station
+  // Owned; display-only (Kinds INTERCEPTOR, BOMBER and RAMMER): the station
   // deploys the real ones mid-level, so unlike the station/mini-station
   // intros there is no live world object to point the camera at — the
   // intro shows its own hull at actual size, silenced and never stepped
