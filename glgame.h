@@ -1466,6 +1466,12 @@ private:
   GLMiniStation *mini_station;
   list<GLShip*> *enemies, *players;
   list<Object*> *ship_objects;  // Ship* (as Object*) for missile homing
+  // Tear down the station and every deployed hull, keeping ship_objects in
+  // step — the one way any bulk station teardown should happen (a deleted
+  // hull left in the missile-homing list is a dangling pointer in the
+  // seek). Used by the client's generation rollover and the
+  // presence-transition apply.
+  void drop_station_and_enemies();
   list<Object*> *shock_targets; // enemies + stations (as Object*) for shock-bolt seeking
   bool all_weapons_cheat = false;  // NEWTONIA_ALL_WEAPONS: grant full arsenal each life
   int all_weapons_ammo = 999;      // rounds per weapon; a numeric env value > 1 overrides

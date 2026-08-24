@@ -5,11 +5,12 @@
 #include "seek.h"
 #include "ship.h"
 #include <iostream>
+#include <algorithm>
 #include <cstdlib>
 #include <cmath>
 using namespace std;
 
-Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER), grid(NULL) {
+Follower::Follower(Ship *ship) : Behaviour(ship), targets(NULL), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER), grid(NULL) {
   common_init();
 }
 
@@ -57,6 +58,12 @@ bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_streng
   if(grid) {
     grid->query_radius(Point(ship->position.x(), ship->position.y()),
                        avoid_range, s_cand);
+    // The broad-phase returns an asteroid once per CELL its body overlaps.
+    // A duplicate is harmless to the min-test seeks, but this loop
+    // ACCUMULATES repulsion — counted twice, a boundary-straddling rock
+    // would out-shout its neighbours. Dedup before summing.
+    std::sort(s_cand.begin(), s_cand.end());
+    s_cand.erase(std::unique(s_cand.begin(), s_cand.end()), s_cand.end());
   } else {
     s_cand.assign(asteroids->begin(), asteroids->end());
   }

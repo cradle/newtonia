@@ -1852,6 +1852,17 @@ void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
   update_presence();
 }
 
+void GLGame::drop_station_and_enemies() {
+  if (!station) return;
+  while (!enemies->empty()) {
+    ship_objects->remove(enemies->back()->ship);
+    delete enemies->back();
+    enemies->pop_back();
+  }
+  delete station;
+  station = NULL;
+}
+
 void GLGame::update_presence() const {
   // Displayed level numbers = internal generation + 1, the same rule as
   // achievements (ACHIEVEMENTS.md §5).
@@ -7641,15 +7652,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // apply recreate it fresh — kept across the rollover, a client
     // crossing 18->19 played against an invisible shield arc. Its
     // deployed replicas go with it, like the presence-transition path.
-    if (station) {
-      while (!enemies->empty()) {
-        ship_objects->remove(enemies->back()->ship);
-        delete enemies->back();
-        enemies->pop_back();
-      }
-      delete station;
-      station = NULL;
-    }
+    drop_station_and_enemies();
     // Local-ship bullets are client-owned (own_bullets): the rollover
     // wipe that used to arrive via the wholesale echo happens here now.
     // (Replay ghosts' bullets are record-owned — no wipe.)
@@ -8043,9 +8046,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
         live[best]->apply_net_state(sh);
         used[best] = true;
         hazards->push_back(live[best]);
-      } else {
-        if (Hazard *hz = Hazard::from_state(sh, world))
-      hazards->push_back(hz);
+      } else if (Hazard *hz = Hazard::from_state(sh, world)) {
+        hazards->push_back(hz);
         NET_LOG("net: hazard replica spawned (kind %d)\n", (int)sh.kind);
       }
     }
@@ -8085,13 +8087,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
                               ship_objects);
     station->restore_state(s.station, grid);
   } else if (station) {
-    while (!enemies->empty()) {
-      ship_objects->remove(enemies->back()->ship);
-      delete enemies->back();
-      enemies->pop_back();
-    }
-    delete station;
-    station = NULL;
+    drop_station_and_enemies();
   }
   // Keep the replica for the record's whole `present` window, not just
   // while alive: the host keeps its dead mini around while the debris
