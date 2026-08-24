@@ -131,9 +131,10 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     // jets mesh stays empty — enemy has no thruster effect
   } else if (variant == RAMMER) {
     // A hammerhead: a wide swept head bar leading, the body tapering to a
-    // thin tail — all the mass is at the front because the front is the
-    // weapon. The T silhouette is concave, so the fill is two convex fans
-    // (head bar + body) under one line-loop outline.
+    // waist and flaring slightly at the tail — all the mass is at the
+    // front because the front is the weapon. The silhouette is concave,
+    // so the fill is three convex fans (head bar + body + tail flare)
+    // under one line-loop outline.
     MeshBuilder mb;
     mb.begin(GL_TRIANGLE_FAN);
     mb.color(0.0f, 0.0f, 0.0f);
@@ -143,7 +144,12 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     mb.begin(GL_TRIANGLE_FAN);
     mb.color(0.0f, 0.0f, 0.0f);
     mb.vertex(-0.32f, 0.8f); mb.vertex( 0.32f, 0.8f);
-    mb.vertex( 0.1f, -1.1f); mb.vertex(-0.1f, -1.1f);
+    mb.vertex( 0.12f, -0.7f); mb.vertex(-0.12f, -0.7f);
+    mb.end();
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f);
+    mb.vertex(-0.12f, -0.7f); mb.vertex( 0.12f, -0.7f);
+    mb.vertex( 0.28f, -1.1f); mb.vertex(-0.28f, -1.1f);
     mb.end();
     body_fill.upload(mb);
 
@@ -152,7 +158,8 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     mb.color(color[0], color[1], color[2]);
     mb.vertex(-0.95f, 1.2f); mb.vertex( 0.95f, 1.2f);
     mb.vertex( 0.95f, 0.8f); mb.vertex( 0.32f, 0.8f);
-    mb.vertex( 0.1f, -1.1f); mb.vertex(-0.1f, -1.1f);
+    mb.vertex( 0.12f, -0.7f); mb.vertex( 0.28f, -1.1f);
+    mb.vertex(-0.28f, -1.1f); mb.vertex(-0.12f, -0.7f);
     mb.vertex(-0.32f, 0.8f); mb.vertex(-0.95f, 0.8f);
     mb.end();
     body_outline.upload(mb);
