@@ -288,6 +288,78 @@ declare const Module: {
   }
   (window as any).setMineAvailable = setMineAvailable;
 
+  // Called from C++ via EM_ASM while Ship::boost's cooldown runs — the
+  // button dims but stays pressable (presses no-op in Ship::boost()).
+  function setBoostReady(ready: number | boolean): void {
+    const el = document.querySelector<HTMLElement>(".touch-boost");
+    if (el) el.classList.toggle("cooldown", !ready);
+  }
+  (window as any).setBoostReady = setBoostReady;
+
+  // Active-weapon icons on the shoot/mine circles: C++ pushes the selected
+  // primary/secondary kinds (Save::WeaponEntry::Kind values; secondary -1 =
+  // none) via EM_ASM whenever they change, and the buttons carry a small
+  // inline-SVG glyph — the same vocabulary as the native OSD (crosshair
+  // gun, violet/amber pickup stars, teal turret ring, ...).
+  function weaponIconSvg(kind: number): string | null {
+    const S = (color: string, body: string) =>
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.6">${body}</svg>`;
+    const star = (color: string) => S(color,
+      '<path d="M12 2 L13.8 10.2 L22 12 L13.8 13.8 L12 22 L10.2 13.8 L2 12 L10.2 10.2 Z"/>');
+    const rays = (n: number, r0: number, r1: number, altR1?: number) => {
+      let d = "";
+      for (let i = 0; i < n; i++) {
+        const a = (2 * Math.PI * i) / n;
+        const rr = altR1 !== undefined && i % 2 ? altR1 : r1;
+        d += `M${12 + r0 * Math.cos(a)} ${12 + r0 * Math.sin(a)} L${12 + rr * Math.cos(a)} ${12 + rr * Math.sin(a)} `;
+      }
+      return `<path d="${d}"/>`;
+    };
+    switch (kind) {
+      case 0:  // Default gun: crosshair
+        return S("#ffffff", '<circle cx="12" cy="12" r="5"/>' + rays(4, 5, 9));
+      case 1:  // GodMode: sun
+        return S("#ffd94d", '<circle cx="12" cy="12" r="4"/>' + rays(8, 5.5, 9));
+      case 2:  // Mine
+        return S("#ffffff", '<circle cx="12" cy="12" r="4.5"/>' + rays(6, 4.5, 8.5));
+      case 3:  // GigaMine
+        return S("#ffffff", '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="5.5"/>' + rays(6, 5.5, 9));
+      case 4:  // Missile: dart with fins
+        return S("#f2f2f2", '<path d="M12 3 L15 9 L15 16 L18 20 M12 3 L9 9 L9 16 L6 20 M9 16 L15 16"/>');
+      case 5:  // Shield
+        return S("#66e5ff", '<path d="M5 5 L19 5 L19 12 L12 20 L5 12 Z"/>');
+      case 6:  // Nova: starburst
+        return S("#ff9933", rays(8, 2, 9.5, 5.5));
+      case 7:  // Beam: violet star (the pickup)
+        return star("#b366ff");
+      case 8:  // Lance: amber star (the pickup)
+        return star("#ffd966");
+      case 9:  // Shock: lightning
+        return S("#99e5ff", '<path d="M15 3 L9 13 L14 14 L9 21"/>');
+      case 10: // Turret: ring with barrel
+        return S("#4de5cc", '<circle cx="12" cy="12" r="5"/><path d="M12 7 L12 2"/>');
+    }
+    return null;
+  }
+  function applyWeaponIcon(sel: string, kind: number): void {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (!el) return;
+    const svg = kind >= 0 ? weaponIconSvg(kind) : null;
+    if (svg) {
+      el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+      el.style.backgroundRepeat = "no-repeat";
+      el.style.backgroundPosition = "center";
+      el.style.backgroundSize = "55% 55%";
+    } else {
+      el.style.backgroundImage = "";
+    }
+  }
+  function setWeaponKinds(primary: number, secondary: number): void {
+    applyWeaponIcon(".touch-shoot", primary);
+    applyWeaponIcon(".touch-mine", secondary);
+  }
+  (window as any).setWeaponKinds = setWeaponKinds;
+
   // ---- Game-over promo banner ----------------------------------------
   // The web build deliberately has no netplay or leaderboard (LEADERBOARD.md:
   // NetBoard::create() is null on web) — this banner is where the free
@@ -461,6 +533,13 @@ declare const Module: {
     const BUTTONS: BtnCfg[] = [
       { label: "",  key: " ", cls: "touch-btn touch-shoot" },
       { label: "",  key: "x", cls: "touch-btn touch-mine"  },
+      { label: "",  key: "e", cls: "touch-btn touch-boost" },
+      // Pause: the top-right tap zone (web_main.cpp finger_down) existed
+      // with NO visual — the comment there called it "the visible
+      // top-right button" but nothing ever drew it on web (the native
+      // OSD's pause circle only draws where touch_osd_enabled()). The
+      // bars are CSS pseudo-elements; 'p' is the pause toggle.
+      { label: "",  key: "p", cls: "touch-btn touch-pause" },
     ];
 
     BUTTONS.forEach(({ label, key, cls }) => {
@@ -515,8 +594,13 @@ declare const Module: {
     // was ~0.57, so a near-miss to its left hit the pause zone instead
     // (Glenn, 2026-07-17). Keep these in sync with touch_to_key's zones.
     const circleButtons = [
-      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75 },
-      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75 },
+      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75, d: 1.0 },
+      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75, d: 1.0 },
+      // Boost: above and between the pair (the thumb triangle), matching
+      // the native OSD layout in touch_controls.cpp.
+      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.63, d: 1.0 },
+      // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25).
+      { el: container.querySelector<HTMLElement>(".touch-pause")!, cx: 0.875, cy: 0.12, d: 0.62 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
 
@@ -540,9 +624,9 @@ declare const Module: {
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
       const diam = Math.min(r.width, r.height) * 0.19;
-      for (const { el, cx, cy } of circleButtons) {
-        el.style.width  = `${diam}px`;
-        el.style.height = `${diam}px`;
+      for (const { el, cx, cy, d } of circleButtons) {
+        el.style.width  = `${diam * d}px`;
+        el.style.height = `${diam * d}px`;
         el.style.left   = `${r.left + r.width * cx}px`;
         el.style.top    = `${r.top + r.height * cy}px`;
       }

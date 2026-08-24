@@ -76,7 +76,15 @@ class Ship : public CompositeObject {
     void shoot(bool on = true);
     void shoot_weapon(bool on = true);
     void fire_secondary(bool on = true);
+    // One impulse per press, gated by a cooldown: with no gate every press
+    // was a fresh kick, and the touch OSD's dedicated button would have
+    // turned tap-spam into a speed hack (the keyboard could always be
+    // spammed too — the gate fixes both). The gate lives HERE so netplay
+    // (host applies the client's presses through boost()) and replays get
+    // the same rule for free; the timer is transient, never serialized.
     void boost();
+    bool boost_ready() const { return boost_cooldown_left <= 0.0f; }
+    static const float BOOST_COOLDOWN_MS;
     int multiplier() const;
 
     float heading() const;
@@ -593,6 +601,7 @@ class Ship : public CompositeObject {
     Point world_size;
 
     float heat_rate, retro_heat_rate, cool_rate, boost_heat;
+    float boost_cooldown_left = 0.0f;  // ms until boost() fires again
 
     // Forces
     float thrust_force, reverse_force, rotation_force, boost_force;
@@ -640,6 +649,9 @@ class Ship : public CompositeObject {
     bool has_last_primary = false;
     void record_primary_selection();  // call BEFORE switching the selection away
     static Save::WeaponEntry::Kind primary_kind_of(Weapon::Base *w, int *index_out);
+    // Same classification for a secondary (public twin of the roster-match
+    // helper) — the touch OSD's weapon-icon feed uses both.
+    static Save::WeaponEntry::Kind secondary_kind_of(Weapon::Base *w);
     // The one fallback policy for removing a primary (exhausted beam/lance/
     // shock, expired god mode): the remembered selection first, then the
     // previous list neighbour, wrapping forward only from the front.

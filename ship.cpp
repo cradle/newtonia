@@ -945,6 +945,10 @@ static Save::WeaponEntry::Kind secondary_kind(Weapon::Base *w) {
 // needs ammo/selection, not a rebuild). Conservative: any GodMode weapon
 // (its ammo is a live countdown with music/warning state) forces the slow
 // path, as does any count or kind/index divergence.
+Save::WeaponEntry::Kind Ship::secondary_kind_of(Weapon::Base *w) {
+  return secondary_kind(w);
+}
+
 bool Ship::net_weapons_roster_matches(const Save::Player &p) const {
   if (primary_weapons.size() != p.primary_weapons.size()) return false;
   if (secondary_weapons.size() != p.secondary_weapons.size()) return false;
@@ -1167,7 +1171,9 @@ void Ship::init(bool no_friction) {
   retro_heat_rate = heat_rate * -reverse_force / thrust_force;
   cool_rate = retro_heat_rate * 0.9;
   boost_heat = 0.000;
-  boost_force = 4.0;
+  // Doubled from 4.0 (field: "not much of a thrust change") — one press
+  // is now a real kick, and the 2 s cooldown is what keeps it honest.
+  boost_force = 8.0;
   boosting = false;
   rotation_scale = 1.0f;
   thrust_analog  = 1.0f;
@@ -1452,7 +1458,13 @@ void Ship::update_missile_fly_volumes() {
     Mix_Volume(chs[j], (int)(MIX_MAX_VOLUME * vols[j]));
 }
 
+// See ship.h: the cooldown gates every path — key, pad bumper, touch
+// button, and the host's application of a net client's presses.
+const float Ship::BOOST_COOLDOWN_MS = 2000.0f;
+
 void Ship::boost() {
+  if (!boost_ready()) return;
+  boost_cooldown_left = BOOST_COOLDOWN_MS;
   net_boost_count++;
   boosting = true;
 }
@@ -2979,6 +2991,7 @@ void Ship::step(float delta, const Grid &grid) {
   	acceleration += ((facing * reverse_force * reverse_analog) / mass);
     temperature += retro_heat_rate * delta;
 	}
+  if(boost_cooldown_left > 0.0f) boost_cooldown_left -= delta;
   temperature -= cool_rate * delta;
   if(temperature <= 0)
     temperature = 0;

@@ -104,6 +104,12 @@ struct Preferences {
     // door. Note this is strict by design: a room of desktop builds attests
     // nobody, so turning it off there closes the room to everyone.
     bool allow_anonymous     = true;
+    // Boost discoverability: the in-game "boost with e" hint keeps
+    // appearing (on the F1 hint's alternate flash phase) until the pilot
+    // has actually boosted once — GLShip latches this on the first boost
+    // from any input path and saves. Roams with the INI; old builds
+    // ignore the unknown key.
+    bool boost_hint_done     = false;
     // Auto-record replays (REPLAY.md). Default ON since 2026-07-28: the
     // low-end field pass cleared the recorder on real hardware across all
     // four axes (Moto E14 for CPU/RAM/lifecycle, Moto G05 for storage

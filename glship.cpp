@@ -25,6 +25,16 @@
 
 using namespace std;
 
+// Boost discoverability: the first boost from ANY input path (key, pad
+// bumper, the touch OSD's synthesized key) retires the in-game hint for
+// good (Preferences::boost_hint_done — see the hint in Overlay::title_text).
+static void note_boost_used() {
+  if (g_prefs.boost_hint_done) return;
+  g_prefs.boost_hint_done = true;
+  save_preferences();
+}
+
+
 GLShip::GLShip(const Grid &grid, bool has_friction, const float *tint)
     : show_help(false), last_input_was_controller(false) {
   //TODO: load config from file (colours too)
@@ -416,6 +426,7 @@ void GLShip::controller_input(SDL_Event event) {
     if (pressed) net_secondary_press_count++;
     ship->fire_secondary(pressed);
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSHOULDER && pressed) {
+    note_boost_used();
     ship->boost();
   } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_X && pressed) {
     ship->next_weapon();
@@ -640,6 +651,7 @@ void GLShip::input(unsigned char key, bool pressed) {
     if (pressed) net_secondary_press_count++;
     ship->fire_secondary(pressed);
   } else if (boost_key.matches(key) && pressed) {
+    note_boost_used();
     ship->boost();
   } else if(next_weapon_key.matches(key) && pressed) {
     ship->next_weapon();

@@ -50,6 +50,29 @@ struct TouchControlsState {
     // false: in the menus nothing updates it, and the 'x' key the region
     // would send is inert there anyway.
     bool  mine_available;
+    // Active-weapon icons: the shoot/mine circles carry a glyph naming the
+    // selected primary/secondary (Save::WeaponEntry::Kind values, mirrored
+    // each frame by GLGame::tick like mine_available; secondary_kind is
+    // meaningful only while mine_available). The web build receives the
+    // same pair over the setWeaponKinds bridge.
+    unsigned char primary_kind;
+    unsigned char secondary_kind;
+
+    // ---- Boost button ----
+    // Above the shoot/mine pair (boost discoverability: touch had NO boost
+    // control at all — the late-game design rule has kept every escape
+    // possible on plain thrust, but the mechanic itself deserved a button).
+    // Always available, like shoot. Sends P1's boost key ('e'), the same
+    // hard-coded-default convention as shoot/mine/pause.
+    float boost_cx, boost_cy, boost_radius;
+    float boost_hit_radius;  // capped below the vertical gap to the pair
+    bool  boost_pressed;
+    // Ship::boost_ready() mirrored each frame by GLGame::tick (the
+    // mine_available pattern): the overlay dims the button while the
+    // cooldown runs. Presses during cooldown still land and no-op in
+    // Ship::boost() — the flag is presentation, not a gate.
+    bool  boost_ready;
+    SDL_FingerID boost_finger;
 
     // ---- Shared hit-test radius for shoot & mine ----
     // Half the distance between the two button centres so the touch regions are

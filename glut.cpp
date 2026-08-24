@@ -425,6 +425,11 @@ static void touch_listener_poll() {
 
 void resize(int width, int height) {
   Typer::resize(width, height);
+  // Size the touch OSD layout too: only the shot/video harness reshapes
+  // did this, so an interactive NEWTONIA_FORCE_TOUCH run drew the OSD
+  // with zero-sized geometry — invisible buttons. Harmless off touch
+  // (drawing still gates on touch_osd_enabled()).
+  touch_controls_resize(width, height);
   if (game) game->resize(width, height);
   if (!is_fullscreen) {
     g_prefs.window_width  = width;

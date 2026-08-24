@@ -8500,6 +8500,17 @@ void GLGame::tick(int delta) {
     GLShip *lp = local_player();
     bool has_secondary = lp && lp->ship->has_secondary();
     g_touch_controls.mine_available = has_secondary;
+    // Boost button feedback: dimmed while Ship's cooldown runs.
+    g_touch_controls.boost_ready = lp && lp->ship->boost_ready();
+    // Active-weapon icons for the shoot/mine circles (Save kind values).
+    if (lp && !lp->ship->primary_weapons.empty()) {
+      int idx_unused;
+      g_touch_controls.primary_kind =
+          (uint8_t)Ship::primary_kind_of(*lp->ship->primary, &idx_unused);
+    }
+    g_touch_controls.secondary_kind =
+        has_secondary ? (uint8_t)Ship::secondary_kind_of(*lp->ship->secondary)
+                      : 0;
 #ifdef __EMSCRIPTEN__
     // The web build's circle buttons are HTML (web/main.ts), so mirror the
     // flag across the same bridge setMenuMode rides, on change only.
@@ -8509,6 +8520,24 @@ void GLGame::tick(int delta) {
       web_mine_last = has_secondary;
       EM_ASM({ if (window.setMineAvailable) window.setMineAvailable($0); },
              has_secondary ? 1 : 0);
+    }
+    static bool web_boost_pushed = false, web_boost_last = false;
+    if (!web_boost_pushed || web_boost_last != g_touch_controls.boost_ready) {
+      web_boost_pushed = true;
+      web_boost_last = g_touch_controls.boost_ready;
+      EM_ASM({ if (window.setBoostReady) window.setBoostReady($0); },
+             g_touch_controls.boost_ready ? 1 : 0);
+    }
+    // Active-weapon icons on the HTML circle buttons (Save kind values,
+    // -1 secondary = none; main.ts maps them to inline SVG backgrounds).
+    static int web_pk_last = -1, web_sk_last = -2;
+    int web_pk = g_touch_controls.primary_kind;
+    int web_sk = has_secondary ? (int)g_touch_controls.secondary_kind : -1;
+    if (web_pk != web_pk_last || web_sk != web_sk_last) {
+      web_pk_last = web_pk;
+      web_sk_last = web_sk;
+      EM_ASM({ if (window.setWeaponKinds) window.setWeaponKinds($0, $1); },
+             web_pk, web_sk);
     }
 #endif
   }
