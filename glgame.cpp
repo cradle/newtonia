@@ -1276,6 +1276,7 @@ void GLGame::maybe_start_intro() {
     case 18: if (first_hazard(Hazard::HUNTER)) { kind = Intro::HAZARD; name = "HUNTER";
              hazard_kind = Hazard::HUNTER; } break;
     case 19: if (station != NULL)       { kind = Intro::STATION; name = "ARMOURED STATION"; } break;
+    case 20: if (station != NULL)       { kind = Intro::RAMMER;  name = "RAMMER"; }          break;
     default: return;
   }
   if (name == NULL) return;

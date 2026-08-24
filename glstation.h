@@ -84,11 +84,20 @@ private:
   // gen 15, then 1 + (generation - 15), capped at half the wave (rounded
   // up) so the standard line always outnumbers-or-matches the vanguard.
   int wave_interceptors() const;
+  // How many of this wave's ships deploy as rammers: none before gen 20,
+  // then 1 + (generation - 20), capped by what the interceptor vanguard
+  // leaves minus the reserved standard slot (waves of 3+, same scheme as
+  // the bombers'). The NEWEST specialist outranks the older ones for the
+  // remaining slots — the gen-20 intro's promise must show up by wave 2,
+  // exactly the bomber's debut rule at 17 — which is why wave_bombers()
+  // subtracts this count and not the other way round.
+  int wave_rammers() const;
   // How many of this wave's ships deploy as bombers: none before gen 17,
   // then 1 + (generation - 17), capped by what the interceptor vanguard
-  // leaves MINUS one reserved standard slot in waves of 3+ ships (so the
-  // green line never vanishes from the late-game mix); waves of 1-2 skip
-  // the reservation so the gen-17 bomber still debuts by wave 2.
+  // AND the rammer charge leave MINUS one reserved standard slot in waves
+  // of 3+ ships (so the green line never vanishes from the late-game
+  // mix); waves of 1-2 skip the reservation so the gen-17 bomber still
+  // debuts by wave 2.
   int wave_bombers() const;
 };
 

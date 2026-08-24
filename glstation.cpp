@@ -218,19 +218,32 @@ int GLStation::wave_interceptors() const {
   return allowed < cap ? allowed : cap;
 }
 
+int GLStation::wave_rammers() const {
+  // The deliberate rammer joins from generation 20, its allotment growing
+  // like the other specialists'. It takes the slots the interceptor
+  // vanguard and the reserved standard leave, AHEAD of the bombers (see
+  // the header note: the newest specialist must actually debut).
+  if (generation < 20) return 0;
+  int allowed = 1 + (generation - 20);
+  int reserve = ships_this_wave >= 3 ? 1 : 0;
+  int cap = ships_this_wave - wave_interceptors() - reserve;
+  if (cap < 0) cap = 0;
+  return allowed < cap ? allowed : cap;
+}
+
 int GLStation::wave_bombers() const {
   // The rear-line artillery joins from generation 17, its allotment
   // growing like the interceptors'. The cap stops it eating into the
-  // interceptor vanguard, and any wave of 3+ ships RESERVES one standard
-  // slot — by gen 19 the two specialist allotments (interceptors 5,
-  // bombers 3) otherwise swallowed every wave up to size 7 and the green
-  // line vanished until wave 8 (field, 2026-08-23). Waves of 1-2 skip
-  // the reservation so the gen-17 bomber still debuts by wave 2, the
-  // promise its intro just made.
+  // interceptor vanguard (and, from gen 20, the rammer charge), and any
+  // wave of 3+ ships RESERVES one standard slot — by gen 19 the two
+  // specialist allotments (interceptors 5, bombers 3) otherwise swallowed
+  // every wave up to size 7 and the green line vanished until wave 8
+  // (field, 2026-08-23). Waves of 1-2 skip the reservation so the gen-17
+  // bomber still debuts by wave 2, the promise its intro just made.
   if (generation < 17) return 0;
   int allowed = 1 + (generation - 17);
   int reserve = ships_this_wave >= 3 ? 1 : 0;
-  int cap = ships_this_wave - wave_interceptors() - reserve;
+  int cap = ships_this_wave - wave_interceptors() - wave_rammers() - reserve;
   if (cap < 0) cap = 0;
   return allowed < cap ? allowed : cap;
 }
@@ -428,12 +441,14 @@ void GLStation::step(float delta, const Grid &grid) {
       ships_left_to_deploy--;
       // Interceptors launch FIRST — a fast vanguard ahead of the slow
       // line gives each wave a shape (and they would arrive first
-      // anyway) — and bombers launch LAST, the rear line settling in
-      // behind everyone. Deploy order counts up from 0 as ships_left
-      // counts down; the caps guarantee the two allotments never overlap.
+      // anyway) — rammers charge out right behind them, and bombers
+      // launch LAST, the rear line settling in behind everyone. Deploy
+      // order counts up from 0 as ships_left counts down; the caps
+      // guarantee the allotments never overlap.
       int deploy_index = ships_this_wave - 1 - ships_left_to_deploy;
       GLEnemy::Variant variant =
           deploy_index < wave_interceptors()                ? GLEnemy::INTERCEPTOR
+        : deploy_index < wave_interceptors() + wave_rammers() ? GLEnemy::RAMMER
         : deploy_index >= ships_this_wave - wave_bombers()  ? GLEnemy::BOMBER
                                                             : GLEnemy::STANDARD;
       float rotation = 360.0/ships_this_wave*ships_left_to_deploy*M_PI/180;

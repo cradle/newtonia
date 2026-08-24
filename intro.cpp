@@ -33,7 +33,7 @@ Intro::Intro(GLGame *game, Kind kind, const char *name,
     a->position = WrappedPoint(game->world.x() / 2.0f, game->world.y() / 2.0f);
     a->velocity = Point(0, 0);
   }
-  if (kind == INTERCEPTOR || kind == BOMBER) {
+  if (kind == INTERCEPTOR || kind == BOMBER || kind == RAMMER) {
     // Display-only hull at the world centre (see the member note in
     // intro.h). An empty target list keeps its Follower inert; the Ship
     // constructor starts the looping engine hum, so silence it like the
@@ -44,7 +44,8 @@ Intro::Intro(GLGame *game, Kind kind, const char *name,
                                  game->world.y() / 2.0f,
                                  &no_targets, 0.0f, NULL, 0.0f,
                                  kind == BOMBER ? GLEnemy::BOMBER
-                                                : GLEnemy::INTERCEPTOR);
+                                 : kind == RAMMER ? GLEnemy::RAMMER
+                                                  : GLEnemy::INTERCEPTOR);
     // A Ship constructs dead and only comes alive through step()'s respawn
     // (never run here — the world is frozen) or a direct raise, which is
     // exactly how the station deploys its wave ships. GLShip::draw skips
@@ -65,7 +66,7 @@ Intro::Intro(GLGame *game, Kind kind, const char *name,
     // Ship::step, see the intro.h note), the camera focus tracks the hull,
     // and the parallax starfield streaming past sells the motion.
     display_enemy_->ship->facing = Point(1.0f, 0.0f);
-    display_enemy_->ship->velocity = Point(kind == BOMBER ? 0.12f : 0.3f, 0.0f);
+    display_enemy_->ship->velocity = Point(kind == BOMBER ? 0.12f : 0.3f, 0.0f);  // rammer cruises like the interceptor
     display_enemy_->ship->thrust(true);
   }
   // Silence looping effects (e.g. the respawn shield hum) while the intro is
@@ -158,7 +159,7 @@ void Intro::tick(int delta) {
     // The display interceptor cruises (position integration only — the
     // qualified call must never reach Ship::step, see the intro.h note)
     // while its exhaust animates; the camera tracks it via focus().
-    if ((kind == INTERCEPTOR || kind == BOMBER) && display_enemy_ != NULL) {
+    if ((kind == INTERCEPTOR || kind == BOMBER || kind == RAMMER) && display_enemy_ != NULL) {
       display_enemy_->ship->Object::step(GLGame::step_size);
       display_enemy_->step_trails(GLGame::step_size);
     }
@@ -182,7 +183,8 @@ Point Intro::focus() const {
     case MINI_STATION: return game->mini_station->position;
     case STATION:      return game->station->position;
     case INTERCEPTOR:
-    case BOMBER:       return display_enemy_->ship->position;
+    case BOMBER:
+    case RAMMER:       return display_enemy_->ship->position;
     case HAZARD: {
       Hazard *h = game->first_hazard((Hazard::Kind)hazard_kind);
       if (h != NULL) return h->position;
@@ -260,7 +262,8 @@ void Intro::draw() {
     case MINI_STATION: game->mini_station->draw(false);         break;
     case STATION:      game->station->draw(false);              break;
     case INTERCEPTOR:
-    case BOMBER:       display_enemy_->draw(false);             break;
+    case BOMBER:
+    case RAMMER:       display_enemy_->draw(false);             break;
     case HAZARD: {
       Hazard *h = game->first_hazard((Hazard::Kind)hazard_kind);
       if (h != NULL) h->draw(false);

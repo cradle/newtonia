@@ -135,8 +135,12 @@ void Follower::step(int delta) {
       float brk = BREAK_RANGE +
                   (closing > 0.0f ? closing * BREAK_LOOKAHEAD_MS : 0.0f);
       if(brk > BREAK_MAX) brk = BREAK_MAX;
-      if(!backing_off && dist < brk)                backing_off = true;
-      else if(backing_off && dist >= RESUME_RANGE)  backing_off = false;
+      // The RAMMER is the one shape that never breaks off — connecting IS
+      // its attack (see the header note). Everything else flies runs.
+      if(mode != RAMMER) {
+        if(!backing_off && dist < brk)                backing_off = true;
+        else if(backing_off && dist >= RESUME_RANGE)  backing_off = false;
+      }
 
       if(backing_off) {
         // Same angle convention as the pursuit below (180 = nose on the
@@ -189,7 +193,8 @@ void Follower::step(int delta) {
       } else {
         ship->rotate_right(true);
       }
-      burst_shooting_step(delta, angle, target_point);
+      if(mode != RAMMER)  // the rammer carries no gun — contact is the shot
+        burst_shooting_step(delta, angle, target_point);
     }
   }
 }
