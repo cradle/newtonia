@@ -12,7 +12,7 @@ using namespace std;
 
 class GLStation : public Ship {
 public:
-  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids = NULL, float aim_lead = 0.0f, int generation = 0);
+  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids = NULL, float aim_lead = 0.0f, int generation = 0, list<Object*>* missile_ships = NULL);
   virtual ~GLStation();
 
   void draw(bool minimap = false) const;
@@ -80,6 +80,12 @@ private:
   // counter only moves past the 50-ship wave cap and resets with the
   // station every level, so it never actually climbs.
   int generation;
+  // The game's missile-homing list (GLGame::ship_objects). Every hull this
+  // station creates joins it and every hull it deletes leaves it, so
+  // player missiles home on wave ships exactly like they do on the
+  // stations; GLGame's death sweep handles the ordinary removals. NULL in
+  // tests that build a bare station.
+  list<Object*>* missile_ships;
   // How many of this wave's ships deploy as interceptors: none before
   // gen 15, then 1 + (generation - 15), capped at half the wave (rounded
   // up) so the standard line always outnumbers-or-matches the vanguard.

@@ -1466,6 +1466,17 @@ private:
   GLMiniStation *mini_station;
   list<GLShip*> *enemies, *players;
   list<Object*> *ship_objects;  // Ship* (as Object*) for missile homing
+  // A dead wave ship's bullets still in flight (Ship::kill never clears
+  // them; they stay lethal for their TTL) arrive as trailing nx records
+  // with no replica to ride — parked here, stepped/culled by
+  // tick_net_client and drawn in enemy green. Replaced on every apply.
+  std::vector<Particle> net_enemy_orphan_bullets_;
+  // Tear down the station and every deployed hull, keeping ship_objects in
+  // step — the one way any bulk station teardown should happen (a deleted
+  // hull left in the missile-homing list is a dangling pointer in the
+  // seek). Used by the client's generation rollover and the
+  // presence-transition apply.
+  void drop_station_and_enemies();
   list<Object*> *shock_targets; // enemies + stations (as Object*) for shock-bolt seeking
   bool all_weapons_cheat = false;  // NEWTONIA_ALL_WEAPONS: grant full arsenal each life
   int all_weapons_ammo = 999;      // rounds per weapon; a numeric env value > 1 overrides

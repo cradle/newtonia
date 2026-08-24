@@ -2,6 +2,7 @@
 #define FOLLOWER_H
 
 class Object;
+class Grid;
 #include "behaviour.h"
 #include "wrapped_point.h"
 #include <list>
@@ -25,7 +26,7 @@ public:
 
   Follower(Ship *ship);
   Follower(Ship *ship, list<Object *> *targets);
-  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f, float aim_lead = 0.0f, int shoot_interval_ms = 3000, Mode mode = GUNNER);
+  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f, float aim_lead = 0.0f, int shoot_interval_ms = 3000, Mode mode = GUNNER, const Grid *grid = NULL);
   virtual ~Follower();
 
   virtual void step(int delta);
@@ -62,6 +63,16 @@ private:
   // rammer is now its own Mode above, the one shape that skips this).
   // Host-only transient like shoot_timer — never serialized.
   bool backing_off;
+  // Spatial index for the avoidance scan (convention 6: never iterate all
+  // objects). NULL for legacy users (the unused Enemy class); GLEnemy
+  // always passes the game grid, and compute_avoidance falls back to the
+  // full-list walk without it.
+  const Grid *grid;
+  // Whether ~Follower owns (deletes) `targets`. Only the full constructor
+  // takes a heap list built for it (the GLEnemy pattern); the short ctors
+  // receive NULL or a borrowed pointer (Enemy passes the address of its
+  // own member — deleting that would corrupt the heap).
+  bool owns_targets;
   Object *target;
 };
 

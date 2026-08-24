@@ -387,7 +387,8 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
                                        hostile_aim_lead(generation));
     if (generation >= 14)
       station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                              hostile_aim_lead(generation), generation);
+                              hostile_aim_lead(generation), generation,
+                              ship_objects);
     Achievements::note_cheat_used();
   }
 
@@ -445,7 +446,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
       if (g <= 1) g = 19;
       station = new GLStation(grid, enemies, players,
                               (std::list<Object *> *)objects,
-                              hostile_aim_lead(g), g);
+                              hostile_aim_lead(g), g, ship_objects);
       GLShip *p1 = players->front();
       station->position = WrappedPoint(p1->ship->position.x() + 900.0f,
                                        p1->ship->position.y());
@@ -845,7 +846,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   // Restore mid-game hazards (position, velocity and shockwave phase). A
   // seeker that had already been shot down was not saved, so nothing to make.
   for (const auto &sh : save.hazards) {
-    hazards->push_back(Hazard::from_state(sh, world));
+    if (Hazard *hz = Hazard::from_state(sh, world))
+      hazards->push_back(hz);
   }
 
   // Restore players — each seat gets its hull/tint (make_seat_ship). A
@@ -904,7 +906,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   if (save.station.present) {
     station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                            hostile_aim_lead(generation), generation);
+                            hostile_aim_lead(generation), generation,
+                            ship_objects);
     station->restore_state(save.station, grid);
   } else {
     station = NULL;
@@ -1847,6 +1850,17 @@ void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
   update_presence();
+}
+
+void GLGame::drop_station_and_enemies() {
+  if (!station) return;
+  while (!enemies->empty()) {
+    ship_objects->remove(enemies->back()->ship);
+    delete enemies->back();
+    enemies->pop_back();
+  }
+  delete station;
+  station = NULL;
 }
 
 void GLGame::update_presence() const {
@@ -4330,17 +4344,34 @@ void nx_write_mini_station_bullets(Save::Stream &out, const GLMiniStation *ms) {
 // net_ship_id — the rebuilt replicas' only durable identity, re-stamped
 // on the client every apply, referenced by exact MSG_HIT_SHIP claims.
 void nx_write_enemy_bullets(Save::Stream &out, const std::list<GLShip *> *enemies) {
-  nx_write(out, (uint16_t)enemies->size());
-  for (auto *e : *enemies) {
-    nx_write(out, e->ship->net_ship_id);
-    nx_write(out, (uint16_t)e->ship->bullets.size());
-    for (const Particle &b : e->ship->bullets) {
-      nx_write_projectile(out, b);
-      // v23: the per-bullet wire flag byte, so a client replica draws the
-      // bomber's mortar shell (is_bomb diamond + has_trail smoke) like the
-      // host does. Reader gates on the stream's save version — pre-v23
-      // replays carry no byte here.
-      nx_write(out, b.net_flags());
+  // ALIVE ships first, matching Save::Station::capture_state — the reader
+  // pairs these records with the capture-rebuilt replicas IN ORDER, so a
+  // dead-but-lingering debris hull in this list (but not in that one)
+  // shifted every id/bullet pairing for its whole ~2 s window. Dead ships
+  // whose bullets are still in flight (a killed bomber's shell, a gunner's
+  // last burst — Ship::kill never clears bullets and they stay LETHAL for
+  // their TTL) are appended AFTER: the reader has no replica for them and
+  // hands their bullets to its orphan container, so the fire that can
+  // still kill you is never invisible. Same record framing either way — a
+  // reader that predates the orphan container just drops the tail.
+  uint16_t count = 0;
+  for (auto *e : *enemies)
+    if (e->ship->is_alive() || !e->ship->bullets.empty()) count++;
+  nx_write(out, count);
+  for (int pass = 0; pass < 2; pass++) {
+    for (auto *e : *enemies) {
+      bool alive = e->ship->is_alive();
+      if (pass == 0 ? !alive : (alive || e->ship->bullets.empty())) continue;
+      nx_write(out, e->ship->net_ship_id);
+      nx_write(out, (uint16_t)e->ship->bullets.size());
+      for (const Particle &b : e->ship->bullets) {
+        nx_write_projectile(out, b);
+        // v23: the per-bullet wire flag byte, so a client replica draws the
+        // bomber's mortar shell (is_bomb diamond + has_trail smoke) like the
+        // host does. Reader gates on the stream's save version — pre-v23
+        // replays carry no byte here.
+        nx_write(out, b.net_flags());
+      }
     }
   }
 }
@@ -6538,6 +6569,19 @@ void GLGame::tick_net_client(int delta) {
       e->ship->Object::step(step_size);
       for (auto &b : e->ship->bullets) b.step(step_size);
     }
+    // Orphan enemy bullets (a dead wave ship's fire, no replica to ride):
+    // same extrapolation, plus a TTL cull so they die out even if the
+    // stream stalls.
+    for (size_t i = 0; i < net_enemy_orphan_bullets_.size();) {
+      Particle &b = net_enemy_orphan_bullets_[i];
+      b.step(step_size);
+      if (!b.is_alive()) {
+        net_enemy_orphan_bullets_[i] = net_enemy_orphan_bullets_.back();
+        net_enemy_orphan_bullets_.pop_back();
+      } else {
+        ++i;
+      }
+    }
     // Mid-game hazards: extrapolate motion + animation between snapshots
     // (pulsar cycle, comet drift + trail, seeker homing) so they glide
     // rather than teleport at the apply rate — visual only; the lethal
@@ -7624,6 +7668,13 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // The rollover wiped every id — predicted-kill suppression entries
     // are meaningless against the rebuilt world.
     net_predicted_kills_.clear();
+    // The station is GENERATION-scoped (arc presence/coverage, wave mix
+    // all derive from its construction-time generation): the host rebuilds
+    // it every rollover, so drop the replica too and let the next station
+    // apply recreate it fresh — kept across the rollover, a client
+    // crossing 18->19 played against an invisible shield arc. Its
+    // deployed replicas go with it, like the presence-transition path.
+    drop_station_and_enemies();
     // Local-ship bullets are client-owned (own_bullets): the rollover
     // wipe that used to arrive via the wholesale echo happens here now.
     // (Replay ghosts' bullets are record-owned — no wipe.)
@@ -8017,8 +8068,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
         live[best]->apply_net_state(sh);
         used[best] = true;
         hazards->push_back(live[best]);
-      } else {
-        hazards->push_back(Hazard::from_state(sh, world));
+      } else if (Hazard *hz = Hazard::from_state(sh, world)) {
+        hazards->push_back(hz);
         NET_LOG("net: hazard replica spawned (kind %d)\n", (int)sh.kind);
       }
     }
@@ -8054,12 +8105,11 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       // Client replica: its enemies never steer or shoot (the host owns
       // that), so the lead value is cosmetic here — passed for symmetry.
       station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects,
-                              hostile_aim_lead(generation), generation);
+                              hostile_aim_lead(generation), generation,
+                              ship_objects);
     station->restore_state(s.station, grid);
   } else if (station) {
-    while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
-    delete station;
-    station = NULL;
+    drop_station_and_enemies();
   }
   // Keep the replica for the record's whole `present` window, not just
   // while alive: the host keeps its dead mini around while the debris
@@ -8254,6 +8304,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
   if (!nx_read(in, n_en)) return false;
   if (n_en > 256) return false;  // hostile/corrupt
   auto ei = enemies->begin();
+  std::vector<Particle> orphans;
   for (int e = 0; e < n_en; e++) {
     uint32_t enemy_id = 0;
     if (!nx_read(in, enemy_id)) return false;
@@ -8299,8 +8350,17 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
         (*ei)->ship->alive = false;
       (*ei)->ship->bullets.swap(ebs);
       ++ei;
+    } else if (apply) {
+      // Trailing records past the replica count: a dead ship's bullets
+      // still in flight (the writer appends those after the alive line).
+      // World-positioned particles — they render and step fine without a
+      // hull to hang off.
+      orphans.insert(orphans.end(), ebs.begin(), ebs.end());
     }
   }
+  // REPLACE every apply, like the replica swaps — an empty tail clears
+  // last apply's orphans.
+  if (apply) net_enemy_orphan_bullets_.swap(orphans);
   return true;
 }
 
@@ -9110,7 +9170,8 @@ void GLGame::tick(int delta) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects,
-                                hostile_aim_lead(generation), generation);
+                                hostile_aim_lead(generation), generation,
+                                ship_objects);
       }
       if(station != NULL) {
         station->reset();
@@ -10656,6 +10717,12 @@ void GLGame::draw_objects(float direction, bool minimap,
   }
   for(o = enemies->begin(); o != enemies->end(); o++) {
     (*o)->draw(minimap);
+  }
+  // Net client: a dead wave ship's still-flying fire, no replica to draw
+  // it (the wire's trailing records) — enemy green, the standard glyphs.
+  if(!minimap && !net_enemy_orphan_bullets_.empty()) {
+    static const float enemy_col[3] = { 0.0f, 1.0f, 0.0f };
+    GLShip::draw_bullet_batch(net_enemy_orphan_bullets_, enemy_col);
   }
 
   if(station != NULL) station->draw(minimap);

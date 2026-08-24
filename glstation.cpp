@@ -17,7 +17,7 @@
 
 using namespace std;
 
-GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids, float aim_lead, int generation) : Ship(grid, false), objects(objects), targets(targets), asteroids(asteroids), aim_lead(aim_lead), generation(generation) {
+GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids, float aim_lead, int generation, list<Object*>* missile_ships) : Ship(grid, false), objects(objects), targets(targets), asteroids(asteroids), aim_lead(aim_lead), generation(generation), missile_ships(missile_ships) {
   position = Point(0,0);
   radius = 200.0;
   time_until_respawn = 0;
@@ -176,6 +176,7 @@ void GLStation::reset(bool was_killed) {
     if(objects->back()->ship->is_alive()) {
       ships_left_to_deploy++;
     }
+    if(missile_ships) missile_ships->remove(objects->back()->ship);
     delete objects->back();
     objects->pop_back();
   }
@@ -375,17 +376,34 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
     GLEnemy *ge;
     if (oi != objects->end()) {
       ge = (GLEnemy *)*oi;
+      // Order-based pairing shifts when deaths shuffle the list mid-wave.
+      // Stats are overwritten every apply, but the mesh/colour/trail were
+      // chosen at construction — left alone, a green arrowhead could fly
+      // bomber behaviour for the rest of the wave. Re-derive the variant
+      // from the record's thrust band and rebuild the replica on mismatch
+      // (rare: only when the pairing actually shifted, so the 10 Hz cost
+      // that killed wholesale delete+recreate never returns).
+      GLEnemy::Variant want = GLEnemy::variant_for_thrust(se.thrust_force);
+      if (ge->variant() != want) {
+        if (missile_ships) missile_ships->remove(ge->ship);
+        delete ge;
+        ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty,
+                         asteroids, aim_lead, want);
+        if (missile_ships) missile_ships->push_back(ge->ship);
+        if (!ge->ship->behaviours.empty())
+          if (Follower *f = dynamic_cast<Follower*>(ge->ship->behaviours.front()))
+            f->lock_now();
+        *oi = ge;
+      }
       ++oi;
     } else {
       // Re-derive the variant from the stats the record already carries
       // (glenemy.h: the interceptor IS its stats, no serialized flag).
-      // Order-based reconcile means a rare transient mesh/stat mismatch
-      // when deaths shuffle the pairing mid-wave; the stats below are
-      // still overwritten every apply, so behaviour is always right.
       ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty,
                        asteroids, aim_lead,
                        GLEnemy::variant_for_thrust(se.thrust_force));
       objects->push_back(ge);
+      if (missile_ships) missile_ships->push_back(ge->ship);
       // Skip the initial 2.5s lock delay — enemy is already deployed at
       // the recorded position.
       if (!ge->ship->behaviours.empty())
@@ -403,6 +421,7 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
   }
   // Record shrank (deaths the host already pruned): drop the leftovers.
   while (oi != objects->end()) {
+    if (missile_ships) missile_ships->remove((*oi)->ship);
     delete *oi;
     oi = objects->erase(oi);
   }
@@ -446,21 +465,26 @@ void GLStation::step(float delta, const Grid &grid) {
       // order counts up from 0 as ships_left counts down; the caps
       // guarantee the allotments never overlap.
       int deploy_index = ships_this_wave - 1 - ships_left_to_deploy;
+      // reset() converts survivors into EXTRA deploy slots, so ships_left
+      // can exceed the wave size and the index goes negative — and a
+      // negative index satisfies `< wave_interceptors()`, redeploying
+      // every carried slot as the fastest hull. Carried slots are plain
+      // reinforcements: deal them as standards.
       GLEnemy::Variant variant =
-          deploy_index < wave_interceptors()                ? GLEnemy::INTERCEPTOR
+          deploy_index < 0                                  ? GLEnemy::STANDARD
+        : deploy_index < wave_interceptors()                ? GLEnemy::INTERCEPTOR
         : deploy_index < wave_interceptors() + wave_rammers() ? GLEnemy::RAMMER
         : deploy_index >= ships_this_wave - wave_bombers()  ? GLEnemy::BOMBER
                                                             : GLEnemy::STANDARD;
       float rotation = 360.0/ships_this_wave*ships_left_to_deploy*M_PI/180;
       float distance = 30 + radius;
-      objects->push_back(
-        new GLEnemy(
+      GLEnemy *deployed = new GLEnemy(
           grid,
           position.x() + distance*cos(rotation),
           position.y() + distance*sin(rotation), targets, difficulty, asteroids,
-          aim_lead, variant
-        )
-      );
+          aim_lead, variant);
+      objects->push_back(deployed);
+      if(missile_ships) missile_ships->push_back(deployed->ship);
     }
   } else if (objects->empty()) {
     deploying = true;

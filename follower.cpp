@@ -1,6 +1,7 @@
 #include "follower.h"
 #include "behaviour.h"
 
+#include "grid.h"
 #include "seek.h"
 #include "ship.h"
 #include <iostream>
@@ -8,22 +9,22 @@
 #include <cmath>
 using namespace std;
 
-Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER) {
+Follower::Follower(Ship *ship) : Behaviour(ship), targets(NULL), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER), grid(NULL), owns_targets(false) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER) {
+Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER), grid(NULL), owns_targets(false) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead, int shoot_interval_ms, Mode mode) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead), shoot_interval_ms(shoot_interval_ms), mode(mode) {
+Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead, int shoot_interval_ms, Mode mode, const Grid *grid) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead), shoot_interval_ms(shoot_interval_ms), mode(mode), grid(grid), owns_targets(true) {
   common_init();
 }
 
 Follower::~Follower() {
   ship->rotate_right(false);
   ship->thrust(false);
-  delete targets;
+  if (owns_targets) delete targets;
 }
 
 void Follower::common_init() {
@@ -48,9 +49,33 @@ bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_streng
   // (closer asteroids exert stronger repulsion).
   float sum_x = 0.0f, sum_y = 0.0f;
 
-  list<Object *>::iterator it;
-  for(it = asteroids->begin(); it != asteroids->end(); ++it) {
-    Object *a = *it;
+  // Candidates come from the grid when we have one (convention 6 — this
+  // scan runs every 8 ms per enemy, and late-game waves multiplied it);
+  // query_radius pads by a whole cell, which covers asteroid radii. The
+  // list walk survives only for grid-less legacy users.
+  static std::vector<Object *> s_cand;
+  if(grid) {
+    grid->query_radius(Point(ship->position.x(), ship->position.y()),
+                       avoid_range, s_cand);
+    // The broad-phase returns an asteroid once per CELL its body overlaps.
+    // A duplicate is harmless to the min-test seeks, but this loop
+    // ACCUMULATES repulsion — counted twice, a boundary-straddling rock
+    // would out-shout its neighbours. Dedup IN QUERY ORDER (a prefix scan;
+    // candidate counts are a handful of cells' worth) — sorting by raw
+    // pointer would make the float-summation order heap-address-dependent,
+    // the sim's first, and churn the shot harness's committed renders.
+    size_t n_uniq = 0;
+    for (size_t i = 0; i < s_cand.size(); i++) {
+      bool dup = false;
+      for (size_t j = 0; j < n_uniq && !dup; j++)
+        dup = s_cand[j] == s_cand[i];
+      if (!dup) s_cand[n_uniq++] = s_cand[i];
+    }
+    s_cand.resize(n_uniq);
+  } else {
+    s_cand.assign(asteroids->begin(), asteroids->end());
+  }
+  for(Object *a : s_cand) {
     if(!a->alive) continue;
     float dist = ship->position.distance_to(a->position) - a->radius;
     if(dist < 1.0f) dist = 1.0f;
@@ -180,9 +205,21 @@ void Follower::step(int delta) {
         // steering at the intercept also turns tail-chasing into cut-offs.
         Point self = ship->position.closest_to(target_point);
         Point rel(target_point.x() - self.x(), target_point.y() - self.y());
-        Point rel_vel(target->velocity.x() - ship->velocity.x() * 0.99f,
-                      target->velocity.y() - ship->velocity.y() * 0.99f);
-        Point off = intercept_offset(rel, rel_vel, 0.615f, 2000.0f, aim_lead);
+        Point off;
+        if(mode == RAMMER) {
+          // The rammer's "projectile" is the hull itself: lead with a
+          // nominal ram closing speed over the hunter's long horizon
+          // (hazard.cpp's exact pattern), not the gun's bullet kinematics
+          // — the 0.615 solve under-led a crossing target by seconds and
+          // the charge curved in behind instead of cutting the corner.
+          static const float RAM_SPEED = 0.3f;
+          off = intercept_offset(rel, target->velocity, RAM_SPEED, 6000.0f,
+                                 aim_lead);
+        } else {
+          Point rel_vel(target->velocity.x() - ship->velocity.x() * 0.99f,
+                        target->velocity.y() - ship->velocity.y() * 0.99f);
+          off = intercept_offset(rel, rel_vel, 0.615f, 2000.0f, aim_lead);
+        }
         target_point = WrappedPoint(target_point.x() + off.x(),
                                     target_point.y() + off.y());
       }

@@ -8,6 +8,7 @@
 
 #include "net_policy.h"
 #include "net_protocol.h"
+#include "hazard.h"       // Hazard::HUNTER (net_state_sane's kind bound)
 #include "preferences.h"  // MAX_PLAYERS (net_state_sane's seat bound)
 #include "savegame.h"
 
@@ -338,6 +339,11 @@ bool net_state_sane(const Save::GameState &s) {
         !net_coord_sane(s.black_holes[i].pos_y)) return false;
   for (size_t i = 0; i < s.hazards.size(); i++) {
     const Save::Hazard &h = s.hazards[i];
+    // Kind must be one the receiver can draw and kill — an out-of-range
+    // value builds an invisible, unkillable hazard that blocks the
+    // level-clear gate forever (Hazard::from_state refuses it too; this
+    // rejects the whole snapshot at the door like every other bound here).
+    if (h.kind > (uint8_t)Hazard::HUNTER) return false;
     if (!net_coord_sane(h.pos_x) || !net_coord_sane(h.pos_y)) return false;
     if (!net_vel_sane(h.vel_x) || !net_vel_sane(h.vel_y)) return false;
     if (!std::isfinite(h.timer)) return false;
