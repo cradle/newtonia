@@ -130,27 +130,30 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     body_outline.upload(mb);
     // jets mesh stays empty — enemy has no thruster effect
   } else if (variant == RAMMER) {
-    // A slim barbed spear — the hunter's barbed silhouette on a wave
-    // hull, so the shape itself says "this one is coming to touch you".
+    // A hammerhead: a wide swept head bar leading, the body tapering to a
+    // thin tail — all the mass is at the front because the front is the
+    // weapon. The T silhouette is concave, so the fill is two convex fans
+    // (head bar + body) under one line-loop outline.
     MeshBuilder mb;
     mb.begin(GL_TRIANGLE_FAN);
     mb.color(0.0f, 0.0f, 0.0f);
-    mb.vertex( 0.0f,  1.3f); mb.vertex(-0.35f, -0.9f);
-    mb.vertex( 0.0f, -0.55f); mb.vertex( 0.35f, -0.9f);
+    mb.vertex(-0.95f, 1.2f); mb.vertex( 0.95f, 1.2f);
+    mb.vertex( 0.95f, 0.8f); mb.vertex(-0.95f, 0.8f);
+    mb.end();
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f);
+    mb.vertex(-0.32f, 0.8f); mb.vertex( 0.32f, 0.8f);
+    mb.vertex( 0.1f, -1.1f); mb.vertex(-0.1f, -1.1f);
     mb.end();
     body_fill.upload(mb);
 
     mb.clear();
     mb.begin(GL_LINE_LOOP);
     mb.color(color[0], color[1], color[2]);
-    mb.vertex( 0.0f,  1.3f); mb.vertex(-0.35f, -0.9f);
-    mb.vertex( 0.0f, -0.55f); mb.vertex( 0.35f, -0.9f);
-    mb.end();
-    // The barbs: swept spikes flaring back off the mid-hull.
-    mb.begin(GL_LINES);
-    mb.color(color[0], color[1], color[2]);
-    mb.vertex(-0.22f, 0.25f); mb.vertex(-0.75f, -0.3f);
-    mb.vertex( 0.22f, 0.25f); mb.vertex( 0.75f, -0.3f);
+    mb.vertex(-0.95f, 1.2f); mb.vertex( 0.95f, 1.2f);
+    mb.vertex( 0.95f, 0.8f); mb.vertex( 0.32f, 0.8f);
+    mb.vertex( 0.1f, -1.1f); mb.vertex(-0.1f, -1.1f);
+    mb.vertex(-0.32f, 0.8f); mb.vertex(-0.95f, 0.8f);
     mb.end();
     body_outline.upload(mb);
     // jets mesh stays empty — enemy has no thruster effect
