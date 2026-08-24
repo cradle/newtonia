@@ -1062,54 +1062,60 @@ void GLShip::draw_weapons() const {
   }
 }
 
+void GLShip::draw_bullet_batch(const std::vector<Particle> &bullets,
+                               const float col[3]) {
+  static MeshBuilder mb;
+  static Mesh mesh;
+  mb.clear();
+  mb.begin(GL_LINES);
+  for(auto b = bullets.begin(); b != bullets.end(); b++) {
+    //TODO: Work out how to make bullets draw themselves. GLBullet?
+    if(b->world_bullet) {
+      mb.color(1.0f, 1.0f, 1.0f);
+    } else if(b->piercing) {
+      mb.color(0.7f, 0.4f, 1.0f);   // beam lance: violet, matching the pickup
+    } else {
+      mb.color(col[0], col[1], col[2]);
+    }
+    if(b->is_bomb) {
+      // Bomber mortar shell: a near-ship-sized diamond, not a streak —
+      // the whole point of the shell is that it is seen coming and
+      // dodged, and at 0.25 u/ms a velocity-scaled streak is a one-pixel
+      // dot. Brightened over the hull violet so it pops against the
+      // starfield. Four segments in the same GL_LINES batch.
+      mb.color(1.0f, 0.75f, 1.0f);
+      const float R = 9.0f;
+      float bx = b->position.x(), by = b->position.y();
+      mb.vertex(bx - R, by); mb.vertex(bx, by + R);
+      mb.vertex(bx, by + R); mb.vertex(bx + R, by);
+      mb.vertex(bx + R, by); mb.vertex(bx, by - R);
+      mb.vertex(bx, by - R); mb.vertex(bx - R, by);
+      continue;
+    }
+    // Beam bolts draw a longer streak to read as a lance. Slow ordnance
+    // (the bomber's flak fragments, 0.3 u/ms — everything else flies at
+    // 0.7+) gets a floored streak length so it reads like a bullet
+    // instead of a star-sized dot.
+    Point tail = b->position - b->velocity * (b->piercing ? 22 : 10);
+    float streak = (b->velocity * 10.0f).magnitude();
+    if (streak < 7.0f && streak > 0.0f)
+      tail = b->position - b->velocity.normalized() * 7.0f;
+    mb.vertex(tail.x(), tail.y());
+    mb.vertex(b->position.x(), b->position.y());
+  }
+  mb.end();
+  glLineWidth(2.5f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+}
+
 void GLShip::draw_particles() const {
   static MeshBuilder mb;
   static Mesh mesh;
 
   //TODO: ParticleDrawer::draw(ship->bullets);
-  if (!ship->bullets.empty()) {
-    mb.clear();
-    mb.begin(GL_LINES);
-    for(auto b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
-      //TODO: Work out how to make bullets draw themselves. GLBullet?
-      if(b->world_bullet) {
-        mb.color(1.0f, 1.0f, 1.0f);
-      } else if(b->piercing) {
-        mb.color(0.7f, 0.4f, 1.0f);   // beam lance: violet, matching the pickup
-      } else {
-        mb.color(color[0], color[1], color[2]);
-      }
-      if(b->is_bomb) {
-        // Bomber mortar shell: a near-ship-sized diamond, not a streak —
-        // the whole point of the shell is that it is seen coming and
-        // dodged, and at 0.25 u/ms a velocity-scaled streak is a one-pixel
-        // dot. Brightened over the hull violet so it pops against the
-        // starfield. Four segments in the same GL_LINES batch.
-        mb.color(1.0f, 0.75f, 1.0f);
-        const float R = 9.0f;
-        float bx = b->position.x(), by = b->position.y();
-        mb.vertex(bx - R, by); mb.vertex(bx, by + R);
-        mb.vertex(bx, by + R); mb.vertex(bx + R, by);
-        mb.vertex(bx + R, by); mb.vertex(bx, by - R);
-        mb.vertex(bx, by - R); mb.vertex(bx - R, by);
-        continue;
-      }
-      // Beam bolts draw a longer streak to read as a lance. Slow ordnance
-      // (the bomber's flak fragments, 0.3 u/ms — everything else flies at
-      // 0.7+) gets a floored streak length so it reads like a bullet
-      // instead of a star-sized dot.
-      Point tail = b->position - b->velocity * (b->piercing ? 22 : 10);
-      float streak = (b->velocity * 10.0f).magnitude();
-      if (streak < 7.0f && streak > 0.0f)
-        tail = b->position - b->velocity.normalized() * 7.0f;
-      mb.vertex(tail.x(), tail.y());
-      mb.vertex(b->position.x(), b->position.y());
-    }
-    mb.end();
-    glLineWidth(2.5f);
-    mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw();
-  }
+  if (!ship->bullets.empty())
+    draw_bullet_batch(ship->bullets, color);
 
   if(!ship->lance_pulses.empty()) {
     mb.clear();

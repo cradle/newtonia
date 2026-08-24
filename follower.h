@@ -68,6 +68,11 @@ private:
   // always passes the game grid, and compute_avoidance falls back to the
   // full-list walk without it.
   const Grid *grid;
+  // Whether ~Follower owns (deletes) `targets`. Only the full constructor
+  // takes a heap list built for it (the GLEnemy pattern); the short ctors
+  // receive NULL or a borrowed pointer (Enemy passes the address of its
+  // own member — deleting that would corrupt the heap).
+  bool owns_targets;
   Object *target;
 };
 

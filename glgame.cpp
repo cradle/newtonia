@@ -4344,25 +4344,34 @@ void nx_write_mini_station_bullets(Save::Stream &out, const GLMiniStation *ms) {
 // net_ship_id — the rebuilt replicas' only durable identity, re-stamped
 // on the client every apply, referenced by exact MSG_HIT_SHIP claims.
 void nx_write_enemy_bullets(Save::Stream &out, const std::list<GLShip *> *enemies) {
-  // Alive ships only, matching Save::Station::capture_state — the reader
+  // ALIVE ships first, matching Save::Station::capture_state — the reader
   // pairs these records with the capture-rebuilt replicas IN ORDER, so a
   // dead-but-lingering debris hull in this list (but not in that one)
-  // shifted every id/bullet pairing for its whole ~2 s window.
-  uint16_t alive_count = 0;
+  // shifted every id/bullet pairing for its whole ~2 s window. Dead ships
+  // whose bullets are still in flight (a killed bomber's shell, a gunner's
+  // last burst — Ship::kill never clears bullets and they stay LETHAL for
+  // their TTL) are appended AFTER: the reader has no replica for them and
+  // hands their bullets to its orphan container, so the fire that can
+  // still kill you is never invisible. Same record framing either way — a
+  // reader that predates the orphan container just drops the tail.
+  uint16_t count = 0;
   for (auto *e : *enemies)
-    if (e->ship->is_alive()) alive_count++;
-  nx_write(out, alive_count);
-  for (auto *e : *enemies) {
-    if (!e->ship->is_alive()) continue;
-    nx_write(out, e->ship->net_ship_id);
-    nx_write(out, (uint16_t)e->ship->bullets.size());
-    for (const Particle &b : e->ship->bullets) {
-      nx_write_projectile(out, b);
-      // v23: the per-bullet wire flag byte, so a client replica draws the
-      // bomber's mortar shell (is_bomb diamond + has_trail smoke) like the
-      // host does. Reader gates on the stream's save version — pre-v23
-      // replays carry no byte here.
-      nx_write(out, b.net_flags());
+    if (e->ship->is_alive() || !e->ship->bullets.empty()) count++;
+  nx_write(out, count);
+  for (int pass = 0; pass < 2; pass++) {
+    for (auto *e : *enemies) {
+      bool alive = e->ship->is_alive();
+      if (pass == 0 ? !alive : (alive || e->ship->bullets.empty())) continue;
+      nx_write(out, e->ship->net_ship_id);
+      nx_write(out, (uint16_t)e->ship->bullets.size());
+      for (const Particle &b : e->ship->bullets) {
+        nx_write_projectile(out, b);
+        // v23: the per-bullet wire flag byte, so a client replica draws the
+        // bomber's mortar shell (is_bomb diamond + has_trail smoke) like the
+        // host does. Reader gates on the stream's save version — pre-v23
+        // replays carry no byte here.
+        nx_write(out, b.net_flags());
+      }
     }
   }
 }
@@ -6560,6 +6569,19 @@ void GLGame::tick_net_client(int delta) {
       e->ship->Object::step(step_size);
       for (auto &b : e->ship->bullets) b.step(step_size);
     }
+    // Orphan enemy bullets (a dead wave ship's fire, no replica to ride):
+    // same extrapolation, plus a TTL cull so they die out even if the
+    // stream stalls.
+    for (size_t i = 0; i < net_enemy_orphan_bullets_.size();) {
+      Particle &b = net_enemy_orphan_bullets_[i];
+      b.step(step_size);
+      if (!b.is_alive()) {
+        net_enemy_orphan_bullets_[i] = net_enemy_orphan_bullets_.back();
+        net_enemy_orphan_bullets_.pop_back();
+      } else {
+        ++i;
+      }
+    }
     // Mid-game hazards: extrapolate motion + animation between snapshots
     // (pulsar cycle, comet drift + trail, seeker homing) so they glide
     // rather than teleport at the apply rate — visual only; the lethal
@@ -8282,6 +8304,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
   if (!nx_read(in, n_en)) return false;
   if (n_en > 256) return false;  // hostile/corrupt
   auto ei = enemies->begin();
+  std::vector<Particle> orphans;
   for (int e = 0; e < n_en; e++) {
     uint32_t enemy_id = 0;
     if (!nx_read(in, enemy_id)) return false;
@@ -8327,8 +8350,17 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
         (*ei)->ship->alive = false;
       (*ei)->ship->bullets.swap(ebs);
       ++ei;
+    } else if (apply) {
+      // Trailing records past the replica count: a dead ship's bullets
+      // still in flight (the writer appends those after the alive line).
+      // World-positioned particles — they render and step fine without a
+      // hull to hang off.
+      orphans.insert(orphans.end(), ebs.begin(), ebs.end());
     }
   }
+  // REPLACE every apply, like the replica swaps — an empty tail clears
+  // last apply's orphans.
+  if (apply) net_enemy_orphan_bullets_.swap(orphans);
   return true;
 }
 
@@ -10685,6 +10717,12 @@ void GLGame::draw_objects(float direction, bool minimap,
   }
   for(o = enemies->begin(); o != enemies->end(); o++) {
     (*o)->draw(minimap);
+  }
+  // Net client: a dead wave ship's still-flying fire, no replica to draw
+  // it (the wire's trailing records) — enemy green, the standard glyphs.
+  if(!minimap && !net_enemy_orphan_bullets_.empty()) {
+    static const float enemy_col[3] = { 0.0f, 1.0f, 0.0f };
+    GLShip::draw_bullet_batch(net_enemy_orphan_bullets_, enemy_col);
   }
 
   if(station != NULL) station->draw(minimap);

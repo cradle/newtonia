@@ -5,27 +5,26 @@
 #include "seek.h"
 #include "ship.h"
 #include <iostream>
-#include <algorithm>
 #include <cstdlib>
 #include <cmath>
 using namespace std;
 
-Follower::Follower(Ship *ship) : Behaviour(ship), targets(NULL), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER), grid(NULL) {
+Follower::Follower(Ship *ship) : Behaviour(ship), targets(NULL), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER), grid(NULL), owns_targets(false) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER), grid(NULL) {
+Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f), aim_lead(0.0f), shoot_interval_ms(3000), mode(GUNNER), grid(NULL), owns_targets(false) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead, int shoot_interval_ms, Mode mode, const Grid *grid) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead), shoot_interval_ms(shoot_interval_ms), mode(mode), grid(grid) {
+Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty, float aim_lead, int shoot_interval_ms, Mode mode, const Grid *grid) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty), aim_lead(aim_lead), shoot_interval_ms(shoot_interval_ms), mode(mode), grid(grid), owns_targets(true) {
   common_init();
 }
 
 Follower::~Follower() {
   ship->rotate_right(false);
   ship->thrust(false);
-  delete targets;
+  if (owns_targets) delete targets;
 }
 
 void Follower::common_init() {
@@ -61,9 +60,18 @@ bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_streng
     // The broad-phase returns an asteroid once per CELL its body overlaps.
     // A duplicate is harmless to the min-test seeks, but this loop
     // ACCUMULATES repulsion — counted twice, a boundary-straddling rock
-    // would out-shout its neighbours. Dedup before summing.
-    std::sort(s_cand.begin(), s_cand.end());
-    s_cand.erase(std::unique(s_cand.begin(), s_cand.end()), s_cand.end());
+    // would out-shout its neighbours. Dedup IN QUERY ORDER (a prefix scan;
+    // candidate counts are a handful of cells' worth) — sorting by raw
+    // pointer would make the float-summation order heap-address-dependent,
+    // the sim's first, and churn the shot harness's committed renders.
+    size_t n_uniq = 0;
+    for (size_t i = 0; i < s_cand.size(); i++) {
+      bool dup = false;
+      for (size_t j = 0; j < n_uniq && !dup; j++)
+        dup = s_cand[j] == s_cand[i];
+      if (!dup) s_cand[n_uniq++] = s_cand[i];
+    }
+    s_cand.resize(n_uniq);
   } else {
     s_cand.assign(asteroids->begin(), asteroids->end());
   }

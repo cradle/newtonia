@@ -18,6 +18,13 @@ class GLTrail;
 
 class GLShip {
 public:
+  // Draw one batch of bullet particles in a hull colour — the single home
+  // of the streak/diamond vocabulary (world-bullet white, beam violet,
+  // v23 bomber-shell diamond, slow-ordnance streak floor). Shared by
+  // draw_particles and the net client's orphan enemy bullets (fire from a
+  // dead, no-longer-replicated wave ship).
+  static void draw_bullet_batch(const std::vector<Particle> &bullets,
+                                const float col[3]);
   // tint: optional seat colour (FOURPLAYER.md D7) applied BEFORE the body
   // meshes bake; NULL keeps the classic P1 blue. The minimap dot and lives
   // icons read `color` live, so they follow automatically.
