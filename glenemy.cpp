@@ -149,7 +149,7 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     mb.begin(GL_TRIANGLE_FAN);
     mb.color(0.0f, 0.0f, 0.0f);
     mb.vertex(-0.12f, -0.7f); mb.vertex( 0.12f, -0.7f);
-    mb.vertex( 0.28f, -1.1f); mb.vertex(-0.28f, -1.1f);
+    mb.vertex( 0.45f, -1.1f); mb.vertex(-0.45f, -1.1f);
     mb.end();
     body_fill.upload(mb);
 
@@ -158,8 +158,8 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     mb.color(color[0], color[1], color[2]);
     mb.vertex(-0.95f, 1.2f); mb.vertex( 0.95f, 1.2f);
     mb.vertex( 0.95f, 0.8f); mb.vertex( 0.32f, 0.8f);
-    mb.vertex( 0.12f, -0.7f); mb.vertex( 0.28f, -1.1f);
-    mb.vertex(-0.28f, -1.1f); mb.vertex(-0.12f, -0.7f);
+    mb.vertex( 0.12f, -0.7f); mb.vertex( 0.45f, -1.1f);
+    mb.vertex(-0.45f, -1.1f); mb.vertex(-0.12f, -0.7f);
     mb.vertex(-0.32f, 0.8f); mb.vertex(-0.95f, 0.8f);
     mb.end();
     body_outline.upload(mb);
