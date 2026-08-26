@@ -698,6 +698,14 @@ predicate, as a row on both screens — the waiting room's list and the
 in-game roster — writing one preference (`Preferences::allow_anonymous`,
 saved on change, default YES = the behaviour that always existed). NO
 refuses every unattested peer at the same two points the ban is enforced.
+On TOUCH neither of those lists draws (the touch waiting room is the
+sparse code-and-count screen, and the pause roster never opens on touch),
+which left the policy invisible and unsettable there (field, 2026-08-26 —
+a phone host's empty room showed no sign of it): the touch waiting room
+now draws a tap band of the same name under the waiting count
+(`kAnonBand`, tap toggles), the one touch surface for the policy. All
+four input paths — the row's confirm, left/right, its mouse click, and
+the band — land in `NetLobby::toggle_allow_anonymous`.
 Both are the same point now: `NetLobby::admit_verdict`, installed on the
 joining session as its `NetSession::set_admit_check` and answered INSIDE
 the handshake, before the WELCOME. That placement buys two things the

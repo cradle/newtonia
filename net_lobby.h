@@ -197,6 +197,11 @@ private:
   bool host_ban_ = false;
   bool host_row_can_ban(int row) const;
   void host_kick_selected(bool ban);
+  // The one write site for the hosting policy: flip, log, persist. Every
+  // input reaches it — the roster row's confirm, left/right, its mouse
+  // click, and the touch band under the waiting count (the only surface
+  // touch has).
+  void toggle_allow_anonymous();
   // Geometry of the centred text list the last draw() laid out, and where
   // the waiting room's rows landed in it (-1 = not on screen). RECORDED by
   // the draw, not re-derived: the list shrinks its step and size to fit
