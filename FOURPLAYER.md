@@ -703,9 +703,52 @@ sparse code-and-count screen, and the pause roster never opens on touch),
 which left the policy invisible and unsettable there (field, 2026-08-26 —
 a phone host's empty room showed no sign of it): the touch waiting room
 now draws a tap band of the same name under the waiting count
-(`kAnonBand`, tap toggles), the one touch surface for the policy. All
-four input paths — the row's confirm, left/right, its mouse click, and
-the band — land in `NetLobby::toggle_allow_anonymous`.
+(`kAnonBand`, tap toggles). Every input path lands in
+`NetLobby::toggle_allow_anonymous` (lobby) /
+`GLGame::roster_toggle_anonymous` (roster) — and since the touch pass
+below, the in-game touch roster carries the policy too
+(`TapBand::roster_anon`).
+
+**Touch hosts can KICK and BAN too** (2026-08-26, the touch pass's
+second half — the policy band above was its first): both removal
+surfaces were desktop-only, so a phone host could neither SEE who joined
+(the touch waiting room showed only a count) nor remove anyone, before
+or during a game. Now: in the WAITING ROOM, once anyone is seated the
+count line becomes a steady `PLAYERS n/4 - TAP TO MANAGE` band
+(`kManageBand`) opening a full-screen manage view — one block per
+seated pilot (name via `NetLobby::seated_display_name`, the same
+attested/late-attestation/LAN-claim ladder the desktop rows use) with
+finger-sized KICK / BAN zones under it (BAN only where a ban would hold,
+the same `net_identity_anonymous` rule as every other surface). First
+tap on a zone ARMS it (`CONFIRM KICK`), a second on the same zone
+performs through the desktop rows' own `host_kick_selected`, and any
+other tap disarms — the touch spelling of the two-confirm rule. The
+armed removal is keyed by the pilot's SESSION, never the seat: rows
+reshuffle when someone leaves, and a freed seat is re-offered to the
+next arrival, so an armed seat NUMBER would let one tap remove a pilot
+who was never armed (`waiting_room_update` sweeps the arm when its
+session leaves the roster, and closes the view when the last pilot
+does). The bottom band reads BACK and pops the view — the top-of-
+`touch_tap` exit hit-test carves it out, because `leave_to_menu()`
+behind a label that promised a step back would tear down every seated
+peer. MID-GAME, the pause screen offers a `MANAGE PLAYERS` band
+(`roster_manage_band`, above the hoisted badge rows) opening
+`Overlay::seat_roster`'s touch layout: peer blocks on the same shared
+`TapBand::roster_*` geometry (defined ONCE, in tap_band.cpp, so the two
+surfaces cannot drift), the ALLOW ANONYMOUS band, and BACK on the exit
+band's spot. `roster_available()` allows touch for NetHost only — the
+offline seat-rebinding half stays a cursor idea. While the touch roster
+is up it owns the screen outright: the pause chrome, room line, badge
+rows and OSD are suppressed under its dim (they collided with the
+blocks), and `GLGame::keyboard_up` swallows every key there — the
+entry points synthesize 'p' from the invisible centre pause zone and a
+legacy '\r' release on every finger-up, either of which would resume or
+confirm-close the roster out from under the tap it just answered.
+Verified headless (FORCE_TOUCH host + real named joiners against a
+FAKE_VERIFY relay): kick → rejoin allowed → ban → next handshake
+refused, plus the mid-game roster kick; `nseat_anon.sh`,
+`nseat_lobby_kick.sh`, `nseat_kick.sh` and `nseat_lobby_mouse.sh` keep
+the desktop paths green.
 Both are the same point now: `NetLobby::admit_verdict`, installed on the
 joining session as its `NetSession::set_admit_check` and answered INSIDE
 the handshake, before the WELCOME. That placement buys two things the

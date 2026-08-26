@@ -233,7 +233,9 @@ void Overlay::net_overlays(const GLGame *glgame) {
   float vh = Typer::scaled_window_height;
   int now = glgame->current_time;
 
-  if (show_room) {
+  // Not under the touch roster: its PLAYERS heading sits on this line's
+  // spot, and the code re-appears the moment the roster closes.
+  if (show_room && !(is_touch_mode() && glgame->roster_open())) {
     std::string room = "ROOM " + glgame->net_room_code_;
     Typer::draw_centered(0, vh * ROOM_LINE_Y, room.c_str(), ROOM_LINE_SZ);
   }
@@ -427,7 +429,11 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   // replay won't take — join/help hints, the keymap card, the touch OSD
   // (replay_hud carries the touch exit hint; R3 owns richer touch UX).
   bool replaying = glgame->net_mode_ == GLGame::NetReplay;
-  if (!replaying) title_text(glgame, glship);
+  // The touch roster is a full-screen list: the room line, badge rows and
+  // OSD circles under its dim collided with the blocks (the score/level
+  // strip stays, matching what the desktop roster leaves visible).
+  bool roster_up = is_touch_mode() && glgame->roster_open();
+  if (!replaying && !roster_up) title_text(glgame, glship);
   level(glgame, glship);
   god_mode(glgame, glship);
   time_slow(glgame, glship);
@@ -438,8 +444,8 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   temperature(glgame, glship);
   respawn_timer(glgame, glship);
   spectate(glgame, glship);
-  net_badges(glgame, glship);
-  if (!replaying) touch_controls(glgame, glship);
+  if (!roster_up) net_badges(glgame, glship);
+  if (!replaying && !roster_up) touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
   // Last on purpose: keymap dims this whole viewport under the card, so
   // everything above (HUD rows, edge indicators, the world) recedes and
@@ -550,6 +556,10 @@ void Overlay::paused(const GLGame *glgame) {
   // for a spectating client).
   if (glgame->all_players_out()) return;
   if (glgame->running) return;
+  // The roster replaces this screen entirely (seat_roster draws its own
+  // dim): "Paused" bled through it mid-list on both layouts, and the
+  // touch hint named a button the roster does not answer.
+  if (glgame->roster_open()) return;
   // A help card is the thing that paused the game and already fills its
   // owner's viewport; drawing "Paused" across the window would stack over
   // it. pause_menu_active() refuses while ANY player's help is open (one
@@ -638,6 +648,51 @@ void Overlay::seat_roster(const GLGame *glgame) {
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
+  }
+
+  if (is_touch_mode()) {
+    // Touch host roster (FOURPLAYER.md O3, touch pass): peer blocks with
+    // finger-sized action zones — geometry from TapBand::roster_*, the
+    // lobby manage view's, so the two surfaces read identically. Only
+    // remote pilots are listed: input re-binding is a cursor idea, and
+    // roster_available gates touch to the online host's kick UI. Armed
+    // zones ride roster_kick_armed_/roster_ban_, and GLGame::touch_tap
+    // answers the same bands this draws.
+    Typer::draw_centered(0, 340, "PLAYERS", 20);
+    int prows = (int)glgame->players->size();
+    int block = 0;
+    for (int i = 0; i < prows && block < TapBand::ROSTER_BLOCKS; i++) {
+      if (!glgame->roster_row_is_peer(i)) continue;
+      const GLGame::NetPeer *p =
+          const_cast<GLGame *>(glgame)->roster_peer_at(i);
+      std::string who = p ? net_identity_name_or(p->identity, "",
+                                                 glgame->net_id_ctx())
+                          : std::string();
+      char label[48];
+      if (who.empty())
+        snprintf(label, sizeof label, "PLAYER %d", i + 1);
+      else
+        snprintf(label, sizeof label, "PLAYER %d - %s", i + 1, who.c_str());
+      Typer::draw_centered(0, TapBand::roster_row_y(block), label, 15);
+      bool split = glgame->roster_row_can_ban(i);
+      bool armed = glgame->roster_kick_armed_ == i;
+      TapBand::roster_action(block, false, split)
+          .draw(armed && !glgame->roster_ban_ ? "CONFIRM KICK" : "KICK");
+      if (split)
+        TapBand::roster_action(block, true, split)
+            .draw(armed && glgame->roster_ban_ ? "CONFIRM BAN" : "BAN");
+      block++;
+    }
+    {
+      std::string anon = "ALLOW ANONYMOUS PLAYERS   ";
+      anon += g_prefs.allow_anonymous ? "YES" : "NO";
+      TapBand::roster_anon.draw(anon.c_str());
+    }
+    // The way back to the pause screen, on the exit band's spot — the
+    // label says which level it pops (GLGame::touch_tap answers it).
+    glgame->exit_band().draw(Typer::cursored("BACK", true).c_str(),
+                             glgame->current_time);
+    return;
   }
 
   bool hosting = glgame->net_mode_ == GLGame::NetHost;
@@ -1285,10 +1340,17 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // at GAME OVER, on the pause screen, and — online — when the LOCAL ship
   // is fully out while the peer plays on (all-over never fires there);
   // exit_band_showing() is that rule, shared with the badge rows' hoist.
-  if(glgame->exit_band_showing())
+  // Not under the touch roster, whose own BACK band takes the spot
+  // (seat_roster draws it; two labels on one zone would lie about one).
+  if(glgame->exit_band_showing() && !glgame->roster_open())
     glgame->exit_band().draw(
         Typer::cursored("EXIT TO MENU", true).c_str(),
         glgame->current_time);
+  // The way into the touch roster: the online host's MANAGE PLAYERS band
+  // on the pause screen, above the exit band (FOURPLAYER.md O3 touch
+  // pass — a phone host had no way to see or remove the pilots).
+  if(glgame->roster_touch_offer())
+    glgame->roster_manage_band().draw("MANAGE PLAYERS");
 }
 
 void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,

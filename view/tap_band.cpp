@@ -26,6 +26,21 @@ TapBand TapBand::lifted(float dy) const {
   return TapBand(nx, y + dy, size, pad, to_top, to_bottom, nx_min, nx_max);
 }
 
+// Name lines at 230 / 80 / -70 (pitch 150, the touch board list's), the
+// action zones 56 under each: block 2's zone bottoms out at -178, clear
+// of the anon band the in-game roster hangs at -260 and of every bottom
+// band (the lobby's exit zone starts at -370).
+float TapBand::roster_row_y(int block) { return 230.0f - 150.0f * block; }
+
+TapBand TapBand::roster_action(int block, bool ban_half, bool split) {
+  float y = roster_row_y(block) - 56.0f;
+  if (!split) return TapBand(0.5f, y, 14, 24.0f, false, false, 0.20f, 0.80f);
+  return ban_half ? TapBand(0.70f, y, 14, 24.0f, false, false, 0.50f, 0.95f)
+                  : TapBand(0.30f, y, 14, 24.0f, false, false, 0.05f, 0.50f);
+}
+
+const TapBand TapBand::roster_anon(0.5f, -260, 13, 16.0f);
+
 TapBand TapBand::for_pointer() const {
   if (is_touch_mode()) return *this;
   // A mouse lands where it is pointed: no finger pad, and no edge run —

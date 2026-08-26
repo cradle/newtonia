@@ -69,6 +69,25 @@ struct TapBand {
   // the drawn text never moves, so the tap zone stays a subset of the ink
   // it belongs to.
   TapBand for_pointer() const;
+
+  // ---- Touch roster blocks (FOURPLAYER.md O3, touch pass) ----
+  // The lobby's manage view and the in-game host roster draw the SAME
+  // touch layout — a name line per remote pilot with finger-sized action
+  // zones under it — so the geometry lives here, once, feeding both
+  // surfaces' draw AND hit-test (the TapBand rule, across two screens).
+  // Blocks 0..2 cover seats 2..4; fixed top-anchored slots, so portrait's
+  // stretched half-height spreads them mid-screen like every other lobby
+  // anchor.
+  static const int ROSTER_BLOCKS = 3;
+  static float roster_row_y(int block);  // the name line's Typer anchor
+  // The action zone(s) under a name line. split = the row offers BAN too
+  // (a worker-attested name): KICK takes the left half, BAN the right.
+  // Unsplit rows centre the lone KICK. ban_half picks which of a split
+  // row's zones.
+  static TapBand roster_action(int block, bool ban_half, bool split);
+  // The in-game roster's ALLOW ANONYMOUS PLAYERS band, under the blocks
+  // (the lobby's main screen carries its own copy of the policy band).
+  static const TapBand roster_anon;
 };
 
 #endif

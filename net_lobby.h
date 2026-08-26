@@ -199,9 +199,34 @@ private:
   void host_kick_selected(bool ban);
   // The one write site for the hosting policy: flip, log, persist. Every
   // input reaches it — the roster row's confirm, left/right, its mouse
-  // click, and the touch band under the waiting count (the only surface
-  // touch has).
+  // click, and the touch band under the waiting count.
   void toggle_allow_anonymous();
+  // ---- Touch manage view (FOURPLAYER.md O3, touch pass) ----
+  // The desktop waiting room lists seated pilots inline with KICK/BAN;
+  // touch has no room for rows between the fixed bands, so the count line
+  // becomes a MANAGE band opening a full-screen roster instead. Blocks
+  // and action zones come from TapBand::roster_* (shared with the
+  // in-game host roster so the two grammars cannot drift): first tap on
+  // an action arms it ("CONFIRM KICK"), a second on the same zone
+  // performs, any other tap disarms — the touch spelling of the desktop
+  // two-confirm rule.
+  bool host_manage_ = false;
+  // Armed removal, keyed by the pilot's SESSION (not row or seat: rows
+  // reshuffle when a peer leaves mid-arm, and a freed SEAT is re-offered
+  // to the next arrival — an armed seat number would let one tap remove a
+  // pilot who was never armed) + which action. Null = nothing armed.
+  // waiting_room_update sweeps it when the session leaves the roster.
+  NetSession *manage_armed_session_ = nullptr;
+  bool manage_armed_ban_ = false;
+  void manage_disarm() {
+    manage_armed_session_ = nullptr;
+    manage_armed_ban_ = false;
+  }
+  // A seated peer's display name — the attested capture, the live
+  // jid_attested_ entry, or (LAN door) the offline-context claim; empty
+  // when nothing may render. Shared by the desktop rows and the manage
+  // view.
+  std::string seated_display_name(const SeatedPeer &sp) const;
   // Geometry of the centred text list the last draw() laid out, and where
   // the waiting room's rows landed in it (-1 = not on screen). RECORDED by
   // the draw, not re-derived: the list shrinks its step and size to fit
