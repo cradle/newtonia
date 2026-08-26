@@ -89,6 +89,14 @@ const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 // tappable — once a peer is seated, the touch twin of the desktop
 // "ENTER - START GAME" row.
 const TapBand kStartBand(0.5f, 40, 22, 32.0f);
+// RoomHost waiting room: the ALLOW ANONYMOUS PLAYERS toggle, the touch
+// spelling of the desktop roster's policy row — and the ONLY place touch
+// can set it, since the in-game roster never opens there. In the gap
+// between the waiting count (anchor -220, 18-size ink to -256) and the
+// touch status line's clamped spot (-320, ink from -320 down): ink stays
+// clear of both, and the tap box only overlaps the status INK, which is
+// not a button. The exit band's zone starts at -370.
+const TapBand kAnonBand(0.5f, -280, 13, 20.0f);
 // CodeEntry LAN host bands (touch): above the soft keyboard (max 3).
 // Filled BOTTOM-UP — one host uses only the lowest band, sitting in
 // the free space just above the keyboard, well clear of the code
@@ -672,10 +680,7 @@ void NetLobby::confirm() {
     if (host_row_kind(host_row_selected()) == HostRowAnon) {
       // Two-state row: confirm toggles it, same as left/right (the in-game
       // roster's twin answers all three too).
-      g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
-      NET_LOG("[lobby] allow anonymous players: %s\n",
-              g_prefs.allow_anonymous ? "YES" : "NO");
-      save_preferences();  // a hosting policy should outlive the session
+      toggle_allow_anonymous();
     } else if (host_sel_ >= 0 && host_sel_ < (int)seated_.size()) {
       // A peer row is picked: first confirm arms, second performs whichever
       // removal left/right settled on. START is still on this same key with
@@ -1364,6 +1369,16 @@ bool NetLobby::host_row_can_ban(int row) const {
   std::map<std::string, NetIdentity>::const_iterator it =
       jid_attested_.find(sp.jid);
   return it != jid_attested_.end() && !net_identity_anonymous(it->second);
+}
+
+// Two-state policy: flip, log (nseat_anon.sh greps the line), persist —
+// a hosting policy should outlive the session. Every input path lands
+// here so the sites can't drift on the bookkeeping.
+void NetLobby::toggle_allow_anonymous() {
+  g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
+  NET_LOG("[lobby] allow anonymous players: %s\n",
+          g_prefs.allow_anonymous ? "YES" : "NO");
+  save_preferences();
 }
 
 void NetLobby::host_kick_selected(bool ban) {
@@ -2416,6 +2431,15 @@ void NetLobby::draw() {
         // Steady, not on the blink phase — a vanishing tap target reads
         // as a dead button mid-blink (the share band is steady too).
         if (waiting_room() && !seated_.empty()) kStartBand.draw("TAP TO START");
+        // The host's admission policy, the desktop roster row's touch
+        // twin — up BEFORE anyone arrives, which is exactly when a host
+        // would set it (the touch lobby simply had no way to see or set
+        // it; field, 2026-08-26). Tap toggles (see touch_tap).
+        if (waiting_room()) {
+          std::string anon = "ALLOW ANONYMOUS PLAYERS   ";
+          anon += g_prefs.allow_anonymous ? "YES" : "NO";
+          kAnonBand.draw(anon.c_str());
+        }
       } else {
         lines.push_back("ROOM CODE");
         // The waiting room grows a roster under this block (a count line, a
@@ -3116,10 +3140,7 @@ void NetLobby::nav_input(unsigned char key) {
     }
     if (MenuSelect::is_left(key) || MenuSelect::is_right(key)) {
       if (host_row_kind(visual) == HostRowAnon) {
-        g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
-        NET_LOG("[lobby] allow anonymous players: %s\n",
-                g_prefs.allow_anonymous ? "YES" : "NO");
-        save_preferences();
+        toggle_allow_anonymous();
         return;
       }
       // Left/right on a peer row chooses KICK or BAN (the mid-game roster's
@@ -3442,6 +3463,16 @@ void NetLobby::touch_tap(float nx, float ny) {
         waiting_room_start();
         break;
       }
+      // The policy band under the waiting count. Touch-gated like the
+      // draw (the TapBand rule): on desktop this strip crosses the drawn
+      // roster list, whose own anon row answers the click below. Gated on
+      // the code too — the band is only drawn once the room exists, and
+      // "CREATING A ROOM" must not eat a tap into a policy flip.
+      if (is_touch_mode() && waiting_room() && !room_code_.empty() &&
+          kAnonBand.contains(nx, ny)) {
+        toggle_allow_anonymous();
+        break;
+      }
       // Mouse / Deck pointer: the DRAWN roster rows are the buttons. The
       // touch band above is undrawn off touch, so this screen answered no
       // click at all — "ENTER - START GAME" read as a button and wasn't
@@ -3472,10 +3503,7 @@ void NetLobby::touch_tap(float nx, float ny) {
         }
         if (host_anon_line_ >= 0 && row == host_anon_line_) {
           host_row_select(host_anon_row());
-          g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
-          NET_LOG("[lobby] allow anonymous players: %s\n",
-                  g_prefs.allow_anonymous ? "YES" : "NO");
-          save_preferences();
+          toggle_allow_anonymous();
           break;
         }
         if (host_start_line_ >= 0 && row == host_start_line_) {
