@@ -64,6 +64,37 @@
   var elYouBanner = document.getElementById('you-banner');
   var elYouText = document.getElementById('you-banner-text');
 
+  // The CTA beside the would-place answer targets the store THIS device
+  // can compete on, the /join page's routing: iOS the App Store, Android
+  // Google Play once the listing is public (closed testing today — a Play
+  // link dead-ends for non-testers, so Android shows the placement with
+  // no button until ANDROID_PUBLIC flips, in step with /join's flag, task
+  // #145), everything else Steam — the markup's default, UTM-tagged
+  // because Steam's traffic report reads UTM; the other stores don't.
+  (function routeStoreCta() {
+    var cta = document.getElementById('you-banner-cta');
+    if (!cta) return;
+    var ANDROID_PUBLIC = false;
+    var ua = navigator.userAgent;
+    var isIOS = /iPhone|iPad|iPod/i.test(ua) ||
+        // iPadOS 13+ reports as desktop Safari, so sniff touch too.
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+      cta.href = 'https://apps.apple.com/app/id6760685759';
+      cta.textContent = 'COMPETE ON IOS ▸';
+    } else if (/Android/i.test(ua)) {
+      if (ANDROID_PUBLIC) {
+        // Play reads campaign attribution from the install referrer,
+        // not from bare UTM params on the store URL.
+        cta.href = 'https://play.google.com/store/apps/details?id=org.newtonia&referrer=' +
+            encodeURIComponent('utm_source=newtonia_site&utm_medium=referral&utm_campaign=lb_would_place');
+        cta.textContent = 'COMPETE ON ANDROID ▸';
+      } else {
+        cta.hidden = true;   // a.store-cta sets no display, so hidden holds
+      }
+    }
+  })();
+
   function boardsFor(p) {
     return (snapshot.boards || []).filter(function (b) {
       return b.players === p;

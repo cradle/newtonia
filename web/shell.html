@@ -274,9 +274,10 @@
 
     /* Game-over promo banner (built by main.ts, shown via window.newtGameOver
        from the game's game-over latch): the run just ended — offer the site
-       leaderboard ("where would this score rank?") and the Steam store, the
-       two things the free web build doesn't have. Sits above the tap-to-
-       continue overlay; its own links/button still receive the pointer. */
+       leaderboard ("where would this score rank?") and this device's store
+       (Steam / App Store / Play — main.ts routes it), the two things the
+       free web build doesn't have. Sits above the tap-to-continue overlay;
+       its own links/button still receive the pointer. */
     #go-banner {
       position: absolute;
       left: 50%;
@@ -297,8 +298,8 @@
     }
     #go-banner a { color: #2aff78; text-decoration: none; }
     #go-banner a:hover { color: #8dffb9; text-decoration: underline; }
-    #go-banner a.go-steam { color: #9ec3ff; }
-    #go-banner a.go-steam:hover { color: #cfe2ff; }
+    #go-banner a.go-store { color: #9ec3ff; }
+    #go-banner a.go-store:hover { color: #cfe2ff; }
     #go-banner button {
       position: absolute;
       top: 0.1rem;

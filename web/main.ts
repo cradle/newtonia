@@ -366,9 +366,13 @@ declare const Module: {
   // version finally says so, at the moment the run ends. glgame.cpp's
   // game-over latches call window.newtGameOver(score, players); the banner
   // offers the site leaderboard with ?score= (the page shows where the run
-  // WOULD have placed) and the Steam store, UTM-tagged so Steam's traffic
-  // report attributes web-game referrals. Absolute URLs on both: the
-  // itch.io deploy serves this same bundle off-domain.
+  // WOULD have placed) and the store THIS device can buy the game on — the
+  // /join page's routing: iOS the App Store, Android Google Play once the
+  // listing is public (closed testing today, so Android gets only the rank
+  // link until ANDROID_PUBLIC flips, in step with /join's flag, task #145),
+  // everything else the Steam store, UTM-tagged because Steam's traffic
+  // report reads UTM; the other stores don't. Absolute URLs on both links:
+  // the itch.io deploy serves this same bundle off-domain.
   let _goBanner: HTMLElement | null = null;
   let _goRank: HTMLAnchorElement | null = null;
 
@@ -387,14 +391,38 @@ declare const Module: {
       const rank = document.createElement("a");
       rank.target = "_blank";
       rank.rel = "noopener";
-      const steam = document.createElement("a");
-      steam.className = "go-steam";
-      steam.target = "_blank";
-      steam.rel = "noopener";
-      steam.href =
-          "https://store.steampowered.com/app/4536720/Newtonia/" +
-          "?utm_source=newtonia_webgame&utm_medium=referral&utm_campaign=gameover";
-      steam.textContent = "ONLINE CO-OP + LEADERBOARDS — GET IT ON STEAM";
+      const ANDROID_PUBLIC = false;
+      const ua = navigator.userAgent;
+      const isIOS = /iPhone|iPad|iPod/i.test(ua) ||
+          // iPadOS 13+ reports as desktop Safari, so sniff touch too.
+          (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      let storeHref = "", storeText = "";
+      if (isIOS) {
+        storeHref = "https://apps.apple.com/app/id6760685759";
+        storeText = "ONLINE CO-OP + LEADERBOARDS — GET IT ON THE APP STORE";
+      } else if (/Android/i.test(ua)) {
+        if (ANDROID_PUBLIC) {
+          // Play reads campaign attribution from the install referrer,
+          // not from bare UTM params on the store URL.
+          storeHref =
+              "https://play.google.com/store/apps/details?id=org.newtonia" +
+              "&referrer=" + encodeURIComponent(
+                  "utm_source=newtonia_webgame&utm_medium=referral" +
+                  "&utm_campaign=gameover");
+          storeText = "ONLINE CO-OP + LEADERBOARDS — GET IT ON GOOGLE PLAY";
+        }
+      } else {
+        storeHref =
+            "https://store.steampowered.com/app/4536720/Newtonia/" +
+            "?utm_source=newtonia_webgame&utm_medium=referral&utm_campaign=gameover";
+        storeText = "ONLINE CO-OP + LEADERBOARDS — GET IT ON STEAM";
+      }
+      const store = document.createElement("a");
+      store.className = "go-store";
+      store.target = "_blank";
+      store.rel = "noopener";
+      store.href = storeHref;
+      store.textContent = storeText;
       const close = document.createElement("button");
       close.textContent = "✕";
       close.setAttribute("aria-label", "Dismiss");
@@ -403,7 +431,7 @@ declare const Module: {
         canvas.focus(); // hand the keys back to the game
       });
       el.appendChild(rank);
-      el.appendChild(steam);
+      if (storeHref) el.appendChild(store);
       el.appendChild(close);
       document.getElementById("game-container")!.appendChild(el);
       _goBanner = el;
