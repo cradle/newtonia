@@ -271,7 +271,11 @@ web:
 	tsc -p web/tsconfig.json
 	$(EMCC) $(WEB_SRCS) $(WEB_FLAGS) -o web/dist/play/index.html
 	cp web/main.js web/dist/play/main.js
-	cp web/site/index.html web/site/styles.css web/site/site.js web/site/icon.png web/dist/
+	# Shared store routing (store IDs + the ANDROID_PUBLIC flag, one
+	# file): the site pages load it from the root, and the game bundle
+	# gets its own copy so the itch.io deploy (play-only) carries it.
+	cp web/site/store_route.js web/dist/play/store_route.js
+	cp web/site/index.html web/site/styles.css web/site/site.js web/site/icon.png web/site/store_route.js web/dist/
 	cp web/site/CNAME web/dist/CNAME
 	# Universal join link (invites.h): the /join landing page + the
 	# apple-app-site-association / assetlinks.json association files that make

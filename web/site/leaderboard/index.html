@@ -155,11 +155,14 @@
       letter-spacing: 0.06em;
     }
     /* The hidden attribute must actually hide: [hidden]'s display:none is
-       a UA-origin rule, and the author-level display:flex above overrides
-       it regardless of specificity — so the empty gold bar and its CTA
-       drew on every plain visit, not just when the web game hands a run
-       over in ?score= (field report, 2026-08-27). */
-    .you-banner[hidden] { display: none; }
+       a UA-origin rule, and ANY author-level display (like the flex above)
+       overrides it regardless of specificity — so the empty gold bar and
+       its CTA drew on every plain visit, not just when the web game hands
+       a run over in ?score= (field report, 2026-08-27). The CTA rule is
+       insurance for the same trap: leaderboard.js hides the button on
+       Android while the Play listing is closed, and a future display
+       property on a.store-cta must not un-hide it. */
+    .you-banner[hidden], a.store-cta[hidden] { display: none; }
     #you-banner-text { color: var(--gold); }
     a.store-cta {
       color: var(--gold);
@@ -269,6 +272,9 @@
   </footer>
 
   <script src="../site.js"></script>
+  <!-- Shared store routing (store ids + ANDROID_PUBLIC, one file with
+       /join and the web game) — must load before leaderboard.js. -->
+  <script src="../store_route.js"></script>
   <script src="leaderboard.js"></script>
 </body>
 </html>

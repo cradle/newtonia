@@ -420,6 +420,10 @@
 
   {{{ SCRIPT }}}
 
+  <!-- Shared store routing (web/site/store_route.js, copied into /play by
+       the Makefile): main.ts's game-over banner reads NewtoniaStore for
+       the device's store link, and skips the link if this failed to load. -->
+  <script src="store_route.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
