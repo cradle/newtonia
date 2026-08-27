@@ -90,12 +90,17 @@ const VERIFY_MIN_INTERVAL_MS = 3000;
 // VERIFIED account id, attached to the identity broadcast so the host can
 // key a kick-ban on the account instead of the display name — a rename
 // stops evading the ban, and an iOS pilot (account attested, alias never)
-// becomes bannable at all. The salt is the room's host_token: random,
-// persisted for the room's whole life including host reclaim, and never
-// sent to JOINERS — so peers can't precompute or link tokens across rooms,
-// and the raw account id still never leaves the worker (the XR-014 rule).
-// Bans die with the room (hosting anew clears the list), which is exactly
-// the token's scope.
+// becomes bannable at all. The salt is the room's ban_salt: random,
+// persisted for the room's whole life including host reclaim, and sent to
+// NOBODY — deliberately not host_token, which the host holds as its
+// reclaim credential: with salt + token in hand a modified host build
+// could offline-enumerate a SteamID (a dense ~2^33 space) out of a
+// joiner's token, exactly the account-id leak XR-014 forbids. With a
+// worker-only salt no peer can precompute, invert, or link tokens across
+// rooms. Bans die with the room (hosting anew clears the list), which is
+// exactly the token's scope; a room persisted from before ban_salt existed
+// mints no tokens (mint_ban_key's empty-salt guard) and degrades to the
+// name bans.
 async function mint_ban_key(salt, platform, acct) {
   if (!salt || !acct) return "";
   const data = new TextEncoder().encode(`${salt}:${platform}:${acct}`);
@@ -821,7 +826,7 @@ export class Room {
             return;
           }
           jent2.identity = { platform, name: v.name || "", verified: true };
-          const lkey = await mint_ban_key(this.r.host_token, platform,
+          const lkey = await mint_ban_key(this.r.ban_salt, platform,
                                           v.acct || "");
           if (lkey) jent2.identity.key = lkey;
           await this.save();
@@ -884,7 +889,7 @@ export class Room {
     // Mint the ban token from the proven account (attested only — a bare
     // claim proves no account, so it gets none and stays unbannable-by-id).
     if (attested.verified) {
-      const key = await mint_ban_key(this.r.host_token, platform, acct);
+      const key = await mint_ban_key(this.r.ban_salt, platform, acct);
       if (key) attested.key = key;
     }
     if (ent) ent.identity = attested; else this.r.host_identity = attested;
@@ -940,6 +945,10 @@ export class Room {
     this.state.acceptWebSocket(ws, ["host"]);
     this.r = { offer: null, offer_pv: null, host_cands: [],
                host_token: crypto.randomUUID(),
+               // Worker-only ban-token salt — never sent to anyone (see
+               // mint_ban_key; host_token goes to the host, so it can't be
+               // the salt).
+               ban_salt: crypto.randomUUID(),
                host_lost_at: 0, created: now, closed: false,
                host_identity: null,
                next_jid: 1, jids: {} };

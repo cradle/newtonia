@@ -230,6 +230,9 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   ev.platform = 0;       // Identity-only fields — reset so a prior event's
   ev.verified = false;   // values can never leak into a reused Event.
   ev.peer.clear();       // "from" stamp (PB-D5) — same leak rule.
+  ev.key.clear();        // ban token — a leak here bans the WRONG account
+                         // (a tokenless frame following a tokened one in
+                         // the same poll batch inherited its key).
   if (t == "room") {
     ev.kind = NetSignal::Event::Room;
     json_field(frame, "token", ev.text2);  // reclaim token (M3-1)

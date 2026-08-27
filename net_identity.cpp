@@ -128,7 +128,12 @@ const NetIdentity &net_local_identity() { return local_identity_impl(false); }
 // that relay treats as the fake ACCOUNT id — how the ban-token e2e joins
 // twice under one account with two names (nseat_ban_token.sh). Inert
 // against the production worker: a real verifier rejects it and attests
-// nothing, exactly the failed-verify path.
+// nothing, exactly the failed-verify path. The LEADERBOARD seam is
+// unaffected even though net_board_verify_credential falls back here:
+// net_board_can_submit() gates every submit on net_has_verify_backend()
+// (its own NEWTONIA_BOARD_TEST_CRED aside), and this hook only exists on
+// builds WITHOUT one — the no-backend board stays view-only with or
+// without the env var.
 static std::string test_credential() {
   const char *e = std::getenv("NEWTONIA_NET_TEST_CRED");
   return e ? std::string(e) : std::string();

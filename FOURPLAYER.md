@@ -702,12 +702,16 @@ Play Games pilot could rename their persona and walk back in, and an iOS
 pilot — account attested, alias never — was unbannable everywhere. The
 signalling worker already proves a stable account id on every successful
 verify (SteamID, Play Games playerId, Game Center teamPlayerID); it now
-mints `key = SHA-256(host_token : platform : account_id)` (truncated,
+mints `key = SHA-256(ban_salt : platform : account_id)` (truncated,
 hex) and rides it on the identity broadcast. Room-scoped by construction:
-the salt is the room's reclaim token — random, persisted across host
-reclaim, never sent to joiners — so tokens can't be linked across rooms,
-the raw account id still never leaves the worker (the XR-014 rule
-holds), and the token's lifetime IS the ban list's lifetime. The game
+the salt is a worker-only per-room secret — random, persisted across host
+reclaim, sent to NOBODY (deliberately not `host_token`, which the host
+holds as its reclaim credential: salt + token in hand would let a
+modified host build offline-enumerate a SteamID, a dense ~2^33 space,
+out of a joiner's token — the code-review catch, 2026-08-27) — so no
+peer can precompute, invert, or link tokens across rooms, the raw
+account id still never leaves the worker (the XR-014 rule holds), and
+the token's lifetime IS the ban list's lifetime. The game
 stores it as `NetIdentity::ban_token` (attested-only: the p2p claim
 parse never fills it), `BanEntry` carries token + name keys matched
 independently, and `admit_verdict` checks the ATTESTED identity beside
