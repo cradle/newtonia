@@ -38,7 +38,12 @@
     a.primary:hover, a.steam:hover, a.store:hover { filter: brightness(1.12); }
     .foot { margin-top: 26px; font-size: 0.85rem; color: #667; }
     .foot a { color: #8aa0d8; }
-    .hidden { display: none; }
+    /* The router's show/hide utility. !important is load-bearing: a.btn's
+       display:block is more specific (0-1-1 vs 0-1-0), so without it every
+       store button — the parked itch one included — drew on every device
+       (the same author-display-beats-hidden trap as the leaderboard's
+       .you-banner; found by test/e2e/web_promo_banner.mjs, 2026-08-27). */
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -58,6 +63,10 @@
     <p class="foot">Not working? Open Newtonia and enter the room code above by hand.</p>
   </main>
 
+  <!-- Shared store routing (store ids + device sniff + ANDROID_PUBLIC,
+       one file with the site leaderboard's CTA and the web game's
+       game-over banner) — must load before the routing script below. -->
+  <script src="../store_route.js"></script>
   <script>
     // The universal join link (invites.h). A tapped
     // https://newtonia.metonymous.com/join?code=XXXX lands here ONLY when no
@@ -79,14 +88,17 @@
     // reachable stores (Steam / App Store) and sends the no-app cases to
     // the landing page, which lists every way to play.
     var WEB_COOP = false;
-    // ANDROID_PUBLIC: flip to true when the Play listing is public (task
-    // #145). While false the Play button stays hidden — a closed-testing
-    // store page dead-ends for non-testers. The referrer machinery below
-    // works either way: the room code rides the store URL's install
-    // referrer (&referrer=code%3DXXXX), survives the install, and
-    // NewtoniaActivity reads it back on first launch (deferred deep link).
-    var ANDROID_PUBLIC = false;
-    var STEAM_APPID = "4536720";
+    // Store ids, the device sniff, and the ANDROID_PUBLIC flag all come
+    // from the shared store_route.js above. While ANDROID_PUBLIC is false
+    // (Play listing in closed testing, task #145) the Play button stays
+    // hidden — a closed-testing store page dead-ends for non-testers. The
+    // referrer machinery works either way: the room code rides the store
+    // URL's install referrer (&referrer=code%3DXXXX), survives the
+    // install, and NewtoniaActivity reads it back on first launch
+    // (deferred deep link). If the shared script somehow failed to load
+    // (STORE null), the page still shows the code and the browser/landing
+    // route — just no store buttons.
+    var STORE = typeof NewtoniaStore !== "undefined" ? NewtoniaStore : null;
     var params = new URLSearchParams(location.search);
     var code = (params.get("code") || "").trim();
 
@@ -97,12 +109,6 @@
     var appStoreBtn = document.getElementById("appStoreBtn");
     var itchBtn = document.getElementById("itchBtn");
     var playStoreBtn = document.getElementById("playStoreBtn");
-
-    var ua = navigator.userAgent;
-    var isIOS = /iPhone|iPad|iPod/i.test(ua) ||
-                // iPadOS 13+ reports as desktop Safari, so sniff touch too.
-                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    var isAndroid = /Android/i.test(ua);
 
     if (!code) {
       subEl.textContent = "This link is missing a room code.";
@@ -121,47 +127,49 @@
         // point everyone else at the landing page's full platform list.
         browserBtn.textContent = "See all ways to play";
         browserBtn.href = "/";
-        if (isIOS) {
+        if (STORE && STORE.isIOS) {
           appStoreBtn.classList.remove("hidden");
           subEl.textContent = "Get the app to join this game";
-        } else if (isAndroid) {
-          if (ANDROID_PUBLIC) {
+        } else if (STORE && STORE.isAndroid) {
+          if (STORE.ANDROID_PUBLIC) {
             // Deferred deep link: the code rides the install referrer, so
             // install -> first launch auto-joins this room with no typing.
-            playStoreBtn.href =
-              "https://play.google.com/store/apps/details?id=org.newtonia" +
-              "&referrer=" + encodeURIComponent("code=" + code);
+            playStoreBtn.href = STORE.playStoreUrl("code=" + code);
             playStoreBtn.classList.remove("hidden");
             subEl.textContent = "Get the app to join this game";
           } else {
             subEl.textContent = "Joining needs the app";
           }
-        } else {
-          steamBtn.href = "steam://run/" + STEAM_APPID + "//+connect%20" + enc;
+        } else if (STORE) {
+          steamBtn.href = "steam://run/" + STORE.STEAM_APPID + "//+connect%20" + enc;
           steamBtn.classList.remove("hidden");
           // itchBtn stays hidden: itch can't purchase-gate HTML5 embeds
           // (task #156) — re-show once the Worker-side purchase gate
           // ships and the paid project publishes.
           subEl.textContent = "Join on Steam";
+        } else {
+          subEl.textContent = "Open Newtonia and enter this code";
         }
-      } else if (isIOS) {
+      } else if (STORE && STORE.isIOS) {
         // No app installed (else the Universal Link would have opened it). Offer
         // the App Store alongside the instant browser game — and don't silently
         // redirect, so the install option (button + the Smart App Banner) stays
         // reachable. After installing, re-tapping the shared link auto-joins.
         appStoreBtn.classList.remove("hidden");
         subEl.textContent = "Play now, or get the app";
-      } else if (isAndroid) {
+      } else if (STORE && STORE.isAndroid) {
         // Android app is not on a public store yet — the browser game is the
         // only path. Give the tap a beat to register, then go.
         subEl.textContent = "Opening the game…";
         setTimeout(function () { location.replace(playUrl); }, 1400);
-      } else {
+      } else if (STORE) {
         // Desktop: offer a Steam launch (steam://run/<appid>//+connect <code>).
         // Steam registers the steam:// handler OS-wide; the game consumes the
         // +connect arg via steam_invites.cpp (cold launch or running game).
-        steamBtn.href = "steam://run/" + STEAM_APPID + "//+connect%20" + enc;
+        steamBtn.href = "steam://run/" + STORE.STEAM_APPID + "//+connect%20" + enc;
         steamBtn.classList.remove("hidden");
+        subEl.textContent = "Choose how to join room";
+      } else {
         subEl.textContent = "Choose how to join room";
       }
     }

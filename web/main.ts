@@ -7,6 +7,21 @@ declare const Module: {
   onRuntimeInitialized?: () => void;
 };
 
+// Shared store routing (web/site/store_route.js — one file for the store
+// ids, device sniff, and ANDROID_PUBLIC flag; shell.html loads it before
+// this script, and `make web` copies it into /play so the off-domain
+// itch.io deploy carries it). Declared possibly-undefined: if that script
+// failed to load, the game-over banner simply offers no store link.
+declare const NewtoniaStore: undefined | {
+  ANDROID_PUBLIC: boolean;
+  STEAM_APPID: string;
+  APP_STORE_URL: string;
+  isIOS: boolean;
+  isAndroid: boolean;
+  steamStoreUrl(utmSource: string, utmCampaign: string): string;
+  playStoreUrl(referrer: string): string;
+};
+
 (function () {
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
   const fsBtn = document.getElementById("fullscreen-btn") as HTMLButtonElement;
@@ -366,11 +381,33 @@ declare const Module: {
   // version finally says so, at the moment the run ends. glgame.cpp's
   // game-over latches call window.newtGameOver(score, players); the banner
   // offers the site leaderboard with ?score= (the page shows where the run
-  // WOULD have placed) and the Steam store, UTM-tagged so Steam's traffic
-  // report attributes web-game referrals. Absolute URLs on both: the
-  // itch.io deploy serves this same bundle off-domain.
+  // WOULD have placed) and the store THIS device can buy the game on —
+  // store_route.js's one routing, shared with /join and the leaderboard
+  // page's CTA: iOS the App Store, Android Google Play only once its
+  // ANDROID_PUBLIC flips (task #145), everything else the UTM-tagged
+  // Steam store. Absolute URLs on both links: the itch.io deploy serves
+  // this same bundle off-domain.
   let _goBanner: HTMLElement | null = null;
   let _goRank: HTMLAnchorElement | null = null;
+
+  // Resolved once at load — the device doesn't change. An empty href
+  // means no store link for this device (Android while the listing is
+  // closed testing, or store_route.js missing).
+  const _goStore = (() => {
+    const S = typeof NewtoniaStore !== "undefined" ? NewtoniaStore : null;
+    if (!S) return { href: "", text: "" };
+    if (S.isIOS)
+      return { href: S.APP_STORE_URL,
+               text: "ONLINE CO-OP + LEADERBOARDS — GET IT ON THE APP STORE" };
+    if (S.isAndroid)
+      return S.ANDROID_PUBLIC
+          ? { href: S.playStoreUrl("utm_source=newtonia_webgame" +
+                        "&utm_medium=referral&utm_campaign=gameover"),
+              text: "ONLINE CO-OP + LEADERBOARDS — GET IT ON GOOGLE PLAY" }
+          : { href: "", text: "" };
+    return { href: S.steamStoreUrl("newtonia_webgame", "gameover"),
+             text: "ONLINE CO-OP + LEADERBOARDS — GET IT ON STEAM" };
+  })();
 
   function hideGameOverBanner(): void {
     if (_goBanner) _goBanner.style.display = "none";
@@ -378,23 +415,23 @@ declare const Module: {
 
   function showGameOverBanner(score: number, playerCount: number): void {
     score = Math.max(0, Math.floor(Number(score) || 0));
-    // The board keeps one co-op slot: every run with >= 2 players competes
-    // on the players=2 board (FOURPLAYER.md D10).
-    const boardPlayers = playerCount >= 2 ? 2 : 1;
+    // A scoreless run gets no rank link: the leaderboard page's ?score=
+    // gate is digits > 0, so the link would promise an answer the page
+    // (correctly) refuses to give. With no store link for this device
+    // either, there is nothing to offer — show no banner at all.
+    if (score <= 0 && !_goStore.href) return;
     if (!_goBanner) {
       const el = document.createElement("div");
       el.id = "go-banner";
       const rank = document.createElement("a");
       rank.target = "_blank";
       rank.rel = "noopener";
-      const steam = document.createElement("a");
-      steam.className = "go-steam";
-      steam.target = "_blank";
-      steam.rel = "noopener";
-      steam.href =
-          "https://store.steampowered.com/app/4536720/Newtonia/" +
-          "?utm_source=newtonia_webgame&utm_medium=referral&utm_campaign=gameover";
-      steam.textContent = "ONLINE CO-OP + LEADERBOARDS — GET IT ON STEAM";
+      const store = document.createElement("a");
+      store.className = "go-store";
+      store.target = "_blank";
+      store.rel = "noopener";
+      store.href = _goStore.href;
+      store.textContent = _goStore.text;
       const close = document.createElement("button");
       close.textContent = "✕";
       close.setAttribute("aria-label", "Dismiss");
@@ -403,18 +440,28 @@ declare const Module: {
         canvas.focus(); // hand the keys back to the game
       });
       el.appendChild(rank);
-      el.appendChild(steam);
+      if (_goStore.href) el.appendChild(store);
       el.appendChild(close);
       document.getElementById("game-container")!.appendChild(el);
       _goBanner = el;
       _goRank = rank;
     }
-    _goRank!.href =
-        "https://newtonia.metonymous.com/leaderboard/" +
-        `?score=${score}&players=${boardPlayers}` +
-        "&utm_source=newtonia_webgame&utm_medium=referral&utm_campaign=gameover";
-    _goRank!.textContent =
-        `SCORE ${score.toLocaleString("en-US")} — SEE WHERE YOU'D RANK`;
+    // Inline display, not [hidden]: an author display rule silently beats
+    // the UA's [hidden] (the .you-banner lesson, 2026-08-27).
+    if (score > 0) {
+      // The board keeps one co-op slot: every run with >= 2 players
+      // competes on the players=2 board (FOURPLAYER.md D10).
+      const boardPlayers = playerCount >= 2 ? 2 : 1;
+      _goRank!.style.display = "";
+      _goRank!.href =
+          "https://newtonia.metonymous.com/leaderboard/" +
+          `?score=${score}&players=${boardPlayers}` +
+          "&utm_source=newtonia_webgame&utm_medium=referral&utm_campaign=gameover";
+      _goRank!.textContent =
+          `SCORE ${score.toLocaleString("en-US")} — SEE WHERE YOU'D RANK`;
+    } else {
+      _goRank!.style.display = "none";
+    }
     _goBanner.style.display = "flex";
   }
   (window as any).newtGameOver = showGameOverBanner;
