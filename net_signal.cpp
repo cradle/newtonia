@@ -225,14 +225,13 @@ std::string cand_frame(const std::string &mid, const std::string &cand,
 bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   std::string t;
   if (!json_field(frame, "t", t)) return false;
-  ev.text.clear();
-  ev.text2.clear();
-  ev.platform = 0;       // Identity-only fields — reset so a prior event's
-  ev.verified = false;   // values can never leak into a reused Event.
-  ev.peer.clear();       // "from" stamp (PB-D5) — same leak rule.
-  ev.key.clear();        // ban token — a leak here bans the WRONG account
-                         // (a tokenless frame following a tokened one in
-                         // the same poll batch inherited its key).
+  // Wholesale reset: a reused Event must never leak a prior frame's values
+  // into this one. Field-by-field clearing is exactly how the ban-token
+  // field got missed (a tokenless identity frame inherited the previous
+  // frame's key and banned the WRONG account) — a new Event field is now
+  // covered here by construction. The polls reset the same way before
+  // their synthesized (non-parsed) events.
+  ev = NetSignal::Event();
   if (t == "room") {
     ev.kind = NetSignal::Event::Room;
     json_field(frame, "token", ev.text2);  // reclaim token (M3-1)

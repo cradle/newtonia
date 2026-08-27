@@ -65,6 +65,10 @@ public:
   }
 
   bool poll(Event &ev) override {
+    // Reset up front so the SYNTHESIZED Closed event below can't carry a
+    // prior parsed frame's identity fields (parse_frame resets again for
+    // parsed frames — cheap, and either site alone covers its own path).
+    ev = Event();
     {
       std::lock_guard<std::mutex> lock(mutex_);
       while (!inbox_.empty()) {
