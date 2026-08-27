@@ -154,6 +154,12 @@
       margin-bottom: 1.4rem;
       letter-spacing: 0.06em;
     }
+    /* The hidden attribute must actually hide: [hidden]'s display:none is
+       a UA-origin rule, and the author-level display:flex above overrides
+       it regardless of specificity — so the empty gold bar and its CTA
+       drew on every plain visit, not just when the web game hands a run
+       over in ?score= (field report, 2026-08-27). */
+    .you-banner[hidden] { display: none; }
     #you-banner-text { color: var(--gold); }
     a.steam-cta {
       color: var(--gold);
