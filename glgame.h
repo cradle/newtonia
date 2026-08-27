@@ -247,7 +247,7 @@ private:
       return kind == o.kind && slot == o.slot && pad == o.pad;
     }
   };
-  bool roster_available() const;   // offline OR host, non-touch
+  bool roster_available() const;   // offline OR host; touch: host only
   // Online-host rows: a remote pilot (KICK / BAN) rather than a local seat.
   // (roster_peer_at is declared with the other NetPeer members, below.)
   bool roster_row_is_peer(int row) const;
@@ -286,6 +286,20 @@ private:
   void roster_apply(int row, const SeatInput &in);
   bool roster_active_ = false;
   int roster_selection_ = 0;
+  // ---- Touch host roster (FOURPLAYER.md O3, touch pass) ----
+  // Touch has no pause menu, so the kick UI opens from its own band on
+  // the pause screen; the roster then draws the shared TapBand::roster_*
+  // block layout (the lobby manage view's) and answers taps with the same
+  // two-tap grammar — roster_kick_armed_/roster_ban_ carry the armed zone
+  // exactly as they carry the desktop's armed row and picked action.
+  // True while the pause screen should offer MANAGE PLAYERS.
+  bool roster_touch_offer() const;
+  // The band itself, hung above the exit band (which is portrait-aware,
+  // so this follows it). One definition for draw and hit-test.
+  TapBand roster_manage_band() const;
+  // The policy flip the roster's anon row performs — one write site for
+  // the ladder's three keys and the touch band.
+  void roster_toggle_anonymous();
   // True when the pause menu is on screen AND owns navigation input. Touch
   // is excluded: it draws no cursor anywhere and already has both actions
   // (the pause button resumes, the EXIT TO MENU band leaves).

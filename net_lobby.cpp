@@ -90,13 +90,20 @@ const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 // "ENTER - START GAME" row.
 const TapBand kStartBand(0.5f, 40, 22, 32.0f);
 // RoomHost waiting room: the ALLOW ANONYMOUS PLAYERS toggle, the touch
-// spelling of the desktop roster's policy row — and the ONLY place touch
-// can set it, since the in-game roster never opens there. In the gap
-// between the waiting count (anchor -220, 18-size ink to -256) and the
-// touch status line's clamped spot (-320, ink from -320 down): ink stays
-// clear of both, and the tap box only overlaps the status INK, which is
-// not a button. The exit band's zone starts at -370.
-const TapBand kAnonBand(0.5f, -280, 13, 20.0f);
+// spelling of the desktop roster's policy row. In the gap between the
+// count/manage line (anchor -220) and the touch status line's clamped
+// spot (-320, ink from -320 down): ink stays clear of both, and the tap
+// box only overlaps the status INK, which is not a button. The exit
+// band's zone starts at -370. Pad 16, not 20: the manage band above
+// reaches down to -262, and the two zones must not overlap.
+const TapBand kAnonBand(0.5f, -280, 13, 16.0f);
+// RoomHost waiting room with peers seated: the count line's spot becomes
+// the steady MANAGE band ("PLAYERS 2/4 - TAP TO MANAGE") opening the
+// touch roster — the desktop peer rows' stand-in (FOURPLAYER.md O3 touch
+// pass: a touch host could neither SEE who joined nor remove anyone).
+// Zone [-262, -206]: clear of the share band above (-158) and the anon
+// band below (-264).
+const TapBand kManageBand(0.5f, -220, 14, 14.0f);
 // CodeEntry LAN host bands (touch): above the soft keyboard (max 3).
 // Filled BOTTOM-UP — one host uses only the lowest band, sitting in
 // the free space just above the keyboard, well clear of the code
@@ -1196,6 +1203,18 @@ void NetLobby::teardown_waiting_room() {
 // pump_signal — a signal-less (LAN-only) waiting room still advances.
 void NetLobby::waiting_room_update(int delta) {
   if (!waiting_room() || screen_ != RoomHost || handed_off_to_game_) return;
+  // Touch manage view bookkeeping: an armed removal dies with the session
+  // it named (the pilot left, or the kick just went through — never let
+  // it transfer to whoever fills the seat next), and the view itself
+  // closes when the last pilot is gone — a roster of nobody is just the
+  // waiting screen with extra steps.
+  if (manage_armed_session_) {
+    bool still_seated = false;
+    for (const SeatedPeer &sp : seated_)
+      if (sp.session == manage_armed_session_) still_seated = true;
+    if (!still_seated) manage_disarm();
+  }
+  if (host_manage_ && seated_.empty()) host_manage_ = false;
   // Kicked sessions draining: give the goodbye time on the wire, then
   // close. Serviced here because this runs every tick while the waiting
   // room is up, which is exactly when a lobby kick can happen.
@@ -1369,6 +1388,25 @@ bool NetLobby::host_row_can_ban(int row) const {
   std::map<std::string, NetIdentity>::const_iterator it =
       jid_attested_.find(sp.jid);
   return it != jid_attested_.end() && !net_identity_anonymous(it->second);
+}
+
+// The name a seated peer's row may render: the attested capture, else the
+// live jid_attested_ entry (the worker's verdict often lands after the
+// seating), else — LAN door only, the per-peer offline carve-out — the
+// HELLO claim. Empty = the role label stands alone. One definition for
+// the desktop rows and the touch manage view.
+std::string NetLobby::seated_display_name(const SeatedPeer &sp) const {
+  std::string name = sp.attested.name;
+  if (name.empty() && !sp.jid.empty()) {
+    std::map<std::string, NetIdentity>::const_iterator it =
+        jid_attested_.find(sp.jid);
+    if (it != jid_attested_.end()) name = it->second.name;
+  }
+  if (name.empty() && sp.jid.empty() && sp.session) {
+    name = net_identity_name_or(sp.session->peer_identity(), "",
+                                NET_ID_OFFLINE);
+  }
+  return name;
 }
 
 // Two-state policy: flip, log (nseat_anon.sh greps the line), persist —
@@ -2401,6 +2439,54 @@ void NetLobby::draw() {
       if (room_code_.empty()) {
         lines.push_back("CREATING A ROOM");
         if (blink) lines.push_back("PLEASE WAIT");
+      } else if (is_touch_mode() && host_manage_ && waiting_room()) {
+        // The manage view (FOURPLAYER.md O3, touch pass): the desktop
+        // peer rows as a full-screen roster — the main room content is
+        // replaced, and the bottom band reads BACK (returning here, not
+        // tearing the room down). One block per seated pilot: the name
+        // line, then finger-sized KICK / BAN zones (BAN only where a ban
+        // would hold — the same net_identity_bannable rule as every other
+        // surface). First tap arms ("CONFIRM KICK"), a second on the same
+        // zone performs, any other tap disarms: the touch spelling of the
+        // desktop two-confirm rule. Geometry from TapBand::roster_* —
+        // shared with the in-game host roster.
+        char buf[40];
+        snprintf(buf, sizeof(buf), "PLAYERS %d/%d", (int)seated_.size() + 1,
+                 net_seat_cap());
+        Typer::draw_centered(0, 340, buf, sz);
+        int block = 0;
+        for (const SeatedPeer &sp : seated_) {
+          if (block >= TapBand::ROSTER_BLOCKS) break;  // cap 4 = 3 peers
+          std::string name = seated_display_name(sp);
+          char row[48];
+          if (name.empty())
+            snprintf(row, sizeof(row), "PLAYER %d", sp.seat);
+          else
+            snprintf(row, sizeof(row), "PLAYER %d - %s", sp.seat,
+                     name.c_str());
+          Typer::draw_centered(0, TapBand::roster_row_y(block), row, 15);
+          bool split = host_row_can_ban(block);
+          bool armed_row = manage_armed_session_ == sp.session;
+          const char *kick = (armed_row && !manage_armed_ban_)
+                                 ? "CONFIRM KICK" : "KICK";
+          TapBand::roster_action(block, false, split).draw(kick);
+          if (split) {
+            const char *ban = (armed_row && manage_armed_ban_)
+                                  ? "CONFIRM BAN" : "BAN";
+            TapBand::roster_action(block, true, split).draw(ban);
+          }
+          block++;
+        }
+        // The admission policy rides the manage view once anyone is
+        // seated — beside the pilots it governs, and the same spot the
+        // pause roster gives it (TapBand::roster_anon). On the main room
+        // screen it sat one finger-width under the MANAGE band (field
+        // screenshot, 2026-08-26: two adjacent targets read as one).
+        {
+          std::string anon = "ALLOW ANONYMOUS PLAYERS   ";
+          anon += g_prefs.allow_anonymous ? "YES" : "NO";
+          TapBand::roster_anon.draw(anon.c_str());
+        }
       } else if (is_touch_mode()) {
         // Spread over the full height under the hoisted header — the
         // default stack hugs the lower half of a phone screen.
@@ -2416,10 +2502,17 @@ void NetLobby::draw() {
         }
         if (lan_announce_.running() && lan_announce_.peer_engaged())
           Typer::draw_centered(0, -180, "A LAN PLAYER IS CONNECTING", 12);
-        if (blink) {
+        // The count line blinks while the host waits alone; once anyone
+        // is seated its spot becomes the steady MANAGE band — the way
+        // into the roster above (steady like the other bands: a
+        // vanishing tap target reads as a dead button mid-blink).
+        if (waiting_room() && !seated_.empty()) {
+          char buf[40];
+          snprintf(buf, sizeof(buf), "PLAYERS %d/%d - TAP TO MANAGE",
+                   (int)seated_.size() + 1, net_seat_cap());
+          kManageBand.draw(buf);
+        } else if (blink) {
           if (waiting_room()) {
-            // Touch waiting room: the count line (the per-seat name roster
-            // stays a desktop nicety — vertical space is scarce here).
             char buf[40];
             snprintf(buf, sizeof(buf), "WAITING FOR PLAYERS %d/%d",
                      (int)seated_.size() + 1, net_seat_cap());
@@ -2428,14 +2521,16 @@ void NetLobby::draw() {
             Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
           }
         }
-        // Steady, not on the blink phase — a vanishing tap target reads
-        // as a dead button mid-blink (the share band is steady too).
         if (waiting_room() && !seated_.empty()) kStartBand.draw("TAP TO START");
         // The host's admission policy, the desktop roster row's touch
         // twin — up BEFORE anyone arrives, which is exactly when a host
         // would set it (the touch lobby simply had no way to see or set
-        // it; field, 2026-08-26). Tap toggles (see touch_tap).
-        if (waiting_room()) {
+        // it; field, 2026-08-26). Tap toggles (see touch_tap). EMPTY room
+        // only: with anyone seated its spot sits one finger-width under
+        // the MANAGE band (field screenshot, same day — two adjacent
+        // targets read as one), so the row moves into the manage view,
+        // beside the pilots it governs.
+        if (waiting_room() && seated_.empty()) {
           std::string anon = "ALLOW ANONYMOUS PLAYERS   ";
           anon += g_prefs.allow_anonymous ? "YES" : "NO";
           kAnonBand.draw(anon.c_str());
@@ -2466,20 +2561,10 @@ void NetLobby::draw() {
           lines.push_back(blink ? buf : "");
           host_peer_line0_ = (int)lines.size();  // where the mouse finds them
           for (const SeatedPeer &sp : seated_) {
-            std::string name = sp.attested.name;
-            if (name.empty() && !sp.jid.empty()) {
-              std::map<std::string, NetIdentity>::const_iterator it =
-                  jid_attested_.find(sp.jid);
-              if (it != jid_attested_.end()) name = it->second.name;
-            }
-            // A jid-less seat came through the LAN door: pairing is local,
-            // the per-peer offline carve-out applies, so its HELLO claim
-            // names the row (mixed rooms used to bare-label the couch
-            // friend because one worker made the whole roster strict).
-            if (name.empty() && sp.jid.empty() && sp.session) {
-              name = net_identity_name_or(sp.session->peer_identity(), "",
-                                          NET_ID_OFFLINE);
-            }
+            // Attested name, late attestation, or the LAN door's offline
+            // claim — see seated_display_name (shared with the touch
+            // manage view).
+            std::string name = seated_display_name(sp);
             if (name.empty())
               snprintf(buf, sizeof(buf), "PLAYER %d - READY", sp.seat);
             else
@@ -2958,9 +3043,15 @@ void NetLobby::draw() {
       // 2026-08-13). Esc still leaves from anywhere on the screen.
       (screen_ == RoomHost && waiting_room() &&
        host_row_kind(host_row_selected()) == HostRowExit);
+  // In the touch manage view the band pops one level (back to the room
+  // screen) instead of tearing the room down, and the label says so —
+  // the AUDIO sub-screen's "BACK TO OPTIONS" convention.
+  bool manage_view = is_touch_mode() && host_manage_ && screen_ == RoomHost &&
+                     waiting_room() && !room_code_.empty();
   TapBand::return_to_menu.draw(
       is_touch_mode()
-          ? Typer::cursored("EXIT TO MENU", true).c_str()
+          ? Typer::cursored(manage_view ? "BACK" : "EXIT TO MENU", true)
+                .c_str()
           : Typer::cursored("BACK TO MENU", band_armed).c_str(),
       currentTime);
 }
@@ -3101,6 +3192,13 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
 // navigates off the CodeEntry screen lands here exactly once.
 void NetLobby::nav_input(unsigned char key) {
   if (MenuSelect::is_back(key)) {
+    // The touch manage view pops one level (Android back / Esc under
+    // forced touch), never straight out of the room.
+    if (screen_ == RoomHost && host_manage_) {
+      host_manage_ = false;
+      manage_disarm();
+      return;
+    }
     // On the waiting room's roster, back means "out of this row" first.
     // The screen labels it BACK, but leave_to_menu() tears the whole room
     // down (every seated peer dropped, the code dead) — a destructive
@@ -3388,6 +3486,15 @@ void NetLobby::touch_tap(float nx, float ny) {
   // finger's padding, which off touch made the lowest ~19% of the window
   // an exit — clicking below the roster left the room (field, 2026-08-13).
   if (TapBand::return_to_menu.for_pointer().contains(nx, ny)) {
+    // The touch manage view relabels this band BACK (see the draw): it
+    // pops the view, never the room — leave_to_menu() here would tear
+    // down every seated peer behind a label that promised a step back.
+    if (is_touch_mode() && screen_ == RoomHost && host_manage_ &&
+        waiting_room() && !room_code_.empty()) {
+      host_manage_ = false;
+      manage_disarm();
+      return;
+    }
     // A rejoin lobby arrives mid-fight, and on touch the in-game fire
     // zone overlaps this strip — a fire-mash tail landing just after the
     // hand-off would abandon the recoverable rejoin (the touch twin of
@@ -3450,6 +3557,55 @@ void NetLobby::touch_tap(float nx, float ny) {
         if (floating_kb_up_) floating_kb_available_ = true;
       break;
     case RoomHost:
+      // Touch manage view: it replaced the whole room screen, so while it
+      // is open it answers every tap (the main bands are not drawn — the
+      // TapBand rule cuts both ways). The BACK band is handled at the top
+      // of this function, where the shared bottom strip is hit-tested.
+      if (is_touch_mode() && host_manage_ && waiting_room() &&
+          !room_code_.empty()) {
+        {
+          int block = 0;
+          bool handled = false;
+          for (SeatedPeer &sp : seated_) {
+            if (block >= TapBand::ROSTER_BLOCKS) break;
+            bool split = host_row_can_ban(block);
+            bool kick_hit =
+                TapBand::roster_action(block, false, split).contains(nx, ny);
+            bool ban_hit =
+                split &&
+                TapBand::roster_action(block, true, split).contains(nx, ny);
+            if (kick_hit || ban_hit) {
+              if (manage_armed_session_ == sp.session &&
+                  manage_armed_ban_ == ban_hit) {
+                // Second tap on the armed zone performs the removal —
+                // through the same host_kick_selected the desktop rows
+                // use, so the goodbye/ban bookkeeping cannot diverge.
+                manage_disarm();
+                host_sel_ = block;
+                host_kick_selected(ban_hit);
+                host_sel_ = -1;
+              } else {
+                manage_armed_session_ = sp.session;
+                manage_armed_ban_ = ban_hit;
+              }
+              handled = true;
+              break;
+            }
+            block++;
+          }
+          // The policy band under the blocks (drawn from the same
+          // TapBand::roster_anon) — toggling it leaves an armed removal
+          // armed, the pause roster's precedent for this exact tap.
+          if (!handled && TapBand::roster_anon.contains(nx, ny)) {
+            toggle_allow_anonymous();
+            handled = true;
+          }
+          // A tap on nothing in particular disarms — a removal should
+          // never survive the host's attention moving elsewhere.
+          if (!handled) manage_disarm();
+        }
+        break;
+      }
       // The waiting room's start band outranks the share band below it —
       // waiting_room_start() guards itself (no-op when nobody is seated
       // or the hand-off already happened), so a stale tap is safe.
@@ -3463,13 +3619,23 @@ void NetLobby::touch_tap(float nx, float ny) {
         waiting_room_start();
         break;
       }
+      // The MANAGE band on the count line's spot — the way into the
+      // roster above. Gated like its draw (touch, peers seated, room up).
+      if (is_touch_mode() && waiting_room() && !seated_.empty() &&
+          !room_code_.empty() && kManageBand.contains(nx, ny)) {
+        host_manage_ = true;
+        manage_disarm();
+        break;
+      }
       // The policy band under the waiting count. Touch-gated like the
       // draw (the TapBand rule): on desktop this strip crosses the drawn
       // roster list, whose own anon row answers the click below. Gated on
       // the code too — the band is only drawn once the room exists, and
-      // "CREATING A ROOM" must not eat a tap into a policy flip.
-      if (is_touch_mode() && waiting_room() && !room_code_.empty() &&
-          kAnonBand.contains(nx, ny)) {
+      // "CREATING A ROOM" must not eat a tap into a policy flip — and on
+      // the EMPTY room, matching the draw: with pilots seated the row
+      // lives in the manage view instead.
+      if (is_touch_mode() && waiting_room() && seated_.empty() &&
+          !room_code_.empty() && kAnonBand.contains(nx, ny)) {
         toggle_allow_anonymous();
         break;
       }
@@ -3569,6 +3735,12 @@ void NetLobby::touch_tap(float nx, float ny) {
 }
 
 bool NetLobby::back_pressed() {
+  // The touch manage view is one level deep: back closes it, not the room.
+  if (screen_ == RoomHost && host_manage_) {
+    host_manage_ = false;
+    manage_disarm();
+    return true;
+  }
   leave_to_menu();
   return true;
 }

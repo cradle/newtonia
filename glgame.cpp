@@ -1462,10 +1462,32 @@ static int pad_number(SDL_JoystickID id) {
 bool GLGame::roster_available() const {
   // Two contexts, one screen (FOURPLAYER.md O3): offline it re-binds local
   // inputs, and on the HOST online it lists the peers with a KICK action.
-  // Not on a client (other people's seats aren't theirs to manage) and not
-  // on touch (no cursor; one local player by construction).
-  if (is_touch_mode()) return false;
+  // Not on a client (other people's seats aren't theirs to manage). Touch
+  // gets the ONLINE half only — the kick UI, opened from the pause
+  // screen's MANAGE PLAYERS band and drawn as tap blocks (the touch pass:
+  // a phone host had no way to remove anyone); the offline re-binding
+  // half stays a cursor idea (one local touch player by construction).
+  if (is_touch_mode()) return net_mode_ == NetHost;
   return net_mode_ == NetOff || net_mode_ == NetHost;
+}
+
+// The pause screen offers the way into the roster on touch: paused, as
+// the online host, with no other card owning the screen. Game over and
+// the spectate flow keep their own layouts (all_players_out covers the
+// former; running covers the latter).
+bool GLGame::roster_touch_offer() const {
+  return is_touch_mode() && net_mode_ == NetHost && !running &&
+         !roster_open() && !all_players_out() && !net_card_owns_input();
+}
+
+// Above the exit band, which already carries the portrait re-anchor —
+// landscape puts this at -250: ink to -274, clear above the hoisted
+// badge rows (measured ink from ~-305) which sit above the exit band's
+// zone (-370 down). Field-measured against the badge hoist, not derived:
+// the badge stack draws in the per-viewport ortho and its own +255
+// arithmetic, so keep visual air rather than sharing a formula.
+TapBand GLGame::roster_manage_band() const {
+  return TapBand(0.5f, exit_band().y + 170, 12, 16.0f);
 }
 
 // True when this row is a remote pilot the host may remove, rather than a
@@ -1637,10 +1659,7 @@ void GLGame::roster_nav(unsigned char key) {
   if (roster_row_is_anon(roster_selection_)) {
     if (MenuSelect::is_left(key) || MenuSelect::is_right(key) ||
         MenuSelect::is_confirm(key)) {
-      g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
-      NET_LOG("net: allow anonymous players: %s\n",
-              g_prefs.allow_anonymous ? "YES" : "NO");
-      save_preferences();  // a hosting policy should outlive the session
+      roster_toggle_anonymous();
       return;
     }
   }
@@ -1696,6 +1715,16 @@ void GLGame::roster_nav(unsigned char key) {
   roster_apply(roster_selection_, options[at]);
 }
 
+// Two-state policy: flip, log, persist — a hosting policy should outlive
+// the session. The ladder's three keys and the touch roster's band all
+// land here (the lobby's toggle_allow_anonymous is its twin).
+void GLGame::roster_toggle_anonymous() {
+  g_prefs.allow_anonymous = !g_prefs.allow_anonymous;
+  NET_LOG("net: allow anonymous players: %s\n",
+          g_prefs.allow_anonymous ? "YES" : "NO");
+  save_preferences();
+}
+
 bool GLGame::roster_claim_pad(SDL_JoystickID which) {
   // Offline only. Press-to-claim binds a LOCAL device to the highlighted
   // row, and online that row is a remote pilot's ship: the host's spare
@@ -1729,6 +1758,14 @@ bool GLGame::pad_may_command(SDL_JoystickID which) const {
 }
 
 bool GLGame::back_pressed() {
+  // The touch roster is one level deep on the pause screen: back closes
+  // it first, exactly like the desktop roster's Esc.
+  if (roster_open()) {
+    roster_active_ = false;
+    roster_kick_armed_ = -1;
+    roster_ban_ = false;
+    return true;
+  }
   // Online, back is not a quit — same rule as the Esc key and pad BACK:
   // it opens the pause screen (touch keeps its EXIT TO MENU band, the
   // cursor platforms their pause menu) and closes it again, and leaving
@@ -11774,6 +11811,57 @@ void GLGame::touch_tap(float nx, float ny) {
   }
   if (board_phase_ == BoardUploading && !exit_band().contains(nx, ny))
     return;
+  // Touch host roster (FOURPLAYER.md O3, touch pass): while it is up it
+  // owns every tap — the pause screen it replaced is not drawn under it.
+  // Zones from TapBand::roster_* (the lobby manage view's geometry):
+  // first tap on an action arms it, a second on the same zone performs,
+  // any other tap disarms; the bottom band is BACK to the pause screen.
+  if (roster_open()) {
+    if (exit_band().contains(nx, ny)) {
+      roster_active_ = false;
+      roster_kick_armed_ = -1;
+      roster_ban_ = false;
+      return;
+    }
+    if (TapBand::roster_anon.contains(nx, ny)) {
+      roster_toggle_anonymous();
+      return;
+    }
+    int rows = (int)players->size();
+    int block = 0;
+    for (int i = 0; i < rows && block < TapBand::ROSTER_BLOCKS; i++) {
+      if (!roster_row_is_peer(i)) continue;
+      bool split = roster_row_can_ban(i);
+      bool kick_hit =
+          TapBand::roster_action(block, false, split).contains(nx, ny);
+      bool ban_hit =
+          split && TapBand::roster_action(block, true, split).contains(nx, ny);
+      if (kick_hit || ban_hit) {
+        if (roster_kick_armed_ == i && roster_ban_ == ban_hit) {
+          // The same perform path as the desktop rows' second confirm.
+          NetPeer *p = roster_peer_at(i);
+          roster_kick_armed_ = -1;
+          roster_ban_ = false;
+          if (p) net_kick_peer(*p, ban_hit);
+        } else {
+          roster_kick_armed_ = i;
+          roster_ban_ = ban_hit;
+        }
+        return;
+      }
+      block++;
+    }
+    roster_kick_armed_ = -1;  // a stray tap disarms
+    roster_ban_ = false;
+    return;
+  }
+  // The pause screen's MANAGE PLAYERS band — the way into the roster.
+  if (roster_touch_offer() && roster_manage_band().contains(nx, ny)) {
+    roster_active_ = true;
+    roster_kick_armed_ = -1;
+    roster_ban_ = false;
+    return;
+  }
   // The bottom strip is the EXIT TO MENU band the overlay labels (the
   // shared TapBand). It exits to the menu from every state that has no
   // other touch exit: GAME OVER, the pause screen, and — online — a
@@ -12388,6 +12476,13 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   // menu instead of quitting the game, and left/right rebind a seat. The
   // pause key still resumes outright (toggle_pause closes the roster).
   if (roster_open()) {
+    // Touch: touch_tap owns this screen outright. The entry points
+    // synthesize keys from tap zones that sit OVER the roster — the
+    // invisible centre pause area sends 'p', and every finger-up sends
+    // the legacy '\r' release — so any key acting here would resume or
+    // confirm-close the roster out from under the tap that was just
+    // answered. BACK (the band, or Android back) is the way out.
+    if (is_touch_mode()) return;
     if (key == (unsigned char)gk.pause) { toggle_pause(); return; }
     roster_nav(nav_key(key));
     return;
