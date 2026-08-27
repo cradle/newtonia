@@ -74,6 +74,26 @@ function check(name, cond) {
         !!joinId && joinId.role === "joiner" && joinId.name === "BOB" &&
         joinId.platform === 2 && joinId.verified === true);
 
+  // 3b. Ban tokens (FOURPLAYER.md O3): every ATTESTED identity carries an
+  //     opaque room-scoped `key` minted from the proven account, and the
+  //     key survives a RENAME — the whole point, a display-name change must
+  //     not shed a ban. The FAKE_VERIFY path uses the cred as the account,
+  //     so re-announcing under a new name with the same cred keeps the key.
+  const keyish = (k) => typeof k === "string" && /^[0-9a-f]{32}$/.test(k);
+  check("attested identities carry a ban key",
+        keyish(hostId.key) && keyish(joinId.key));
+  check("distinct accounts mint distinct keys", hostId.key !== joinId.key);
+  join.send(JSON.stringify({ t: "identity", platform: 2, name: "MALLORY",
+                             cred: "ACCT9" }));
+  const renamed1 = await host._recvType("identity");
+  await t(100);
+  join.send(JSON.stringify({ t: "identity", platform: 2, name: "MALLORY2",
+                             cred: "ACCT9" }));
+  const renamed2 = await host._recvType("identity");
+  check("ban key survives a rename on the same account",
+        !!renamed1 && !!renamed2 && keyish(renamed1.key) &&
+        renamed1.key === renamed2.key && renamed1.name !== renamed2.name);
+
   // 4. A name is capped and a hostile length can't crash the worker: send an
   //    over-long name; it's truncated (<= 24 bytes on the wire cap).
   host.send(JSON.stringify({ t: "identity", platform: 1, name: "X".repeat(200) }));
@@ -123,6 +143,8 @@ function check(name, cond) {
   check("replacement joiner not pinned to the departed verified badge",
         !!claim && claim.role === "joiner" && claim.name === "EVE" &&
         claim.platform === 3 && claim.verified === false);
+  // ...and a bare CLAIM proves no account, so it must mint no ban key.
+  check("unverified claim carries no ban key", claim.key === undefined);
 
   // 8. Two departed announcers' slow verifies resolving OUT OF ORDER —
   //    the last-resolver-wins overwrite hazard this case used to guard

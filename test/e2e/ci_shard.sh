@@ -35,9 +35,13 @@ shard_drivers() {
     # code. Sharing a shard meant its variance decided that shard's fate;
     # alone it costs only its own wall clock, in parallel with the rest.
     leaderboard)  echo "leaderboard" ;;
+    # nseat_ban_token lives here rather than beside nseat_anon for load
+    # (the flap-swap precedent): seats-and-soak decides the suite's wall
+    # clock, and this driver self-hosts its own FAKE_VERIFY relay, so it
+    # costs this shard only its own runtime.
     lobby-and-lan) echo "lan_hidden lanclip lanrejoin lanrename byecard lankeep
                          ownroom mismatch policy identity identity_legacy pairstart fly
-                         nseat_lobby_kick nseat_lobby_mouse" ;;
+                         nseat_lobby_kick nseat_lobby_mouse nseat_ban_token" ;;
     netplay-core) echo "room weapons_net missile_net pickup_switch_net
                         turret_net shock_net shock_hazards_net hazards_net
                         timeslow_net impacts replay_online" ;;

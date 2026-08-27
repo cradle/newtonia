@@ -47,6 +47,9 @@ public:
     std::string text2;   // secondary field (Room: the reclaim token)
     uint8_t platform = 0;  // Identity: NetPlatform tag the worker attested
     bool verified = false; // Identity: true = worker-attested, false = claim
+    // Identity: the worker's room-scoped ban token for the attested account
+    // (net_identity.h NetIdentity::ban_token); "" = none / an old worker.
+    std::string key;
     // PB-D5 (multi-join worker): the joiner id this event concerns, from
     // the frame's "from" stamp — Answer/Cand/PeerJoin/PeerLeave/Identity
     // on the host side. Empty for host-role events and legacy frames.

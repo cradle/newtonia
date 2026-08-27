@@ -87,6 +87,14 @@ struct NetIdentity {
   std::string name;   // sanitized display name; empty = withheld/none
   uint8_t platform_trust;  // NetTrust for `platform`
   uint8_t name_trust;      // NetTrust for `name`
+  // Worker-minted ban token (FOURPLAYER.md O3): an opaque, room-scoped
+  // digest of the VERIFIED platform account, riding the worker's identity
+  // broadcast — never the p2p handshake (a claim can't mint one) and never
+  // persisted. Set only by the signal Identity consumers; "" = none (no
+  // attestation, an old worker, or a failed verify). Keying a ban on it is
+  // what a display-name change can't shake, and what makes an iOS pilot —
+  // account attested, alias never — bannable at all.
+  std::string ban_token;
   NetIdentity()
       : platform(NET_PLATFORM_UNKNOWN),
         platform_trust(NET_TRUST_ABSENT),
@@ -243,6 +251,14 @@ bool net_identity_verified(const NetIdentity &id, NetIdentityCtx ctx);
 // only KICK there; and the ALLOW ANONYMOUS PLAYERS row refuses them the
 // room outright when the host turns it off.
 bool net_identity_anonymous(const NetIdentity &id);
+
+// BANNABLE: a ban keyed on this identity would hold. The attested-name rule
+// (net_identity_anonymous) still qualifies, and so does a worker ban token
+// on its own — the token pins the platform ACCOUNT, so it holds through a
+// rename and covers the iOS account-without-alias case the name rule never
+// could. What the KICK/BAN rows and bands ask before offering the second
+// action (FOURPLAYER.md O3).
+bool net_identity_bannable(const NetIdentity &id);
 
 // True when the Typer font can draw `c`. DEFINED IN typer.cpp, right next
 // to the glyph table it must mirror, so a glyph addition updates both in

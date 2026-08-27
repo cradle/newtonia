@@ -573,6 +573,16 @@ test/e2e/nseat_anon.sh # O3 admission policy: the host sets ALLOW ANONYMOUS
                      # ("host refused this connection (reason 3)"): the
                      # refusal is a REJECT inside the handshake, not a
                      # transport close the joiner reads as a firewall
+test/e2e/nseat_ban_token.sh # O3 account-token bans: a ban keys on the
+                     # worker's room-scoped account token, so a rename no
+                     # longer evades it. Own FAKE_VERIFY relay on :8792,
+                     # where the CREDENTIAL doubles as the fake account id
+                     # (NEWTONIA_NET_TEST_CRED). ALLOW ANONYMOUS goes NO
+                     # first so admits wait for attestation (deterministic
+                     # verdicts). Then: an attested pilot is seated and
+                     # BANNED (the [ban] log must record "token yes"); the
+                     # SAME account under a NEW name is refused ("reason 4")
+                     # and takes no seat; a DIFFERENT account still seats.
 test/e2e/nseat_lobby_mouse.sh # the host waiting room under a MOUSE. A
                      # 4-seat room with one joiner keeps the screen up, then:
                      # a click low on the window must NOT leave (the exit

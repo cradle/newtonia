@@ -86,6 +86,24 @@ const MAX_IDENTITY_CRED = 8192;
 // floods.
 const VERIFY_MIN_INTERVAL_MS = 3000;
 
+// Ban token (FOURPLAYER.md O3): an opaque, room-scoped digest of the
+// VERIFIED account id, attached to the identity broadcast so the host can
+// key a kick-ban on the account instead of the display name — a rename
+// stops evading the ban, and an iOS pilot (account attested, alias never)
+// becomes bannable at all. The salt is the room's host_token: random,
+// persisted for the room's whole life including host reclaim, and never
+// sent to JOINERS — so peers can't precompute or link tokens across rooms,
+// and the raw account id still never leaves the worker (the XR-014 rule).
+// Bans die with the room (hosting anew clears the list), which is exactly
+// the token's scope.
+async function mint_ban_key(salt, platform, acct) {
+  if (!salt || !acct) return "";
+  const data = new TextEncoder().encode(`${salt}:${platform}:${acct}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(digest)].slice(0, 16)
+      .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // Browser origins allowed to open a signaling socket. Browsers always send an
 // Origin header on the WebSocket handshake and cannot forge it, so this stops
 // an unrelated web page a player visits from opening role=host in their
@@ -693,6 +711,9 @@ export class Room {
                  msg.cred.length <= MAX_IDENTITY_CRED ? msg.cred : "";
 
     let attested = { platform, name, verified: false };
+    // The verified stable account id each platform backend proves — the ban
+    // token's input (never stored, never forwarded raw). "" = none proven.
+    let acct = "";
     const fake = this.env && this.env.FAKE_VERIFY === "1";
     const fake_slow = fake && /^SLOW(FAIL)?:\d+$/.test(cred);
     if (fake && !fake_slow) {
@@ -702,6 +723,11 @@ export class Room {
       // test made FAKE_VERIFY=0 ENABLE the fake — the footgun class where
       // setting a flag "off" turns it on.
       attested = { platform, name, verified: true };
+      // Fake "account": the cred verbatim (nseat_ban_token.sh joins twice
+      // under one cred and different names), else the name, so the plain
+      // e2e pilots get stable tokens too. Nameless + credless mints none —
+      // the anonymous pilot stays tokenless, like a failed real verify.
+      acct = cred || name;
     } else if (cred) {
       // Per-platform verifier: each proves the account against the platform's
       // own backend and returns the display NAME to attest (the wire name is
@@ -724,12 +750,12 @@ export class Room {
         verify = async () => {
           const delay_ms = Math.min(Number(cred.split(":")[1]) || 0, 5000);
           await new Promise((res) => setTimeout(res, delay_ms));
-          return cred.startsWith("SLOWFAIL") ? null : { name };
+          return cred.startsWith("SLOWFAIL") ? null : { name, acct: name };
         };
       else if (platform === 2 /* NET_PLATFORM_STEAM */)
         verify = async () => {
           const v = await verifySteamTicket(this.env, cred);
-          return v ? { name: v.persona || "" } : null;
+          return v ? { name: v.persona || "", acct: v.steamid } : null;
         };
       else if (platform === 4 /* NET_PLATFORM_IOS */)
         verify = async () => {
@@ -739,12 +765,14 @@ export class Room {
           if (v) console.log(`game center verified idKind=${v.idKind} hash=${v.hash}`);
           // Account proven, name unavailable from Apple: attest the empty name
           // (platform ATTESTED, name ABSENT -> peer renders "PLAYER N - IOS").
-          return v ? { name: "" } : null;
+          // The proven scoped id still mints a ban token — the one identity
+          // an iOS pilot has, and what makes the row bannable at all.
+          return v ? { name: "", acct: v.identifier } : null;
         };
       else if (platform === 5 /* NET_PLATFORM_ANDROID */)
         verify = async () => {
           const v = await verifyPlayGamesCode(this.env, cred);
-          return v ? { name: v.name || "" } : null;
+          return v ? { name: v.name || "", acct: v.playerId } : null;
         };
       if (verify) {
         // Denial-of-wallet guard: every verify is a round-trip against the
@@ -793,6 +821,9 @@ export class Room {
             return;
           }
           jent2.identity = { platform, name: v.name || "", verified: true };
+          const lkey = await mint_ban_key(this.r.host_token, platform,
+                                          v.acct || "");
+          if (lkey) jent2.identity.key = lkey;
           await this.save();
           this.broadcast_identity(role, jid);
           console.log(`identity joiner j:${jid} late verify attested after ` +
@@ -803,6 +834,7 @@ export class Room {
           // Attested name comes from the platform, not the wire (a lying name
           // field stops mattering); the account proven is enough to badge.
           attested = { platform, name: v.name || "", verified: true };
+          acct = v.acct || "";
         }
         // Verify failed (bad/expired/reused credential, backend down): fall
         // through to the never-demote guard below, which keeps the badge.
@@ -849,6 +881,12 @@ export class Room {
         return;  // flooded: keep the prior claim, spend no storage write
       if (ent) ent.claim_at = cnow; else this.r.host_claim_at = cnow;
     }
+    // Mint the ban token from the proven account (attested only — a bare
+    // claim proves no account, so it gets none and stays unbannable-by-id).
+    if (attested.verified) {
+      const key = await mint_ban_key(this.r.host_token, platform, acct);
+      if (key) attested.key = key;
+    }
     if (ent) ent.identity = attested; else this.r.host_identity = attested;
     await this.save();
     this.broadcast_identity(role, jid);
@@ -873,6 +911,10 @@ export class Room {
     if (!id) return null;
     const frame = { t: "identity", role, platform: id.platform,
                     name: id.name, verified: id.verified };
+    // The room-scoped ban token (see mint_ban_key). Old game builds ignore
+    // the extra field; old workers simply never send it — either direction
+    // degrades to the name+platform ban keys.
+    if (id.key) frame.key = id.key;
     if (role === "joiner") frame.from = String(jid);
     return frame;
   }

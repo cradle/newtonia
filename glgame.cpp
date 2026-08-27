@@ -1506,13 +1506,16 @@ bool GLGame::roster_row_is_peer(int row) const {
   return false;
 }
 
-// Can this row's pilot be BANNED, or only kicked? Only a worker-attested
-// name makes a ban durable — see net_identity_bannable. Everything else
-// (a legacy peer, a badge-only backend, an unverified claim) gets KICK
-// alone rather than a button that quietly does less than it says.
+// Can this row's pilot be BANNED, or only kicked? A worker-attested name
+// or the worker's account token makes a ban durable — see
+// net_identity_bannable (the token half is what makes an iOS pilot,
+// account attested with no alias, bannable at all). Everything else (a
+// legacy peer, an unverified claim) gets KICK alone rather than a button
+// that quietly does less than it says.
 bool GLGame::roster_row_can_ban(int row) const {
   const NetPeer *p = const_cast<GLGame *>(this)->roster_peer_at(row);
-  return p && !net_identity_anonymous(p->identity);
+  return p && (net_identity_bannable(p->identity) ||
+               net_identity_bannable(p->attested));
 }
 
 // The peer occupying a roster row, or null.
@@ -3149,6 +3152,7 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         att.name = net_sanitize_name(ev.text);
         att.name_trust =
             att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+        att.ban_token = ev.key;
         // Bank it by jid FIRST (see net_jid_attested_): a verdict that
         // beats the door's answer belongs to a peer that does not own its
         // jid yet, and dropping it is what the admission gate would read
@@ -3207,6 +3211,18 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
             // The other clients' HUD rows show this name too (4P) —
             // re-relay the roster now that a seat's badge changed.
             net_broadcast_seat_identities();
+            // The verdict can outrun the ban: a banned account reconnecting
+            // fast is admitted before its attestation (and the token bans
+            // key on) lands. This fold is where the room first knows who
+            // answered — a connected peer whose fresh attestation matches
+            // the ban list goes back out through the ordinary kick path
+            // (already banned; the removal is enforcement, not a second
+            // sentence). The lobby waiting room runs the same sweep.
+            if (NetLobby::identity_banned(att)) {
+              NET_LOG("net: banned pilot attested after admit - removing "
+                      "seat %d\n", (int)tp->seat);
+              net_kick_peer(*tp, true);
+            }
           }
         }
       } else if (!ev.peer.empty()) {
@@ -3374,17 +3390,20 @@ void GLGame::net_kick_peer(NetPeer &p, bool ban) {
   // Ban only: bar them from coming back. The event above stops a
   // well-behaved client either way, but the room code is in their hands and
   // nothing else would refuse a fresh join. Identity-keyed (see
-  // NetLobby::ban_identity): a nameless peer can't be banned, only kicked.
+  // NetLobby::ban_identity): a keyless peer — no name, no account token —
+  // can't be banned, only kicked.
   //
   // BOTH the folded identity and the raw HELLO claim: p.identity carries
   // the worker's attestation folded over it, while enforcement can only
   // ever see the claim (that is all a fresh handshake has at the moment
   // it must decide). Banning only the attested form silently fails to
-  // match wherever the two differ, and the peer walks back in.
+  // match wherever the two differ, and the peer walks back in. The raw
+  // attestation rides too — it carries the account token a rename can't
+  // shake (ban_identity no-ops when it holds no key at all).
   if (ban) {
     if (p.session) NetLobby::ban_identity(p.session->peer_identity());
     NetLobby::ban_identity(p.identity);
-    if (!p.attested.name.empty()) NetLobby::ban_identity(p.attested);
+    NetLobby::ban_identity(p.attested);
   }
   // Park frees the hull and opens the rejoin door (the seat becomes
   // available). The session dies on the timer above — parking alone

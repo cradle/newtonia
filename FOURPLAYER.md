@@ -675,23 +675,51 @@ so it was free. A **kick** removes them and lets them come back with the
 room code, which is the ordinary case: the fix for a joiner stuck at the
 wrong seat should not also be a punishment. A **ban** additionally bars
 that pilot for the host process's lifetime — `NetLobby::ban_identity`,
-keyed on case-folded name + platform, because a jid is minted per socket
-and the room code is already in their hands. Enforced at the two points
-where a handshake first says WHO answered: the waiting room refuses to
-seat a banned Ready, and the mid-game rejoin door drops the adoption and
-re-offers, leaving the seat parked for whoever it belongs to. A NAMELESS
-peer can be kicked but not banned (nothing to key on, and matching on
-platform alone would bar every desktop player). Hosting a NEW room clears
-the list; rejoining/resuming an existing one keeps it. KICK is the
-default on every row and the highlight resets to it, so the harsher
-action is always a deliberate press.
+keyed on the worker's ACCOUNT token where one was attested, with
+case-folded name + platform beside it as the legacy key, because a jid is
+minted per socket and the room code is already in their hands. Enforced
+at the two points where a handshake first says WHO answered: the waiting
+room refuses to seat a banned Ready, and the mid-game rejoin door drops
+the adoption and re-offers, leaving the seat parked for whoever it
+belongs to; because the worker's verdict is async, both hosts also SWEEP
+a late attestation that matches the ban list — the seated/admitted pilot
+goes back out through the ordinary kick path. A KEYLESS peer — no
+attested token, no name — can be kicked but not banned (nothing to key
+on, and matching on platform alone would bar every desktop player).
+Hosting a NEW room clears the list; rejoining/resuming an existing one
+keeps it. KICK is the default on every row and the highlight resets to
+it, so the harsher action is always a deliberate press.
 
-**BAN is only OFFERED where a ban would hold** (2026-08-13): it keys on
-name + platform, and a merely claimed name is a self-report the peer can
-change on their next handshake, so `net_identity_anonymous()` — the
-worker attested the NAME itself, not merely the account — gates the
-action. An unattested row reads `KICK`, with no arrows offering a second
-action the game cannot deliver.
+**BAN is only OFFERED where a ban would hold** (2026-08-13): a merely
+claimed name is a self-report the peer can change on their next
+handshake, so `net_identity_bannable()` — an attested name OR the
+worker's account token — gates the action. A keyless row reads `KICK`,
+with no arrows offering a second action the game cannot deliver.
+
+**Account-token bans** (2026-08-27, Glenn: "prevent name changes
+bypassing bans"): name + platform was the ONLY key, so a banned Steam or
+Play Games pilot could rename their persona and walk back in, and an iOS
+pilot — account attested, alias never — was unbannable everywhere. The
+signalling worker already proves a stable account id on every successful
+verify (SteamID, Play Games playerId, Game Center teamPlayerID); it now
+mints `key = SHA-256(host_token : platform : account_id)` (truncated,
+hex) and rides it on the identity broadcast. Room-scoped by construction:
+the salt is the room's reclaim token — random, persisted across host
+reclaim, never sent to joiners — so tokens can't be linked across rooms,
+the raw account id still never leaves the worker (the XR-014 rule
+holds), and the token's lifetime IS the ban list's lifetime. The game
+stores it as `NetIdentity::ban_token` (attested-only: the p2p claim
+parse never fills it), `BanEntry` carries token + name keys matched
+independently, and `admit_verdict` checks the ATTESTED identity beside
+the claim. Old worker or old build: the field is additive JSON both
+ways, so either side missing it degrades to the name bans exactly as
+before. Honest limit: a banned player can still shed the token by
+connecting UNATTESTED — ALLOW ANONYMOUS NO closes that door, and the two
+policies compose. FAKE_VERIFY treats the credential as the fake account
+id (and `NEWTONIA_NET_TEST_CRED` is the game-side dev hook that sends
+one), which is how `nseat_ban_token.sh` joins twice under one account
+wearing two names; `identity_test.js` pins the worker half (key present
+on attested frames only, stable across a rename, distinct per account).
 
 **ALLOW ANONYMOUS PLAYERS YES/NO** (same request): the other side of that
 predicate, as a row on both screens — the waiting room's list and the
@@ -774,9 +802,12 @@ process under its name is refused, and the host and bystander play on —
 and `nseat_lobby_kick.sh` (lobby) kicks seat 3 and proves the softer
 action is really softer: the same pilot re-enters the room afterwards.
 `nseat_anon.sh` sets the policy to NO and shows an attested pilot seated
-beside an anonymous one refused. `nseat_kick.sh` and `nseat_anon.sh` both
-self-host a FAKE_VERIFY relay, since the plain dev relay attests nobody
-and neither BAN nor the admission rule would have anything to act on.
+beside an anonymous one refused. `nseat_ban_token.sh` bans an attested
+pilot and proves the token half: the same account back under a NEW name
+is refused (reason 4) while a different account still seats.
+`nseat_kick.sh`, `nseat_anon.sh` and `nseat_ban_token.sh` all self-host
+a FAKE_VERIFY relay, since the plain dev relay attests nobody and
+neither BAN nor the admission rule would have anything to act on.
 `nseat_lobby_mouse.sh` covers the same screen under a pointer.
 
 ### O4 — N>1 rejoin ICE-flap wait (B5 known limit) — DONE (2026-08-15)
