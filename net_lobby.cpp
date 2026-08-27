@@ -2477,6 +2477,16 @@ void NetLobby::draw() {
           }
           block++;
         }
+        // The admission policy rides the manage view once anyone is
+        // seated — beside the pilots it governs, and the same spot the
+        // pause roster gives it (TapBand::roster_anon). On the main room
+        // screen it sat one finger-width under the MANAGE band (field
+        // screenshot, 2026-08-26: two adjacent targets read as one).
+        {
+          std::string anon = "ALLOW ANONYMOUS PLAYERS   ";
+          anon += g_prefs.allow_anonymous ? "YES" : "NO";
+          TapBand::roster_anon.draw(anon.c_str());
+        }
       } else if (is_touch_mode()) {
         // Spread over the full height under the hoisted header — the
         // default stack hugs the lower half of a phone screen.
@@ -2515,8 +2525,12 @@ void NetLobby::draw() {
         // The host's admission policy, the desktop roster row's touch
         // twin — up BEFORE anyone arrives, which is exactly when a host
         // would set it (the touch lobby simply had no way to see or set
-        // it; field, 2026-08-26). Tap toggles (see touch_tap).
-        if (waiting_room()) {
+        // it; field, 2026-08-26). Tap toggles (see touch_tap). EMPTY room
+        // only: with anyone seated its spot sits one finger-width under
+        // the MANAGE band (field screenshot, same day — two adjacent
+        // targets read as one), so the row moves into the manage view,
+        // beside the pilots it governs.
+        if (waiting_room() && seated_.empty()) {
           std::string anon = "ALLOW ANONYMOUS PLAYERS   ";
           anon += g_prefs.allow_anonymous ? "YES" : "NO";
           kAnonBand.draw(anon.c_str());
@@ -3579,6 +3593,13 @@ void NetLobby::touch_tap(float nx, float ny) {
             }
             block++;
           }
+          // The policy band under the blocks (drawn from the same
+          // TapBand::roster_anon) — toggling it leaves an armed removal
+          // armed, the pause roster's precedent for this exact tap.
+          if (!handled && TapBand::roster_anon.contains(nx, ny)) {
+            toggle_allow_anonymous();
+            handled = true;
+          }
           // A tap on nothing in particular disarms — a removal should
           // never survive the host's attention moving elsewhere.
           if (!handled) manage_disarm();
@@ -3610,9 +3631,11 @@ void NetLobby::touch_tap(float nx, float ny) {
       // draw (the TapBand rule): on desktop this strip crosses the drawn
       // roster list, whose own anon row answers the click below. Gated on
       // the code too — the band is only drawn once the room exists, and
-      // "CREATING A ROOM" must not eat a tap into a policy flip.
-      if (is_touch_mode() && waiting_room() && !room_code_.empty() &&
-          kAnonBand.contains(nx, ny)) {
+      // "CREATING A ROOM" must not eat a tap into a policy flip — and on
+      // the EMPTY room, matching the draw: with pilots seated the row
+      // lives in the manage view instead.
+      if (is_touch_mode() && waiting_room() && seated_.empty() &&
+          !room_code_.empty() && kAnonBand.contains(nx, ny)) {
         toggle_allow_anonymous();
         break;
       }

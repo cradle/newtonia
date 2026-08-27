@@ -703,11 +703,14 @@ sparse code-and-count screen, and the pause roster never opens on touch),
 which left the policy invisible and unsettable there (field, 2026-08-26 —
 a phone host's empty room showed no sign of it): the touch waiting room
 now draws a tap band of the same name under the waiting count
-(`kAnonBand`, tap toggles). Every input path lands in
+(`kAnonBand`, tap toggles) — on the EMPTY room only. Once anyone is
+seated the count line is the MANAGE band, and stacked under it the two
+targets sat one finger-width apart and read as one (field screenshot,
+2026-08-26), so the policy band moves into the manage view instead
+(`TapBand::roster_anon`, under the pilot blocks — the same spot the
+in-game touch roster gives it). Every input path lands in
 `NetLobby::toggle_allow_anonymous` (lobby) /
-`GLGame::roster_toggle_anonymous` (roster) — and since the touch pass
-below, the in-game touch roster carries the policy too
-(`TapBand::roster_anon`).
+`GLGame::roster_toggle_anonymous` (roster).
 
 **Touch hosts can KICK and BAN too** (2026-08-26, the touch pass's
 second half — the policy band above was its first): both removal
