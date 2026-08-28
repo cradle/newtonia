@@ -462,9 +462,12 @@ test/e2e/pickup_switch_net.sh # predicted pickup collection: the host drops
                      # armed the mine locally at contact, not a round trip
                      # later via the restore), missiles confirmed by host
                      # echoes and MORE plain-mine confirms after the flying
-                     # started than before it, and NOT ONE deploy aged out
-                     # unmade — the press-stream-aligned switch leaves no
-                     # type-mismatch window (the load-gated arsenal
+                     # started than before it, and no more dropped deploys
+                     # than the accepted delayed-INPUT background on a
+                     # loaded runner (≤2; measured at exactly 1 on both
+                     # 2026-08-28 CI first attempts) — the divergence
+                     # signature is a windowful, every post-grab press
+                     # until the rounds run out (the load-gated arsenal
                      # divergence, 2026-08-21).
 test/e2e/turret_net.sh # turret drones over the wire (PROTO 26). The host
                      # launches with NEWTONIA_NET_TEST_GRANT_TURRETS=1 (runtime

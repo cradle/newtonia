@@ -41,9 +41,10 @@
 # echoes and MORE plain-mine confirms after the flying started than
 # before it (the switch really happened on both machines — the mine
 # greps anchor on "net: " because "giga mine deploy confirmed" contains
-# the mine line), and NOT ONE deploy dropped — with the switch aligned
-# in the press stream there is no mismatch window left on a quiet box.
-# Prints PICKUP-SWITCH-E2E-OK.
+# the mine line), and no more dropped deploys than the accepted
+# delayed-INPUT background on a loaded runner (≤2; a diverged switch
+# drops a windowful — see the threshold comment at the assert). Prints
+# PICKUP-SWITCH-E2E-OK.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -127,12 +128,25 @@ MINES_AFTER=$(grep -ac "net: mine deploy confirmed" "$OUT/joiner.log")
   echo "FAIL: pickup predicted but no plain-mine deploys confirmed after"
   echo "      the flying started — the switch happened on one machine only"
   kill_pair $PA $PB; exit 1; }
+# Zero drops is the norm on a quiet box (4/4 local runs), but a loaded
+# CI runner shows the accepted delayed-INPUT case NET_DEPLOY_GRACE
+# documents — an INPUT stalled past the grace while snapshots keep
+# flowing, measured at exactly 1 per first attempt on both 2026-08-28 CI
+# runs (NETPLAY.md; missile_net recalibrated for the same class). That
+# is not the divergence this driver guards: a diverged switch drops
+# EVERY post-grab press until the rounds run out (~6+ per round, 19-31
+# in the 2026-08-21 incident). Tolerate the background, fail well below
+# the real signature.
 DROPPED=$(grep -ac "deploy dropped" "$OUT/joiner.log" || true)
-[ "${DROPPED:-0}" -eq 0 ] || {
-  echo "FAIL: $DROPPED deploy(s) dropped — the predicted switch left a"
+[ "${DROPPED:-0}" -le 2 ] || {
+  echo "FAIL: $DROPPED deploys dropped — the predicted switch left a"
   echo "      mismatch window in the press stream"
   grep -a "deploy dropped" "$OUT/joiner.log" | head -5
   kill_pair $PA $PB; exit 1; }
+[ "${DROPPED:-0}" -eq 0 ] || {
+  echo "   (note: $DROPPED dropped deploy(s) — the accepted delayed-INPUT"
+  echo "    background on a loaded box, not the divergence signature)"
+  grep -a "deploy dropped" "$OUT/joiner.log" | head -3; }
 echo "== predicted: $(grep -ac 'pickup predicted' "$OUT/joiner.log"), reverts: $(grep -ac 'prediction expired' "$OUT/joiner.log"), mines confirmed after the switch: $((MINES_AFTER - MINES_BEFORE))"
 
 shot $A pickupswitch-host; shot $B pickupswitch-joiner
