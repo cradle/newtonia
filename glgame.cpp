@@ -8909,7 +8909,13 @@ void GLGame::tick(int delta) {
   // pickup-switch path mid-burst (test/e2e/pickup_switch_net.sh; the
   // time-slow hook's pattern). Ahead, not on the ship: a pickup spawned on
   // the ship is collected host-side before a snapshot ever shows it to the
-  // client, so the client could never predict it. Inert without the env var.
+  // client, so the client could never predict it. And only ahead of a ship
+  // that is MOVING: a drop led off an idle ship just parks out of reach —
+  // the 2026-08-27 CI red spent nearly the whole budget leading a joiner
+  // that sat still through its arm-missiles probe phase, then a generation
+  // rollover swept the lot — so an idle tick re-checks shortly instead of
+  // burning budget, and every drop lands where the ship will actually
+  // arrive. Inert without the env var.
   {
     static int test_mine_pickup_ms = -2, test_mine_pickup_left = 8;
     static int test_mine_pickup_timer = 0;
@@ -8925,12 +8931,16 @@ void GLGame::tick(int delta) {
         for (auto *gs : *players) {
           Ship *sh = gs->ship;
           if (!sh->is_alive() || sh->is_local_player) continue;
-          test_mine_pickup_left--;
-          // ~400 ms of travel ahead (velocity is per-ms), or a couple of
-          // ship-lengths along the facing when it is drifting slowly.
+          // ~400 ms of travel ahead (velocity is per-ms). A ship too slow
+          // to cover two of its own radii in that time counts as idle:
+          // hold the drop and re-check soon, so the first drop lands
+          // moments after the driver's flying phase starts.
           Point lead = sh->velocity * 400.0f;
-          if (lead.magnitude() < sh->radius * 2.0f)
-            lead = sh->facing * (sh->radius * 4.0f);
+          if (lead.magnitude() < sh->radius * 2.0f) {
+            if (test_mine_pickup_timer > 500) test_mine_pickup_timer = 500;
+            break;
+          }
+          test_mine_pickup_left--;
           NET_LOG("net: TEST dropping mine pickup ahead of the remote player\n");
           pickups->push_back(new MinePickup(
               WrappedPoint(sh->position.x() + lead.x(),
