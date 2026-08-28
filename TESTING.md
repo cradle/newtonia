@@ -444,13 +444,25 @@ test/e2e/missile_net.sh # client-fired deploys (host launches with
                      # recovery; 12 of 18 were lost before the host queued
                      # secondary presses like it queues primary ones.
 test/e2e/pickup_switch_net.sh # predicted pickup collection: the host drops
-                     # MinePickups AHEAD of the joiner's ship on a timer
-                     # (NEWTONIA_NET_TEST_MINE_PICKUP_MS) while it fires a
-                     # missile burst through them. Asserts the joiner
+                     # MinePickups 400 ms of travel AHEAD of the joiner's
+                     # ship on a timer (NEWTONIA_NET_TEST_MINE_PICKUP_MS) —
+                     # only while that ship is MOVING, so no drop parks out
+                     # of reach — while it flies thrust-HELD missile rounds
+                     # through them (a coasting ship is parked ~700 ms
+                     # after a tap; friction 0.003/ms — the tap-thrust
+                     # original never reached its drops, the 2026-08-27 CI
+                     # red). Short rounds that stop at the first confirmed
+                     # switch keep the run ahead of the generation
+                     # rollover, whose rebuild sweeps the drops and races
+                     # the deploy stream (denser start generations were
+                     # tried instead and reverted — muzzle-adjacent rocks
+                     # detonate deploys younger than one snapshot slot,
+                     # which reads as "deploy dropped"). Asserts the joiner
                      # PREDICTED at least one grab ("pickup predicted" —
                      # armed the mine locally at contact, not a round trip
-                     # later via the restore), both weapon types were
-                     # confirmed by host echoes, and NOT ONE deploy aged out
+                     # later via the restore), missiles confirmed by host
+                     # echoes and MORE plain-mine confirms after the flying
+                     # started than before it, and NOT ONE deploy aged out
                      # unmade — the press-stream-aligned switch leaves no
                      # type-mismatch window (the load-gated arsenal
                      # divergence, 2026-08-21).
