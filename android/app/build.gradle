@@ -43,9 +43,28 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            // R8 on (PLAYQUALITY.md): shrinks the DEX and satisfies the Play
+            // Console's per-upload optimization insights ahead of the Feb 2027
+            // requirement. Every class reached only through JNI is pinned in
+            // proguard-rules.pro — R8 can't see native callers, and stripping
+            // the Play Games bridges fails SOFT (achievements/attestation
+            // silently stop), so verify those on a real device after touching
+            // the rules. shrinkResources stays OFF deliberately: both bridges
+            // resolve their strings via getIdentifier(), which the resource
+            // shrinker can't see — it would strip games-ids.xml (PLAYQUALITY.md
+            // "resource trap") for a saving of a few icons' worth of bytes.
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                           'proguard-rules.pro'
+            // -PdebugSign: sign the minified release build with the debug
+            // keystore, giving CI and PR testers an installable R8 APK
+            // (android.yml boots it through the emulator selftest; same cert
+            // as the debug artifact, so it installs wherever that does).
+            // Without the property nothing is set here and deploy-android.yml
+            // keeps injecting the real release keystore untouched.
+            if (project.hasProperty('debugSign')) {
+                signingConfig signingConfigs.debug
+            }
         }
     }
 

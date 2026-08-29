@@ -60,40 +60,54 @@ the 50 MB cutoff, so the requirement cannot bite as long as the
 dependency list stays this shape. Verify once rather than assume:
 `unzip -l app-release.aab 'base/dex/*'` on the next deploy artifact.
 
-Enable R8 regardless (`minifyEnabled true` in
-`android/app/build.gradle`'s release block — the optimizing default rules
-file is already wired): it is insurance against the dependency tree
-growing past a cutoff unnoticed, it shrinks the download, and Play
-Console now surfaces "DEX optimization insights" on every AAB upload
-that will otherwise nag forever. The keep rules in
-`android/app/proguard-rules.pro` exist precisely so this flip is safe —
-but see the traps below, which is why the flip is its own tested change
-and not part of this planning branch.
+R8 is enabled regardless (`minifyEnabled true` in
+`android/app/build.gradle`'s release block, on the optimizing default
+rules file): it is insurance against the dependency tree growing past a
+cutoff unnoticed, it shrinks the download, and Play Console now surfaces
+"DEX optimization insights" on every AAB upload that would otherwise nag
+forever. The keep rules in `android/app/proguard-rules.pro` are what
+make the flip safe — see the traps below before touching either file.
 
-**R8 enablement checklist** (one PR, at leisure — the deadline is
-Feb 2027):
+**R8 enablement checklist**:
 
 - [x] Keep rules cover every class reached only through JNI:
       `org.libsdl.app.**`, `NewtoniaActivity`, `PlayGamesAchievements`,
-      and — fixed on this branch, it was missing —
+      and — it was missing —
       `PlayGamesIdentity` (resolved by name from
       `play_games_identity.cpp`; without the rule R8 strips it and
       identity fails SOFT: names degrade to role labels online, no
-      leaderboard attestation, nothing says why).
-- [ ] `minifyEnabled true` for release. Leave `shrinkResources` OFF —
+      leaderboard attestation, nothing says why). The installreferrer
+      library is pinned too (its consumer rules should suffice, but the
+      deferred-deep-link path also fails soft).
+- [x] `minifyEnabled true` for release. `shrinkResources` left OFF —
       see the resource trap below.
-- [ ] Boot gate: build a minified release-mode APK (debug-signed is
-      fine: `assembleRelease` with the debug signing config injected)
-      and run `android/emulator_selftest.sh APK=<it>` — R8 stripping
-      anything SDL needs shows up as a boot crash, and the signal
-      selftest exercises the TLS + socket stack. Worth adding as a
-      second `android.yml` job so the gate outlives one manual check.
-- [ ] Device gate (manual, needs the Play-signed build or an internal
-      track install): achievements still unlock, the lobby still shows
-      the attested Play Games name, a leaderboard upload still attests.
-      These are the paths that fail soft, so CI can't see them.
-- [ ] Check the mapping file lands in the AAB upload (AGP does this
-      automatically for bundles) so Play deobfuscates crash traces.
+- [x] Boot gate in CI: `android.yml` builds the minified release APK
+      debug-signed (`assembleRelease -PdebugSign` — the gradle property
+      attaches the debug signing config so the APK installs; deploy's
+      injected release signing is untouched) and the emulator selftest
+      runs twice on the one booted AVD — debug APK (the TLS gate as
+      always), then the minified APK (the R8 boot gate). The minified
+      APK is also uploaded as the `newtonia-release-minified` artifact
+      for sideloading.
+- [ ] Device gate (manual): check achievements still unlock, the lobby
+      still shows the attested Play Games name, and a leaderboard upload
+      still attests — the paths that fail soft, so CI can't see them.
+      **Certificate caveat:** Play Games sign-in requires a cert the
+      console knows, and CI's debug keystore is auto-generated fresh
+      per run, so the `newtonia-release-minified` PR artifact proves
+      boot/gameplay/menus on a device but its PGS sign-in fails on the
+      cert alone — that failure is NOT R8. Test the PGS paths from a
+      build carrying a registered cert instead: locally
+      `cd android && ./gradlew assembleRelease -PdebugSign` (signs with
+      YOUR `~/.android/debug.keystore`, the cert the console already
+      knows from debug testing) and `adb install -r` it, or dispatch
+      deploy-android manually (its internal-track AAB now builds with
+      R8 under the real release key). If PR-artifact PGS testing is
+      ever wanted, the fix is a committed CI debug keystore registered
+      once in the console — a follow-up, not this change.
+- [ ] On the first Play upload after the flip: confirm the Play Console
+      shows deobfuscated crash traces / accepts the mapping (AGP embeds
+      `BUNDLE-METADATA/…/proguard.map` in the AAB automatically).
 
 **Resource trap:** both Play Games bridges read their string resources by
 name at runtime — `getIdentifier("play_games_oauth_client_id"…)` in
@@ -136,8 +150,9 @@ the April requirement does not ask for it.
 
 | When | What |
 |------|------|
-| Now (this branch) | This assessment; `PlayGamesIdentity` keep rule (makes the future R8 flip safe) |
-| Next deploy artifact | Read actual DEX size off the AAB; confirm "games, < 50 MB" exemption holds |
-| Any time before Feb 2027 | The R8 enablement PR (checklist above), verified on emulator + device |
+| Done | This assessment; `PlayGamesIdentity` keep rule; the R8 flip + CI boot gate (checklist above) |
+| Next PR run of android.yml | Device smoke: sideload `newtonia-release-minified` (boot/gameplay/menus; its throwaway CI cert can't sign in to PGS) |
+| Before the next release | Device gate on the fail-soft Play Games paths, from a registered-cert build (local `-PdebugSign` build or an internal-track dispatch) — see the checklist |
+| Next deploy artifact | Read actual DEX size off the AAB; confirm "games, < 50 MB" exemption holds; confirm Play deobfuscates traces |
 | After next release, once Vitals ships the new metrics | Confirm memory/bitmap panels are green; then ignore unless alerted |
 | 2027, when Google's gaming-auth guidance lands | Re-check the sign-in exemption still covers PGS-only games |
