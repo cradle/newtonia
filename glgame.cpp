@@ -4199,6 +4199,15 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
   // mid-game re-host door stays closed too, mirroring the lobby gate.
   if (net_mode_ != NetHost || !NetLan::available() || !g_prefs.lan_visible)
     return false;
+  // ALLOW ANONYMOUS NO closes the LAN door entirely (a LAN peer can never
+  // be attested — see NetLobby::lan_door_start), mid-game included: don't
+  // re-beacon, and tear an open door down when the roster toggle flips
+  // the policy live — this per-tick gate is what makes the toggle take
+  // effect in both directions with no extra wiring at the toggle sites.
+  if (!g_prefs.allow_anonymous) {
+    if (net_lan_door_open()) net_lan_rejoin_reset();
+    return false;
+  }
   // Arm once per open seat — and NOT while a fresh session from either
   // door is already handshaking (re-beaconing then would let a second
   // completion stomp it; mirror of the relay arm's condition). Serves
@@ -4264,8 +4273,11 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
           return net_rejoin_seat_for_identity(claimed);
         });
         // ...and the same admission gate. The LAN door clears dp->jid just
-        // below, so the anonymous policy self-disables here and only the
-        // ban list bites — the door's long-standing behaviour.
+        // below, so the check runs worker-less: claimed-name bans bite,
+        // and under ALLOW ANONYMOUS NO the verdict refuses outright — the
+        // backstop for an adoption already in flight when the roster
+        // toggle closed this door (it no longer OPENS under NO at all;
+        // see net_host_lan_rejoin_poll's per-tick gate).
         net_install_admit_check(dp->session, (int)dp->seat);
         // Paired through the local beacon: per-peer offline carve-out —
         // recorded on the adoption and applied at Ready to whichever seat

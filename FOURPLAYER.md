@@ -719,7 +719,40 @@ the claim. Old worker or old build: the field is additive JSON both
 ways, so either side missing it degrades to the name bans exactly as
 before. Honest limit: a banned player can still shed the token by
 connecting UNATTESTED — ALLOW ANONYMOUS NO closes that door, and the two
-policies compose. FAKE_VERIFY treats the credential as the fake account
+policies compose.
+
+**...and NO closes the LAN door completely** (2026-08-30, the field test
+that proved the composition leaked): the LAN door pairs with no worker,
+so nobody on it can EVER be attested — the token can't exist there and
+the anonymous policy used to exempt it outright ("a LAN peer was
+invited"), which let the just-banned Steam account rename and walk back
+in over the couch path with NO set. Now the door is gated on the policy at
+every stage, per tick on the CLOSE side in both owners — the lobby's
+`lan_host_update` and the mid-game `net_host_lan_rejoin_poll` both
+re-evaluate each pump, so an open door (beacon, blob server, half-done
+exchange) closes on the next tick however the pref flipped, and the
+invariant can't depend on toggle-site wiring (the review's structural
+point); `NetLobby::lan_door_start` gates the opens (HOST commit + the
+toggle's flip back to YES) — and `admit_verdict` refuses any
+worker-less session outright under NO (immediate `AdmitAnonymous`, no
+unresolvable wait) as the backstop for an exchange racing the gate.
+Claimed-name bans still apply on the LAN door under YES, catching the
+casual rejoiner — and since the same review, on the CLASSIC adoptions
+too: the manual-fallback LAN pairing and the degraded relay pair were
+the two `session_` adoptions that installed NO admit check at all, so
+a banned pilot could bypass every gate by pairing through them (the
+relay-outage-then-LAN shape); both now install the shared gate, the
+relay one as a worker session reading `attested_peer_`/`paired_jid_`
+per call. A rename-proof LAN ban stays impossible by construction (the
+host can't verify a platform credential itself — the Web-API keys live
+only on the worker), which is exactly why NO means the door, not a
+filter. Meaning
+of NO, plainly: only worker-attested pilots enter, from anywhere. Edge,
+accepted: flipping NO mid-game with a LAN-door friend seated leaves them
+playing but refuses their rejoin after a drop (a strict-from-the-start
+room never seats LAN peers at all). E2e: `lan_anon.sh` (closed cold
+under a preseeded NO, opens on the flip to YES, closes again on NO);
+the lan.sh family covers the default-YES door unchanged. FAKE_VERIFY treats the credential as the fake account
 id (and `NEWTONIA_NET_TEST_CRED` is the game-side dev hook that sends
 one), which is how `nseat_ban_token.sh` joins twice under one account
 wearing two names; `identity_test.js` pins the worker half (key present

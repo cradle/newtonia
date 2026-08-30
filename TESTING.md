@@ -373,6 +373,15 @@ test/e2e/lan_hidden.sh # LAN-visibility opt-out: preseeds lan_visible=0 in the
                      # and the joiner discovers nothing ("lan host found"
                      # absent) - the host still reaches the manual fallback, so
                      # the missing beacon is the pref, not a stalled flow.
+test/e2e/lan_anon.sh # ALLOW ANONYMOUS NO closes the LAN door COMPLETELY (a
+                     # LAN peer can never be attested; the old exemption let a
+                     # banned pilot rename and re-enter over the couch path —
+                     # field, 2026-08-30). Self-hosts a PLAIN relay (:8793, the
+                     # toggle lives in the waiting room; no attestation
+                     # involved). Preseeded NO -> no "lan announce up" at the
+                     # HOST commit; flip to YES -> the door opens; flip back ->
+                     # "lan door closed (anonymous players disabled)" and no
+                     # further announce.
 test/e2e/lanclip.sh  # the LAN-vs-clipboard race (one-box mac field bug): host
                      # reaches the manual fallback FIRST so its INVITE blob is
                      # on the shared clipboard when the joiner opens CodeEntry;
