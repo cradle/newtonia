@@ -41,6 +41,31 @@ android {
         }
     }
 
+    // Shared debug keystore (PLAYQUALITY.md "shared debug keystore"):
+    // android.yml decodes it from the DEBUG_KEYSTORE_BASE64 repo secret to
+    // android/debug.keystore (gitignored — key material NEVER lands in the
+    // repo; secret-held is what makes the cert safe to register with Play
+    // Games, decided with Glenn 2026-08-30 after a committed-keystore
+    // attempt was reviewed out: a world-readable private key authorized on
+    // the production Google project lets anyone mint attested builds).
+    // When the file is present it overrides the built-in debug config, so
+    // every CI artifact carries the one registered cert — artifacts install
+    // over each other across runs and can sign in to PGS. When absent
+    // (fork PRs get no secrets; a fresh clone) this block is skipped and
+    // the ordinary per-machine ~/.android/debug.keystore applies — builds
+    // still work everywhere, just with an unregistered throwaway cert.
+    def sharedDebugKeystore = rootProject.file('debug.keystore')
+    if (sharedDebugKeystore.exists()) {
+        signingConfigs {
+            debug {
+                storeFile sharedDebugKeystore
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
+
     buildTypes {
         release {
             // R8 on (PLAYQUALITY.md): shrinks the DEX and satisfies the Play

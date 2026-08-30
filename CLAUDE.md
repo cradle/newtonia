@@ -462,7 +462,7 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 | Workflow | Output |
 |----------|--------|
 | `.github/workflows/macos-dev.yml` | Universal arm64+x86_64 binary |
-| `.github/workflows/android.yml` | Debug APK + debug-signed minified release APK (`-PdebugSign`; uploaded as `newtonia-release-minified` for device testing), both booted through the emulator TLS gate (api-30 x86_64 AVD runs `NEWTONIA_SIGNAL_SELFTEST` via `android/emulator_selftest.sh`) — the release pass is the R8 boot gate (PLAYQUALITY.md) |
+| `.github/workflows/android.yml` | Debug-signed minified release APK — the one APK it builds (`assembleRelease -PdebugSign`; uploaded as `newtonia-release-minified` for device testing; signs with the shared debug keystore decoded from the `DEBUG_KEYSTORE_BASE64` secret — one stable, PGS-registered cert across runs, falling back to a throwaway per-run cert without it; the keystore is secret-held, never committed — PLAYQUALITY.md), booted through the emulator selftest (api-30 x86_64 AVD runs `NEWTONIA_SIGNAL_SELFTEST` via `android/emulator_selftest.sh`), which is the TLS trust gate and the R8 boot gate in one pass |
 | `.github/workflows/ios.yml` | iOS simulator build |
 | `.github/workflows/linux.yml` | Linux executable (netplay + headless loopback self-test) |
 | `.github/workflows/windows.yml` | Windows executable (netplay: MinGW-static libdatachannel + self-test — the compile gate for deploy-steam's Windows build) |
