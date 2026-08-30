@@ -15,6 +15,7 @@
 
 #include "gl_compat.h"
 #include "mesh.h"
+#include "wrapped_point.h"
 
 #include <list>
 #include <iostream>
@@ -24,6 +25,17 @@
 #include <cstring>
 
 using namespace std;
+
+// Minimap point sizing: the minimap ortho spans the whole world into a
+// fixed-size viewport, so a world-proportional radius keeps a dot the same
+// on-screen size as the world grows — what the old GL_POINTS pixel size did
+// for free before the point draws were converted to triangles (a field GPU
+// silently drops whole GL_POINTS draws — CLAUDE.md "Particles"). point_px is
+// the old point size; /500 calibrates it against the single-player minimap's
+// ~world/250-units-per-pixel scale.
+static float minimap_dot_radius(float point_px) {
+  return point_px * (WrappedPoint::x_span() / 500.0f);
+}
 
 // Boost discoverability: the first boost from ANY input path (key, pad
 // bumper, the touch OSD's synthesized key) retires the in-game hint for
@@ -95,9 +107,9 @@ GLShip::GLShip(const Grid &grid, bool has_friction, const float *tint)
 
   {
     MeshBuilder mb;
-    mb.begin(GL_POINTS);
+    mb.begin(GL_TRIANGLES);
     mb.color(1.0f, 1.0f, 1.0f);
-    mb.vertex(0.0f, 0.0f);
+    mb.dot(0.0f, 0.0f, 1.0f);  // unit diamond, scaled per draw
     mb.end();
     minimap_dot.upload(mb);
   }
@@ -691,6 +703,18 @@ void GLShip::draw(bool minimap) {
 }
 
 void GLShip::draw_ship(bool minimap) const {
+  if(minimap) {
+    // The dot scales with the WORLD, not the ship (minimap_dot_radius) —
+    // the old GL_POINTS pixel size held steady as the world grew, and a
+    // ship-radius diamond would vanish at minimap scale.
+    float r = minimap_dot_radius(5.0f);
+    float dot_model[16]; mat4_identity(dot_model);
+    mat4_translate(dot_model, dot_model, ship->position.x(), ship->position.y(), 0.0f);
+    mat4_scale(dot_model, dot_model, r, r, 1.0f);
+    minimap_dot.draw_tinted_with_model(color[0], color[1], color[2], 1.0f, dot_model);
+    return;
+  }
+
   // Build ship model: translate(pos) × scale(radius) × rotate_z(heading)
   float tile_vp[16]; gles2_get_mvp(tile_vp);
   float ship_model[16]; mat4_identity(ship_model);
@@ -699,12 +723,6 @@ void GLShip::draw_ship(bool minimap) const {
   mat4_rotate_z(ship_model, ship_model, ship->heading());
   float ship_mvp[16]; mat4_mul(ship_mvp, tile_vp, ship_model);
   gles2_set_vp(ship_mvp);
-
-  if(minimap) {
-    minimap_dot.draw_tinted(color[0], color[1], color[2], 1.0f, 5.0f);
-    gles2_set_vp(tile_vp);
-    return;
-  }
 
   glLineWidth(1.8f);
 
@@ -1137,16 +1155,19 @@ void GLShip::draw_particles() const {
   }
 
   if(!ship->bullet_trails.empty()) {
+    // Bullet smoke: tiny diamonds, not GL_POINTS (the ember pattern —
+    // MeshBuilder::dot; the field GPU that dropped the debris point draws
+    // took the starfield next, 2026-08-30, so no point draw survives).
     mb.clear();
-    mb.begin(GL_POINTS);
+    mb.begin(GL_TRIANGLES);
     for(auto &p : ship->bullet_trails) {
       float a = p.aliveness();
       mb.color(a, a, 0.0f, a);
-      mb.vertex(p.position.x(), p.position.y());
+      mb.dot(p.position.x(), p.position.y(), 1.8f);
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw(2.5f);
+    mesh.draw();
   }
 }
 
@@ -1173,24 +1194,16 @@ void GLShip::draw_debris() const {
   // silently dropped the hazard-debris point draw (the seeker saga,
   // 2026-08-23) drops this one too — death explosions vanished at level
   // 20 while llvmpipe rendered them fine. Same ember geometry as
-  // Hazard::draw's burst, in the ship's flickering colours.
+  // Hazard::draw's burst (MeshBuilder::ember), in the ship's flickering
+  // colours.
   bool any_points = false, any_streaks = false;
   mb.clear();
   mb.begin(GL_TRIANGLES);
   for(auto d = ship->debris.begin(); d != ship->debris.end(); d++) {
     if(d->streak) { any_streaks = true; continue; }
-    float al = d->aliveness();
-    float x = d->position.x(), y = d->position.y();
-    float vx = d->velocity.x(), vy = d->velocity.y();
-    float vm = sqrtf(vx * vx + vy * vy);
-    float dx = vm > 1e-5f ? vx / vm : 1.0f;
-    float dy = vm > 1e-5f ? vy / vm : 0.0f;
-    float len = 2.6f, wid = 1.6f;
-    float px_ = -dy * wid, py_ = dx * wid;
-    float hx = dx * len, hy = dy * len;
-    mb.color(color[0], flicker[idx++ % 64], color[2], al);
-    mb.vertex(x + hx, y + hy); mb.vertex(x + px_, y + py_); mb.vertex(x - hx, y - hy);
-    mb.vertex(x + hx, y + hy); mb.vertex(x - hx, y - hy); mb.vertex(x - px_, y - py_);
+    mb.color(color[0], flicker[idx++ % 64], color[2], d->aliveness());
+    mb.ember(d->position.x(), d->position.y(),
+             d->velocity.x(), d->velocity.y(), 2.6f, 1.6f);
     any_points = true;
   }
   mb.end();
@@ -1226,14 +1239,15 @@ void GLShip::draw_mines(bool minimap) const {
 
   if(minimap) {
     mb.clear();
-    mb.begin(GL_POINTS);
+    mb.begin(GL_TRIANGLES);
     mb.color(color[0], color[1], color[2]);
+    float r = minimap_dot_radius(1.5f);
     for(auto m = ship->mines.begin(); m != ship->mines.end(); m++) {
-      mb.vertex(m->position.x(), m->position.y());
+      mb.dot(m->position.x(), m->position.y(), r);
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw(1.5f);
+    mesh.draw();
     return;
   }
 
@@ -1285,13 +1299,14 @@ void GLShip::draw_turrets(bool minimap) const {
 
   if(minimap) {
     mb.clear();
-    mb.begin(GL_POINTS);
+    mb.begin(GL_TRIANGLES);
     mb.color(color[0], color[1], color[2]);
+    float r = minimap_dot_radius(2.5f);
     for(auto &t : ship->turrets)
-      mb.vertex(t.position.x(), t.position.y());
+      mb.dot(t.position.x(), t.position.y(), r);
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw(2.5f);
+    mesh.draw();
     return;
   }
 
@@ -1331,16 +1346,16 @@ void GLShip::draw_turrets(bool minimap) const {
   mesh.upload(mb, GL_DYNAMIC_DRAW);
   mesh.draw();
 
-  // Hub dots in one point batch.
+  // Hub dots in one triangle batch (MeshBuilder::dot, never GL_POINTS).
   mb.clear();
-  mb.begin(GL_POINTS);
+  mb.begin(GL_TRIANGLES);
   for(auto &t : ship->turrets) {
     mb.color(color[0], color[1], color[2]);
-    mb.vertex(t.position.x(), t.position.y());
+    mb.dot(t.position.x(), t.position.y(), 2.8f);
   }
   mb.end();
   mesh.upload(mb, GL_DYNAMIC_DRAW);
-  mesh.draw(4.0f);
+  mesh.draw();
 }
 
 void GLShip::draw_giga_mines(bool minimap) const {
@@ -1351,14 +1366,15 @@ void GLShip::draw_giga_mines(bool minimap) const {
 
   if(minimap) {
     mb.clear();
-    mb.begin(GL_POINTS);
+    mb.begin(GL_TRIANGLES);
     mb.color(1.0f, 0.2f, 0.0f);
+    float r = minimap_dot_radius(3.0f);
     for(auto &m : ship->giga_mines) {
-      mb.vertex(m.position.x(), m.position.y());
+      mb.dot(m.position.x(), m.position.y(), r);
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw(3.0f);
+    mesh.draw();
     return;
   }
 
@@ -1523,20 +1539,21 @@ void GLShip::draw_missiles() const {
   static MeshBuilder mb;
   static Mesh mesh;
 
-  // All missile trails batched into one GL_POINTS draw
+  // All missile trails batched into one triangle draw (MeshBuilder::dot,
+  // never GL_POINTS — the field-GPU point lottery, CLAUDE.md "Particles").
   mb.clear();
-  mb.begin(GL_POINTS);
+  mb.begin(GL_TRIANGLES);
   for(auto &m : ship->missiles) {
     int trail_sz = (int)m.trail.size();
     for(int ti = trail_sz - 1; ti >= 0; ti--) {
       float alpha = 1.0f - (float)ti / (float)trail_sz;
       mb.color(color[0], color[1], color[2], alpha);
-      mb.vertex(m.trail[ti].x(), m.trail[ti].y());
+      mb.dot(m.trail[ti].x(), m.trail[ti].y(), 2.8f);
     }
   }
   mb.end();
   mesh.upload(mb, GL_DYNAMIC_DRAW);
-  mesh.draw(4.0f);
+  mesh.draw();
 
   // Missile bodies: pre-built triangle mesh, one draw per missile via draw_at
   glLineWidth(1.5f);

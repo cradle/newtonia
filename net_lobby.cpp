@@ -339,7 +339,8 @@ NetLobby::NetLobby()
       status_ms_(0),
       currentTime(0),
       viewpoint(Point(0, WORLD_H / 2)),
-      starfield(new GLStarfield(Point(WORLD_W, WORLD_H), star_density_scale())) {
+      // camera_z 0: same menu-style origin camera as Menu::draw().
+      starfield(new GLStarfield(Point(WORLD_W, WORLD_H), star_density_scale(), 0.0f)) {
   // A controller plugged in before the lobby opened (Steam Deck: always)
   // gets the picker/hints immediately, not only after the first press.
   // Not on web: browsers report phantom gamepad slots (Chrome's

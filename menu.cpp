@@ -331,7 +331,9 @@ Menu::Menu() :
   has_save_(Save::save_exists()),
   menu_selection(0),
   viewpoint(Point(0,default_world_height/2)),
-  starfield(new GLStarfield(Point(default_world_width, default_world_height), star_density_scale())) {
+  // camera_z 0: the menu's starfield camera sits at the origin (see draw()),
+  // not the game's z=1000 — the star quads size themselves by camera distance.
+  starfield(new GLStarfield(Point(default_world_width, default_world_height), star_density_scale(), 0.0f)) {
   for (int i = 0; i < MAX_PLAYERS; i++) {
     sensitivity_index_[i] = sensitivity_index_for(g_prefs.player_keys[i].keyboard_sensitivity);
     smoothing_index_[i]   = smoothing_index_for(g_prefs.player_keys[i].camera_smoothing);
@@ -2204,7 +2206,8 @@ void Menu::close_options() {
   save_preferences();
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),
-                              STAR_DENSITY_MULTIPLIERS[star_density_index_]);
+                              STAR_DENSITY_MULTIPLIERS[star_density_index_],
+                              0.0f /* menu camera at the origin */);
   options_mode_ = false;
 }
 

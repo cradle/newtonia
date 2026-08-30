@@ -10,7 +10,14 @@
 
 class GLStarfield {
 public:
-  GLStarfield(Point const size, float density_scale = 1.0f);
+  // camera_z: the z the drawing camera sits at — the game looks at the z=0
+  // plane from z=1000, the menu/lobby from z=0. Stars are triangle quads
+  // (never GL_POINTS — a field GPU silently drops whole point draws, the
+  // foreground-star flicker of 2026-08-30), so each layer's quad is sized
+  // by its camera distance at build time to project at the same on-screen
+  // size the old fixed-pixel points had.
+  GLStarfield(Point const size, float density_scale = 1.0f,
+              float camera_z = 1000.0f);
   virtual ~GLStarfield();
   GLStarfield(GLStarfield&&) = default;
 
@@ -38,6 +45,9 @@ private:
   static const int NUM_REAR_LAYERS;
   static const int NUM_FRONT_LAYERS;
   static const float STAR_DENSITY;
+  static const float STAR_RADIUS_PER_DIST;
+
+  float camera_z_;
 
   // Cached lensed-star meshes; rebuilt only when lens position/radius changes.
   // Since the black hole is stationary this is effectively a one-time build.

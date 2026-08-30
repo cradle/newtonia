@@ -86,6 +86,22 @@ void MeshBuilder::vertex(float x, float y, float z) {
     col_.push_back(cur_b_); col_.push_back(cur_a_);
 }
 
+void MeshBuilder::ember(float x, float y, float vx, float vy,
+                        float len, float wid) {
+    float vm = sqrtf(vx * vx + vy * vy);
+    float dx = vm > 1e-5f ? vx / vm : 1.0f;
+    float dy = vm > 1e-5f ? vy / vm : 0.0f;
+    float px = -dy * wid, py = dx * wid;
+    float hx = dx * len, hy = dy * len;
+    vertex(x + hx, y + hy); vertex(x + px, y + py); vertex(x - hx, y - hy);
+    vertex(x + hx, y + hy); vertex(x - hx, y - hy); vertex(x - px, y - py);
+}
+
+void MeshBuilder::dot(float x, float y, float r, float z) {
+    vertex(x - r, y, z); vertex(x, y + r, z); vertex(x + r, y, z);
+    vertex(x - r, y, z); vertex(x + r, y, z); vertex(x, y - r, z);
+}
+
 void MeshBuilder::end() {
     if (!in_group_) return;
     int count = (int)(pos_.size() / 3) - group_start_;

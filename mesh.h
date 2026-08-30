@@ -46,6 +46,21 @@ public:
     void vertex(float x, float y, float z = 0.0f);
     void end();
 
+    // The ember pattern (see CLAUDE.md "Particles"): point-like effects are
+    // tiny GL_TRIANGLES diamonds, never GL_POINTS — a field GPU silently
+    // drops whole GL_POINTS draws (debris/trails 2026-08-23, the starfield
+    // 2026-08-30), so nothing player-visible may go through one. Call these
+    // between begin(GL_TRIANGLES) and end(); both emit six vertices in the
+    // current colour.
+    //
+    // ember(): a diamond streaked along its velocity so debris still reads
+    // as a spark — half-length len along v, half-width wid across it (a
+    // zero velocity streaks along +x).
+    // dot(): the axis-aligned special case for markers with nothing to
+    // streak along (stars, minimap dots, turret hubs), half-extent r.
+    void ember(float x, float y, float vx, float vy, float len, float wid);
+    void dot(float x, float y, float r, float z = 0.0f);
+
     // Access collected data.
     const std::vector<MeshGroup>& groups()   const { return groups_; }
     const std::vector<float>&     positions() const { return pos_; }

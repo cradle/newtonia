@@ -422,7 +422,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
         for (int i = 0; i < 64; i++) tp_flicker[i] = rand() / (float)RAND_MAX;
         tp_flicker_init = true;
       }
-      mb.begin(GL_POINTS);
+      // Ember diamonds, not GL_POINTS (MeshBuilder::ember — the field-GPU
+      // point lottery, CLAUDE.md "Particles"); flicker alpha unchanged.
+      mb.begin(GL_TRIANGLES);
       for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
         Asteroid const *a = *it;
         if (!a->teleporting) continue;
@@ -439,7 +441,8 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
             mb.color(0.8f, 0.2f, 1.0f, alpha);
           else
             mb.color(1.0f, 0.6f, 0.1f, alpha);
-          mb.vertex(d.position.x(), d.position.y());
+          mb.ember(d.position.x(), d.position.y(),
+                   d.velocity.x(), d.velocity.y(), 2.6f, 1.6f);
         }
       }
       mb.end();
@@ -460,7 +463,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
       static Mesh mesh_dead_debris;
       mb.clear();
-      mb.begin(GL_POINTS);
+      mb.begin(GL_TRIANGLES);
       for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
         Asteroid const *a = *it;
         if (cull_r > 0) {
@@ -472,13 +475,14 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
           float alive = d->aliveness();
           float alpha = flicker[flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
           mb.color(1.0f, 1.0f, 1.0f, alpha);
-          mb.vertex(d->position.x(), d->position.y());
+          mb.ember(d->position.x(), d->position.y(),
+                   d->velocity.x(), d->velocity.y(), 2.6f, 1.6f);
         }
       }
       mb.end();
       if (mb.vertex_count() > 0) {
         mesh_dead_debris.upload(mb, GL_DYNAMIC_DRAW);
-        mesh_dead_debris.draw(3.0f);
+        mesh_dead_debris.draw();
       }
     }
 
@@ -542,14 +546,15 @@ void AsteroidDrawer::draw_debris(vector<Particle> const &debris) {
   static MeshBuilder mb;
   static Mesh mesh;
   mb.clear();
-  mb.begin(GL_POINTS);
+  mb.begin(GL_TRIANGLES);
   for (auto d = debris.begin(); d != debris.end(); ++d) {
     float alive = d->aliveness();
     float alpha = flicker[flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
     mb.color(1.0f, 1.0f, 1.0f, alpha);
-    mb.vertex(d->position.x(), d->position.y());
+    mb.ember(d->position.x(), d->position.y(),
+             d->velocity.x(), d->velocity.y(), 2.6f, 1.6f);
   }
   mb.end();
   mesh.upload(mb, GL_DYNAMIC_DRAW);
-  mesh.draw(3.0f);
+  mesh.draw();
 }
