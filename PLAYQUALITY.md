@@ -81,14 +81,17 @@ make the flip safe — see the traps below before touching either file.
       deferred-deep-link path also fails soft).
 - [x] `minifyEnabled true` for release. `shrinkResources` left OFF —
       see the resource trap below.
-- [x] Boot gate in CI: `android.yml` builds the minified release APK
-      debug-signed (`assembleRelease -PdebugSign` — the gradle property
-      attaches the debug signing config so the APK installs; deploy's
-      injected release signing is untouched) and the emulator selftest
-      runs twice on the one booted AVD — debug APK (the TLS gate as
-      always), then the minified APK (the R8 boot gate). The minified
-      APK is also uploaded as the `newtonia-release-minified` artifact
-      for sideloading.
+- [x] Boot gate in CI: `android.yml` builds ONE APK — the minified
+      release build, debug-signed (`assembleRelease -PdebugSign`; the
+      gradle property attaches the debug signing config so the APK
+      installs, and deploy's injected release signing is untouched) —
+      and boots it through the emulator selftest, which is then both
+      gates at once: the TLS round trip and the R8 boot gate. It also
+      used to build assembleDebug alongside, but the second full native
+      compile roughly doubled the job (~10 → ~20 min) for no extra
+      coverage, so the debug variant no longer builds in CI. The APK is
+      uploaded as the `newtonia-release-minified` artifact for
+      sideloading.
 - [x] Device gate — verified on a real device 2026-08-30 (maintainer,
       local R8 `-PdebugSign` build under a console-registered cert):
       Play Games sign-in works, the attested name shows in an online
