@@ -19,7 +19,10 @@ int load_high_score() {
   SDL_free(path);
   int score = 0;
   FILE *f = fopen(filepath.c_str(), "rb");
-  if (f) { fread(&score, sizeof(int), 1, f); fclose(f); }
+  if (f) {
+    if (fread(&score, sizeof(int), 1, f) != 1) score = 0;
+    fclose(f);
+  }
   return score;
 }
 
