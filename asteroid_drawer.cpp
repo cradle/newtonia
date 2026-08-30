@@ -449,7 +449,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     }
     if (mb.vertex_count() > 0) {
       mesh_debris.upload(mb, GL_DYNAMIC_DRAW);
-      mesh_debris.draw(3.0f);
+      mesh_debris.draw();
     }
 
     // --- Dead asteroid debris + score text ---

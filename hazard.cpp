@@ -437,8 +437,11 @@ void Hazard::draw(bool minimap) const {
       for (const auto &d : debris_) {
         float al = d.aliveness();
         mb.color(0.7f, 0.75f + 0.25f * al, 1.0f, al);
+        // 2.8/1.8 = the field-approved hazard-burst ember geometry (the
+        // seeker block below); a smaller pulsar-only size dipped sub-pixel
+        // at small windows.
         mb.ember(d.position.x(), d.position.y(),
-                 d.velocity.x(), d.velocity.y(), 2.4f, 1.6f);
+                 d.velocity.x(), d.velocity.y(), 2.8f, 1.8f);
       }
       mb.end();
       mesh.upload(mb, GL_DYNAMIC_DRAW);

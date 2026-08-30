@@ -21,6 +21,15 @@ const float GLStarfield::STAR_DENSITY = 0.000015;
 // world-space conversion.
 const float GLStarfield::STAR_RADIUS_PER_DIST = 0.003f;
 
+// Star count scales with world AREA and the late-game world grows 3000x3000
+// per generation (gen >= 14), while each star is now six vertices instead of
+// one — unbounded, the per-layer VBOs would reach hundreds of MB by gen ~30
+// (code review, 2026-08-30). The cap binds from roughly gen 19 (world
+// ~16500+ at full star density); by then at most a couple of the 3x3 world
+// tiles ever pass the screen cull, so the visible sky thins gradually
+// instead of the build and draw cost growing without limit.
+static const int MAX_STARS_PER_LAYER = 4096;
+
 GLStarfield::GLStarfield(Point const size, float density_scale, float camera_z)
     : camera_z_(camera_z) {
   int total = NUM_REAR_LAYERS + 1 + NUM_FRONT_LAYERS;
@@ -38,6 +47,7 @@ GLStarfield::GLStarfield(Point const size, float density_scale, float camera_z)
     float star_r = STAR_RADIUS_PER_DIST * (dist > 0.0f ? dist : 0.0f);
 
     int num_stars = (int)(size.x()*size.y()*STAR_DENSITY*density_scale);
+    if (num_stars > MAX_STARS_PER_LAYER) num_stars = MAX_STARS_PER_LAYER;
     for(int j = 0; j < num_stars; j++) {
       red = rand()%100;
       green = red > 0 ? rand()%red : 0;

@@ -26,15 +26,26 @@
 
 using namespace std;
 
-// Minimap point sizing: the minimap ortho spans the whole world into a
-// fixed-size viewport, so a world-proportional radius keeps a dot the same
-// on-screen size as the world grows — what the old GL_POINTS pixel size did
-// for free before the point draws were converted to triangles (a field GPU
-// silently drops whole GL_POINTS draws — CLAUDE.md "Particles"). point_px is
-// the old point size; /500 calibrates it against the single-player minimap's
-// ~world/250-units-per-pixel scale.
+// Minimap point sizing: a dot must hold its on-screen size whatever the
+// world (the minimap ortho spans the whole world) and whatever the map's
+// pixel size (window.y()/4 solo, /6 on the split dividers, /3 in the 3P
+// free cell) — the old GL_POINTS pixel size did both for free before the
+// point draws became triangles (a field GPU silently drops whole GL_POINTS
+// draws — CLAUDE.md "Particles"). Derive world-units-per-pixel from the
+// CURRENT viewport (every caller runs inside the minimap pass), match the
+// old point's coverage (a diamond of half-extent 0.7*N px has the area of
+// an N px square point), and floor at one device pixel of half-extent —
+// the L1 radius that guarantees a diamond covers a pixel centre wherever
+// it lands. A hardcoded map-size guess here once left the small dots
+// sub-pixel, vanishing position-dependently — the very bug the triangle
+// conversion exists to fix (code review, 2026-08-30).
 static float minimap_dot_radius(float point_px) {
-  return point_px * (WrappedPoint::x_span() / 500.0f);
+  GLint vp[4];
+  glGetIntegerv(GL_VIEWPORT, vp);
+  if (vp[2] <= 0) return point_px;  // defensive; no viewport, no minimap
+  float px = 0.7f * point_px;
+  if (px < 1.0f) px = 1.0f;
+  return px * WrappedPoint::x_span() / (float)vp[2];
 }
 
 // Boost discoverability: the first boost from ANY input path (key, pad
@@ -1163,7 +1174,10 @@ void GLShip::draw_particles() const {
     for(auto &p : ship->bullet_trails) {
       float a = p.aliveness();
       mb.color(a, a, 0.0f, a);
-      mb.dot(p.position.x(), p.position.y(), 1.8f);
+      // 2.2 = the exhaust trail's field-approved diamond size (gltrail.cpp);
+      // 1.8 sat under the pixel-centre threshold at sub-1000px window
+      // heights, so puffs blinked out position-dependently.
+      mb.dot(p.position.x(), p.position.y(), 2.2f);
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
