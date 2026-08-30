@@ -64,6 +64,30 @@
   var elYouBanner = document.getElementById('you-banner');
   var elYouText = document.getElementById('you-banner-text');
 
+  // The CTA beside the would-place answer targets the store THIS device
+  // can compete on — store_route.js's one routing, shared with /join and
+  // the web game's game-over banner: iOS the App Store, Android Google
+  // Play only once its ANDROID_PUBLIC flips (task #145 — a closed-testing
+  // Play link dead-ends for non-testers, so until then Android shows the
+  // placement with no button), everything else Steam — the markup's
+  // default, which also stands if the shared script failed to load.
+  (function routeStoreCta() {
+    var cta = document.getElementById('you-banner-cta');
+    if (!cta || typeof NewtoniaStore === 'undefined') return;
+    if (NewtoniaStore.isIOS) {
+      cta.href = NewtoniaStore.APP_STORE_URL;
+      cta.textContent = 'COMPETE ON IOS ▸';
+    } else if (NewtoniaStore.isAndroid) {
+      if (NewtoniaStore.ANDROID_PUBLIC) {
+        cta.href = NewtoniaStore.playStoreUrl(
+            'utm_source=newtonia_site&utm_medium=referral&utm_campaign=lb_would_place');
+        cta.textContent = 'COMPETE ON ANDROID ▸';
+      } else {
+        cta.hidden = true;   // backed by a.store-cta[hidden] in the page CSS
+      }
+    }
+  })();
+
   function boardsFor(p) {
     return (snapshot.boards || []).filter(function (b) {
       return b.players === p;

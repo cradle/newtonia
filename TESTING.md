@@ -444,15 +444,30 @@ test/e2e/missile_net.sh # client-fired deploys (host launches with
                      # recovery; 12 of 18 were lost before the host queued
                      # secondary presses like it queues primary ones.
 test/e2e/pickup_switch_net.sh # predicted pickup collection: the host drops
-                     # MinePickups AHEAD of the joiner's ship on a timer
-                     # (NEWTONIA_NET_TEST_MINE_PICKUP_MS) while it fires a
-                     # missile burst through them. Asserts the joiner
+                     # MinePickups 400 ms of travel AHEAD of the joiner's
+                     # ship on a timer (NEWTONIA_NET_TEST_MINE_PICKUP_MS) —
+                     # only while that ship is MOVING, so no drop parks out
+                     # of reach — while it flies thrust-HELD missile rounds
+                     # through them (a coasting ship is parked ~700 ms
+                     # after a tap; friction 0.003/ms — the tap-thrust
+                     # original never reached its drops, the 2026-08-27 CI
+                     # red). Short rounds that stop at the first confirmed
+                     # switch keep the run ahead of the generation
+                     # rollover, whose rebuild sweeps the drops and races
+                     # the deploy stream (denser start generations were
+                     # tried instead and reverted — muzzle-adjacent rocks
+                     # detonate deploys younger than one snapshot slot,
+                     # which reads as "deploy dropped"). Asserts the joiner
                      # PREDICTED at least one grab ("pickup predicted" —
                      # armed the mine locally at contact, not a round trip
-                     # later via the restore), both weapon types were
-                     # confirmed by host echoes, and NOT ONE deploy aged out
-                     # unmade — the press-stream-aligned switch leaves no
-                     # type-mismatch window (the load-gated arsenal
+                     # later via the restore), missiles confirmed by host
+                     # echoes and MORE plain-mine confirms after the flying
+                     # started than before it, and no more dropped deploys
+                     # than the accepted delayed-INPUT background on a
+                     # loaded runner (≤2; measured at exactly 1 on both
+                     # 2026-08-28 CI first attempts) — the divergence
+                     # signature is a windowful, every post-grab press
+                     # until the rounds run out (the load-gated arsenal
                      # divergence, 2026-08-21).
 test/e2e/turret_net.sh # turret drones over the wire (PROTO 26). The host
                      # launches with NEWTONIA_NET_TEST_GRANT_TURRETS=1 (runtime
@@ -1263,7 +1278,8 @@ numbers came with, all of them load-bearing:
   has 90 ms of margin.
 - `turnexpiry.sh` is **not** in any shard: it needs real Cloudflare TURN
   credentials and UDP egress (§4). The web drivers (§8) are not either — they
-  need an emcc build and playwright.
+  need playwright, and the replay pair an emcc build (`web_promo_banner.mjs`
+  self-serves the site and tsc output, no emcc).
 - **A driver in no shard is a FATAL, not a gap.** `ci_shard.sh` checks that
   every `test/e2e/*.sh` appears in a shard list or in its `UNSHARDED` roster
   (each entry with the reason it is deliberately absent) before running
@@ -1473,7 +1489,21 @@ CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
   node test/e2e/web_replay_tabkill.mjs     # tab-close durability
 CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
   node test/e2e/web_replay_promote.mjs     # best-promotion regression
+CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  node test/e2e/web_promo_banner.mjs       # promo funnel: would-place bar,
+                                           # store CTAs, /join routing
 ```
+
+`web_promo_banner.mjs` is the odd one out: it needs NO emcc build and no
+`http.server` — it serves `web/site/` itself (stubbing the board worker's
+snapshot), compiles `main.ts` with tsc on demand, and drives the site
+leaderboard's would-place bar, the game-over banner, and `/join` under
+desktop/iPhone/Android user agents. It guards the `[hidden]`-vs-author-
+`display` trap (the empty gold bar + COMPETE CTA that drew on every plain
+visit, field 2026-08-27) by asserting COMPUTED visibility, and the
+device-store routing that lives once in `web/site/store_route.js`
+(including the Android no-store-button cases while the Play listing is
+closed, and the zero-score no-rank-link case).
 
 `web_replay_promote.mjs` guards a bug worth remembering: `copy_file` used a
 64 KB stack buffer, and emscripten's default stack is 64 KB, so promoting a

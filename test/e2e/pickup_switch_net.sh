@@ -12,16 +12,39 @@
 # from PR #490's CI artifacts and reproduced with this driver's hook).
 #
 # The host runs NEWTONIA_NET_TEST_MINE_PICKUP_MS: every 5 s it drops a
-# MinePickup AHEAD of the joiner's ship (ahead, so a snapshot shows it to
-# the client before contact — a pickup spawned ON the ship is collected
-# host-side before the client ever sees it). The joiner fires a long
-# missile burst through the drops.
+# MinePickup 400 ms of travel AHEAD of the joiner's ship, and only while
+# that ship is MOVING (ahead, so a snapshot shows it to the client before
+# contact — a pickup spawned ON the ship is collected host-side before
+# the client ever sees it; moving, so the ship arrives at the drop by
+# just keeping course). The joiner flies each missile round with thrust
+# HELD: ship friction is 0.003/ms, so a coasting ship is nearly parked
+# ~700 ms after a tap — the old tap-thrust flying left every drop out of
+# reach and made the crossing pure luck (the 2026-08-27 CI red, where
+# the drops also all spent themselves leading the ship while it sat
+# parked through the probe phase below).
+#
+# The clock that bounds the run is the generation rollover: the homing
+# volleys clear gen 0's three-asteroid level within a few seconds, and
+# ~5 s later the rebuild sweeps every pickup, re-arms mines on both
+# machines via the ALL_WEAPONS re-grant, and ages deploys in flight
+# across it out as "deploy dropped". Six presses a round (not twelve)
+# slows the clearing, and the rounds stop the moment a grab was
+# predicted AND a post-switch mine came back confirmed — with the drops
+# now led where the ship actually flies, that is normally round one,
+# several seconds before any rollover. (Pinning the world on a later
+# generation was tried and reverted: denser fields feed missiles
+# muzzle-adjacent rocks, and a deploy the host detonates younger than
+# one snapshot slot reads as "deploy dropped" too.)
 #
 # Asserts, on the joiner: at least one "pickup predicted" (a drop crossed
-# its path and the local switch fired), missiles AND mines both confirmed
-# by host echoes (the switch really happened on both machines), and NOT
-# ONE deploy dropped — with the switch aligned in the press stream there
-# is no mismatch window left on a quiet box. Prints PICKUP-SWITCH-E2E-OK.
+# its path and the local switch fired), missile deploys confirmed by host
+# echoes and MORE plain-mine confirms after the flying started than
+# before it (the switch really happened on both machines — the mine
+# greps anchor on "net: " because "giga mine deploy confirmed" contains
+# the mine line), and no more dropped deploys than the accepted
+# delayed-INPUT background on a loaded runner (≤2; a diverged switch
+# drops a windowful — see the threshold comment at the assert). Prints
+# PICKUP-SWITCH-E2E-OK.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -72,15 +95,23 @@ select_missiles || {
   echo "FAIL: could not arm MISSILES"
   kill_pair $PA $PB; exit 1; }
 
-# A long press train flown THROUGH the pickup drops: thrust + rotate
-# between rounds so the ship keeps crossing the spots the hook leads it
-# with. The hook fires every 5 s (8 drops max), so ~30 s of flying gives
-# several chances to cross one — the assert needs just one.
+# The press train, flown with thrust HELD through each round so the
+# moving-gated hook keeps leading the ship with drops it will actually
+# reach; a rotate between rounds spreads the volleys. The baseline mine
+# count is taken NOW: the probe above fired one plain mine, and only
+# confirms after this point say the switch fired on both machines.
+MINES_BEFORE=$(grep -ac "net: mine deploy confirmed" "$OUT/joiner.log")
 echo "== joiner: missile presses flown through the pickup drops"
-for round in 1 2 3 4 5 6 7 8; do
-  xdotool key --window $B --repeat 12 --repeat-delay 120 x
-  key $B w; key $B w; key $B a
+for round in 1 2 3 4 5 6 7 8 9 10; do
+  xdotool keydown --window $B w
+  xdotool key --window $B --repeat 6 --repeat-delay 120 x
+  xdotool keyup --window $B w
+  key $B a
   alive $PB joiner
+  if grep -aq "pickup predicted" "$OUT/joiner.log" &&
+     [ "$(grep -ac "net: mine deploy confirmed" "$OUT/joiner.log")" -gt "$MINES_BEFORE" ]; then
+    break
+  fi
 done
 sleep 3
 
@@ -92,17 +123,31 @@ grep -aq "pickup predicted" "$OUT/joiner.log" || {
 grep -aq "missile deploy confirmed" "$OUT/joiner.log" || {
   echo "FAIL: no missile deploys confirmed — the burst never fired"
   kill_pair $PA $PB; exit 1; }
-grep -aq "mine deploy confirmed" "$OUT/joiner.log" || {
-  echo "FAIL: pickup predicted but no mine deploys confirmed — the"
-  echo "      switch happened on one machine only"
+MINES_AFTER=$(grep -ac "net: mine deploy confirmed" "$OUT/joiner.log")
+[ "$MINES_AFTER" -gt "$MINES_BEFORE" ] || {
+  echo "FAIL: pickup predicted but no plain-mine deploys confirmed after"
+  echo "      the flying started — the switch happened on one machine only"
   kill_pair $PA $PB; exit 1; }
+# Zero drops is the norm on a quiet box (4/4 local runs), but a loaded
+# CI runner shows the accepted delayed-INPUT case NET_DEPLOY_GRACE
+# documents — an INPUT stalled past the grace while snapshots keep
+# flowing, measured at exactly 1 per first attempt on both 2026-08-28 CI
+# runs (NETPLAY.md; missile_net recalibrated for the same class). That
+# is not the divergence this driver guards: a diverged switch drops
+# EVERY post-grab press until the rounds run out (~6+ per round, 19-31
+# in the 2026-08-21 incident). Tolerate the background, fail well below
+# the real signature.
 DROPPED=$(grep -ac "deploy dropped" "$OUT/joiner.log" || true)
-[ "${DROPPED:-0}" -eq 0 ] || {
-  echo "FAIL: $DROPPED deploy(s) dropped — the predicted switch left a"
+[ "${DROPPED:-0}" -le 2 ] || {
+  echo "FAIL: $DROPPED deploys dropped — the predicted switch left a"
   echo "      mismatch window in the press stream"
   grep -a "deploy dropped" "$OUT/joiner.log" | head -5
   kill_pair $PA $PB; exit 1; }
-echo "== predicted: $(grep -ac 'pickup predicted' "$OUT/joiner.log"), reverts: $(grep -ac 'prediction expired' "$OUT/joiner.log")"
+[ "${DROPPED:-0}" -eq 0 ] || {
+  echo "   (note: $DROPPED dropped deploy(s) — the accepted delayed-INPUT"
+  echo "    background on a loaded box, not the divergence signature)"
+  grep -a "deploy dropped" "$OUT/joiner.log" | head -3; }
+echo "== predicted: $(grep -ac 'pickup predicted' "$OUT/joiner.log"), reverts: $(grep -ac 'prediction expired' "$OUT/joiner.log"), mines confirmed after the switch: $((MINES_AFTER - MINES_BEFORE))"
 
 shot $A pickupswitch-host; shot $B pickupswitch-joiner
 kill_pair $PA $PB
