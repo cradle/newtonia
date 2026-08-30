@@ -11185,6 +11185,18 @@ void GLGame::draw_perspective(GLShip *glship) const {
   float half_w = half_h * aspect;
   float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f; // 10% margin for edge objects
 
+  // The rear star layers sit up to REAR_DEPTH behind the z=0 play plane,
+  // where the perspective shows (1000+REAR_DEPTH)/1000 = 2x the world area
+  // the play plane does — a wrap tile whose z=0 footprint is off-screen can
+  // still land deep stars on it. Culling the rear pass with the plain z=0
+  // radius dropped such tiles whole: deep-star patches missing toward the
+  // screen edges, coming and going with the player's position relative to
+  // the wrap boundaries (field, 2026-08-30). The front layers are CLOSER
+  // than z=0, so for them (and the objects pass) the plain radius stays
+  // conservative.
+  float rear_scale = (1000.0f + GLStarfield::REAR_DEPTH) / 1000.0f;
+  float rear_cull_r2 = cull_r2 * rear_scale * rear_scale;
+
   // Read the perspective*lookat VP set by draw_world; tile transforms are layered on top.
   float base_pv[16]; gles2_get_mvp(base_pv);
 
@@ -11200,7 +11212,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float smax_y = smin_y + world.y();
       float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
-      if (snx*snx + sny*sny > cull_r2) continue;
+      if (snx*snx + sny*sny > rear_cull_r2) continue;
 
       float tile_vp[16];
       mat4_rotate_z(tile_vp, base_pv, direction);

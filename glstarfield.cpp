@@ -8,6 +8,9 @@
 const int GLStarfield::NUM_REAR_LAYERS = 10;
 const int GLStarfield::NUM_FRONT_LAYERS = 5;
 const float GLStarfield::STAR_DENSITY = 0.000015;
+// Layer z is (i - NUM_REAR_LAYERS) * 100 (see the constructor), so the
+// deepest rear layer sits NUM_REAR_LAYERS * 100 behind the play plane.
+const float GLStarfield::REAR_DEPTH = GLStarfield::NUM_REAR_LAYERS * 100.0f;
 
 // World-space star radius per unit of camera distance. The stars were
 // GL_POINTS at 2*Typer::scale px until the maintainer's Linux laptop started

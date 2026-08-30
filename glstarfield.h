@@ -24,6 +24,13 @@ public:
   void draw_rear(Point const viewpoint) const;
   void draw_front(Point const viewpoint) const;
 
+  // How far the deepest rear layer sits behind the z=0 play plane
+  // (NUM_REAR_LAYERS * the 100-unit layer spacing). The game's tile cull
+  // needs it: at that depth the perspective shows (1000+REAR_DEPTH)/1000
+  // times the world area the z=0 plane does, so a rear-star pass culled
+  // with the z=0 radius drops tiles whose deep stars are still on screen.
+  static const float REAR_DEPTH;
+
   // Draw rear stars near (cx, cy) at radially shifted positions, for the
   // invisible asteroid lensing effect.  Must be called between glPushMatrix /
   // glPopMatrix with the same tile transform that was used to draw the stars.
