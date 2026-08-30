@@ -129,6 +129,10 @@ private:
   void lan_host_update(int delta);
   void lan_join_update(int delta);
   void lan_join_selected();
+  // Open the host's LAN door (beacon + blob transport) — gated on
+  // lan_visible AND allow_anonymous; see the definition. Called at the
+  // HOST commit and when the policy toggles back to YES.
+  void lan_door_start();
   void lan_teardown();
   // Round 3: every input flavour reaches the LAN rows. Controller walks
   // down off the picker grid into them; the caps keep the highlight on

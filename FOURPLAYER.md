@@ -719,7 +719,31 @@ the claim. Old worker or old build: the field is additive JSON both
 ways, so either side missing it degrades to the name bans exactly as
 before. Honest limit: a banned player can still shed the token by
 connecting UNATTESTED — ALLOW ANONYMOUS NO closes that door, and the two
-policies compose. FAKE_VERIFY treats the credential as the fake account
+policies compose.
+
+**...and NO closes the LAN door completely** (2026-08-30, the field test
+that proved the composition leaked): the LAN door pairs with no worker,
+so nobody on it can EVER be attested — the token can't exist there and
+the anonymous policy used to exempt it outright ("a LAN peer was
+invited"), which let the just-banned Steam account rename and walk back
+in over the couch path with NO set. Now `NetLobby::lan_door_start` and
+`GLGame::net_host_lan_rejoin_poll` gate the beacon on the policy — live
+in both directions: the waiting-room/roster toggle closes an open door
+(beacon, blob server, half-done exchange) and re-opens it on YES, the
+mid-game half re-evaluating per tick so the toggle needs no extra
+wiring — and `admit_verdict` refuses any worker-less session outright
+under NO (immediate `AdmitAnonymous`, no unresolvable wait) as the
+backstop for an exchange racing the toggle. Claimed-name bans still
+apply on the LAN door under YES, catching the casual rejoiner; a
+rename-proof LAN ban is impossible by construction (the host can't
+verify a platform credential itself — the Web-API keys live only on the
+worker), which is exactly why NO means the door, not a filter. Meaning
+of NO, plainly: only worker-attested pilots enter, from anywhere. Edge,
+accepted: flipping NO mid-game with a LAN-door friend seated leaves them
+playing but refuses their rejoin after a drop (a strict-from-the-start
+room never seats LAN peers at all). E2e: `lan_anon.sh` (closed cold
+under a preseeded NO, opens on the flip to YES, closes again on NO);
+the lan.sh family covers the default-YES door unchanged. FAKE_VERIFY treats the credential as the fake account
 id (and `NEWTONIA_NET_TEST_CRED` is the game-side dev hook that sends
 one), which is how `nseat_ban_token.sh` joins twice under one account
 wearing two names; `identity_test.js` pins the worker half (key present

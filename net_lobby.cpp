@@ -293,10 +293,15 @@ NetSession::Admit NetLobby::admit_verdict(const NetIdentity &claimed,
   // — the admit check re-reads it on every call.
   if (identity_banned(claimed) || identity_banned(attested))
     return NetSession::AdmitBanned;
-  // A door with no worker behind it can attest nobody, and this policy is
-  // about strangers arriving on a room code — a LAN/manual peer was invited
-  // into a local room. They pass, as they always have.
-  if (g_prefs.allow_anonymous || !worker_session) return NetSession::AdmitAllow;
+  if (g_prefs.allow_anonymous) return NetSession::AdmitAllow;
+  // Policy NO with no worker behind the door: nobody on this path can
+  // EVER be attested, so no wait could resolve — refuse now, with the
+  // honest reason. This used to be an allow ("a LAN peer was invited"),
+  // and a banned pilot renamed and walked back in through the LAN door
+  // (field, 2026-08-30); the door itself is CLOSED under NO now
+  // (lan_door_start / net_host_lan_rejoin_poll), so this is the backstop
+  // for an exchange racing the toggle, not the primary gate.
+  if (!worker_session) return NetSession::AdmitAnonymous;
   // Deliberately NOT the peer's own claim: an unattested name is a
   // self-report, which is exactly what this policy exists to refuse.
   // "No verdict yet" and "verdict said nothing" are the same stored state
@@ -633,21 +638,7 @@ void NetLobby::confirm() {
     if (signal_) transport_->set_trickle(true);
     if (hosting_) {
       Presence::set_hosting();  // "Hosting a Co-Op Game" in the friends list
-      // LAN door (NETPLAY.md "LAN is not a mode"): beacon + serve the
-      // manual INVITE blob over TCP from its own no-STUN transport,
-      // beside the relay flow. Offline this is what still works; online
-      // it's the couch shortcut. The lan_visible pref (INI-only) opts a
-      // host out of the hostname broadcast entirely.
-      lan_beacon_name_ = NetLan::local_host_name();
-      if (g_prefs.lan_visible && NetLan::available() &&
-          lan_announce_.start(lan_beacon_name_)) {
-        lan_transport_ = NetTransport::create();
-        if (lan_transport_) {
-          lan_transport_->set_lan_only(true);
-          lan_transport_->set_trickle(false);
-          lan_transport_->start_host();
-        }
-      }
+      lan_door_start();
       if (signal_) {
         // start_host() waits for the Room frame: the relay sends the TURN
         // credentials first, and ICE servers bind at pc creation.
@@ -780,6 +771,31 @@ void NetLobby::fall_back_to_manual(const char *why) {
 
 // Close the LAN door: the co-op slot is spoken for (either door's joiner
 // completed, or the lobby is being torn down/reset).
+// The LAN door's opener (NETPLAY.md "LAN is not a mode"): beacon + serve
+// the manual INVITE blob over TCP from its own no-STUN transport, beside
+// the relay flow. Offline this is what still works; online it's the couch
+// shortcut. Two gates: lan_visible (the INI-only broadcast opt-out) and
+// the ANONYMOUS POLICY — a LAN peer can never be attested (there is no
+// worker on that path, and the host can't verify a platform credential
+// itself), so ALLOW ANONYMOUS NO closes this door entirely. It used to
+// stay open under NO on the "a LAN peer was invited" premise, and a
+// BANNED pilot renamed and walked straight back in through it (field,
+// two Steam accounts, 2026-08-30). One opener for both its callers —
+// the HOST commit and the policy toggle flipping back to YES.
+void NetLobby::lan_door_start() {
+  if (!hosting_ || lan_announce_.running()) return;
+  if (!g_prefs.lan_visible || !g_prefs.allow_anonymous) return;
+  if (!NetLan::available()) return;
+  lan_beacon_name_ = NetLan::local_host_name();
+  if (!lan_announce_.start(lan_beacon_name_)) return;
+  lan_transport_ = NetTransport::create();
+  if (lan_transport_) {
+    lan_transport_->set_lan_only(true);
+    lan_transport_->set_trickle(false);
+    lan_transport_->start_host();
+  }
+}
+
 void NetLobby::lan_teardown() {
   lan_announce_.stop();
   lan_browse_.stop();
@@ -866,8 +882,11 @@ void NetLobby::lan_host_update(int delta) {
     lan_transport_->set_remote_answer(sdp);
     PendingJoiner pj;
     pj.session = new NetSession(lan_transport_, NetSession::HostRole, seat);
-    // LAN door: no worker jid, so the anonymous policy cannot apply — but
-    // the ban list still does, and it is the same gate that enforces it.
+    // LAN door: no worker jid. The claimed-name ban list applies through
+    // this same gate, and under ALLOW ANONYMOUS NO the verdict refuses
+    // outright (nobody on this path can ever be attested) — though the
+    // door itself is closed then (lan_door_start), so that arm is the
+    // backstop for an exchange racing the toggle.
     install_admit_check(pj.session, std::string());
     pj.seat = seat;
     pj.lan = true;
@@ -1440,6 +1459,17 @@ void NetLobby::toggle_allow_anonymous() {
   NET_LOG("[lobby] allow anonymous players: %s\n",
           g_prefs.allow_anonymous ? "YES" : "NO");
   save_preferences();
+  // The LAN door tracks the policy live (see lan_door_start: a LAN peer
+  // can never be attested): NO closes it — beacon, blob server, and any
+  // exchange half-done — YES re-opens it for the next couch joiner.
+  if (!g_prefs.allow_anonymous) {
+    if (lan_announce_.running()) {
+      lan_teardown();
+      NET_LOG("[lobby] lan door closed (anonymous players disabled)\n");
+    }
+  } else {
+    lan_door_start();
+  }
 }
 
 void NetLobby::host_kick_selected(bool ban) {

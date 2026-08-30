@@ -4199,6 +4199,15 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
   // mid-game re-host door stays closed too, mirroring the lobby gate.
   if (net_mode_ != NetHost || !NetLan::available() || !g_prefs.lan_visible)
     return false;
+  // ALLOW ANONYMOUS NO closes the LAN door entirely (a LAN peer can never
+  // be attested — see NetLobby::lan_door_start), mid-game included: don't
+  // re-beacon, and tear an open door down when the roster toggle flips
+  // the policy live — this per-tick gate is what makes the toggle take
+  // effect in both directions with no extra wiring at the toggle sites.
+  if (!g_prefs.allow_anonymous) {
+    if (net_lan_door_open()) net_lan_rejoin_reset();
+    return false;
+  }
   // Arm once per open seat — and NOT while a fresh session from either
   // door is already handshaking (re-beaconing then would let a second
   // completion stomp it; mirror of the relay arm's condition). Serves
