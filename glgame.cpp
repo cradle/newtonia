@@ -11477,13 +11477,36 @@ void GLGame::draw_map() const {
 
   /* LINE AROUND MINIMAP */
   {
+    // A triangle frame, not a GL_LINE_LOOP: the loop's four edges sat
+    // exactly on the ortho clip boundary (the ortho spans the world
+    // edge-to-edge across the viewport), where a 1-px line's centre lands
+    // on the pixel-rounding seam and whether it rasterizes is a per-driver
+    // coin toss — in the field only part of the outline showed (top+right
+    // on the maintainer's Linux driver and llvmpipe alike). Quads inset
+    // INTO the viewport cover the border ring deterministically; opaque
+    // colour, so the overlapping corners are invisible.
     static MeshBuilder mb;
     static Mesh mesh;
     mb.clear();
-    mb.begin(GL_LINE_LOOP);
+    mb.begin(GL_TRIANGLES);
     mb.color(0.5f, 0.5f, 0.5f, 1.0f);
     float wx = (float)world.x(), wy = (float)world.y();
-    mb.vertex(0, 0); mb.vertex(wx, 0); mb.vertex(wx, wy); mb.vertex(0, wy);
+    // One window pixel (scaled up with the window like the HUD, never
+    // below one device pixel) in world units — the ortho maps the world
+    // across minimap_size pixels.
+    float px_scale = Typer::scale > 1.0f ? Typer::scale : 1.0f;
+    float tx = wx / minimap_size * px_scale;
+    float ty = wy / minimap_size * px_scale;
+    // Bottom and top strips.
+    mb.vertex(0, 0);       mb.vertex(wx, 0);       mb.vertex(wx, ty);
+    mb.vertex(0, 0);       mb.vertex(wx, ty);      mb.vertex(0, ty);
+    mb.vertex(0, wy - ty); mb.vertex(wx, wy - ty); mb.vertex(wx, wy);
+    mb.vertex(0, wy - ty); mb.vertex(wx, wy);      mb.vertex(0, wy);
+    // Left and right strips.
+    mb.vertex(0, 0);       mb.vertex(tx, 0);       mb.vertex(tx, wy);
+    mb.vertex(0, 0);       mb.vertex(tx, wy);      mb.vertex(0, wy);
+    mb.vertex(wx - tx, 0); mb.vertex(wx, 0);       mb.vertex(wx, wy);
+    mb.vertex(wx - tx, 0); mb.vertex(wx, wy);      mb.vertex(wx - tx, wy);
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
