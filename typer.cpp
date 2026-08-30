@@ -311,8 +311,9 @@ void Typer::init_meshes() {
   // rasterizes as one device pixel — invisible on retina/high-DPI (the
   // leaderboard SEASON row was the first prominent dotted string and its
   // dots simply didn't show). Lines go through the thickening path on
-  // every platform. (The '?' glyph's dot survives as a point only because
-  // it passes an explicit point size.)
+  // every platform. (The '?' glyph's dot is the same dash in its own
+  // mesh — it was the text path's last GL_POINTS draw, and a field GPU
+  // drops whole point draws; see CLAUDE.md "Particles".)
   { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
     mb.vertex(TW*0.38f, TH*0.125f); mb.vertex(TW*0.62f, TH*0.125f);
     mb.end(); upload('.', mb); }
@@ -713,14 +714,16 @@ void Typer::draw(float x, float y, char character, float size, int time) {
           q_arc.upload(mb);
         }
         { MeshBuilder mb; mb.color(1,1,1);
-          mb.begin(GL_POINTS);
-          mb.vertex(TC, 0);
+          // The '.' glyph's dash (see init_meshes), centred where the old
+          // GL_POINTS dot sat.
+          mb.begin(GL_LINES);
+          mb.vertex(TC - TW*0.12f, 0); mb.vertex(TC + TW*0.12f, 0);
           mb.end();
           q_dot.upload(mb);
         }
       }
       q_arc.draw_tinted(colour[0], colour[1], colour[2], 1.0f);
-      q_dot.draw_tinted(colour[0], colour[1], colour[2], 1.0f, 2.0f * scale);
+      q_dot.draw_tinted(colour[0], colour[1], colour[2], 1.0f);
       break;
     }
   }

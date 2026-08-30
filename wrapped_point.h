@@ -14,6 +14,11 @@ public:
 
   static void set_boundaries(const Point bounds);
 
+  // World width. The boundaries are process-global, so drawers can size
+  // world-proportional geometry (the minimap dots, which must hold their
+  // on-screen size as the world grows) without plumbing the world through.
+  static float x_span() { return x_max - x_min; }
+
 private:
   static float x_min, x_max, y_min, y_max;
 };

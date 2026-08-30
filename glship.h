@@ -136,7 +136,7 @@ protected:
   Mesh body_fill, body_outline;
   Mesh jets, repulsors, force_shield;
   Mesh god_shield;     // yellow shield circle for god-mode invincibility
-  Mesh minimap_dot;    // single white vertex at origin, tinted per draw
+  Mesh minimap_dot;    // unit white diamond at origin, tinted + scaled per draw
   Mesh missile_body;   // unit missile triangle (ship colour), per-missile matrix
 
   // Two-slot bindings (primary + optional alternate; see KeyBinding).

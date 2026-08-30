@@ -427,19 +427,25 @@ void Hazard::draw(bool minimap) const {
 
   if (kind_ == PULSAR) {
     // Impact/break-up debris (from hits, and the final burst) always render.
+    // Ember diamonds, not GL_POINTS — the same driver lottery that took the
+    // seeker burst (and the starfield, 2026-08-30) drops point draws whole.
     if (!debris_.empty()) {
       static MeshBuilder mb;
       static Mesh mesh;
       mb.clear();
-      mb.begin(GL_POINTS);
+      mb.begin(GL_TRIANGLES);
       for (const auto &d : debris_) {
         float al = d.aliveness();
         mb.color(0.7f, 0.75f + 0.25f * al, 1.0f, al);
-        mb.vertex(d.position.x(), d.position.y());
+        // 2.8/1.8 = the field-approved hazard-burst ember geometry (the
+        // seeker block below); a smaller pulsar-only size dipped sub-pixel
+        // at small windows.
+        mb.ember(d.position.x(), d.position.y(),
+                 d.velocity.x(), d.velocity.y(), 2.8f, 1.8f);
       }
       mb.end();
       mesh.upload(mb, GL_DYNAMIC_DRAW);
-      mesh.draw(5.0f);
+      mesh.draw();
     }
     if (!alive) return;  // destroyed: nothing left but the fading debris
 
@@ -485,20 +491,24 @@ void Hazard::draw(bool minimap) const {
   }
 
   if (kind_ == COMET) {
+    // Tail + impact debris as ember diamonds, not GL_POINTS (the field-GPU
+    // point lottery — the streak rides each chunk's own drift, so the tail
+    // keeps its swept look).
     if (!debris_.empty()) {
       static MeshBuilder mb;
       static Mesh mesh;
       mb.clear();
-      mb.begin(GL_POINTS);
+      mb.begin(GL_TRIANGLES);
       for (const auto &d : debris_) {
         float al = d.aliveness();
         // Icy white core fading to blue at the tail's end.
         mb.color(0.75f + 0.25f * al, 0.85f + 0.15f * al, 1.0f, al);
-        mb.vertex(d.position.x(), d.position.y());
+        mb.ember(d.position.x(), d.position.y(),
+                 d.velocity.x(), d.velocity.y(), 2.8f, 1.8f);
       }
       mb.end();
       mesh.upload(mb, GL_DYNAMIC_DRAW);
-      mesh.draw(6.0f);
+      mesh.draw();
     }
     if (alive) {
       glLineWidth(2.0f);
@@ -543,22 +553,13 @@ void Hazard::draw(bool minimap) const {
       // noise floor almost immediately. Hotter (whiter) while bright.
       float al = d.aliveness();
       float a = al > 0.6f ? 1.0f : al / 0.6f;
-      float x = d.position.x(), y = d.position.y();
       // Each ember is a tiny diamond, near point-sized (a couple of world
       // units — 2-3 px at typical zoom), faintly streaked along its own
       // velocity so it still reads as a spark, shrinking as it cools.
       // Big flat quads read as blocky confetti (field, 2026-08-23).
-      float vx = d.velocity.x(), vy = d.velocity.y();
-      float vm = sqrtf(vx * vx + vy * vy);
-      float dx = vm > 1e-5f ? vx / vm : 1.0f;
-      float dy = vm > 1e-5f ? vy / vm : 0.0f;
-      float len = 2.8f * (0.5f + 0.5f * a);
-      float wid = 1.8f * (0.5f + 0.5f * a);
-      float px_ = -dy * wid, py_ = dx * wid;
-      float hx = dx * len, hy = dy * len;
       mb.color(1.0f, 0.45f + 0.45f * a, 0.2f, a);
-      mb.vertex(x + hx, y + hy); mb.vertex(x + px_, y + py_); mb.vertex(x - hx, y - hy);
-      mb.vertex(x + hx, y + hy); mb.vertex(x - hx, y - hy); mb.vertex(x - px_, y - py_);
+      mb.ember(d.position.x(), d.position.y(), d.velocity.x(), d.velocity.y(),
+               2.8f * (0.5f + 0.5f * a), 1.8f * (0.5f + 0.5f * a));
     }
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);

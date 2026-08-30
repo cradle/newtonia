@@ -27,8 +27,9 @@ void GLTrail::draw() {
   // Tiny diamonds, not GL_POINTS: the field GPU that silently dropped the
   // hazard-debris point draw (the seeker saga, 2026-08-23) drops this one
   // too — the exhaust trail vanished mid-thrust while llvmpipe rendered
-  // it fine. Near point-sized (2-3 px at typical zoom), shrinking as each
-  // puff fades, so the look stays the old soft dotted exhaust.
+  // it fine. Near point-sized (2-3 px at typical zoom, MeshBuilder::dot),
+  // shrinking as each puff fades, so the look stays the old soft dotted
+  // exhaust.
   MeshBuilder mb;
   mb.begin(GL_TRIANGLES);
   for (const TrailPoint& p : trail) {
@@ -37,10 +38,8 @@ void GLTrail::draw() {
     // whole trail dim against the starfield.
     float al = p.aliveness();
     float a = al > 0.6f ? 1.0f : al / 0.6f;
-    float r = 2.2f * (0.5f + 0.5f * a);
     mb.color(cr, cg, cb, a);
-    mb.vertex(p.x - r, p.y); mb.vertex(p.x, p.y + r); mb.vertex(p.x + r, p.y);
-    mb.vertex(p.x - r, p.y); mb.vertex(p.x + r, p.y); mb.vertex(p.x, p.y - r);
+    mb.dot(p.x, p.y, 2.2f * (0.5f + 0.5f * a));
   }
   mb.end();
 

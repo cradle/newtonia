@@ -11197,13 +11197,39 @@ void GLGame::draw_perspective(GLShip *glship) const {
   float half_w = half_h * aspect;
   float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f; // 10% margin for edge objects
 
+  // The rear star layers sit up to REAR_DEPTH behind the z=0 play plane,
+  // where the perspective shows (1000+REAR_DEPTH)/1000 = 2x the world area
+  // the play plane does — a wrap tile whose z=0 footprint is off-screen can
+  // still land deep stars on it. Culling the rear pass with the plain z=0
+  // radius dropped such tiles whole: deep-star patches missing toward the
+  // screen edges, coming and going with the player's position relative to
+  // the wrap boundaries (field, 2026-08-30). The front layers are CLOSER
+  // than z=0, so for them (and the objects pass) the plain radius stays
+  // conservative.
+  float rear_scale = (1000.0f + GLStarfield::REAR_DEPTH) / 1000.0f;
+  float rear_cull_r2 = cull_r2 * rear_scale * rear_scale;
+
+  // The widened radius is only half the rear-pass fix: at gen-0 world sizes
+  // a wide window's deepest layers see FURTHER than one wrap tile in each
+  // direction (±2932 units at 16:10 vs a 2500 world), so the fixed 3x3 walk
+  // left a deep-star strip un-drawn at a screen edge whenever the ship sat
+  // within a few hundred units of a wrap boundary — the tile owing those
+  // stars simply wasn't a candidate. Walk as many wrap copies as the rear
+  // radius needs; the cull keeps the extra candidates cheap, and the span
+  // collapses back to 1 as the world outgrows the view.
+  float rear_cull_r = sqrtf(rear_cull_r2);
+  int star_span_x = (int)ceilf(rear_cull_r / world.x());
+  int star_span_y = (int)ceilf(rear_cull_r / world.y());
+  if (star_span_x < 1) star_span_x = 1;
+  if (star_span_y < 1) star_span_y = 1;
+
   // Read the perspective*lookat VP set by draw_world; tile transforms are layered on top.
   float base_pv[16]; gles2_get_mvp(base_pv);
 
   // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
   Uint64 pc0 = SDL_GetPerformanceCounter();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -star_span_x; x <= star_span_x; x++) {
+    for(int y = -star_span_y; y <= star_span_y; y++) {
       // Nearest distance from camera to tile rectangle (starfield tiles are
       // centered on world origin, not on the player).
       float smin_x = world.x()*x - position.x();
@@ -11212,7 +11238,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float smax_y = smin_y + world.y();
       float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
-      if (snx*snx + sny*sny > cull_r2) continue;
+      if (snx*snx + sny*sny > rear_cull_r2) continue;
 
       float tile_vp[16];
       mat4_rotate_z(tile_vp, base_pv, direction);
@@ -11489,13 +11515,36 @@ void GLGame::draw_map() const {
 
   /* LINE AROUND MINIMAP */
   {
+    // A triangle frame, not a GL_LINE_LOOP: the loop's four edges sat
+    // exactly on the ortho clip boundary (the ortho spans the world
+    // edge-to-edge across the viewport), where a 1-px line's centre lands
+    // on the pixel-rounding seam and whether it rasterizes is a per-driver
+    // coin toss — in the field only part of the outline showed (top+right
+    // on the maintainer's Linux driver and llvmpipe alike). Quads inset
+    // INTO the viewport cover the border ring deterministically; opaque
+    // colour, so the overlapping corners are invisible.
     static MeshBuilder mb;
     static Mesh mesh;
     mb.clear();
-    mb.begin(GL_LINE_LOOP);
+    mb.begin(GL_TRIANGLES);
     mb.color(0.5f, 0.5f, 0.5f, 1.0f);
     float wx = (float)world.x(), wy = (float)world.y();
-    mb.vertex(0, 0); mb.vertex(wx, 0); mb.vertex(wx, wy); mb.vertex(0, wy);
+    // One window pixel (scaled up with the window like the HUD, never
+    // below one device pixel) in world units — the ortho maps the world
+    // across minimap_size pixels.
+    float px_scale = Typer::scale > 1.0f ? Typer::scale : 1.0f;
+    float tx = wx / minimap_size * px_scale;
+    float ty = wy / minimap_size * px_scale;
+    // Bottom and top strips.
+    mb.vertex(0, 0);       mb.vertex(wx, 0);       mb.vertex(wx, ty);
+    mb.vertex(0, 0);       mb.vertex(wx, ty);      mb.vertex(0, ty);
+    mb.vertex(0, wy - ty); mb.vertex(wx, wy - ty); mb.vertex(wx, wy);
+    mb.vertex(0, wy - ty); mb.vertex(wx, wy);      mb.vertex(0, wy);
+    // Left and right strips.
+    mb.vertex(0, 0);       mb.vertex(tx, 0);       mb.vertex(tx, wy);
+    mb.vertex(0, 0);       mb.vertex(tx, wy);      mb.vertex(0, wy);
+    mb.vertex(wx - tx, 0); mb.vertex(wx, 0);       mb.vertex(wx, wy);
+    mb.vertex(wx - tx, 0); mb.vertex(wx, wy);      mb.vertex(wx - tx, wy);
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
