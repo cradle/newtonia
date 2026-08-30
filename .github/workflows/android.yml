@@ -72,7 +72,12 @@ jobs:
 
       # CMake's FetchContent clones libdatachannel inside this step, so the
       # retry wipes the native build dir to unwedge a partial fetch.
-      - name: Build debug APK
+      # -PdebugSign signs the minified release APK with the debug keystore
+      # (see app/build.gradle) so the emulator selftest can install it and PR
+      # testers can sideload it — the R8 boot gate for PLAYQUALITY.md's
+      # minifyEnabled flip. deploy-android.yml's injected release signing is
+      # untouched.
+      - name: Build debug + minified release APKs
         working-directory: newtonia/android
         run: |
           try() { local i; for i in 1 2 3; do
@@ -80,7 +85,7 @@ jobs:
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
                     if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
-          CLEAN=app/.cxx try ./gradlew assembleDebug --stacktrace
+          CLEAN=app/.cxx try ./gradlew assembleDebug assembleRelease -PdebugSign --stacktrace
         env:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
 
@@ -89,6 +94,18 @@ jobs:
         with:
           name: newtonia-debug
           path: newtonia/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+      # The R8 build PR testers should install on a phone: minified like the
+      # store build, debug-signed so it installs wherever the debug artifact
+      # does. The fail-soft Play Games paths (achievements, identity
+      # attestation — see proguard-rules.pro) only prove out on a real
+      # signed-in device, which no emulator job covers.
+      - name: Upload minified release APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: newtonia-release-minified
+          path: newtonia/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 7
 
   # The Android half of the per-platform TLS trust gate (TESTING.md). Every
@@ -127,12 +144,26 @@ jobs:
         with:
           name: newtonia-debug
 
+      - name: Download minified release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: newtonia-release-minified
+
       # A plain image, not google_apis: the hook returns from SDL_main long
       # before Achievements::init() brings up the Play Games SDK, so nothing
       # here needs Google Play services. x86_64 because that is what the
       # runner can accelerate — the APK ships it alongside the two ARM ABIs
       # (android/app/build.gradle abiFilters).
-      - name: Signal selftest on an emulator
+      #
+      # Two passes on the one booted emulator: the debug APK (the TLS trust
+      # gate as always) and then the minified release APK — the R8 boot gate
+      # (PLAYQUALITY.md): if R8 stripped anything SDL or the activity needs,
+      # this run crashes at launch instead of a phone finding out. When only
+      # the release pass fails, the diff between the passes IS the diagnosis:
+      # it's the minification, not TLS. Logs are prefixed per pass because
+      # the script names them logcat-N.txt and the second pass would
+      # overwrite the first.
+      - name: Signal selftest on an emulator (debug, then minified release)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -140,7 +171,11 @@ jobs:
           target: default
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
-          script: bash android/emulator_selftest.sh
+          script: |
+            bash android/emulator_selftest.sh
+            for f in logcat-*.txt; do if [ -f "$f" ]; then mv "$f" "debug-$f"; fi; done
+            APK=app-release.apk bash android/emulator_selftest.sh
+            for f in logcat-*.txt; do if [ -f "$f" ]; then mv "$f" "release-$f"; fi; done
         env:
           APK: app-debug.apk
 
@@ -149,6 +184,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-emulator-selftest-log
-          path: logcat-*.txt
+          # Bare logcat-*.txt covers a pass that died before its rename.
+          path: |
+            debug-logcat-*.txt
+            release-logcat-*.txt
+            logcat-*.txt
           retention-days: 7
           if-no-files-found: ignore
