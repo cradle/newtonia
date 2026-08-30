@@ -70,6 +70,24 @@ jobs:
       - name: Copy audio assets
         run: mkdir -p newtonia/android/app/src/main/assets && cp -r newtonia/audio newtonia/android/app/src/main/assets/
 
+      # Shared debug keystore (PLAYQUALITY.md): secret-held so its cert can
+      # be registered with Play Games without ever publishing key material.
+      # app/build.gradle only overrides the debug signing config when this
+      # file exists, so a missing secret (fork PRs get none; the secret not
+      # yet created) is not an error — the build falls back to the runner's
+      # auto-generated keystore and the artifacts just carry a throwaway
+      # cert that cannot sign in to PGS.
+      - name: Decode shared debug keystore
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > newtonia/android/debug.keystore
+            echo "shared debug keystore decoded"
+          else
+            echo "DEBUG_KEYSTORE_BASE64 not set - artifacts will carry a throwaway per-run cert"
+          fi
+
       # CMake's FetchContent clones libdatachannel inside this step, so the
       # retry wipes the native build dir to unwedge a partial fetch.
       # -PdebugSign signs the minified release APK with the debug keystore

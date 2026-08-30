@@ -29,6 +29,14 @@ android/build/
 android/app/.cxx/
 android/app/src/main/assets/
 android/local.properties
+## Keystores decoded into the tree by CI (deploy-android.yml: the REAL
+## release key; android.yml: the shared debug key from
+## DEBUG_KEYSTORE_BASE64). Key material must never be committed — a
+## keystore in a public repo is signing capability for the world, and a
+## committed debug keystore was reviewed OUT for exactly that (2026-08-30,
+## PLAYQUALITY.md "shared debug keystore").
+android/release.jks
+android/debug.keystore
 ## iOS CI generated source list (.github/workflows/ios.yml)
 srcs.txt
 ## iOS Xcode project — generated from ios/project.yml by XcodeGen
