@@ -134,10 +134,12 @@ const NetIdentity &net_local_identity() { return local_identity_impl(false); }
 // (its own NEWTONIA_BOARD_TEST_CRED aside), and this hook only exists on
 // builds WITHOUT one — the no-backend board stays view-only with or
 // without the env var.
+#ifndef IDENTITY_HAVE_VERIFY
 static std::string test_credential() {
   const char *e = std::getenv("NEWTONIA_NET_TEST_CRED");
   return e ? std::string(e) : std::string();
 }
+#endif
 
 std::string net_local_verify_credential() {
 #ifdef IDENTITY_HAVE_VERIFY
