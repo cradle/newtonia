@@ -11197,13 +11197,27 @@ void GLGame::draw_perspective(GLShip *glship) const {
   float rear_scale = (1000.0f + GLStarfield::REAR_DEPTH) / 1000.0f;
   float rear_cull_r2 = cull_r2 * rear_scale * rear_scale;
 
+  // The widened radius is only half the rear-pass fix: at gen-0 world sizes
+  // a wide window's deepest layers see FURTHER than one wrap tile in each
+  // direction (±2932 units at 16:10 vs a 2500 world), so the fixed 3x3 walk
+  // left a deep-star strip un-drawn at a screen edge whenever the ship sat
+  // within a few hundred units of a wrap boundary — the tile owing those
+  // stars simply wasn't a candidate. Walk as many wrap copies as the rear
+  // radius needs; the cull keeps the extra candidates cheap, and the span
+  // collapses back to 1 as the world outgrows the view.
+  float rear_cull_r = sqrtf(rear_cull_r2);
+  int star_span_x = (int)ceilf(rear_cull_r / world.x());
+  int star_span_y = (int)ceilf(rear_cull_r / world.y());
+  if (star_span_x < 1) star_span_x = 1;
+  if (star_span_y < 1) star_span_y = 1;
+
   // Read the perspective*lookat VP set by draw_world; tile transforms are layered on top.
   float base_pv[16]; gles2_get_mvp(base_pv);
 
   // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
   Uint64 pc0 = SDL_GetPerformanceCounter();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -star_span_x; x <= star_span_x; x++) {
+    for(int y = -star_span_y; y <= star_span_y; y++) {
       // Nearest distance from camera to tile rectangle (starfield tiles are
       // centered on world origin, not on the player).
       float smin_x = world.x()*x - position.x();
