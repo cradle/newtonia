@@ -404,7 +404,7 @@ private:
   void send_local_identity();
   // Consume a worker `identity` broadcast describing the peer.
   void apply_peer_attestation(uint8_t platform, const std::string &name,
-                              bool verified);
+                              bool verified, const std::string &key);
 
   // Controller state (stick/trigger edges live in State's shared nav
   // translator; only the picker's own bits remain here).

@@ -139,6 +139,9 @@ public:
 
   bool poll(Event &ev) override {
     if (!handle_) return false;
+    // Reset up front so the SYNTHESIZED Closed event below can't carry a
+    // prior parsed frame's identity fields (net_signal_rtc.cpp's twin).
+    ev = Event();
     char *frame;
     while ((frame = nwsig_poll_frame(handle_)) != nullptr) {
       std::string text(frame);

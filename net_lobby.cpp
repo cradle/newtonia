@@ -238,42 +238,61 @@ void NetLobby::mark_room_dead(const std::string &code) {
 // Kick bans (see the header). One process-wide list so the lobby and the
 // game agree — a peer kicked in the waiting room must not walk back in
 // through the mid-game rejoin door.
-static std::vector<std::pair<std::string, uint8_t>> s_bans;
-
-// The ban key: case-folded name + platform. Case-folded because a name
-// arrives from the peer's own claim and "Glenn" must not slip past a ban
-// on "glenn"; platform included so two players sharing a display name on
+//
+// Two keys per entry, matched independently. The TOKEN is the worker's
+// room-scoped digest of the attested ACCOUNT (NetIdentity::ban_token) —
+// the key a display-name change can't shake, and the only one an iOS
+// pilot (account attested, alias never) has. The case-folded NAME +
+// platform is the legacy key, kept beside it: it still covers a peer the
+// worker never tokened (an old worker, a LAN claim) and the banned
+// player rejoining from an old build. Case-folded because a name arrives
+// from the peer's own claim and "Glenn" must not slip past a ban on
+// "glenn"; platform included so two players sharing a display name on
 // different platforms aren't one ban.
-static bool ban_key(const NetIdentity &id,
-                    std::pair<std::string, uint8_t> &out) {
-  if (id.name.empty()) return false;  // nameless: nothing to key on
+struct BanEntry {
+  std::string name;  // case-folded; "" = token-only (a nameless account)
+  uint8_t platform;
+  std::string token;  // "" = name-only (no attested account to key on)
+};
+static std::vector<BanEntry> s_bans;
+
+static std::string fold_name(const std::string &name) {
   std::string n;
-  for (size_t i = 0; i < id.name.size(); i++) {
-    char c = id.name[i];
+  for (size_t i = 0; i < name.size(); i++) {
+    char c = name[i];
     if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
     n += c;
   }
-  out = std::make_pair(n, id.platform);
-  return true;
+  return n;
 }
 
 void NetLobby::ban_identity(const NetIdentity &id) {
-  std::pair<std::string, uint8_t> key;
-  if (!ban_key(id, key)) {
-    NET_LOG("[ban] nameless peer - kicked but not banned\n");
+  BanEntry e;
+  e.name = fold_name(id.name);
+  e.platform = id.platform;
+  e.token = id.ban_token;
+  if (e.name.empty() && e.token.empty()) {
+    NET_LOG("[ban] keyless peer - kicked but not banned\n");
     return;
   }
   for (size_t i = 0; i < s_bans.size(); i++)
-    if (s_bans[i] == key) return;
-  s_bans.push_back(key);
-  NET_LOG("[ban] '%s' (platform %d) barred from this room\n", key.first.c_str(),
-          (int)key.second);
+    if (s_bans[i].name == e.name && s_bans[i].platform == e.platform &&
+        s_bans[i].token == e.token)
+      return;
+  s_bans.push_back(e);
+  NET_LOG("[ban] '%s' (platform %d, token %s) barred from this room\n",
+          e.name.c_str(), (int)e.platform, e.token.empty() ? "no" : "yes");
 }
 
 NetSession::Admit NetLobby::admit_verdict(const NetIdentity &claimed,
                                           const NetIdentity &attested,
                                           bool worker_session) {
-  if (identity_banned(claimed)) return NetSession::AdmitBanned;
+  // Both identities are consulted: the claim carries the name a casual
+  // rejoiner reuses, the attestation carries the TOKEN (and the attested
+  // name) a rename can't shake. An attestation that lands mid-hold is seen
+  // — the admit check re-reads it on every call.
+  if (identity_banned(claimed) || identity_banned(attested))
+    return NetSession::AdmitBanned;
   // A door with no worker behind it can attest nobody, and this policy is
   // about strangers arriving on a room code — a LAN/manual peer was invited
   // into a local room. They pass, as they always have.
@@ -288,10 +307,13 @@ NetSession::Admit NetLobby::admit_verdict(const NetIdentity &claimed,
 }
 
 bool NetLobby::identity_banned(const NetIdentity &id) {
-  std::pair<std::string, uint8_t> key;
-  if (!ban_key(id, key)) return false;
-  for (size_t i = 0; i < s_bans.size(); i++)
-    if (s_bans[i] == key) return true;
+  std::string folded = fold_name(id.name);
+  for (size_t i = 0; i < s_bans.size(); i++) {
+    const BanEntry &e = s_bans[i];
+    if (!e.token.empty() && e.token == id.ban_token) return true;
+    if (!e.name.empty() && e.name == folded && e.platform == id.platform)
+      return true;
+  }
   return false;
 }
 
@@ -1122,7 +1144,7 @@ void NetLobby::send_local_identity() {
 // game at hand-off); an unverified broadcast leaves the peer role-labelled
 // online. The name is re-sanitized locally, as every name-bearing path is.
 void NetLobby::apply_peer_attestation(uint8_t platform, const std::string &name,
-                                      bool verified) {
+                                      bool verified, const std::string &key) {
   if (!verified) return;
   attested_peer_.platform = platform;
   attested_peer_.platform_trust = NET_TRUST_ATTESTED;
@@ -1130,6 +1152,7 @@ void NetLobby::apply_peer_attestation(uint8_t platform, const std::string &name,
   attested_peer_.name = clean;
   attested_peer_.name_trust =
       clean.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+  attested_peer_.ban_token = key;
   NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
           clean.c_str(), net_platform_label(platform), (unsigned)platform);
 }
@@ -1379,7 +1402,7 @@ void NetLobby::host_row_select(int row) {
 bool NetLobby::host_row_can_ban(int row) const {
   if (row < 0 || row >= (int)seated_.size()) return false;
   const SeatedPeer &sp = seated_[row];
-  if (!net_identity_anonymous(sp.attested)) return true;
+  if (net_identity_bannable(sp.attested)) return true;
   // Late attestation, same fallback the row's NAME uses: sp.attested is the
   // seating-time capture, and the worker's verdict often lands after the
   // handshake. Deliberately NOT the session's peer_identity() — that is the
@@ -1387,7 +1410,7 @@ bool NetLobby::host_row_can_ban(int row) const {
   if (sp.jid.empty()) return false;
   std::map<std::string, NetIdentity>::const_iterator it =
       jid_attested_.find(sp.jid);
-  return it != jid_attested_.end() && !net_identity_anonymous(it->second);
+  return it != jid_attested_.end() && net_identity_bannable(it->second);
 }
 
 // The name a seated peer's row may render: the attested capture, else the
@@ -1428,6 +1451,16 @@ void NetLobby::host_kick_selected(bool ban) {
   // it, and peer_identity() through a freed session is a use-after-free.
   NetIdentity who = sp.session ? sp.session->peer_identity() : NetIdentity();
   if (who.name.empty() && !sp.attested.name.empty()) who = sp.attested;
+  // The ATTESTED identity carries the account token the ban must key on
+  // (the claim never does): the seat's capture, else the live jid entry —
+  // the worker's verdict often lands after the seating, and it must be
+  // read BEFORE the erase below drops it.
+  NetIdentity att = sp.attested;
+  if (att.ban_token.empty() && !sp.jid.empty()) {
+    std::map<std::string, NetIdentity>::const_iterator it =
+        jid_attested_.find(sp.jid);
+    if (it != jid_attested_.end()) att = it->second;
+  }
   if (sp.session) {
     std::vector<uint8_t> msg;
     Net::put_header(msg, Net::MSG_EVENT, 1);  // from the host, seat 1
@@ -1446,8 +1479,15 @@ void NetLobby::host_kick_selected(bool ban) {
   // inherit the kicked player's verified name.
   if (!sp.jid.empty()) jid_attested_.erase(sp.jid);
   // Ban only: bar them for the rest of this room's life — the room code is
-  // the only thing stopping them otherwise, and they already have it.
-  if (ban) ban_identity(who);
+  // the only thing stopping them otherwise, and they already have it. Both
+  // identities are recorded (ban_identity no-ops on a keyless one): the
+  // claim-merged `who` keeps the legacy name key, the attested `att`
+  // carries the account token a rename can't shake (GLGame::net_kick_peer
+  // records the same spread).
+  if (ban) {
+    ban_identity(who);
+    ban_identity(att);
+  }
   seated_.erase(seated_.begin() + host_sel_);
   host_kick_armed_ = -1;
   host_ban_ = false;
@@ -1629,9 +1669,9 @@ void NetLobby::pump_signal(int delta) {
         // relays the paired peer's) fold directly.
         if (!hosting_) {
           if (ev.text2 == "host" || ev.text2.empty())
-            apply_peer_attestation(ev.platform, ev.text, ev.verified);
+            apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key);
         } else if (ev.peer.empty()) {
-          apply_peer_attestation(ev.platform, ev.text, ev.verified);
+          apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key);
         } else if (ev.verified) {
           NetIdentity att;
           att.platform = ev.platform;
@@ -1639,6 +1679,7 @@ void NetLobby::pump_signal(int delta) {
           att.name = net_sanitize_name(ev.text);
           att.name_trust =
               att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+          att.ban_token = ev.key;
           jid_attested_[ev.peer] = att;
           // Greppable, and not just for tests: attestation now decides
           // whether the roster offers BAN at all, so "why is there no BAN
@@ -1647,7 +1688,29 @@ void NetLobby::pump_signal(int delta) {
                   ev.peer.c_str(), att.name.c_str(),
                   net_platform_label(att.platform), (unsigned)att.platform);
           if (ev.peer == paired_jid_)
-            apply_peer_attestation(ev.platform, ev.text, ev.verified);
+            apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key);
+          // The verdict can outrun the ban: with ALLOW ANONYMOUS on, a
+          // banned account that reconnects fast is SEATED before its
+          // attestation (and the token bans key on) lands. The late
+          // attestation is where the room first knows who answered, so
+          // sweep it: a seated pilot whose fresh attestation matches the
+          // ban list is removed through the ordinary kick path (already
+          // banned — the removal is enforcement, not a second sentence).
+          for (size_t i = 0; i < seated_.size(); i++) {
+            if (seated_[i].jid != ev.peer) continue;
+            seated_[i].attested = att;  // keep the seat's copy current
+            if (identity_banned(att) && !handed_off_to_game_) {
+              NET_LOG("[lobby] banned pilot attested after seating - "
+                      "removing seat %d\n", seated_[i].seat);
+              // The manage view's own kick spelling; the cursor rests
+              // afterwards (indices shifted under it — a roster change
+              // resets the selection anyway).
+              host_sel_ = (int)i;
+              host_kick_selected(true);
+              host_sel_ = -1;
+            }
+            break;
+          }
         }
         break;
       case NetSignal::Event::PeerJoin:

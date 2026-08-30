@@ -123,11 +123,27 @@ const NetIdentity &local_identity_impl(bool throttled) {
 
 const NetIdentity &net_local_identity() { return local_identity_impl(false); }
 
+// Dev/test credential hook, NEWTONIA_NET_NAME's sibling: a build with no
+// verify backend can still hand a FAKE_VERIFY relay a "credential", which
+// that relay treats as the fake ACCOUNT id — how the ban-token e2e joins
+// twice under one account with two names (nseat_ban_token.sh). Inert
+// against the production worker: a real verifier rejects it and attests
+// nothing, exactly the failed-verify path. The LEADERBOARD seam is
+// unaffected even though net_board_verify_credential falls back here:
+// net_board_can_submit() gates every submit on net_has_verify_backend()
+// (its own NEWTONIA_BOARD_TEST_CRED aside), and this hook only exists on
+// builds WITHOUT one — the no-backend board stays view-only with or
+// without the env var.
+static std::string test_credential() {
+  const char *e = std::getenv("NEWTONIA_NET_TEST_CRED");
+  return e ? std::string(e) : std::string();
+}
+
 std::string net_local_verify_credential() {
 #ifdef IDENTITY_HAVE_VERIFY
   return NetIdentityBackend::local_verify_credential();
 #else
-  return "";
+  return test_credential();
 #endif
 }
 
@@ -135,7 +151,7 @@ std::string net_local_verify_credential_peek() {
 #ifdef IDENTITY_HAVE_VERIFY
   return NetIdentityBackend::local_verify_credential_peek();
 #else
-  return "";
+  return test_credential();
 #endif
 }
 
@@ -162,6 +178,9 @@ void net_apply_attested(NetIdentity &into, const NetIdentity &attested) {
     into.name = attested.name;  // already sanitized on receipt
     into.name_trust = NET_TRUST_ATTESTED;
   }
+  // The ban token rides the fold so the merged identity stays bannable by
+  // account wherever the raw attestation isn't at hand.
+  if (!attested.ban_token.empty()) into.ban_token = attested.ban_token;
 }
 
 const char *net_platform_label(uint8_t platform) {
@@ -388,4 +407,8 @@ bool net_identity_verified(const NetIdentity &id, NetIdentityCtx ctx) {
 bool net_identity_anonymous(const NetIdentity &id) {
   // The NAME specifically, not id.attested() — see net_identity.h.
   return !(id.name_trust == NET_TRUST_ATTESTED && !id.name.empty());
+}
+
+bool net_identity_bannable(const NetIdentity &id) {
+  return !net_identity_anonymous(id) || !id.ban_token.empty();
 }

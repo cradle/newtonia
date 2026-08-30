@@ -442,7 +442,10 @@ is deleted; trust is per field (`NetTrust {Absent, Claimed, Attested}` for
 fields (Claims read PLAYER 1/PLAYER 2), an **offline** worker-less session
 (manual/LAN) renders Claims as-is. The worker verifies each side's platform
 credential and broadcasts an `identity` room message the game folds in
-(`net: identity attested ...`). **V1** implements the Steam verifier: the
+(`net: identity attested ...`; since 2026-08-27 it also carries a
+room-scoped ban token minted from the verified account id — FOURPLAYER.md
+O3 "Account-token bans" — so kick-bans key on the account, not the
+renameable display name, while the raw id still never leaves the worker). **V1** implements the Steam verifier: the
 client mints a Web-API ticket (`GetAuthTicketForWebApi`,
 `steam_identity_verify.cpp`) and the worker validates it
 (`AuthenticateUserTicket` + `GetPlayerSummaries`, `signal/src/steam_verify.js`,
