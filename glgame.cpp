@@ -4273,8 +4273,11 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
           return net_rejoin_seat_for_identity(claimed);
         });
         // ...and the same admission gate. The LAN door clears dp->jid just
-        // below, so the anonymous policy self-disables here and only the
-        // ban list bites — the door's long-standing behaviour.
+        // below, so the check runs worker-less: claimed-name bans bite,
+        // and under ALLOW ANONYMOUS NO the verdict refuses outright — the
+        // backstop for an adoption already in flight when the roster
+        // toggle closed this door (it no longer OPENS under NO at all;
+        // see net_host_lan_rejoin_poll's per-tick gate).
         net_install_admit_check(dp->session, (int)dp->seat);
         // Paired through the local beacon: per-peer offline carve-out —
         // recorded on the adoption and applied at Ready to whichever seat
