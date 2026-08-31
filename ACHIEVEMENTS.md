@@ -9,7 +9,7 @@ stats, and the unlock-integrity rules. Platform backends plug in behind it:
 | Xbox / Microsoft Store (GDK) | private GDKX mirror (`xbox/PRIVATE_REPO.md`) | cert-blocking |
 | Steam | this repo, `steam_achievements.cpp` | **implemented** — portal config COMPLETE 2026-07-26 (§2 checklist, kept as the record) |
 | Android (Google Play Games Services) | this repo, `play_games_achievements.cpp` + `PlayGamesAchievements.java` | **implemented** — console configured + IDs wired 2026-07-13; testers validated + config published 2026-07-26 (§2 checklist) |
-| iOS (Game Center) | this repo, `game_center_achievements.mm` | **implemented** — achievements entered in App Store Connect 2026-07-13; go live with the next submitted version (§2 checklist) |
+| iOS (Game Center) | this repo, `game_center_achievements.mm` | **implemented** — achievements entered in App Store Connect 2026-07-13; LIVE in the shipped App Store version (§2 checklist) |
 
 Why now: Xbox certification **requires** achievements. XR-055 scores "a game
 doesn't support the minimum 10 achievements and 1,000 gamerscore" as
@@ -237,11 +237,13 @@ over the SDL window once it exists.
    renders its own locked state). **Done 2026-07-26.**
 5. Achievements go live with a **version**: definitions are app-level (and
    work in sandbox immediately), but public availability requires turning
-   the Game Center section on in the next submitted App Store version and
+   the Game Center section on in a submitted App Store version and
    attaching the achievements to it — already-released versions are
-   immutable, so this rides the release that ships the entitled binary.
-   Not a task so much as a standing dependency: the definitions are in
-   place, and public availability follows whenever that version ships.
+   immutable, so this rode the release that shipped the entitled binary.
+   **Done — that version has shipped and the achievements are LIVE**
+   (recorded 2026-08-31; already implicit in `coop_clear`'s reword
+   clearing STANDALONE review 2026-08-17 below, a route only open once
+   the achievement has shipped with a version).
 6. Test with a development/TestFlight build (sandbox Game Center is
    automatic there): earns show as GameKit banners; use the dev reset
    above to re-test from scratch. **Done 2026-07-26.**
