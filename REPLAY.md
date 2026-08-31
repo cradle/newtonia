@@ -2,7 +2,9 @@
 
 Planning doc for the replay system (leads into the leaderboard work). Style
 mirrors NETPLAY.md: decisions first, then phased milestones with exit
-criteria. Nothing here is built yet.
+criteria. R1–R3 and R-online are all LANDED; R4 grew into its own project
+— LEADERBOARD.md, itself now built — and R5 stays deferred on its trigger
+below.
 
 ## Decisions (locked with Glenn 2026-07-17)
 
@@ -544,9 +546,10 @@ leaderboard rows link to watchable replays (download → R2 playback).
 Seasons bucket by sim-affecting release. Submission format carries a
 reserved verification field so R5 can slot in without a format break.
 
-**Not started, and gated on a leaderboard project that does not exist yet**
-(no submission path, no server endpoint, no season logic anywhere; audited
-2026-07-30). What the recorder already hands it, so R4 need not build it:
+**DELIVERED as its own project — LEADERBOARD.md** (L1–L4 landed; the audit
+line that stood here — "gated on a leaderboard project that does not exist
+yet", 2026-07-30 — described the world before that doc existed). What the
+recorder already hands it, so R4 need not build it:
 `best.nrp` as the submission candidate — promotion already gates on
 `FLAG_CLEAN` and excludes `FLAG_CHEATED` — plus a header carrying score,
 generation, duration, date, player count, `run_id` and `save_version`,
@@ -556,7 +559,9 @@ which is the "download → watch" half. The slot arithmetic in `glgame.cpp`
 was hardened for this milestone's hostile input, and the bound it relies on
 now lives on the read side (see `MAX_RECORD_SLOT` below).
 
-Three things R4 has to decide, in the order they bind:
+Three things R4 had to decide, in the order they bound — all three settled
+in LEADERBOARD.md (blob: the whole replay, 32 MB cap; verification: a
+submit-envelope field, never an `.nrp` byte):
 1. ~~The season key.~~ **Done 2026-07-30**: the header's game version is
    populated on every build path (see "Version discipline" above). It was
    `"dev"` everywhere before that, and a header is write-once — no

@@ -7,8 +7,8 @@ stats, and the unlock-integrity rules. Platform backends plug in behind it:
 | Backend | Where it lives | Status |
 |---------|----------------|--------|
 | Xbox / Microsoft Store (GDK) | private GDKX mirror (`xbox/PRIVATE_REPO.md`) | cert-blocking |
-| Steam | this repo, `steam_achievements.cpp` | **implemented** — portal config pending (§2 checklist) |
-| Android (Google Play Games Services) | this repo, `play_games_achievements.cpp` + `PlayGamesAchievements.java` | **implemented** — console configured + IDs wired 2026-07-13; testers/publish pending (§2 checklist) |
+| Steam | this repo, `steam_achievements.cpp` | **implemented** — portal config COMPLETE 2026-07-26 (§2 checklist, kept as the record) |
+| Android (Google Play Games Services) | this repo, `play_games_achievements.cpp` + `PlayGamesAchievements.java` | **implemented** — console configured + IDs wired 2026-07-13; testers validated + config published 2026-07-26 (§2 checklist) |
 | iOS (Game Center) | this repo, `game_center_achievements.mm` | **implemented** — achievements entered in App Store Connect 2026-07-13; go live with the next submitted version (§2 checklist) |
 
 Why now: Xbox certification **requires** achievements. XR-055 scores "a game

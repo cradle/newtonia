@@ -2,7 +2,8 @@
 
 Planning doc for the online leaderboard (REPLAY.md's R4, given its own home).
 Style mirrors NETPLAY.md/REPLAY.md: decisions first, then phased milestones
-with exit criteria. Nothing here is built yet.
+with exit criteria. L1–L4 are LANDED; L5+ stay deferred on their written
+triggers.
 
 What the replay work already hands this project, so nothing below rebuilds
 it: `best.nrp` as the submission candidate (promotion already requires
@@ -13,7 +14,7 @@ R2 playback of an arbitrary file (the "download → watch" half); and the
 ingest hardening that treats a stranger's `.nrp` as hostile input
 (bounded counts, screened floats, `MAX_RECORD_SLOT`, the web file cap).
 
-## Decisions (proposed — confirm with Glenn before L1)
+## Decisions (settled with Glenn — dates inline; L1 has long since landed)
 
 - **Ask, don't auto-upload — and only ask when the run would place.** The
   trigger is a two-stage gate at game over:

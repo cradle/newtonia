@@ -106,14 +106,13 @@ They differ in two ways worth knowing:
   TLS line is `SDL_Log`, i.e. stderr. macOS cannot grep it at all — SDL
   routes through NSLog on Apple, which reaches a terminal, not a CI pipe.
 
-What stays manual: **Android** and **Xbox** (private repo). Android now
-has the selftest hook, so its pass is a one-liner rather than a UI drive
-(below) — but it still needs a DEVICE or emulator, and `android.yml` has
-neither, so nothing runs it for you. Wiring an emulator into that
-workflow is the only way to close the row; it was not worth the boot time
-and flakiness for a check whose failure mode is a bundle regression the
-other three MbedTLS-ish gates would also catch. And note a green runner proves that runner's TLS stack, not a
-player's machine — the gates catch a broken bundle, not a broken device.
+What stays manual: **Xbox** (private repo). Android's row closed on
+2026-08-16 — the emulator this paragraph once judged "not worth the boot
+time" got wired in after all: `android.yml`'s `emulator-selftest` job runs
+the signal selftest on an api-30 AVD (details below), so the row is
+CI-gated like the rest. And note a green runner proves that runner's TLS
+stack, not a player's machine — the gates catch a broken bundle, not a
+broken device.
 
 Run the manual pass once per platform after any change to
 `net_ca_bundle.cpp`, `net_tls.cpp`, the patch, or a libdatachannel bump:
@@ -1526,7 +1525,9 @@ turns `index out of bounds` at some wasm offset into
 `launchPersistentContext(profileDir)` is what makes a returning player
 testable: IDBFS lives in IndexedDB, so a fresh `newPage` on the same
 profile is the same save, and deleting the profile dir is a fresh install
-(the check §7's default-ON flip needs).
+(how a driver would prove the replay default-ON flip reaches new installs
+— a fresh profile must record with no pref set; the flip itself lives in
+§5's `NEWTONIA_REPLAY_ENABLE` row and REPLAY.md's revised decision).
 
 ### Reading the game's files back out
 
