@@ -604,8 +604,11 @@ private:
   }
   // The rejoin door serves ONE open seat at a time: the lowest lost seat
   // whose session is gone (a lost peer with a session is a door adoption
-  // mid-handshake). Serialized on purpose — the relay offer is a single
-  // unaddressed slot, so two simultaneous rejoiners would scramble.
+  // mid-handshake). Serialized on purpose — THIS door still posts a single
+  // unaddressed offer (the last such consumer; the worker has taken
+  // addressed offers since B3 and the lobby already offers per-jid), so
+  // two simultaneous rejoiners would scramble. Parallel doors = the
+  // addressed-offer port FOURPLAYER.md O4 defers until queueing bites.
   NetPeer *net_door_peer() const {
     NetPeer *door = nullptr;
     for (NetPeer *p : net_peers_)

@@ -988,9 +988,10 @@ supported **addressed offers** (`{t:"offer", sdp, to}`, worker.js:1026)
 since B3, and the lobby's waiting room already mints one transport per
 joining jid and offers it addressed (net_lobby.cpp:1458). The in-game
 rejoin door is the last unaddressed consumer (glgame.cpp:3177), so
-parallel doors are a port of a proven pattern, not an invention — the
-"the relay offer is a single unaddressed slot" rationale in
-`net_door_peer`'s comment (glgame.h:566) is stale. Worth doing only if
+parallel doors are a port of a proven pattern, not an invention —
+`net_door_peer`'s comment now names the door's own single unaddressed
+offer as the constraint (it used to blame the relay, which stopped being
+true at B3; rewritten 2026-08-31). Worth doing only if
 queueing is ever observed to bite; the flap case above is the one with a
 field story.
 

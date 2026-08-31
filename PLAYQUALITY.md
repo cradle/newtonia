@@ -105,8 +105,9 @@ make the flip safe — see the traps below before touching either file.
       rides the same bridge machinery the identity tests proved.
       Testing the PGS paths needs a build whose cert the console knows:
       a local `-PdebugSign` build under a registered personal debug
-      keystore, an internal-track dispatch (real release key), or — once
-      the secret exists — the CI artifacts themselves (next section).
+      keystore, an internal-track dispatch (real release key), or the CI
+      artifacts themselves, now that the shared keystore is live (next
+      section).
 - [ ] On the first Play upload after the flip: confirm the Play Console
       shows deobfuscated crash traces / accepts the mapping (AGP embeds
       `BUNDLE-METADATA/…/proguard.map` in the AAB automatically).
@@ -131,8 +132,10 @@ file exists, so builds without the secret (fork PRs, fresh clones) fall
 back to the ordinary per-machine keystore — they build and boot fine,
 their certs just can't sign in to PGS.
 
-One-time setup (maintainer, locally — the key must never transit
-anything but the GitHub secret):
+One-time setup — DONE 2026-08-31 (maintainer, locally; the key never
+transited anything but the GitHub secret, and android.yml's 2026-08-30
+master run already logs `shared debug keystore decoded`). The commands
+stay as the rotation runbook:
 
     keytool -genkeypair -v -keystore debug.keystore -storepass android \
         -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 \
@@ -193,8 +196,7 @@ the April requirement does not ask for it.
 
 | When | What |
 |------|------|
-| Done | This assessment; `PlayGamesIdentity` keep rule; the R8 flip + CI boot gate; device gate verified 2026-08-30; secret-held shared-keystore wiring |
-| Once (maintainer, local) | Mint the shared debug keystore, create the `DEBUG_KEYSTORE_BASE64` repo secret, register its SHA-1 (commands above) — until then CI artifacts carry throwaway certs |
+| Done | This assessment; `PlayGamesIdentity` keep rule; the R8 flip + CI boot gate; device gate verified 2026-08-30; secret-held shared-keystore wiring; keystore minted, `DEBUG_KEYSTORE_BASE64` secret set and SHA-1 registered 2026-08-31 — CI artifacts now carry the PGS-registered cert |
 | Next deploy artifact | Read actual DEX size off the AAB; confirm "games, < 50 MB" exemption holds; confirm Play deobfuscates traces |
 | After next release, once Vitals ships the new metrics | Confirm memory/bitmap panels are green; then ignore unless alerted |
 | 2027, when Google's gaming-auth guidance lands | Re-check the sign-in exemption still covers PGS-only games |
