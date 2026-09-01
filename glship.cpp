@@ -203,7 +203,43 @@ void GLShip::collide(GLShip* first, GLShip* second) {
   Ship::collide(first->ship, second->ship);
 }
 
+// Speed-follow zoom tuning. The widen is multiplicative on the base zoom
+// pref: at SPEED_ZOOM_REF u/ms (about two thirds of the plain-thrust
+// terminal speed — thrust_force/mass over friction = 0.667; boost's kick
+// saturates it instantly) a MAX-amount pref sees SPEED_ZOOM_SPAN more
+// span. Eased with a fixed time constant — speed itself moves smoothly,
+// but a boost is an instantaneous velocity kick and an un-eased FOV step
+// reads as a glitch, not a dash.
+static const float SPEED_ZOOM_SPAN = 0.35f;
+static const float SPEED_ZOOM_REF  = 0.45f;
+static const float ZOOM_EASE_MS    = 250.0f;
+
+float GLShip::view_angle() const {
+  if (view_zoom == 1.0f) return camera_angle;
+  float t = tanf(camera_angle * (float)M_PI / 360.0f) * view_zoom;
+  return atanf(t) * 360.0f / (float)M_PI;
+}
+
 void GLShip::smooth_camera(int frame_delta) {
+  // Zoom first: ease view_zoom toward base pref x speed-follow on the same
+  // SIMULATED clock as the rotation smoothing below (GLGame::draw banks it
+  // in tick() — a wall clock here is exactly the bug the video renderer
+  // and the time-scale keys already forced out of this path). Runs even
+  // with rotation smoothing OFF: that pref is about the camera chasing the
+  // heading, not about zoom.
+  {
+    float base = zoom_base_pref_ ? *zoom_base_pref_ : 1.0f;
+    float follow = speed_zoom_pref_ ? *speed_zoom_pref_ : 0.0f;
+    float zoom_target = base;
+    if (follow > 0.0f && ship->is_alive()) {
+      float speed_t = ship->velocity.magnitude() / SPEED_ZOOM_REF;
+      if (speed_t > 1.0f) speed_t = 1.0f;
+      zoom_target *= 1.0f + follow * SPEED_ZOOM_SPAN * speed_t;
+    }
+    view_zoom += (zoom_target - view_zoom) *
+                 (1.0f - expf(-frame_delta / ZOOM_EASE_MS));
+  }
+
   float target = ship->heading();
   if (camera_smoothing == 0.0f) {
     camera_rotation = target;

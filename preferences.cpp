@@ -260,6 +260,12 @@ static void parse_line(const char *key, const char *val) {
             if (v >= 0.0f && v <= 0.1f) pk->camera_smoothing = v;
         } else if (strcmp(a, "rotate_view") == 0) {
             pk->rotate_view = (val[0] == '1');
+        } else if (strcmp(a, "camera_zoom") == 0) {
+            float v = (float)atof(val);
+            if (v >= 0.5f && v <= 2.0f) pk->camera_zoom = v;
+        } else if (strcmp(a, "speed_zoom") == 0) {
+            float v = (float)atof(val);
+            if (v >= 0.0f && v <= 1.0f) pk->speed_zoom = v;
         }
 
     // General keybinds
@@ -371,6 +377,8 @@ void save_preferences() {
         fprintf(f, "p%d_keyboard_sensitivity=%.2f\n", p, pk.keyboard_sensitivity);
         fprintf(f, "p%d_camera_smoothing=%.4f\n",     p, pk.camera_smoothing);
         fprintf(f, "p%d_rotate_view=%d\n",            p, pk.rotate_view ? 1 : 0);
+        fprintf(f, "p%d_camera_zoom=%.2f\n",          p, pk.camera_zoom);
+        fprintf(f, "p%d_speed_zoom=%.2f\n",           p, pk.speed_zoom);
     }
 
     // General keybinds

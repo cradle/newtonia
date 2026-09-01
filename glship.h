@@ -58,6 +58,15 @@ public:
   void set_keymap_slot(int slot) { keymap_slot_ = slot; }
   void set_keyboard_sensitivity(float s) { keyboard_sensitivity = s; }
   void set_camera_smoothing(float s)     { camera_smoothing = s; }
+  // Per-player zoom prefs (Options CAMERA sub-menu), by pointer like the
+  // rotate pref so menu changes apply to a live game. NULL (the netplay
+  // ghost, replay join ghosts, intro display hulls) means the classic view:
+  // base 1.0, no speed-follow. The smoothed result is folded into
+  // view_angle() by smooth_camera.
+  void set_zoom_prefs(const float *base, const float *follow) {
+    zoom_base_pref_ = base;
+    speed_zoom_pref_ = follow;
+  }
   // Per-player camera fixed/rotate: adopt the owning player's pref as the
   // initial state and remember where to persist an in-game toggle (the V
   // key / left-stick click). NULL for the remote ghost ship (no local input).
@@ -90,9 +99,17 @@ public:
   //TODO: Clearly there is a Player/View/Controller separation here
   bool rotate_view() const;
   float camera_facing() const;
+  // The camera's effective vertical FOV in degrees: camera_angle with the
+  // eased zoom scale folded in (tan-space, so the scale is a straight
+  // multiplier on the visible span). Every consumer of the visible
+  // rectangle — projection, cull, audio plateau, edge indicators — reads
+  // this; the one deliberate exception is quantum observation, pinned to
+  // the classic view in GLGame::is_point_faced_by_any_player.
   float view_angle() const;
-  // Screenshot harness framing (`zoom`): vertical FOV in degrees (default
-  // 85 — smaller is closer). Nothing in gameplay changes it.
+  // Screenshot harness framing (`zoom`): base vertical FOV in degrees
+  // (default 85 — smaller is closer). Gameplay never changes it; the
+  // player zoom prefs scale OVER it (view_zoom stays 1.0 in the sandboxed
+  // harness, so shot scripts frame exactly as before).
   void set_view_angle(float degrees) { camera_angle = degrees; }
   void snap_camera_to_heading();
   void smooth_camera(int frame_delta);
@@ -162,6 +179,12 @@ protected:
   bool *rotate_view_pref_ = nullptr;  // per-player pref to persist on toggle
   float camera_rotation;
   float camera_angle;
+  // Zoom prefs (see set_zoom_prefs) and the eased current zoom scale.
+  // view_zoom chases base * speed-follow in smooth_camera on the same
+  // simulated clock as the rotation smoothing; 1.0 = the classic view.
+  const float *zoom_base_pref_ = nullptr;
+  const float *speed_zoom_pref_ = nullptr;
+  float view_zoom = 1.0f;
 
   std::list<GLTrail*> trails;
 };
@@ -186,9 +209,5 @@ float GLShip::explode_temperature() const {
 inline
 bool GLShip::rotate_view() const {
   return rotating_view;
-}
-inline
-float GLShip::view_angle() const {
-  return camera_angle;
 }
 #endif

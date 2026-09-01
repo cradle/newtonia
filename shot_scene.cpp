@@ -508,6 +508,10 @@ State *ShotScene::build_state() {
     }
     gs->set_camera_smoothing(0);
     gs->set_rotate_view_pref(&s_cam_rotate);
+    // The zoom prefs are neutralized like smoothing above: a maintainer's
+    // INI zoom (or speed-follow) must never leak into a committed render —
+    // scenes frame with the `zoom` command's explicit FOV below.
+    gs->set_zoom_prefs(NULL, NULL);
     if (s_scene.zoom > 0) gs->set_view_angle(s_scene.zoom);
   }
 

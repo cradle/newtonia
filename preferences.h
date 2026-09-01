@@ -75,6 +75,16 @@ struct PlayerKeys {
     float keyboard_sensitivity = 1.0f;  // rotation speed multiplier
     float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
     bool  rotate_view          = true;  // camera follows this ship's heading
+    // Camera zoom (the Options CAMERA sub-menu): visible-span scale in
+    // tan-space over the classic 85-degree view — 1.0 IS that view, <1
+    // sits closer, >1 sees more (Options steps 0.8..1.2). Cosmetic only:
+    // quantum observation stays pinned to the classic view for everyone
+    // (GLGame::is_point_faced_by_any_player).
+    float camera_zoom          = 1.0f;
+    // Speed-follow zoom amount, 0 (off, the shipped behaviour) .. 1: the
+    // view widens with the ship's speed on top of camera_zoom, eased on
+    // the sim clock (GLShip::smooth_camera).
+    float speed_zoom           = 0.0f;
 };
 
 struct GeneralKeys {

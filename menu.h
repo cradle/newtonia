@@ -116,6 +116,10 @@ private:
   // Opened from the options list's AUDIO row; back returns to options.
   void open_audio();
   void close_audio();
+  // CAMERA sub-screen (per-player smoothing/rotation/zoom rows, same
+  // machinery). Opened from the options list's CAMERA row.
+  void open_camera();
+  void close_camera();
   void adjust_active_row(int delta, bool wrap = false);
 
   int currentTime;
@@ -174,7 +178,10 @@ private:
   int  leaderboard_index_    = 1;       // 0=OFF, 1=ON (Preferences::leaderboard_prompts)
   int  master_volume_index_  = 4;       // index into VOLUME_VALUES (4=FULL)
   int  music_volume_index_   = 4;       // index into VOLUME_VALUES (4=FULL)
+  int  zoom_index_[MAX_PLAYERS]        = {2, 2, 2, 2};  // per-player index into ZOOM_VALUES (2=NORMAL=1.0)
+  int  speed_zoom_index_[MAX_PLAYERS]  = {0, 0, 0, 0};  // per-player index into SPEED_ZOOM_VALUES (0=OFF)
   bool audio_mode_ = false;             // AUDIO sub-screen up (options_mode_ stays true under it)
+  bool camera_mode_ = false;            // CAMERA sub-screen up (same nesting)
   int  active_row_ = 0;                 // index into the current row list (options or audio)
   WrappedPoint viewpoint;
   GLStarfield *starfield;

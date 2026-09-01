@@ -169,6 +169,7 @@ static void set_player_keys(GLShip *gs, int player_index,
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
   gs->set_rotate_view_pref(&k.rotate_view);
+  gs->set_zoom_prefs(&k.camera_zoom, &k.speed_zoom);
 }
 
 const int GLGame::default_world_width = 2500;
@@ -11108,8 +11109,16 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
     //   side = component along the right perpendicular of facing
     float fwd  = dx * s->facing.x() + dy * s->facing.y();
     float side = dx * s->facing.y() - dy * s->facing.x();
-    // Viewport rectangle in world units (camera at z=1000, FOV-derived)
-    float fov_deg = glship->view_angle();
+    // Viewport rectangle in world units (camera at z=1000, FOV-derived).
+    // PINNED at the classic default FOV, deliberately NOT view_angle()
+    // (decided 2026-09-01): quantum observation is simulation, and it must
+    // be the same fact for every perspective — a cosmetic zoom pref (or
+    // the speed-follow widen) must not change which rocks are collapsed,
+    // offline, host-side, or in the client's between-snapshot mirror.
+    // Every other rectangle consumer (cull, audio plateau, edge
+    // indicators, the enemy-audio visibility gate) follows the live
+    // view_angle() on purpose: what you can see, you can hear.
+    const float fov_deg = 85.0f;
     float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
     float aspect = (window.x() / (float)num_x_viewports()) /
                    (window.y() / (float)num_y_viewports());

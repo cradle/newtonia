@@ -58,6 +58,22 @@ static const int NUM_VOLUME = 5;
 static const char* CAMERA_LABELS[] = {"FIXED", "ROTATE"};
 static const int NUM_CAMERA = 2;
 
+// The CAMERA sub-menu's zoom rows. camera_zoom scales the visible span in
+// tan-space over the classic 85-degree view (NORMAL is exactly that view);
+// the range is deliberately modest — WIDEST already spans past the gen-0
+// wrap on wide monitors, and quantum observation stays pinned to the
+// classic view either way (GLGame::is_point_faced_by_any_player).
+static const float ZOOM_VALUES[] = {0.8f, 0.9f, 1.0f, 1.1f, 1.2f};
+static const char* ZOOM_LABELS[] = {"CLOSEST", "CLOSE", "NORMAL", "WIDE", "WIDEST"};
+static const int NUM_ZOOM = 5;
+
+// Speed-follow zoom (PlayerKeys::speed_zoom): the view widens with the
+// ship's speed on top of the zoom row, eased on the sim clock
+// (GLShip::smooth_camera). OFF is the shipped behaviour.
+static const float SPEED_ZOOM_VALUES[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+static const char* SPEED_ZOOM_LABELS[] = {"OFF", "SUBTLE", "NORMAL", "HIGH", "MAX"};
+static const int NUM_SPEED_ZOOM = 5;
+
 // Auto-record replays (REPLAY.md): 0 = OFF, 1 = ON. Default is now ON for
 // fresh installs (the low-end field pass cleared the recorder on real
 // hardware, 2026-07-28), so this row is mostly an opt-OUT — and the reason
@@ -75,19 +91,24 @@ static const char* LEADERBOARD_LABELS[] = {"AUTO", "ASK"};
 static const int NUM_LEADERBOARD = 2;
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
-// 2=camera, 3=star density, 4=auto-record replays, 5=leaderboard prompts,
-// 6=master volume, 7=music volume (the two AUDIO sub-menu rows), 8=the
-// AUDIO row itself — a sub-menu OPENER, the options list's first: it
-// cycles nothing, draws no steps, and confirm/tap/left/right all open the
-// audio screen. P2 rows are desktop-only — mobile (touch) shows Player 1
-// plus the shared options. Options is desktop/controller-only today (see
-// Menu::show_options_row), so the touch list is future-proofing.
+// 2=camera fixed/rotate, 3=star density, 4=auto-record replays,
+// 5=leaderboard prompts, 6=master volume, 7=music volume (the two AUDIO
+// sub-menu rows), 8=the AUDIO row itself — a sub-menu OPENER: it cycles
+// nothing, draws no steps, and confirm/tap/left/right all open the audio
+// screen; 9=the CAMERA row, the second opener (its sub-screen holds the
+// per-player smoothing/rotation/zoom rows — four rows per player would
+// blow the flat list's budget, the same reason AUDIO went a level down);
+// 10=zoom, 11=speed-follow zoom (CAMERA sub-menu rows). P2 rows are
+// desktop-only — mobile (touch) shows Player 1 plus the shared options.
+// Options is desktop/controller-only today (see Menu::show_options_row),
+// so the touch list is future-proofing.
 namespace { struct OptRow { int kind; int player; const char *name; }; }
 static const OptRow OPT_ROWS_DESKTOP[] = {
-  {0, 0, "P1  SENSITIVITY"}, {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  CAMERA"},
-  {0, 1, "P2  SENSITIVITY"}, {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  CAMERA"},
-  {0, 2, "P3  SENSITIVITY"}, {1, 2, "P3  SMOOTHING"}, {2, 2, "P3  CAMERA"},
-  {0, 3, "P4  SENSITIVITY"}, {1, 3, "P4  SMOOTHING"}, {2, 3, "P4  CAMERA"},
+  {0, 0, "P1  SENSITIVITY"},
+  {0, 1, "P2  SENSITIVITY"},
+  {0, 2, "P3  SENSITIVITY"},
+  {0, 3, "P4  SENSITIVITY"},
+  {9, 0, "CAMERA"},
   {3, 0, "STAR  DENSITY"},
   {8, 0, "AUDIO"},
   {4, 0, "RECORD  REPLAYS"},
@@ -96,12 +117,38 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
-  {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
+  {0, 0, "SENSITIVITY"},
+  {9, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {8, 0, "AUDIO"},
   {4, 0, "RECORD REPLAYS"},
   {5, 0, "LEADERBOARD UPLOAD"},  // LAST — see the desktop table
 };
+// The CAMERA sub-screen's rows: everything about what the camera shows,
+// per player — follow smoothing, fixed/rotate (named ROTATION here; under
+// a CAMERA heading a row also called CAMERA read as a stutter), base zoom
+// and the speed-follow zoom amount. 16 desktop rows — the flat list's
+// proven budget (the pre-sub-menu options list held exactly 16).
+static const OptRow OPT_ROWS_CAMERA_DESKTOP[] = {
+  {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  ROTATION"}, {10, 0, "P1  ZOOM"}, {11, 0, "P1  SPEED  ZOOM"},
+  {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  ROTATION"}, {10, 1, "P2  ZOOM"}, {11, 1, "P2  SPEED  ZOOM"},
+  {1, 2, "P3  SMOOTHING"}, {2, 2, "P3  ROTATION"}, {10, 2, "P3  ZOOM"}, {11, 2, "P3  SPEED  ZOOM"},
+  {1, 3, "P4  SMOOTHING"}, {2, 3, "P4  ROTATION"}, {10, 3, "P4  ZOOM"}, {11, 3, "P4  SPEED  ZOOM"},
+};
+static const OptRow OPT_ROWS_CAMERA_TOUCH[] = {
+  {1, 0, "SMOOTHING"},
+  {2, 0, "ROTATION"},
+  {10, 0, "ZOOM"},
+  {11, 0, "SPEED ZOOM"},
+};
+static int camera_row_count() {
+  return is_touch_mode()
+             ? (int)(sizeof(OPT_ROWS_CAMERA_TOUCH) / sizeof(OPT_ROWS_CAMERA_TOUCH[0]))
+             : (int)(sizeof(OPT_ROWS_CAMERA_DESKTOP) / sizeof(OPT_ROWS_CAMERA_DESKTOP[0]));
+}
+static const OptRow &camera_row(int r) {
+  return is_touch_mode() ? OPT_ROWS_CAMERA_TOUCH[r] : OPT_ROWS_CAMERA_DESKTOP[r];
+}
 // The AUDIO sub-screen's rows, drawn by the same row loop the options list
 // uses (same columns, same band geometry — a sub-screen that hand-rolled
 // its own layout is exactly the drift menu_select.h exists to prevent).
@@ -321,6 +368,18 @@ static int volume_index_for(float value) {
   return best;
 }
 
+// Nearest step to a stored pref value (hand-edited INIs land on the
+// closest row step) — the zoom tables' twin of the *_index_for family.
+static int nearest_value_index(float value, const float *values, int n) {
+  int best = 0;
+  float best_dist = 1e6f;
+  for (int i = 0; i < n; i++) {
+    float d = value > values[i] ? value - values[i] : values[i] - value;
+    if (d < best_dist) { best_dist = d; best = i; }
+  }
+  return best;
+}
+
 const int Menu::default_world_width = 5000;
 const int Menu::default_world_height = 5000;
 
@@ -338,6 +397,10 @@ Menu::Menu() :
     sensitivity_index_[i] = sensitivity_index_for(g_prefs.player_keys[i].keyboard_sensitivity);
     smoothing_index_[i]   = smoothing_index_for(g_prefs.player_keys[i].camera_smoothing);
     camera_index_[i]      = g_prefs.player_keys[i].rotate_view ? 1 : 0;
+    zoom_index_[i]        = nearest_value_index(g_prefs.player_keys[i].camera_zoom,
+                                                ZOOM_VALUES, NUM_ZOOM);
+    speed_zoom_index_[i]  = nearest_value_index(g_prefs.player_keys[i].speed_zoom,
+                                                SPEED_ZOOM_VALUES, NUM_SPEED_ZOOM);
   }
   star_density_index_   = star_density_index_for(g_prefs.star_density);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
@@ -744,13 +807,16 @@ void Menu::draw() {
         currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
-    // The AUDIO sub-screen is the same row machinery over its own table —
-    // same columns, same band, same tap zones; only the heading, the row
-    // source and where BACK leads differ.
+    // The AUDIO and CAMERA sub-screens are the same row machinery over
+    // their own tables — same columns, same band, same tap zones; only the
+    // heading, the row source and where BACK leads differ.
     Typer::draw_centered(0, menu_screen_heading_y(),
-                         audio_mode_ ? "AUDIO" : "OPTIONS", touch ? 30 : 26);
+                         audio_mode_ ? "AUDIO"
+                                     : camera_mode_ ? "CAMERA" : "OPTIONS",
+                         touch ? 30 : 26);
 
-    int n = audio_mode_ ? audio_row_count() : opt_row_count();
+    int n = audio_mode_ ? audio_row_count()
+          : camera_mode_ ? camera_row_count() : opt_row_count();
     // Desktop: one line per option, using the horizontal room — name on the
     // left, numbered choices in the middle, value description on the right.
     // Touch: one big tappable row per option, name left / value right (tap
@@ -782,11 +848,12 @@ void Menu::draw() {
               VALUE_X = 265, CURSOR_R = 457;
 
     for (int row = 0; row < n; row++) {
-      const OptRow &r = audio_mode_ ? audio_row(row) : opt_row(row);
+      const OptRow &r = audio_mode_ ? audio_row(row)
+                      : camera_mode_ ? camera_row(row) : opt_row(row);
 
       int num_steps, cur_idx;
       int rec_override = -1;  // >=0 on the RECORD REPLAYS row when forced
-      bool opener = false;    // the AUDIO row: no steps, no value — it opens
+      bool opener = false;    // the AUDIO/CAMERA rows: no steps, no value — they open
       const char* const *lbl;
       switch (r.kind) {
         case 0: num_steps = NUM_SENSITIVITY;  cur_idx = sensitivity_index_[r.player]; lbl = SENSITIVITY_LABELS;   break;
@@ -796,7 +863,9 @@ void Menu::draw() {
         case 5: num_steps = NUM_LEADERBOARD;  cur_idx = leaderboard_index_;           lbl = LEADERBOARD_LABELS;   break;
         case 6: num_steps = NUM_VOLUME;       cur_idx = master_volume_index_;         lbl = VOLUME_LABELS;        break;
         case 7: num_steps = NUM_VOLUME;       cur_idx = music_volume_index_;          lbl = VOLUME_LABELS;        break;
-        case 8: num_steps = 0; cur_idx = 0; lbl = NULL; opener = true; break;
+        case 8: case 9: num_steps = 0; cur_idx = 0; lbl = NULL; opener = true; break;
+        case 10: num_steps = NUM_ZOOM;        cur_idx = zoom_index_[r.player];        lbl = ZOOM_LABELS;          break;
+        case 11: num_steps = NUM_SPEED_ZOOM;  cur_idx = speed_zoom_index_[r.player];  lbl = SPEED_ZOOM_LABELS;    break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -869,12 +938,11 @@ void Menu::draw() {
     // Tappable exit on both layouts — see the replays band note above.
     // Desktop: also the selectable row after the last option (index ==
     // the row count); confirm on it closes, confirm on an option row
-    // cycles that value (matching the touch tap). On the AUDIO sub-screen
-    // the band backs out ONE level, to options, and says so.
+    // cycles that value (matching the touch tap). On the AUDIO/CAMERA
+    // sub-screens the band backs out ONE level, to options, and says so.
     menu_exit_band().draw(
-        audio_mode_
-            ? Typer::cursored("BACK TO OPTIONS",
-                              touch || active_row_ == audio_row_count())
+        (audio_mode_ || camera_mode_)
+            ? Typer::cursored("BACK TO OPTIONS", touch || active_row_ == n)
                   .c_str()
             : touch ? Typer::cursored("EXIT TO MENU", true).c_str()
                     : Typer::cursored("BACK TO MENU",
@@ -1172,10 +1240,12 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     return;
   }
   if (options_mode_) {
-    // The AUDIO sub-screen shares this ladder over its own row count; the
-    // only structural difference is where back leads (one level up, to
-    // options) — adjust_active_row already reads the right table.
-    int rows = audio_mode_ ? audio_row_count() : opt_row_count();
+    // The AUDIO/CAMERA sub-screens share this ladder over their own row
+    // counts; the only structural difference is where back leads (one
+    // level up, to options) — adjust_active_row already reads the right
+    // table.
+    int rows = audio_mode_ ? audio_row_count()
+             : camera_mode_ ? camera_row_count() : opt_row_count();
     // One extra index past the rows: the BACK band (see draw).
     if (MenuSelect::move(key, active_row_, rows + 1)) {
       // moved
@@ -1185,6 +1255,7 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
       if (active_row_ < rows) adjust_active_row(1);
     } else if (MenuSelect::is_back(key)) {
       if (audio_mode_) close_audio();
+      else if (camera_mode_) close_camera();
       else close_options();
     } else if (confirm) {
       // Confirm on the band exits; on an option row it cycles the value
@@ -1193,6 +1264,7 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
       // useful on.
       if (active_row_ >= rows) {
         if (audio_mode_) close_audio();
+        else if (camera_mode_) close_camera();
         else close_options();
       } else {
         adjust_active_row(1, /*wrap=*/true);
@@ -1310,7 +1382,8 @@ extern void app_move_to_background();
 
 bool Menu::back_pressed() {
   if (options_mode_) {
-    if (audio_mode_) close_audio();  // one level: audio -> options
+    if (audio_mode_) close_audio();          // one level: audio -> options
+    else if (camera_mode_) close_camera();   // one level: camera -> options
     else close_options();            // persists and returns to the menu
     return true;
   }
@@ -1375,10 +1448,12 @@ void Menu::touch_tap(float nx, float ny) {
     // ~-285, band reach tops ~-370).
     if (menu_exit_hit().contains(nx, ny)) {
       if (audio_mode_) close_audio();
+      else if (camera_mode_) close_camera();
       else close_options();
       return;
     }
-    int rows = audio_mode_ ? audio_row_count() : opt_row_count();
+    int rows = audio_mode_ ? audio_row_count()
+             : camera_mode_ ? camera_row_count() : opt_row_count();
     int row = is_touch_mode()
                   ? touch_opt_row_at(ny, rows)
                   : opt_row_at(ny, rows, desk_opt_top(), desk_opt_bottom());
@@ -1583,6 +1658,21 @@ void Menu::close_audio() {
     if (opt_row(i).kind == 8) { active_row_ = i; break; }
   // The adjusted values are already live (adjust_active_row applies them);
   // persistence rides close_options with everything else.
+}
+
+void Menu::open_camera() {
+  camera_mode_ = true;
+  active_row_ = 0;
+}
+
+void Menu::close_camera() {
+  camera_mode_ = false;
+  // Same round-trip rule as close_audio: land on the CAMERA row.
+  active_row_ = 0;
+  for (int i = 0; i < opt_row_count(); i++)
+    if (opt_row(i).kind == 9) { active_row_ = i; break; }
+  // Persistence rides close_options; the zoom prefs are read by pointer
+  // (GLShip::set_zoom_prefs), so a live game follows close_options' write.
 }
 
 // Build the replays list from disk (REPLAY.md R3). A readable header makes
@@ -2156,7 +2246,9 @@ void Menu::board_poll() {
 }
 
 void Menu::adjust_active_row(int delta, bool wrap) {
-  const OptRow &r = audio_mode_ ? audio_row(active_row_) : opt_row(active_row_);
+  const OptRow &r = audio_mode_ ? audio_row(active_row_)
+                  : camera_mode_ ? camera_row(active_row_)
+                                 : opt_row(active_row_);
   int *idx, num;
   switch (r.kind) {
     case 0: idx = &sensitivity_index_[r.player]; num = NUM_SENSITIVITY;  break;
@@ -2167,10 +2259,15 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 6: idx = &master_volume_index_;         num = NUM_VOLUME;       break;
     case 7: idx = &music_volume_index_;          num = NUM_VOLUME;       break;
     case 8:
-      // The AUDIO row has no value to cycle — every adjust gesture
+      // The opener rows have no value to cycle — every adjust gesture
       // (left/right, confirm, tap) opens the sub-screen instead.
       open_audio();
       return;
+    case 9:
+      open_camera();
+      return;
+    case 10: idx = &zoom_index_[r.player];       num = NUM_ZOOM;         break;
+    case 11: idx = &speed_zoom_index_[r.player]; num = NUM_SPEED_ZOOM;   break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2192,11 +2289,14 @@ void Menu::adjust_active_row(int delta, bool wrap) {
 }
 
 void Menu::close_options() {
-  audio_mode_ = false;  // safety: closing options closes its sub-screen too
+  audio_mode_ = false;   // safety: closing options closes its sub-screens too
+  camera_mode_ = false;
   for (int i = 0; i < MAX_PLAYERS; i++) {
     g_prefs.player_keys[i].keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[i]];
     g_prefs.player_keys[i].camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[i]];
     g_prefs.player_keys[i].rotate_view          = (camera_index_[i] == 1);
+    g_prefs.player_keys[i].camera_zoom          = ZOOM_VALUES[zoom_index_[i]];
+    g_prefs.player_keys[i].speed_zoom           = SPEED_ZOOM_VALUES[speed_zoom_index_[i]];
   }
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
