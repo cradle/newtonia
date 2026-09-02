@@ -71,7 +71,7 @@ static const int NUM_ZOOM = CAMERA_ZOOM_STEPS;
 
 // Speed-follow zoom (PlayerKeys::speed_zoom): the view widens with the
 // ship's speed on top of the zoom row, eased on the sim clock
-// (GLShip::smooth_camera). OFF is the shipped behaviour.
+// (GLShip::smooth_camera). SUBTLE is the default.
 static const float SPEED_ZOOM_VALUES[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
 static const char* SPEED_ZOOM_LABELS[] = {"OFF", "SUBTLE", "NORMAL", "HIGH", "MAX"};
 static const int NUM_SPEED_ZOOM = 5;

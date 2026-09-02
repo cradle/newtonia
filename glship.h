@@ -182,6 +182,7 @@ protected:
   // Default-constructed empty, so a ship that never gets set_keys (the
   // netplay ghost) matches no keyboard input at all.
   KeyBinding thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
+  KeyBinding zoom_in_key, zoom_out_key;  // step the ZOOM pref (step_zoom)
   float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
   float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
 

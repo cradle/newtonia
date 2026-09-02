@@ -179,7 +179,7 @@ private:
   int  master_volume_index_  = 4;       // index into VOLUME_VALUES (4=FULL)
   int  music_volume_index_   = 4;       // index into VOLUME_VALUES (4=FULL)
   int  zoom_index_[MAX_PLAYERS]        = {2, 2, 2, 2};  // per-player index into ZOOM_VALUES (2=NORMAL=1.0)
-  int  speed_zoom_index_[MAX_PLAYERS]  = {0, 0, 0, 0};  // per-player index into SPEED_ZOOM_VALUES (0=OFF)
+  int  speed_zoom_index_[MAX_PLAYERS]  = {1, 1, 1, 1};  // per-player index into SPEED_ZOOM_VALUES (1=SUBTLE=0.25)
   bool audio_mode_ = false;             // AUDIO sub-screen up (options_mode_ stays true under it)
   bool camera_mode_ = false;            // CAMERA sub-screen up (same nesting)
   int  active_row_ = 0;                 // index into the current row list (options or audio)

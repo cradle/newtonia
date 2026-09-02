@@ -72,6 +72,14 @@ struct PlayerKeys {
     KeyBinding teleport           = 't';
     KeyBinding help               = 129; // F1  (128 + GLUT_KEY_F1)
     KeyBinding toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
+    // Camera zoom step keys — the touch zoom zones' keyboard twin: one
+    // Options ZOOM step closer / wider per press (GLShip::step_zoom).
+    // P1's pair is the bracket pair, ] closer and [ wider (the size-step
+    // convention; the letters near WASD that are still free don't pair,
+    // and f/t are the fullscreen toggle and teleport). P2's ctor gives
+    // 9 / 8 — the number row's far end, above the I/O cluster.
+    KeyBinding zoom_in            = ']';
+    KeyBinding zoom_out           = '[';
     float keyboard_sensitivity = 1.0f;  // rotation speed multiplier
     float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
     bool  rotate_view          = true;  // camera follows this ship's heading
@@ -81,10 +89,12 @@ struct PlayerKeys {
     // quantum observation stays pinned to the classic view for everyone
     // (GLGame::is_point_faced_by_any_player).
     float camera_zoom          = 1.0f;
-    // Speed-follow zoom amount, 0 (off, the shipped behaviour) .. 1: the
-    // view widens with the ship's speed on top of camera_zoom, eased on
-    // the sim clock (GLShip::smooth_camera).
-    float speed_zoom           = 0.0f;
+    // Speed-follow zoom amount, 0 (off) .. 1: the view widens with the
+    // ship's speed on top of camera_zoom, eased on the sim clock
+    // (GLShip::smooth_camera). Default SUBTLE (0.25, the Options row's
+    // second step): a touch of lead room at speed, well under the point
+    // where the widen reads as the camera moving on its own.
+    float speed_zoom           = 0.25f;
 };
 
 // The Options ZOOM row's five steps, shared with the in-game touch zoom

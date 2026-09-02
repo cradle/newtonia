@@ -342,12 +342,14 @@ void GLShip::set_keys(const PlayerKeys &k) {
   help_key = k.help;
   next_secondary_key = k.next_secondary;
   toggle_rotate_view_key = k.toggle_rotate_view;
+  zoom_in_key = k.zoom_in;
+  zoom_out_key = k.zoom_out;
 }
 
 void GLShip::clear_keys() {
   left_key = right_key = shoot_key = thrust_key = teleport_key = reverse_key =
   mine_key = next_weapon_key = boost_key = help_key = next_secondary_key =
-  toggle_rotate_view_key = KeyBinding();
+  toggle_rotate_view_key = zoom_in_key = zoom_out_key = KeyBinding();
   keymap_slot_ = -1;
 }
 
@@ -748,6 +750,10 @@ void GLShip::input(unsigned char key, bool pressed) {
     if (rotate_view_pref_) *rotate_view_pref_ = rotating_view;
     else g_prefs.rotate_view = rotating_view;
     save_preferences();
+  } else if (zoom_in_key.matches(key) && pressed) {
+    step_zoom(-1);  // the touch zoom zones' keyboard twin
+  } else if (zoom_out_key.matches(key) && pressed) {
+    step_zoom(+1);
   }
 }
 
@@ -864,16 +870,18 @@ static std::string binding_label(const KeyBinding &b) {
 void GLShip::draw_keymap(float fit) const {
   // fit scales the whole card uniformly (Overlay::keymap computes it from
   // the viewport height): laid out for a full-height viewport, the card
-  // spans ~+485..-250 virtual units and clipped its top half off a 2x2
+  // spans ~+485..-310 virtual units and clipped its top half off a 2x2
   // grid cell (4P field bug — the quarter showed the list from MINE down).
+  // The keyboard list's two ZOOM rows grew it downward, not upward: the
+  // top stays at the classic +485 (any higher and the heading sits on the
+  // LEVEL text), and the bottom has the room.
   float size = 10 * fit;
-  int num_controls  = 10;
-  if(last_input_was_controller) {
-    num_controls++;
-  }
+  // Keyboard lists ZOOM IN / ZOOM OUT too (no pad button steps the zoom);
+  // the controller list swaps those two for its MOVE row.
+  int num_controls  = last_input_was_controller ? 11 : 12;
   float padding = 2.0f * fit;
   float char_height = 5.0f;
-  float y_offset = (last_input_was_controller ? 110.0f : 140.0f) * fit;
+  float y_offset = (last_input_was_controller ? 110.0f : 80.0f) * fit;
   Typer::draw_centered(0, (num_controls+1.5)/2.0f * (size + padding) * char_height + y_offset, "- PLAYER -", size+2);
   float offset = -160.0f * fit;
   int control_index = 0;
@@ -976,6 +984,14 @@ void GLShip::draw_keymap(float fit) const {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_LEFTSTICK);
   }
   control_index++;
+  if(!last_input_was_controller) {
+    Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ZOOM IN", size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(zoom_in_key).c_str(), size);
+    control_index++;
+    Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ZOOM OUT", size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(zoom_out_key).c_str(), size);
+    control_index++;
+  }
 
   int common_offset = control_index+1;
   const GeneralKeys &gk = g_prefs.general_keys;
