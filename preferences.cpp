@@ -37,7 +37,7 @@ Preferences::Preferences() {
     p2.teleport       = 'y';
     p2.help               = 136; // F8  (128 + GLUT_KEY_F8)
     p2.toggle_rotate_view = ';'; // right of L, within IJKL cluster
-    p2.zoom_in            = '9'; // the number row's far end, above I/O
+    p2.zoom_in            = '9'; // number row above I/O; higher digit zooms in
     p2.zoom_out           = '8';
     // Slots 2+ ship keyboard-inert (FOURPLAYER.md D3): the keyboard has no
     // room for two more clusters, so P3/P4 join by controller. Scalars keep

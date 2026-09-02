@@ -74,12 +74,13 @@ struct PlayerKeys {
     KeyBinding toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
     // Camera zoom step keys — the touch zoom zones' keyboard twin: one
     // Options ZOOM step closer / wider per press (GLShip::step_zoom).
-    // P1's pair is the bracket pair, ] closer and [ wider (the size-step
-    // convention; the letters near WASD that are still free don't pair,
-    // and f/t are the fullscreen toggle and teleport). P2's ctor gives
-    // 9 / 8 — the number row's far end, above the I/O cluster.
-    KeyBinding zoom_in            = ']';
-    KeyBinding zoom_out           = '[';
+    // Each player takes the number-row pair above their cluster — P1 1/2
+    // over Q/W, P2 8/9 over I/O (the ctor) — under ONE rule: the higher
+    // digit zooms IN. The letters still free near WASD (r, z) don't pair,
+    // f/t are the fullscreen toggle and teleport, and brackets sit on
+    // P2's side of the keyboard.
+    KeyBinding zoom_in            = '2';
+    KeyBinding zoom_out           = '1';
     float keyboard_sensitivity = 1.0f;  // rotation speed multiplier
     float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
     bool  rotate_view          = true;  // camera follows this ship's heading
