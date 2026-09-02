@@ -324,52 +324,10 @@ static int desktop_confirm_pick(float ny) {
   return y > boundary ? 0 : 1;
 }
 
-static int sensitivity_index_for(float value) {
-  int best = 2;
-  float best_dist = 1e6f;
-  for (int i = 0; i < NUM_SENSITIVITY; i++) {
-    float d = value > SENSITIVITY_VALUES[i] ? value - SENSITIVITY_VALUES[i]
-                                             : SENSITIVITY_VALUES[i] - value;
-    if (d < best_dist) { best_dist = d; best = i; }
-  }
-  return best;
-}
-
-static int star_density_index_for(float value) {
-  int best = NUM_STAR_DENSITY - 1;
-  float best_dist = 1e6f;
-  for (int i = 0; i < NUM_STAR_DENSITY; i++) {
-    float d = value > STAR_DENSITY_MULTIPLIERS[i] ? value - STAR_DENSITY_MULTIPLIERS[i]
-                                                   : STAR_DENSITY_MULTIPLIERS[i] - value;
-    if (d < best_dist) { best_dist = d; best = i; }
-  }
-  return best;
-}
-
-static int smoothing_index_for(float value) {
-  int best = 2;
-  float best_dist = 1e6f;
-  for (int i = 0; i < NUM_SMOOTHING; i++) {
-    float d = value > SMOOTHING_VALUES[i] ? value - SMOOTHING_VALUES[i]
-                                           : SMOOTHING_VALUES[i] - value;
-    if (d < best_dist) { best_dist = d; best = i; }
-  }
-  return best;
-}
-
-static int volume_index_for(float value) {
-  int best = NUM_VOLUME - 1;
-  float best_dist = 1e6f;
-  for (int i = 0; i < NUM_VOLUME; i++) {
-    float d = value > VOLUME_VALUES[i] ? value - VOLUME_VALUES[i]
-                                        : VOLUME_VALUES[i] - value;
-    if (d < best_dist) { best_dist = d; best = i; }
-  }
-  return best;
-}
-
-// Nearest step to a stored pref value (hand-edited INIs land on the
-// closest row step) — the zoom tables' twin of the *_index_for family.
+// Nearest step to a stored pref value, for every stepped row (hand-edited
+// INIs land on the closest step). One loop over the row's table — this
+// used to be a hand-rolled copy per table, five by the time the zoom rows
+// arrived, differing only in a fallback index no finite value ever reaches.
 static int nearest_value_index(float value, const float *values, int n) {
   int best = 0;
   float best_dist = 1e6f;
@@ -394,19 +352,22 @@ Menu::Menu() :
   // not the game's z=1000 — the star quads size themselves by camera distance.
   starfield(new GLStarfield(Point(default_world_width, default_world_height), star_density_scale(), 0.0f)) {
   for (int i = 0; i < MAX_PLAYERS; i++) {
-    sensitivity_index_[i] = sensitivity_index_for(g_prefs.player_keys[i].keyboard_sensitivity);
-    smoothing_index_[i]   = smoothing_index_for(g_prefs.player_keys[i].camera_smoothing);
+    sensitivity_index_[i] = nearest_value_index(g_prefs.player_keys[i].keyboard_sensitivity,
+                                                SENSITIVITY_VALUES, NUM_SENSITIVITY);
+    smoothing_index_[i]   = nearest_value_index(g_prefs.player_keys[i].camera_smoothing,
+                                                SMOOTHING_VALUES, NUM_SMOOTHING);
     camera_index_[i]      = g_prefs.player_keys[i].rotate_view ? 1 : 0;
     zoom_index_[i]        = nearest_value_index(g_prefs.player_keys[i].camera_zoom,
                                                 ZOOM_VALUES, NUM_ZOOM);
     speed_zoom_index_[i]  = nearest_value_index(g_prefs.player_keys[i].speed_zoom,
                                                 SPEED_ZOOM_VALUES, NUM_SPEED_ZOOM);
   }
-  star_density_index_   = star_density_index_for(g_prefs.star_density);
+  star_density_index_   = nearest_value_index(g_prefs.star_density,
+                                              STAR_DENSITY_MULTIPLIERS, NUM_STAR_DENSITY);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
-  master_volume_index_  = volume_index_for(g_prefs.master_volume);
-  music_volume_index_   = volume_index_for(g_prefs.music_volume);
+  master_volume_index_  = nearest_value_index(g_prefs.master_volume, VOLUME_VALUES, NUM_VOLUME);
+  music_volume_index_   = nearest_value_index(g_prefs.music_volume, VOLUME_VALUES, NUM_VOLUME);
   scan_replays();
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__

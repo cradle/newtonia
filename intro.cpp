@@ -210,7 +210,13 @@ void Intro::draw() {
   glViewport(0, 0, window.x(), window.y());
 
   Point focus_point = focus();
-  float proj[16]; mat4_perspective(proj, 85.0f, window.x() / (float)window.y(), 100.0f, 2000.0f);
+  // Player 1's live FOV (the zoom prefs fold into view_angle()), not a
+  // fixed 85: the frames on either side of this screen are drawn at the
+  // zoomed view, and a hardcoded default made the starfield jump ~20% on
+  // open and dismissal at CLOSEST/WIDEST. Full-window, so no split factor.
+  float fov_deg = game->players->empty() ? 85.0f
+                                         : game->players->front()->view_angle();
+  float proj[16]; mat4_perspective(proj, fov_deg, window.x() / (float)window.y(), 100.0f, 2000.0f);
   float view[16]; mat4_lookat(view, 0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
   float pv[16]; mat4_mul(pv, proj, view);
 

@@ -172,6 +172,19 @@ static void set_player_keys(GLShip *gs, int player_index,
   gs->set_zoom_prefs(&k.camera_zoom, &k.speed_zoom);
 }
 
+// A remote peer's hull carries no bindings, but it CAN become the camera:
+// spectating hands the view to the peer once the local pilot is out, and
+// the viewer keeps their own camera preference there (the rotate pref
+// already does, through the GLShip ctor's legacy-global seed). So every
+// ghost answers to THIS machine's primary pilot's zoom prefs — slot 0 on
+// host and client alike (the client's local seat is wired to slot 0 too).
+// Without this the handoff popped a CLOSEST view to NORMAL and dropped the
+// speed-follow, and the audio plateau shrank with it.
+static void set_viewer_zoom_prefs(GLShip *gs) {
+  PlayerKeys &k = g_prefs.player_keys[0];
+  gs->set_zoom_prefs(&k.camera_zoom, &k.speed_zoom);
+}
+
 const int GLGame::default_world_width = 2500;
 const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
@@ -597,6 +610,7 @@ GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
       gs->clear_keys();
       gs->set_controller(NULL);
       gs->ship->net_remote_gun = true;
+      set_viewer_zoom_prefs(gs);  // the spectate camera keeps OUR zoom
     }
     players->front()->ship->net_report_shots = true;
   }
@@ -1921,6 +1935,7 @@ void GLGame::add_remote_player(uint8_t seat) {
   if((int)players->size() >= net_seat_cap()) return;
   int wire_seat = seat ? (int)seat : (int)players->size() + 1;
   GLShip* object = make_seat_ship(grid, wire_seat - 1);
+  set_viewer_zoom_prefs(object);  // the spectate camera keeps OUR zoom
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
@@ -5956,6 +5971,7 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
       gs->ship->is_local_player = false;
       gs->clear_keys();
       gs->set_controller(NULL);
+      set_viewer_zoom_prefs(gs);  // the spectate camera keeps OUR zoom
     }
     set_player_keys(local, 0);
     if (controller) local->set_controller(controller);
@@ -11265,10 +11281,22 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // capture below: off-screen invisible asteroids must not cost a
   // full-viewport texture copy either.
   float cull_r = sqrtf(cull_r2);
+  // The z=0 passes below (lens masks, objects, front stars, front lensing)
+  // walk as many wrap copies as the plain radius needs — the rear-star
+  // walk's rule, extended: a fixed 3x3 left a strip un-drawn at the far
+  // screen edge whenever the view spans past one world, which the WIDEST
+  // zoom reaches at gen 0 on a 21:9 window (half-width ~2565 vs a 2500
+  // world; 32:9 got there at NORMAL) with the ship hugging a wrap boundary.
+  // The per-tile cull keeps the extra candidates cheap, and the span is 1
+  // again as soon as the world outgrows the view.
+  int span_x = (int)ceilf(cull_r / world.x());
+  int span_y = (int)ceilf(cull_r / world.y());
+  if (span_x < 1) span_x = 1;
+  if (span_y < 1) span_y = 1;
   bool lens_on_screen = false;
   Uint32 lens_t0 = SDL_GetTicks();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();
@@ -11303,8 +11331,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // Game objects: drawn directly each tile (no display list) so draw_batch
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
   pc0 = SDL_GetPerformanceCounter();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       // Nearest distance from camera to tile rect (objects span [0,world) per tile)
       float tmin_x = world.x()*x - position.x();
       float tmax_x = tmin_x + world.x();
@@ -11326,8 +11354,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
   }
   perf_objs_pc_ += SDL_GetPerformanceCounter() - pc0;
   pc0 = SDL_GetPerformanceCounter();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();
@@ -11347,8 +11375,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
   // --- Front star lensing (same void + shift, applied after front stars) ---
   lens_t0 = SDL_GetTicks();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();

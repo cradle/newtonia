@@ -325,6 +325,14 @@ State *VideoCapture::build_state() {
   }
   g->shot_hide_hud_ = !s_hud;
   g->replay_hide_chrome_ = !s_chrome;
+  // Framing must not depend on the rendering machine's INI: the replay ctor
+  // wires every ghost to this machine's zoom prefs — right for a replay
+  // WATCHED in-game, where the viewer keeps their own camera, but a render
+  // is not a viewer, and a p1_camera_zoom=0.80 INI framed the same replay
+  // 20% closer (pumping with speed under speed-follow) than another box.
+  // Pin the classic view, as ShotScene does. (Rotate and smoothing keep
+  // following the INI as they always have.)
+  for (GLShip *gs : *g->players) gs->set_zoom_prefs(NULL, NULL);
   s_game = g;
   return g;
 }

@@ -59,13 +59,21 @@ public:
   void set_keyboard_sensitivity(float s) { keyboard_sensitivity = s; }
   void set_camera_smoothing(float s)     { camera_smoothing = s; }
   // Per-player zoom prefs (Options CAMERA sub-menu), by pointer like the
-  // rotate pref so menu changes apply to a live game. NULL (the netplay
-  // ghost, replay join ghosts, intro display hulls) means the classic view:
-  // base 1.0, no speed-follow. The smoothed result is folded into
+  // rotate pref so menu changes apply to a live game. NULL (replay join
+  // ghosts, intro display hulls, shot-harness and video-render ships)
+  // means the classic view: base 1.0, no speed-follow. A netplay ghost
+  // takes the VIEWER's slot-0 prefs (GLGame's set_viewer_zoom_prefs) —
+  // spectating hands it the camera. The smoothed result is folded into
   // view_angle() by smooth_camera.
   void set_zoom_prefs(const float *base, const float *follow) {
     zoom_base_pref_ = base;
     speed_zoom_pref_ = follow;
+    // Snap to the base straight away — the rotation snap's twin: a game
+    // start or CONTINUE opens AT the stored zoom instead of gliding there
+    // from NORMAL over three time constants. The speed-follow part still
+    // eases in from here (the hull's speed isn't restored yet when the
+    // save ctor wires this).
+    view_zoom = base ? *base : 1.0f;
   }
   // Per-player camera fixed/rotate: adopt the owning player's pref as the
   // initial state and remember where to persist an in-game toggle (the V
