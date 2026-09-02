@@ -62,10 +62,12 @@ static const int NUM_CAMERA = 2;
 // tan-space over the classic 85-degree view (NORMAL is exactly that view);
 // the range is deliberately modest — WIDEST already spans past the gen-0
 // wrap on wide monitors, and quantum observation stays pinned to the
-// classic view either way (GLGame::is_point_faced_by_any_player).
-static const float ZOOM_VALUES[] = {0.8f, 0.9f, 1.0f, 1.1f, 1.2f};
-static const char* ZOOM_LABELS[] = {"CLOSEST", "CLOSE", "NORMAL", "WIDE", "WIDEST"};
-static const int NUM_ZOOM = 5;
+// classic view either way (GLGame::is_point_faced_by_any_player). The
+// table itself lives in preferences.h: the in-game touch zoom zones step
+// the same five values.
+static const float *const ZOOM_VALUES = CAMERA_ZOOM_VALUES;
+static const char *const *const ZOOM_LABELS = CAMERA_ZOOM_LABELS;
+static const int NUM_ZOOM = CAMERA_ZOOM_STEPS;
 
 // Speed-follow zoom (PlayerKeys::speed_zoom): the view widens with the
 // ship's speed on top of the zoom row, eased on the sim clock

@@ -45,6 +45,9 @@ public:
   // draw it too; no-op off Android/iOS. Needs a full-window ortho of
   // ±window extents to be current.
   static void touch_controls(const GLGame *glgame, const GLShip *glship);
+  // The in-game touch zoom zones (TouchZone::zoom_*): drawn wherever touch
+  // is the input, native OSD and web alike.
+  static void touch_zoom(const GLGame *glgame, const GLShip *glship);
 
 private:
   static void score(const GLGame *glgame, const GLShip *glship);

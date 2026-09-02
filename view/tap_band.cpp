@@ -41,6 +41,9 @@ TapBand TapBand::roster_action(int block, bool ban_half, bool split) {
 
 const TapBand TapBand::roster_anon(0.5f, -260, 13, 16.0f);
 
+const TouchZone TouchZone::zoom_in (0.88f, 0.40f, 1.0f, 0.50f);
+const TouchZone TouchZone::zoom_out(0.88f, 0.50f, 1.0f, 0.60f);
+
 TapBand TapBand::for_pointer() const {
   if (is_touch_mode()) return *this;
   // A mouse lands where it is pointed: no finger pad, and no edge run —

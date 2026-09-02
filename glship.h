@@ -65,7 +65,7 @@ public:
   // takes the VIEWER's slot-0 prefs (GLGame's set_viewer_zoom_prefs) —
   // spectating hands it the camera. The smoothed result is folded into
   // view_angle() by smooth_camera.
-  void set_zoom_prefs(const float *base, const float *follow) {
+  void set_zoom_prefs(float *base, const float *follow) {
     zoom_base_pref_ = base;
     speed_zoom_pref_ = follow;
     // Snap to the base straight away — the rotation snap's twin: a game
@@ -75,6 +75,20 @@ public:
     // save ctor wires this).
     view_zoom = base ? *base : 1.0f;
   }
+  // The in-game touch zoom zones (TouchZone::zoom_*): step the ZOOM pref
+  // one Options step closer (dir < 0) or wider (dir > 0), clamped at the
+  // ends and persisted like the rotate toggle; the eased view_zoom then
+  // glides to the new base, which is the feedback. False when nothing
+  // changed — no pref to step (ghosts, harness ships) or already at that
+  // end (the ring still flashes, so the tap reads as answered).
+  bool step_zoom(int dir);
+  // For the overlay: the pref's current Options step — the classic step
+  // with no pref, so a shot-harness ship still shows the zones a device
+  // has (its taps stay inert) — and the tapped zone's brief pressed-look
+  // flash (ms left, direction).
+  int zoom_step_index() const;
+  int zoom_flash_ms() const { return zoom_flash_ms_; }
+  int zoom_flash_dir() const { return zoom_flash_dir_; }
   // Per-player camera fixed/rotate: adopt the owning player's pref as the
   // initial state and remember where to persist an in-game toggle (the V
   // key / left-stick click). NULL for the remote ghost ship (no local input).
@@ -190,9 +204,11 @@ protected:
   // Zoom prefs (see set_zoom_prefs) and the eased current zoom scale.
   // view_zoom chases base * speed-follow in smooth_camera on the same
   // simulated clock as the rotation smoothing; 1.0 = the classic view.
-  const float *zoom_base_pref_ = nullptr;
+  float *zoom_base_pref_ = nullptr;         // writable: step_zoom persists through it
   const float *speed_zoom_pref_ = nullptr;
   float view_zoom = 1.0f;
+  int zoom_flash_ms_ = 0;   // touch zoom zone pressed-look, sim ms left
+  int zoom_flash_dir_ = 0;  // which zone: -1 "+", +1 "-"
 
   std::list<GLTrail*> trails;
 };

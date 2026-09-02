@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
+#include <cmath>
 #include <string>
 
 #ifdef __EMSCRIPTEN__
@@ -400,4 +401,18 @@ void save_preferences() {
 
     // Persist to IndexedDB so preferences survive a page refresh.
     web_fs_sync("preferences");
+}
+
+const float CAMERA_ZOOM_VALUES[CAMERA_ZOOM_STEPS] = {0.8f, 0.9f, 1.0f, 1.1f, 1.2f};
+const char *const CAMERA_ZOOM_LABELS[CAMERA_ZOOM_STEPS] = {
+    "CLOSEST", "CLOSE", "NORMAL", "WIDE", "WIDEST"};
+
+int camera_zoom_index(float value) {
+    int best = 2;
+    float best_d = 1e6f;
+    for (int i = 0; i < CAMERA_ZOOM_STEPS; i++) {
+        float d = fabsf(value - CAMERA_ZOOM_VALUES[i]);
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return best;
 }

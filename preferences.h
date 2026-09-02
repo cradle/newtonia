@@ -87,6 +87,15 @@ struct PlayerKeys {
     float speed_zoom           = 0.0f;
 };
 
+// The Options ZOOM row's five steps, shared with the in-game touch zoom
+// zones (GLShip::step_zoom) so a tap and the menu can never disagree about
+// what a step is. Index 2 (1.0) is the classic view.
+static const int CAMERA_ZOOM_STEPS = 5;
+extern const float CAMERA_ZOOM_VALUES[CAMERA_ZOOM_STEPS];
+extern const char *const CAMERA_ZOOM_LABELS[CAMERA_ZOOM_STEPS];
+// Nearest step to a stored camera_zoom (a hand-edited INI lands on one).
+int camera_zoom_index(float value);
+
 struct GeneralKeys {
     int pause                = 'p';
     int menu                 = 27;  // Escape

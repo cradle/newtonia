@@ -350,6 +350,10 @@ private:
   // (Overlay) and the badge rows' hoist decision (Overlay::net_badges) —
   // the unhoisted local row would print through the band's label.
   bool exit_band_showing() const;
+  // The in-game touch zoom zones (TouchZone::zoom_*) answer and draw only
+  // in live play on the local pilot's own camera — one rule for
+  // Overlay::touch_zoom and touch_tap (the TapBand rule, for the gate).
+  bool touch_zoom_active() const;
   // Co-op revive (revive_pickup.h): put a fully-out partner back on their
   // last life. Called from the pickup collection site and the
   // NEWTONIA_NET_TEST_REVIVE_MS e2e hook.

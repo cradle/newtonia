@@ -90,4 +90,34 @@ struct TapBand {
   static const TapBand roster_anon;
 };
 
+// TouchZone — a rectangular in-game tap zone in the normalized (0..1,
+// y-down) coordinates touch_tap receives. ONE definition feeds the draw
+// (Overlay::touch_zoom) and the hit-test (GLGame::touch_tap): the TapBand
+// rule for a zone that carries a glyph instead of a label.
+struct TouchZone {
+  float nx0, ny0, nx1, ny1;
+  constexpr TouchZone(float x0, float y0, float x1, float y1)
+      : nx0(x0), ny0(y0), nx1(x1), ny1(y1) {}
+  bool contains(float nx, float ny) const {
+    return nx >= nx0 && nx < nx1 && ny >= ny0 && ny < ny1;
+  }
+  float cx() const { return 0.5f * (nx0 + nx1); }
+  float cy() const { return 0.5f * (ny0 + ny1); }
+
+  // ---- In-game touch zoom zones ----
+  // "+" (closer) stacked above "-" (wider) on the right edge, each tap
+  // stepping the pilot's ZOOM pref one Options step (GLShip::step_zoom).
+  // The column sits in the hole every touch layout leaves: below the
+  // native pause circle's hit zone (bottom ~0.39h landscape, ~0.15h
+  // portrait) and the native right-half '\r' strip (y < 0.4); above the
+  // mine button's hit circle (top ~0.63h landscape, ~0.76h portrait);
+  // right of the boost circle (x <= ~0.87w) and the centre pause zone
+  // (x <= 0.62). On web the canvas fallback above the buttons (y < 0.65)
+  // is a dead zone and the HTML pause button ends at y 0.25. So a
+  // finger-down here synthesizes nothing on any platform, and the release
+  // reaches touch_tap — no entry-point changes, and the web build gets
+  // the zones without an HTML counterpart.
+  static const TouchZone zoom_in, zoom_out;
+};
+
 #endif

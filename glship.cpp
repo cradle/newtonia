@@ -213,6 +213,26 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 static const float SPEED_ZOOM_SPAN = 0.35f;
 static const float SPEED_ZOOM_REF  = 0.45f;
 static const float ZOOM_EASE_MS    = 250.0f;
+// How long a tapped touch zoom zone draws pressed (sim ms).
+static const int   ZOOM_FLASH_MS   = 220;
+
+int GLShip::zoom_step_index() const {
+  return camera_zoom_index(zoom_base_pref_ ? *zoom_base_pref_ : 1.0f);
+}
+
+bool GLShip::step_zoom(int dir) {
+  if (!zoom_base_pref_) return false;
+  zoom_flash_ms_ = ZOOM_FLASH_MS;
+  zoom_flash_dir_ = dir < 0 ? -1 : 1;
+  int idx = camera_zoom_index(*zoom_base_pref_);
+  int next = idx + zoom_flash_dir_;
+  if (next < 0) next = 0;
+  if (next >= CAMERA_ZOOM_STEPS) next = CAMERA_ZOOM_STEPS - 1;
+  if (next == idx) return false;
+  *zoom_base_pref_ = CAMERA_ZOOM_VALUES[next];
+  save_preferences();  // the rotate toggle's persistence path
+  return true;
+}
 
 float GLShip::view_angle() const {
   if (view_zoom == 1.0f) return camera_angle;
@@ -238,6 +258,10 @@ void GLShip::smooth_camera(int frame_delta) {
     }
     view_zoom += (zoom_target - view_zoom) *
                  (1.0f - expf(-frame_delta / ZOOM_EASE_MS));
+    if (zoom_flash_ms_ > 0) {
+      zoom_flash_ms_ -= frame_delta;
+      if (zoom_flash_ms_ < 0) zoom_flash_ms_ = 0;
+    }
   }
 
   float target = ship->heading();

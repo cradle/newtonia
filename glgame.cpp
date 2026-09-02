@@ -38,6 +38,7 @@
 #include "view/overlay.h"
 #include "typer.h"
 #include "touch_controls.h"
+#include "view/tap_band.h"
 #include "net_session.h"
 #include "net_board.h"
 #include "net_identity.h"
@@ -11896,6 +11897,17 @@ TapBand GLGame::exit_band() const {
   return TapBand(0.5f, vhb + 215, 13, 35.0f);
 }
 
+// Live play only: not paused, not on a GAME OVER / exit-band screen, not
+// spectating (the peer's camera keeps the viewer's zoom, but the OSD is
+// gone with the controls), never in a replay, never under the roster.
+bool GLGame::touch_zoom_active() const {
+  if (!is_touch_mode()) return false;
+  if (!running || net_mode_ == NetReplay) return false;
+  if (exit_band_showing() || is_spectating() || spectate_arming()) return false;
+  if (roster_open()) return false;
+  return local_player() != NULL;
+}
+
 bool GLGame::exit_band_showing() const {
   if (!is_touch_mode()) return false;
   if (net_mode_ == NetReplay) return false;  // replay chrome owns its bands
@@ -11988,6 +12000,20 @@ void GLGame::touch_tap(float nx, float ny) {
     roster_kick_armed_ = -1;
     roster_ban_ = false;
     return;
+  }
+  // In-game touch zoom zones: "+" above "-" on the right edge
+  // (TouchZone::zoom_*, the geometry Overlay::touch_zoom draws — the
+  // TapBand rule). touch_zoom_active is the shared gate, so a zone can't
+  // answer a tap it isn't showing.
+  if (touch_zoom_active()) {
+    if (TouchZone::zoom_in.contains(nx, ny)) {
+      local_player()->step_zoom(-1);
+      return;
+    }
+    if (TouchZone::zoom_out.contains(nx, ny)) {
+      local_player()->step_zoom(+1);
+      return;
+    }
   }
   // The bottom strip is the EXIT TO MENU band the overlay labels (the
   // shared TapBand). It exits to the menu from every state that has no
