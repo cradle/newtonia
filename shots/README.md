@@ -172,8 +172,12 @@ variant (same layout code the devices run; the desktop OSD guard is
 runtime now, see `touch_osd_enabled()`). `shots/mobile.sh` (Linux/WSL)
 and `shots/mobile.ps1` (Windows; needs a display at least as big as the
 shot) render the store screenshot scenes at Apple's required 6.9" iPhone
-(2868x1320) and 13" iPad (2752x2064) landscape sizes plus Play Store
-phone/tablet sizes into `shots/out/mobile/`. The split-screen co-op scene
+(2868x1320) and 13" iPad (2752x2064) landscape sizes, the optional 6.5"
+iPhone size in both orientations (`iphone65` 2688x1242 landscape,
+`iphone65p` 1242x2688 portrait — the scenes are composed for landscape,
+but the touch OSD and HUD re-lay themselves out and the narrow span
+renders honestly), plus Play Store phone/tablet sizes into
+`shots/out/mobile/`. The split-screen co-op scene
 is deliberately excluded — local split screen doesn't exist on the touch
 platforms. The iPhone's extra-wide aspect can show toroidal wrap twins of
 off-centre rocks in the small early-level worlds; if one bothers you,

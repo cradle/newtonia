@@ -10,8 +10,9 @@
 # full-screen view), so it would misrepresent the product.
 #
 # Sizes: Apple's required 6.9" iPhone (2868x1320) and 13" iPad
-# (2752x2064) landscape shots; Play Store phone (1920x1080) and tablet
-# (2560x1600).
+# (2752x2064) landscape shots, plus the optional 6.5" iPhone size in both
+# orientations (2688x1242 landscape, 1242x2688 portrait); Play Store
+# phone (1920x1080) and tablet (2560x1600).
 set -u
 cd "$(dirname "$0")/.."
 
@@ -19,7 +20,7 @@ BIN=./newtonia
 [ -x "$BIN" ] || { echo "mobile.sh: build ./newtonia first (make NETPLAY=0)"; exit 1; }
 command -v xvfb-run >/dev/null || { echo "mobile.sh: xvfb-run not found"; exit 1; }
 
-DEVICES="iphone69:2868x1320 ipad13:2752x2064 android:1920x1080 androidtab:2560x1600"
+DEVICES="iphone69:2868x1320 iphone65:2688x1242 iphone65p:1242x2688 ipad13:2752x2064 android:1920x1080 androidtab:2560x1600"
 SCENES=("$@")
 [ ${#SCENES[@]} -gt 0 ] || SCENES=(menu_mobile steam1_level1 steam3_level5 steam4_level14 steam5_level20)
 
@@ -38,7 +39,7 @@ for s in "${SCENES[@]}"; do
       NEWTONIA_SHOT="$OUT/${s}_${dev}.png" \
       NEWTONIA_SHOT_SCENE="$scene" \
       NEWTONIA_SHOT_SIZE="$size" \
-      timeout 180 xvfb-run -a -s "-screen 0 2900x2100x24" "$BIN" \
+      timeout 180 xvfb-run -a -s "-screen 0 2900x2800x24" "$BIN" \
       2>&1 | grep -E "^shot: (wrote|FAILED|player)" || fail=1
     png="$OUT/${s}_${dev}.png"
     if [ -f "$png" ] && command -v convert >/dev/null; then
