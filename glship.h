@@ -58,6 +58,37 @@ public:
   void set_keymap_slot(int slot) { keymap_slot_ = slot; }
   void set_keyboard_sensitivity(float s) { keyboard_sensitivity = s; }
   void set_camera_smoothing(float s)     { camera_smoothing = s; }
+  // Per-player zoom prefs (Options CAMERA sub-menu), by pointer like the
+  // rotate pref so menu changes apply to a live game. NULL (replay join
+  // ghosts, intro display hulls, shot-harness and video-render ships)
+  // means the classic view: base 1.0, no speed-follow. A netplay ghost
+  // takes the VIEWER's slot-0 prefs (GLGame's set_viewer_zoom_prefs) —
+  // spectating hands it the camera. The smoothed result is folded into
+  // view_angle() by smooth_camera.
+  void set_zoom_prefs(float *base, const float *follow) {
+    zoom_base_pref_ = base;
+    speed_zoom_pref_ = follow;
+    // Snap to the base straight away — the rotation snap's twin: a game
+    // start or CONTINUE opens AT the stored zoom instead of gliding there
+    // from NORMAL over three time constants. The speed-follow part still
+    // eases in from here (the hull's speed isn't restored yet when the
+    // save ctor wires this).
+    view_zoom = base ? *base : 1.0f;
+  }
+  // The in-game touch zoom zones (TouchZone::zoom_*): step the ZOOM pref
+  // one Options step closer (dir < 0) or wider (dir > 0), clamped at the
+  // ends and persisted like the rotate toggle; the eased view_zoom then
+  // glides to the new base, which is the feedback. False when nothing
+  // changed — no pref to step (ghosts, harness ships) or already at that
+  // end (the ring still flashes, so the tap reads as answered).
+  bool step_zoom(int dir);
+  // For the overlay: the pref's current Options step — the classic step
+  // with no pref, so a shot-harness ship still shows the zones a device
+  // has (its taps stay inert) — and the tapped zone's brief pressed-look
+  // flash (ms left, direction).
+  int zoom_step_index() const;
+  int zoom_flash_ms() const { return zoom_flash_ms_; }
+  int zoom_flash_dir() const { return zoom_flash_dir_; }
   // Per-player camera fixed/rotate: adopt the owning player's pref as the
   // initial state and remember where to persist an in-game toggle (the V
   // key / left-stick click). NULL for the remote ghost ship (no local input).
@@ -90,9 +121,17 @@ public:
   //TODO: Clearly there is a Player/View/Controller separation here
   bool rotate_view() const;
   float camera_facing() const;
+  // The camera's effective vertical FOV in degrees: camera_angle with the
+  // eased zoom scale folded in (tan-space, so the scale is a straight
+  // multiplier on the visible span). Every consumer of the visible
+  // rectangle — projection, cull, audio plateau, edge indicators — reads
+  // this; the one deliberate exception is quantum observation, pinned to
+  // the classic view in GLGame::is_point_faced_by_any_player.
   float view_angle() const;
-  // Screenshot harness framing (`zoom`): vertical FOV in degrees (default
-  // 85 — smaller is closer). Nothing in gameplay changes it.
+  // Screenshot harness framing (`zoom`): base vertical FOV in degrees
+  // (default 85 — smaller is closer). Gameplay never changes it; the
+  // player zoom prefs scale OVER it (view_zoom stays 1.0 in the sandboxed
+  // harness, so shot scripts frame exactly as before).
   void set_view_angle(float degrees) { camera_angle = degrees; }
   void snap_camera_to_heading();
   void smooth_camera(int frame_delta);
@@ -143,6 +182,7 @@ protected:
   // Default-constructed empty, so a ship that never gets set_keys (the
   // netplay ghost) matches no keyboard input at all.
   KeyBinding thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
+  KeyBinding zoom_in_key, zoom_out_key;  // step the ZOOM pref (step_zoom)
   float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
   float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
 
@@ -162,6 +202,14 @@ protected:
   bool *rotate_view_pref_ = nullptr;  // per-player pref to persist on toggle
   float camera_rotation;
   float camera_angle;
+  // Zoom prefs (see set_zoom_prefs) and the eased current zoom scale.
+  // view_zoom chases base * speed-follow in smooth_camera on the same
+  // simulated clock as the rotation smoothing; 1.0 = the classic view.
+  float *zoom_base_pref_ = nullptr;         // writable: step_zoom persists through it
+  const float *speed_zoom_pref_ = nullptr;
+  float view_zoom = 1.0f;
+  int zoom_flash_ms_ = 0;   // touch zoom zone pressed-look, sim ms left
+  int zoom_flash_dir_ = 0;  // which zone: -1 "+", +1 "-"
 
   std::list<GLTrail*> trails;
 };
@@ -186,9 +234,5 @@ float GLShip::explode_temperature() const {
 inline
 bool GLShip::rotate_view() const {
   return rotating_view;
-}
-inline
-float GLShip::view_angle() const {
-  return camera_angle;
 }
 #endif

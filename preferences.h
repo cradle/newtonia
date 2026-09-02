@@ -72,10 +72,40 @@ struct PlayerKeys {
     KeyBinding teleport           = 't';
     KeyBinding help               = 129; // F1  (128 + GLUT_KEY_F1)
     KeyBinding toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
+    // Camera zoom step keys — the touch zoom zones' keyboard twin: one
+    // Options ZOOM step closer / wider per press (GLShip::step_zoom).
+    // Each player takes the number-row pair above their cluster — P1 1/2
+    // over Q/W, P2 8/9 over I/O (the ctor) — under ONE rule: the higher
+    // digit zooms IN. The letters still free near WASD (r, z) don't pair,
+    // f/t are the fullscreen toggle and teleport, and brackets sit on
+    // P2's side of the keyboard.
+    KeyBinding zoom_in            = '2';
+    KeyBinding zoom_out           = '1';
     float keyboard_sensitivity = 1.0f;  // rotation speed multiplier
     float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
     bool  rotate_view          = true;  // camera follows this ship's heading
+    // Camera zoom (the Options CAMERA sub-menu): visible-span scale in
+    // tan-space over the classic 85-degree view — 1.0 IS that view, <1
+    // sits closer, >1 sees more (Options steps 0.8..1.2). Cosmetic only:
+    // quantum observation stays pinned to the classic view for everyone
+    // (GLGame::is_point_faced_by_any_player).
+    float camera_zoom          = 1.0f;
+    // Speed-follow zoom amount, 0 (off) .. 1: the view widens with the
+    // ship's speed on top of camera_zoom, eased on the sim clock
+    // (GLShip::smooth_camera). Default SUBTLE (0.25, the Options row's
+    // second step): a touch of lead room at speed, well under the point
+    // where the widen reads as the camera moving on its own.
+    float speed_zoom           = 0.25f;
 };
+
+// The Options ZOOM row's five steps, shared with the in-game touch zoom
+// zones (GLShip::step_zoom) so a tap and the menu can never disagree about
+// what a step is. Index 2 (1.0) is the classic view.
+static const int CAMERA_ZOOM_STEPS = 5;
+extern const float CAMERA_ZOOM_VALUES[CAMERA_ZOOM_STEPS];
+extern const char *const CAMERA_ZOOM_LABELS[CAMERA_ZOOM_STEPS];
+// Nearest step to a stored camera_zoom (a hand-edited INI lands on one).
+int camera_zoom_index(float value);
 
 struct GeneralKeys {
     int pause                = 'p';

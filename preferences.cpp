@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
+#include <cmath>
 #include <string>
 
 #ifdef __EMSCRIPTEN__
@@ -36,6 +37,8 @@ Preferences::Preferences() {
     p2.teleport       = 'y';
     p2.help               = 136; // F8  (128 + GLUT_KEY_F8)
     p2.toggle_rotate_view = ';'; // right of L, within IJKL cluster
+    p2.zoom_in            = '9'; // number row above I/O; higher digit zooms in
+    p2.zoom_out           = '8';
     // Slots 2+ ship keyboard-inert (FOURPLAYER.md D3): the keyboard has no
     // room for two more clusters, so P3/P4 join by controller. Scalars keep
     // the slot-0 defaults; p3_*/p4_* INI lines can still bind keys by hand.
@@ -44,6 +47,7 @@ Preferences::Preferences() {
         pk.left = pk.right = pk.thrust = pk.shoot = pk.reverse = pk.mine = 0;
         pk.next_weapon = pk.next_secondary = pk.boost = pk.teleport = 0;
         pk.help = pk.toggle_rotate_view = 0;
+        pk.zoom_in = pk.zoom_out = 0;
     }
 }
 
@@ -184,6 +188,8 @@ static KeyBinding *binding_for(const char *name) {
     if (strcmp(a, "teleport")           == 0) return &pk->teleport;
     if (strcmp(a, "help")               == 0) return &pk->help;
     if (strcmp(a, "toggle_rotate_view") == 0) return &pk->toggle_rotate_view;
+    if (strcmp(a, "zoom_in")            == 0) return &pk->zoom_in;
+    if (strcmp(a, "zoom_out")           == 0) return &pk->zoom_out;
     return NULL;
 }
 
@@ -260,6 +266,12 @@ static void parse_line(const char *key, const char *val) {
             if (v >= 0.0f && v <= 0.1f) pk->camera_smoothing = v;
         } else if (strcmp(a, "rotate_view") == 0) {
             pk->rotate_view = (val[0] == '1');
+        } else if (strcmp(a, "camera_zoom") == 0) {
+            float v = (float)atof(val);
+            if (v >= 0.5f && v <= 2.0f) pk->camera_zoom = v;
+        } else if (strcmp(a, "speed_zoom") == 0) {
+            float v = (float)atof(val);
+            if (v >= 0.0f && v <= 1.0f) pk->speed_zoom = v;
         }
 
     // General keybinds
@@ -368,9 +380,13 @@ void save_preferences() {
         WRITE_PLAYER_BINDING("teleport",       pk.teleport);
         WRITE_PLAYER_BINDING("help",               pk.help);
         WRITE_PLAYER_BINDING("toggle_rotate_view", pk.toggle_rotate_view);
+        WRITE_PLAYER_BINDING("zoom_in",            pk.zoom_in);
+        WRITE_PLAYER_BINDING("zoom_out",           pk.zoom_out);
         fprintf(f, "p%d_keyboard_sensitivity=%.2f\n", p, pk.keyboard_sensitivity);
         fprintf(f, "p%d_camera_smoothing=%.4f\n",     p, pk.camera_smoothing);
         fprintf(f, "p%d_rotate_view=%d\n",            p, pk.rotate_view ? 1 : 0);
+        fprintf(f, "p%d_camera_zoom=%.2f\n",          p, pk.camera_zoom);
+        fprintf(f, "p%d_speed_zoom=%.2f\n",           p, pk.speed_zoom);
     }
 
     // General keybinds
@@ -392,4 +408,18 @@ void save_preferences() {
 
     // Persist to IndexedDB so preferences survive a page refresh.
     web_fs_sync("preferences");
+}
+
+const float CAMERA_ZOOM_VALUES[CAMERA_ZOOM_STEPS] = {0.8f, 0.9f, 1.0f, 1.1f, 1.2f};
+const char *const CAMERA_ZOOM_LABELS[CAMERA_ZOOM_STEPS] = {
+    "CLOSEST", "CLOSE", "NORMAL", "WIDE", "WIDEST"};
+
+int camera_zoom_index(float value) {
+    int best = 2;
+    float best_d = 1e6f;
+    for (int i = 0; i < CAMERA_ZOOM_STEPS; i++) {
+        float d = fabsf(value - CAMERA_ZOOM_VALUES[i]);
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return best;
 }

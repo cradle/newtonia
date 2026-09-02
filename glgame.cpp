@@ -38,6 +38,7 @@
 #include "view/overlay.h"
 #include "typer.h"
 #include "touch_controls.h"
+#include "view/tap_band.h"
 #include "net_session.h"
 #include "net_board.h"
 #include "net_identity.h"
@@ -169,6 +170,20 @@ static void set_player_keys(GLShip *gs, int player_index,
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
   gs->set_rotate_view_pref(&k.rotate_view);
+  gs->set_zoom_prefs(&k.camera_zoom, &k.speed_zoom);
+}
+
+// A remote peer's hull carries no bindings, but it CAN become the camera:
+// spectating hands the view to the peer once the local pilot is out, and
+// the viewer keeps their own camera preference there (the rotate pref
+// already does, through the GLShip ctor's legacy-global seed). So every
+// ghost answers to THIS machine's primary pilot's zoom prefs — slot 0 on
+// host and client alike (the client's local seat is wired to slot 0 too).
+// Without this the handoff popped a CLOSEST view to NORMAL and dropped the
+// speed-follow, and the audio plateau shrank with it.
+static void set_viewer_zoom_prefs(GLShip *gs) {
+  PlayerKeys &k = g_prefs.player_keys[0];
+  gs->set_zoom_prefs(&k.camera_zoom, &k.speed_zoom);
 }
 
 const int GLGame::default_world_width = 2500;
@@ -596,6 +611,7 @@ GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
       gs->clear_keys();
       gs->set_controller(NULL);
       gs->ship->net_remote_gun = true;
+      set_viewer_zoom_prefs(gs);  // the spectate camera keeps OUR zoom
     }
     players->front()->ship->net_report_shots = true;
   }
@@ -1920,6 +1936,7 @@ void GLGame::add_remote_player(uint8_t seat) {
   if((int)players->size() >= net_seat_cap()) return;
   int wire_seat = seat ? (int)seat : (int)players->size() + 1;
   GLShip* object = make_seat_ship(grid, wire_seat - 1);
+  set_viewer_zoom_prefs(object);  // the spectate camera keeps OUR zoom
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
@@ -5955,6 +5972,7 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
       gs->ship->is_local_player = false;
       gs->clear_keys();
       gs->set_controller(NULL);
+      set_viewer_zoom_prefs(gs);  // the spectate camera keeps OUR zoom
     }
     set_player_keys(local, 0);
     if (controller) local->set_controller(controller);
@@ -11108,8 +11126,16 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
     //   side = component along the right perpendicular of facing
     float fwd  = dx * s->facing.x() + dy * s->facing.y();
     float side = dx * s->facing.y() - dy * s->facing.x();
-    // Viewport rectangle in world units (camera at z=1000, FOV-derived)
-    float fov_deg = glship->view_angle();
+    // Viewport rectangle in world units (camera at z=1000, FOV-derived).
+    // PINNED at the classic default FOV, deliberately NOT view_angle()
+    // (decided 2026-09-01): quantum observation is simulation, and it must
+    // be the same fact for every perspective — a cosmetic zoom pref (or
+    // the speed-follow widen) must not change which rocks are collapsed,
+    // offline, host-side, or in the client's between-snapshot mirror.
+    // Every other rectangle consumer (cull, audio plateau, edge
+    // indicators, the enemy-audio visibility gate) follows the live
+    // view_angle() on purpose: what you can see, you can hear.
+    const float fov_deg = 85.0f;
     float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
     float aspect = (window.x() / (float)num_x_viewports()) /
                    (window.y() / (float)num_y_viewports());
@@ -11256,10 +11282,22 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // capture below: off-screen invisible asteroids must not cost a
   // full-viewport texture copy either.
   float cull_r = sqrtf(cull_r2);
+  // The z=0 passes below (lens masks, objects, front stars, front lensing)
+  // walk as many wrap copies as the plain radius needs — the rear-star
+  // walk's rule, extended: a fixed 3x3 left a strip un-drawn at the far
+  // screen edge whenever the view spans past one world, which the WIDEST
+  // zoom reaches at gen 0 on a 21:9 window (half-width ~2565 vs a 2500
+  // world; 32:9 got there at NORMAL) with the ship hugging a wrap boundary.
+  // The per-tile cull keeps the extra candidates cheap, and the span is 1
+  // again as soon as the world outgrows the view.
+  int span_x = (int)ceilf(cull_r / world.x());
+  int span_y = (int)ceilf(cull_r / world.y());
+  if (span_x < 1) span_x = 1;
+  if (span_y < 1) span_y = 1;
   bool lens_on_screen = false;
   Uint32 lens_t0 = SDL_GetTicks();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();
@@ -11294,8 +11332,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // Game objects: drawn directly each tile (no display list) so draw_batch
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
   pc0 = SDL_GetPerformanceCounter();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       // Nearest distance from camera to tile rect (objects span [0,world) per tile)
       float tmin_x = world.x()*x - position.x();
       float tmax_x = tmin_x + world.x();
@@ -11317,8 +11355,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
   }
   perf_objs_pc_ += SDL_GetPerformanceCounter() - pc0;
   pc0 = SDL_GetPerformanceCounter();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();
@@ -11338,8 +11376,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
   // --- Front star lensing (same void + shift, applied after front stars) ---
   lens_t0 = SDL_GetTicks();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();
@@ -11859,6 +11897,17 @@ TapBand GLGame::exit_band() const {
   return TapBand(0.5f, vhb + 215, 13, 35.0f);
 }
 
+// Live play only: not paused, not on a GAME OVER / exit-band screen, not
+// spectating (the peer's camera keeps the viewer's zoom, but the OSD is
+// gone with the controls), never in a replay, never under the roster.
+bool GLGame::touch_zoom_active() const {
+  if (!is_touch_mode()) return false;
+  if (!running || net_mode_ == NetReplay) return false;
+  if (exit_band_showing() || is_spectating() || spectate_arming()) return false;
+  if (roster_open()) return false;
+  return local_player() != NULL;
+}
+
 bool GLGame::exit_band_showing() const {
   if (!is_touch_mode()) return false;
   if (net_mode_ == NetReplay) return false;  // replay chrome owns its bands
@@ -11951,6 +12000,20 @@ void GLGame::touch_tap(float nx, float ny) {
     roster_kick_armed_ = -1;
     roster_ban_ = false;
     return;
+  }
+  // In-game touch zoom zones: "+" above "-" on the right edge
+  // (TouchZone::zoom_*, the geometry Overlay::touch_zoom draws — the
+  // TapBand rule). touch_zoom_active is the shared gate, so a zone can't
+  // answer a tap it isn't showing.
+  if (touch_zoom_active()) {
+    if (TouchZone::zoom_in.contains(nx, ny)) {
+      local_player()->step_zoom(-1);
+      return;
+    }
+    if (TouchZone::zoom_out.contains(nx, ny)) {
+      local_player()->step_zoom(+1);
+      return;
+    }
   }
   // The bottom strip is the EXIT TO MENU band the overlay labels (the
   // shared TapBand). It exits to the menu from every state that has no

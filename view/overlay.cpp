@@ -446,6 +446,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   spectate(glgame, glship);
   if (!roster_up) net_badges(glgame, glship);
   if (!replaying && !roster_up) touch_controls(glgame, glship);
+  if (!replaying && !roster_up) touch_zoom(glgame, glship);
   edge_indicators(glgame, glship);
   // Last on purpose: keymap dims this whole viewport under the card, so
   // everything above (HUD rows, edge indicators, the world) recedes and
@@ -1487,6 +1488,59 @@ static void draw_weapon_glyph(uint8_t kind, float cx, float cy, float r,
   mb.end();
   mesh.upload(mb, GL_DYNAMIC_DRAW);
   mesh.draw();
+}
+
+// The in-game touch zoom zones (TouchZone::zoom_in / zoom_out — geometry
+// shared with GLGame::touch_tap): two ringed glyphs, "+" above "-", on
+// the right edge. Drawn wherever touch is the input — the native OSD AND
+// the web build, whose HTML OSD has no counterpart for a zone the canvas
+// hit-tests itself (is_touch_mode, not touch_osd_enabled). The end step
+// dims its glyph (CLOSEST dims "+", WIDEST dims "-"), and a tap flashes
+// the ring pressed for a moment; the zoom easing is the real feedback.
+void Overlay::touch_zoom(const GLGame *glgame, const GLShip *glship) {
+  if (!glgame->touch_zoom_active()) return;
+  if (glgame->local_player() != glship) return;
+  int idx = glship->zoom_step_index();
+
+  // Normalized zone -> the HUD ortho (2 units per pixel, origin centred;
+  // the touch_controls mapping without the pixel middleman).
+  float pw = (float)Typer::window_width;
+  float ph = (float)Typer::window_height;
+
+  static MeshBuilder mb;
+  static Mesh mesh_icon;
+  for (int which = 0; which < 2; which++) {
+    const TouchZone &z = which == 0 ? TouchZone::zoom_in : TouchZone::zoom_out;
+    int dir = which == 0 ? -1 : 1;
+    float cx = (2.0f * z.cx() - 1.0f) * pw;
+    float cy = (1.0f - 2.0f * z.cy()) * ph;
+    // Ring radius from the zone's shorter side, so it fits the narrow
+    // column in landscape and the short band in portrait alike.
+    float zw = (z.nx1 - z.nx0) * 2.0f * pw;
+    float zh = (z.ny1 - z.ny0) * 2.0f * ph;
+    float r = 0.30f * (zw < zh ? zw : zh);
+    bool at_end = dir < 0 ? idx <= 0 : idx >= CAMERA_ZOOM_STEPS - 1;
+    bool flash = glship->zoom_flash_ms() > 0 && glship->zoom_flash_dir() == dir;
+    float dim = at_end ? 0.35f : 1.0f;
+    float alpha_fill    = (flash ? 0.35f : 0.06f) * dim;
+    float alpha_outline = (flash ? 0.85f : 0.40f) * dim;
+    draw_circle(cx, cy, r, 28, true,  1.0f, 1.0f, 1.0f, alpha_fill);
+    draw_circle(cx, cy, r, 28, false, 1.0f, 1.0f, 1.0f, alpha_outline);
+    // The glyph: a horizontal bar for both, the vertical one too for "+".
+    float len = r * 0.55f, th = r * 0.11f;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(1.0f, 1.0f, 1.0f, alpha_outline);
+    mb.vertex(cx - len, cy - th); mb.vertex(cx + len, cy - th); mb.vertex(cx + len, cy + th);
+    mb.vertex(cx - len, cy - th); mb.vertex(cx + len, cy + th); mb.vertex(cx - len, cy + th);
+    if (dir < 0) {
+      mb.vertex(cx - th, cy - len); mb.vertex(cx + th, cy - len); mb.vertex(cx + th, cy + len);
+      mb.vertex(cx - th, cy - len); mb.vertex(cx + th, cy + len); mb.vertex(cx - th, cy + len);
+    }
+    mb.end();
+    mesh_icon.upload(mb, GL_DYNAMIC_DRAW);
+    mesh_icon.draw();
+  }
 }
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {

@@ -1,0 +1,21 @@
+# The desktop CAMERA options sub-screen — the per-player view rows
+# (SMOOTHING / ROTATION / ZOOM / SPEED ZOOM for P1..P4), which is where the
+# 16-row worst case the D9/O5 row budget was judged on lives now that the
+# flat OPTIONS list is 9 rows (options.shot).
+#
+# options.shot's route (netless build, no save file — see its header for
+# what shifts the main-menu rows), then four `key down` past the P1..P4
+# SENSITIVITY rows onto the CAMERA opener and enter. Like every menu
+# shot, the rows show the local INI's stored values (the harness sandboxes
+# writes, not the menu's reading of preferences.ini).
+seed 3
+menu
+sim 3800
+key enter 200
+key down 700
+key enter 1200
+key down 1600
+key down 2000
+key down 2400
+key down 2800
+key enter 3200

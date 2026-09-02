@@ -203,7 +203,67 @@ void GLShip::collide(GLShip* first, GLShip* second) {
   Ship::collide(first->ship, second->ship);
 }
 
+// Speed-follow zoom tuning. The widen is multiplicative on the base zoom
+// pref: at SPEED_ZOOM_REF u/ms (about two thirds of the plain-thrust
+// terminal speed — thrust_force/mass over friction = 0.667; boost's kick
+// saturates it instantly) a MAX-amount pref sees SPEED_ZOOM_SPAN more
+// span. Eased with a fixed time constant — speed itself moves smoothly,
+// but a boost is an instantaneous velocity kick and an un-eased FOV step
+// reads as a glitch, not a dash.
+static const float SPEED_ZOOM_SPAN = 0.35f;
+static const float SPEED_ZOOM_REF  = 0.45f;
+static const float ZOOM_EASE_MS    = 250.0f;
+// How long a tapped touch zoom zone draws pressed (sim ms).
+static const int   ZOOM_FLASH_MS   = 220;
+
+int GLShip::zoom_step_index() const {
+  return camera_zoom_index(zoom_base_pref_ ? *zoom_base_pref_ : 1.0f);
+}
+
+bool GLShip::step_zoom(int dir) {
+  if (!zoom_base_pref_) return false;
+  zoom_flash_ms_ = ZOOM_FLASH_MS;
+  zoom_flash_dir_ = dir < 0 ? -1 : 1;
+  int idx = camera_zoom_index(*zoom_base_pref_);
+  int next = idx + zoom_flash_dir_;
+  if (next < 0) next = 0;
+  if (next >= CAMERA_ZOOM_STEPS) next = CAMERA_ZOOM_STEPS - 1;
+  if (next == idx) return false;
+  *zoom_base_pref_ = CAMERA_ZOOM_VALUES[next];
+  save_preferences();  // the rotate toggle's persistence path
+  return true;
+}
+
+float GLShip::view_angle() const {
+  if (view_zoom == 1.0f) return camera_angle;
+  float t = tanf(camera_angle * (float)M_PI / 360.0f) * view_zoom;
+  return atanf(t) * 360.0f / (float)M_PI;
+}
+
 void GLShip::smooth_camera(int frame_delta) {
+  // Zoom first: ease view_zoom toward base pref x speed-follow on the same
+  // SIMULATED clock as the rotation smoothing below (GLGame::draw banks it
+  // in tick() — a wall clock here is exactly the bug the video renderer
+  // and the time-scale keys already forced out of this path). Runs even
+  // with rotation smoothing OFF: that pref is about the camera chasing the
+  // heading, not about zoom.
+  {
+    float base = zoom_base_pref_ ? *zoom_base_pref_ : 1.0f;
+    float follow = speed_zoom_pref_ ? *speed_zoom_pref_ : 0.0f;
+    float zoom_target = base;
+    if (follow > 0.0f && ship->is_alive()) {
+      float speed_t = ship->velocity.magnitude() / SPEED_ZOOM_REF;
+      if (speed_t > 1.0f) speed_t = 1.0f;
+      zoom_target *= 1.0f + follow * SPEED_ZOOM_SPAN * speed_t;
+    }
+    view_zoom += (zoom_target - view_zoom) *
+                 (1.0f - expf(-frame_delta / ZOOM_EASE_MS));
+    if (zoom_flash_ms_ > 0) {
+      zoom_flash_ms_ -= frame_delta;
+      if (zoom_flash_ms_ < 0) zoom_flash_ms_ = 0;
+    }
+  }
+
   float target = ship->heading();
   if (camera_smoothing == 0.0f) {
     camera_rotation = target;
@@ -282,12 +342,14 @@ void GLShip::set_keys(const PlayerKeys &k) {
   help_key = k.help;
   next_secondary_key = k.next_secondary;
   toggle_rotate_view_key = k.toggle_rotate_view;
+  zoom_in_key = k.zoom_in;
+  zoom_out_key = k.zoom_out;
 }
 
 void GLShip::clear_keys() {
   left_key = right_key = shoot_key = thrust_key = teleport_key = reverse_key =
   mine_key = next_weapon_key = boost_key = help_key = next_secondary_key =
-  toggle_rotate_view_key = KeyBinding();
+  toggle_rotate_view_key = zoom_in_key = zoom_out_key = KeyBinding();
   keymap_slot_ = -1;
 }
 
@@ -688,6 +750,10 @@ void GLShip::input(unsigned char key, bool pressed) {
     if (rotate_view_pref_) *rotate_view_pref_ = rotating_view;
     else g_prefs.rotate_view = rotating_view;
     save_preferences();
+  } else if (zoom_in_key.matches(key) && pressed) {
+    step_zoom(-1);  // the touch zoom zones' keyboard twin
+  } else if (zoom_out_key.matches(key) && pressed) {
+    step_zoom(+1);
   }
 }
 
@@ -804,16 +870,18 @@ static std::string binding_label(const KeyBinding &b) {
 void GLShip::draw_keymap(float fit) const {
   // fit scales the whole card uniformly (Overlay::keymap computes it from
   // the viewport height): laid out for a full-height viewport, the card
-  // spans ~+485..-250 virtual units and clipped its top half off a 2x2
+  // spans ~+485..-310 virtual units and clipped its top half off a 2x2
   // grid cell (4P field bug — the quarter showed the list from MINE down).
+  // The keyboard list's two ZOOM rows grew it downward, not upward: the
+  // top stays at the classic +485 (any higher and the heading sits on the
+  // LEVEL text), and the bottom has the room.
   float size = 10 * fit;
-  int num_controls  = 10;
-  if(last_input_was_controller) {
-    num_controls++;
-  }
+  // Keyboard lists ZOOM IN / ZOOM OUT too (no pad button steps the zoom);
+  // the controller list swaps those two for its MOVE row.
+  int num_controls  = last_input_was_controller ? 11 : 12;
   float padding = 2.0f * fit;
   float char_height = 5.0f;
-  float y_offset = (last_input_was_controller ? 110.0f : 140.0f) * fit;
+  float y_offset = (last_input_was_controller ? 110.0f : 80.0f) * fit;
   Typer::draw_centered(0, (num_controls+1.5)/2.0f * (size + padding) * char_height + y_offset, "- PLAYER -", size+2);
   float offset = -160.0f * fit;
   int control_index = 0;
@@ -916,6 +984,14 @@ void GLShip::draw_keymap(float fit) const {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_LEFTSTICK);
   }
   control_index++;
+  if(!last_input_was_controller) {
+    Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ZOOM IN", size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(zoom_in_key).c_str(), size);
+    control_index++;
+    Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ZOOM OUT", size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(zoom_out_key).c_str(), size);
+    control_index++;
+  }
 
   int common_offset = control_index+1;
   const GeneralKeys &gk = g_prefs.general_keys;
