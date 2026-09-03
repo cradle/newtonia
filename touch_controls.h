@@ -100,6 +100,17 @@ struct TouchControlsState {
     // press is released a beat later by touch_one_hand_tick, never in the
     // same event batch — the weapons only sample the trigger in step().
     bool  one_hand_ingame;
+    // One-hand shield toggle (see oh_long_press_secondary): the shield is
+    // the one hold-to-run secondary — active while the key is down,
+    // draining as it renews — which the pulse below would blink on for a
+    // single beat. Under the one-hand grammar a long press TOGGLES it
+    // instead, and the decision keys on THIS mirror — the SELECTED
+    // secondary's own trigger, (*secondary)->is_shooting() when it is the
+    // shield, written by GLGame::tick beside secondary_kind — never a
+    // local latch: a respawn's trigger reset, an ammo-out or a level
+    // rollover simply reads back as "off" and the next long press
+    // re-engages, nothing to desync or clean up.
+    bool  shield_engaged;
     // The joystick finger doubles as the first fire candidate.
     Uint32 oh_joy_down_ms;
     float oh_joy_down_px, oh_joy_down_py;

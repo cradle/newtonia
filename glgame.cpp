@@ -8663,6 +8663,14 @@ void GLGame::tick(int delta) {
     g_touch_controls.secondary_kind =
         has_secondary ? (uint8_t)Ship::secondary_kind_of(*lp->ship->secondary)
                       : 0;
+    // One-hand shield toggle truth (touch_controls.h): the SELECTED
+    // secondary's own trigger when it is the shield. Written every tick
+    // like the flags above; only the gesture layer's long press reads it.
+    g_touch_controls.shield_engaged =
+        has_secondary &&
+        g_touch_controls.secondary_kind ==
+            (uint8_t)Save::WeaponEntry::Kind::Shield &&
+        (*lp->ship->secondary)->is_shooting();
     // One-handed touch: taps fire only in LIVE play. touch_zoom_active()
     // is exactly that gate (running, not spectating/replay/roster, a local
     // ship to fire) — deliberately shared, so the tap can never shoot on a
@@ -8699,6 +8707,15 @@ void GLGame::tick(int delta) {
       web_oh_last = g_touch_controls.one_hand_ingame;
       EM_ASM({ if (window.setTapFire) window.setTapFire($0); },
              g_touch_controls.one_hand_ingame ? 1 : 0);
+    }
+    // One-hand shield toggle truth for the HTML OSD's gesture layer, on
+    // change only like the rest.
+    static bool web_se_pushed = false, web_se_last = false;
+    if (!web_se_pushed || web_se_last != g_touch_controls.shield_engaged) {
+      web_se_pushed = true;
+      web_se_last = g_touch_controls.shield_engaged;
+      EM_ASM({ if (window.setShieldEngaged) window.setShieldEngaged($0); },
+             g_touch_controls.shield_engaged ? 1 : 0);
     }
     // Active-weapon icons on the HTML circle buttons (Save kind values,
     // -1 secondary = none; main.ts maps them to inline SVG backgrounds).

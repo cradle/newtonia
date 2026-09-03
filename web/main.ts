@@ -290,6 +290,14 @@ declare const NewtoniaStore: undefined | {
   // taps never synthesize fire keys. Deliberately left stale-true under
   // the Intro state, where a tap IS the fire input that dismisses it.
   let _tapFire = false;
+  // The selected secondary's kind (Save::WeaponEntry::Kind, -1 = none;
+  // kept by setWeaponKinds) and — when it is the SHIELD (5) — its own
+  // trigger truth, mirrored by C++ over setShieldEngaged. The one-hand
+  // long press toggles the shield against this instead of pulsing it:
+  // the shield is hold-to-run, and a pulse would blink it on for a beat
+  // (mirrors oh_long_press_secondary in touch_controls.cpp).
+  let _secondaryKind = -1;
+  let _shieldEngaged = false;
 
   function applyCircleButtonVisibility(): void {
     for (const el of _circleButtonEls) {
@@ -413,10 +421,17 @@ declare const NewtoniaStore: undefined | {
     }
   }
   function setWeaponKinds(primary: number, secondary: number): void {
+    _secondaryKind = secondary;
     applyWeaponIcon(".touch-shoot", primary);
     applyWeaponIcon(".touch-mine", secondary);
   }
   (window as any).setWeaponKinds = setWeaponKinds;
+
+  // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
+  function setShieldEngaged(on: number | boolean): void {
+    _shieldEngaged = !!on;
+  }
+  (window as any).setShieldEngaged = setShieldEngaged;
 
   // ---- Game-over promo banner ----------------------------------------
   // The web build deliberately has no netplay or leaderboard (LEADERBOARD.md:
@@ -564,19 +579,34 @@ declare const NewtoniaStore: undefined | {
     // Fingers deliberately left to the canvas-tap path (the zoom zones).
     const passFingers = new Set<number>();
 
-    // Synthesized fire press. The weapons only sample the trigger in
-    // their sim step, so the keyup is deferred a beat — a down+up in the
-    // same frame would fire nothing (OH_KEY_HOLD_MS's web twin).
-    function fireKey(key: string): void {
-      const opts = {
+    function keyEvt(key: string, type: string): void {
+      canvas.dispatchEvent(new KeyboardEvent(type, {
         key,
         code: key === " " ? "Space" : `Key${key.toUpperCase()}`,
         bubbles: true,
         cancelable: true,
-      };
-      canvas.dispatchEvent(new KeyboardEvent("keydown", opts));
-      window.setTimeout(
-        () => canvas.dispatchEvent(new KeyboardEvent("keyup", opts)), 70);
+      }));
+    }
+
+    // Synthesized fire press. The weapons only sample the trigger in
+    // their sim step, so the keyup is deferred a beat — a down+up in the
+    // same frame would fire nothing (OH_KEY_HOLD_MS's web twin).
+    function fireKey(key: string): void {
+      keyEvt(key, "keydown");
+      window.setTimeout(() => keyEvt(key, "keyup"), 70);
+    }
+
+    // The long-press action: a pulse for edge-fired secondaries; the
+    // hold-to-run SHIELD toggles instead — engage holds 'x' down with no
+    // deferred release, disengage releases it, decided against the
+    // mirrored trigger truth (mirrors oh_long_press_secondary in
+    // touch_controls.cpp).
+    function longPressSecondary(): void {
+      if (_secondaryKind === 5) {  // Save::WeaponEntry::Kind::Shield
+        keyEvt("x", _shieldEngaged ? "keyup" : "keydown");
+      } else {
+        fireKey("x");
+      }
     }
 
     // Every one-hand release forwards the tap position to touch_tap —
@@ -617,7 +647,7 @@ declare const NewtoniaStore: undefined | {
               tapSteered || tapFired) return;
           tapFired = true;
         }
-        fireKey("x");
+        longPressSecondary();
       }, OH_LONG_PRESS_MS);
     }
 

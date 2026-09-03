@@ -2,6 +2,7 @@
 // state, drawn only where touch_osd_enabled().
 #include "touch_controls.h"
 #include "preferences.h"
+#include "savegame.h"
 #include "state_manager.h"
 #include "view/overlay.h"
 #include "view/tap_band.h"
@@ -230,6 +231,27 @@ static void oh_fire_secondary(StateManager *game) {
     g_touch_controls.oh_mine_up_at = SDL_GetTicks() + OH_KEY_HOLD_MS;
 }
 
+// The long-press action. Most secondaries fire on the press edge, so the
+// synthesized 'x' is a pulse (down + deferred release). The SHIELD is the
+// exception — hold-to-run, which a pulse would blink on for one beat — so
+// a long press TOGGLES it: engage = press 'x' and simply never schedule
+// the release ('x' stays held, exactly a desktop pilot's held key, so the
+// weapon/netplay/replay layers see nothing new); disengage = release it.
+// The on/off decision reads the mirrored trigger truth (shield_engaged,
+// touch_controls.h), so a state the engine reset on its own — respawn,
+// rollover — just reads as "off" again.
+static void oh_long_press_secondary(StateManager *game) {
+    TouchControlsState &tc = g_touch_controls;
+    if (tc.secondary_kind == (unsigned char)Save::WeaponEntry::Kind::Shield) {
+        if (tc.shield_engaged)
+            game->keyboard_up('x', 0, 0);
+        else
+            game->keyboard('x', 0, 0);
+        return;
+    }
+    oh_fire_secondary(game);
+}
+
 void touch_one_hand_down(StateManager *game, SDL_FingerID id,
                          float px, float py, float nx, float ny) {
     TouchControlsState &tc = g_touch_controls;
@@ -333,11 +355,11 @@ void touch_one_hand_tick(StateManager *game) {
     if (tc.joy_active && !tc.oh_joy_steered && !tc.oh_joy_fired &&
         tc.mine_available && now - tc.oh_joy_down_ms >= OH_LONG_PRESS_MS) {
         tc.oh_joy_fired = true;
-        oh_fire_secondary(game);
+        oh_long_press_secondary(game);
     }
     if (tc.oh_tap_active && !tc.oh_tap_steered && !tc.oh_tap_fired &&
         tc.mine_available && now - tc.oh_tap_down_ms >= OH_LONG_PRESS_MS) {
         tc.oh_tap_fired = true;
-        oh_fire_secondary(game);
+        oh_long_press_secondary(game);
     }
 }
