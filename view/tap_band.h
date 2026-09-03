@@ -103,6 +103,9 @@ struct TouchZone {
   }
   float cx() const { return 0.5f * (nx0 + nx1); }
   float cy() const { return 0.5f * (ny0 + ny1); }
+  constexpr TouchZone mirrored_x() const {
+    return TouchZone(1.0f - nx1, ny0, 1.0f - nx0, ny1);
+  }
 
   // ---- In-game touch zoom zones ----
   // "+" (closer) stacked above "-" (wider) on the right edge, each tap
@@ -118,6 +121,15 @@ struct TouchZone {
   // reaches touch_tap — no entry-point changes, and the web build gets
   // the zones without an HTML counterpart.
   static const TouchZone zoom_in, zoom_out;
+  // The zones as PLACED for the current layout: LEFT-handed one-hand play
+  // (Preferences::touch_handedness) mirrors the column to the LEFT edge —
+  // the playing thumb's side. Every consumer — Overlay::touch_zoom's
+  // draw, GLGame::touch_tap's hit test, the one-hand gesture layer's
+  // carve-out, and web/main.ts's inZoomZone twin — must take these, never
+  // the raw statics, or the drawn glyphs and the hit tests drift apart
+  // (the TapBand rule).
+  static TouchZone zoom_in_placed();
+  static TouchZone zoom_out_placed();
 };
 
 #endif

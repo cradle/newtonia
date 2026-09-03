@@ -478,11 +478,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
     // StateManager so GLShip constructors can read them (e.g. rotate_view).
     load_preferences();
 
-    // Hand the HTML OSD the stored touch input method (web/main.ts): the
-    // JS default is two-hand, so only a stored ONE HAND changes anything.
-    // Options-menu changes re-push from Menu::close_options.
-    EM_ASM({ if (window.setOneHandMode) window.setOneHandMode($0); },
-           g_prefs.touch_one_hand ? 1 : 0);
+    // Hand the HTML OSD the stored touch input method + handedness side
+    // (-1/0/+1) (web/main.ts): the JS defaults are two-hand/centre, so
+    // only stored non-defaults change anything. Options-menu changes
+    // re-push from Menu::close_options.
+    EM_ASM({ if (window.setOneHandMode) window.setOneHandMode($0, $1); },
+           g_prefs.touch_one_hand ? 1 : 0, g_prefs.touch_handedness - 1);
 
     s_game = new StateManager();
     s_game->resize(s_w, s_h);

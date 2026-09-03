@@ -1510,7 +1510,10 @@ void Overlay::touch_zoom(const GLGame *glgame, const GLShip *glship) {
   static MeshBuilder mb;
   static Mesh mesh_icon;
   for (int which = 0; which < 2; which++) {
-    const TouchZone &z = which == 0 ? TouchZone::zoom_in : TouchZone::zoom_out;
+    // Placed, not the statics: LEFT-handed one-hand play mirrors the
+    // column to the left edge, and the hit tests read the same call.
+    const TouchZone z = which == 0 ? TouchZone::zoom_in_placed()
+                                   : TouchZone::zoom_out_placed();
     int dir = which == 0 ? -1 : 1;
     float cx = (2.0f * z.cx() - 1.0f) * pw;
     float cy = (1.0f - 2.0f * z.cy()) * ph;

@@ -15,6 +15,10 @@ static int s_last_w = 0, s_last_h = 0;
 
 bool touch_one_handed() { return g_prefs.touch_one_hand; }
 
+int touch_one_hand_side() {
+    return g_prefs.touch_handedness - 1;  // stored 0/1/2 -> -1/0/+1
+}
+
 void touch_controls_resize(int w, int h) {
     s_last_w = w;
     s_last_h = h;
@@ -22,19 +26,26 @@ void touch_controls_resize(int w, int h) {
     float ts     = std::min((float)w / 800.0f, (float)h / 600.0f); // matches Typer scale
 
     if (touch_one_handed()) {
-        // One hand: the whole screen is the stick, so the resting hint
-        // sits centred horizontally, a touch larger than the two-hand
-        // ring (0.30 was field-rejected as too big). Vertically it rests
-        // at the LOWER of two anchors: the midpoint between the screen
-        // centre and the bottom (0.75h — where the thumb rests in
-        // portrait, field request 2026-09-03), floored by the
-        // below-the-ship anchor — the camera pins the ship to the
-        // viewport centre, so the ring's TOP edge must clear h/2 by a
-        // margin, and in landscape (minDim IS the height) that anchor
-        // (0.5 + 0.05 + 0.22 = 0.77h) is the one that binds, with
-        // 0.77 + 0.22 < 1 keeping the whole ring on screen.
+        // One hand: the whole screen is the stick, so the resting hint is
+        // a touch larger than the two-hand ring (0.30 was field-rejected
+        // as too big). Horizontally it follows HANDEDNESS: CENTRE keeps
+        // it centred; LEFT/RIGHT rest it where that thumb naturally sits,
+        // the ring's near edge a small margin off its bezel (in 16:9
+        // landscape that lands near 0.15w — the same neighbourhood as the
+        // two-hand stick's home). Vertically it rests at the LOWER of two
+        // anchors: the midpoint between the screen centre and the bottom
+        // (0.75h — where the thumb rests in portrait, field request
+        // 2026-09-03), floored by the below-the-ship anchor — the camera
+        // pins the ship to the viewport centre, so the ring's TOP edge
+        // must clear h/2 by a margin, and in landscape (minDim IS the
+        // height) that anchor (0.5 + 0.05 + 0.22 = 0.77h) is the one that
+        // binds, with 0.77 + 0.22 < 1 keeping the whole ring on screen.
         g_touch_controls.joy_radius   = minDim * 0.22f;
-        g_touch_controls.joy_hint_cx  = (float)w * 0.5f;
+        float side_cx = minDim * 0.05f + g_touch_controls.joy_radius;
+        int side = touch_one_hand_side();
+        g_touch_controls.joy_hint_cx  =
+            side == 0 ? (float)w * 0.5f
+                      : side < 0 ? side_cx : (float)w - side_cx;
         g_touch_controls.joy_hint_cy  =
             std::max((float)h * 0.5f + minDim * 0.05f +
                          g_touch_controls.joy_radius,
@@ -104,6 +115,15 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.pause_cy         = std::max(160.0f * ts, hud_bottom + pr);
     g_touch_controls.pause_radius     = pr;
     g_touch_controls.pause_hit_radius = pr * 2.0f;
+
+    // LEFT-handed one-hand play mirrors the layout's remaining inputs to
+    // the playing thumb's side: the pause circle crosses to the top-LEFT
+    // (the zoom column mirrors through TouchZone::zoom_*_placed). One
+    // geometry drives the draw and every entry point's hit test, so the
+    // flip here moves both. It may brush a long WEAPONS list — cosmetic:
+    // the circle is translucent and the list is not a tap target.
+    if (touch_one_handed() && touch_one_hand_side() < 0)
+        g_touch_controls.pause_cx = (float)w - g_touch_controls.pause_cx;
 }
 
 void touch_controls_relayout() {
@@ -198,9 +218,11 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
     TouchControlsState &tc = g_touch_controls;
     // In live play the zoom zones keep their tap semantics: a finger
     // starting there stays untracked so its release reaches touch_tap as
-    // a plain tap (the zoom step) instead of firing the gun.
-    if (tc.one_hand_ingame && (TouchZone::zoom_in.contains(nx, ny) ||
-                               TouchZone::zoom_out.contains(nx, ny)))
+    // a plain tap (the zoom step) instead of firing the gun. The PLACED
+    // zones, not the statics — LEFT handedness mirrors the column.
+    if (tc.one_hand_ingame &&
+        (TouchZone::zoom_in_placed().contains(nx, ny) ||
+         TouchZone::zoom_out_placed().contains(nx, ny)))
         return;
     if (!tc.joy_active) {
         // First finger: the joystick, floating base exactly like the

@@ -12031,11 +12031,14 @@ void GLGame::touch_tap(float nx, float ny) {
   // TapBand rule). touch_zoom_active is the shared gate, so a zone can't
   // answer a tap it isn't showing.
   if (touch_zoom_active()) {
-    if (TouchZone::zoom_in.contains(nx, ny)) {
+    // Placed zones: LEFT-handed one-hand play mirrors the column to the
+    // left edge (the draw and the gesture layer's carve-out read the
+    // same call).
+    if (TouchZone::zoom_in_placed().contains(nx, ny)) {
       local_player()->step_zoom(-1);
       return;
     }
-    if (TouchZone::zoom_out.contains(nx, ny)) {
+    if (TouchZone::zoom_out_placed().contains(nx, ny)) {
       local_player()->step_zoom(+1);
       return;
     }

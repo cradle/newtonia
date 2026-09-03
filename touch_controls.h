@@ -142,6 +142,12 @@ void touch_controls_reset(StateManager *game);
 // watchdog and the deferred fire-key releases. The web build's HTML OSD
 // implements the same gesture in web/main.ts.
 bool touch_one_handed();
+// One-hand handedness (Preferences::touch_handedness): -1 LEFT, 0 CENTRE,
+// +1 RIGHT. LEFT/RIGHT rest the ring where that thumb sits, and LEFT
+// mirrors the layout's remaining inputs (pause button, zoom column) to
+// the left — TouchZone::zoom_*_placed() and the pause geometry both key
+// on it. Only meaningful while touch_one_handed().
+int touch_one_hand_side();
 // px/py = window pixels, nx/ny = the normalized 0..1 SDL finger coords
 // (the zoom-zone carve-out speaks normalized, like touch_tap).
 void touch_one_hand_down(StateManager *game, SDL_FingerID id,

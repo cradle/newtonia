@@ -277,6 +277,11 @@ declare const NewtoniaStore: undefined | {
   // circles never show. Mirrors the native gesture layer in
   // touch_controls.cpp.
   let _oneHand = false;
+  // One-hand handedness (Preferences::touch_handedness as -1/0/+1):
+  // LEFT/RIGHT rest the ring where that thumb sits, and LEFT mirrors the
+  // pause button + zoom column to the playing thumb's side. CENTRE (0)
+  // is the shipped placement. Meaningless while _oneHand is false.
+  let _hand = 0;
   // The one-hand tap-fire gate: true only in LIVE play (GLGame::tick
   // mirrors touch_zoom_active over setTapFire), so pause/game-over/replay
   // taps never synthesize fire keys. Deliberately left stale-true under
@@ -317,13 +322,17 @@ declare const NewtoniaStore: undefined | {
   (window as any).setMineAvailable = setMineAvailable;
 
   // Called from C++ (web_main.cpp startup, Menu::close_options) with the
-  // stored touch input method; a change rebuilds the whole touch layout.
-  // Only ever pushed in the menu, so the setMenuMode(true) inside
-  // applyTouchVisibility is always correct here.
-  function setOneHandMode(on: number | boolean): void {
+  // stored touch input method and handedness side (-1/0/+1); a change to
+  // either rebuilds the whole touch layout. Only ever pushed in the menu,
+  // so the setMenuMode(true) inside applyTouchVisibility is always
+  // correct here.
+  function setOneHandMode(on: number | boolean, side?: number): void {
     const v = !!on;
-    if (v === _oneHand) return;
+    const s = typeof side === "number"
+        ? Math.max(-1, Math.min(1, Math.trunc(side))) : _hand;
+    if (v === _oneHand && s === _hand) return;
     _oneHand = v;
+    _hand = s;
     applyTouchVisibility();
   }
   (window as any).setOneHandMode = setOneHandMode;
@@ -575,14 +584,16 @@ declare const NewtoniaStore: undefined | {
         (t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height);
     }
 
-    // TouchZone::zoom_in / zoom_out (view/tap_band.cpp) in the normalized
-    // coords touch_tap speaks — keep in sync. Only carved out in live
+    // TouchZone::zoom_in_placed / zoom_out_placed (view/tap_band.cpp) in
+    // the normalized coords touch_tap speaks — keep in sync: LEFT-handed
+    // play mirrors the column to the left edge. Only carved out in live
     // play, exactly like the native layer's one_hand_ingame gate.
     function inZoomZone(t: Touch): boolean {
       if (!_tapFire) return false;
       const r = canvas.getBoundingClientRect();
-      const nx = (t.clientX - r.left) / r.width;
+      let nx = (t.clientX - r.left) / r.width;
       const ny = (t.clientY - r.top) / r.height;
+      if (_hand < 0) nx = 1 - nx;
       return nx >= 0.88 && ny >= 0.40 && ny < 0.60;
     }
 
@@ -641,13 +652,19 @@ declare const NewtoniaStore: undefined | {
       if (r.width === 0) return; // layout not ready yet
       const rad = Math.min(r.width, r.height) * JOY_FRAC;
       const baseSize = rad * 2, nubSize = rad * 0.62;
-      // One hand: centred horizontally; vertically the LOWER of the
-      // midpoint between canvas centre and bottom (0.75h — the portrait
-      // thumb rest) and the below-the-ship anchor — the camera pins the
-      // ship to the canvas centre, so the ring's TOP edge must clear
-      // h/2 by a margin, and in landscape that anchor is the one that
-      // binds (mirrors touch_controls.cpp).
-      const px = r.left + r.width * (_oneHand ? 0.50 : 0.18);
+      // One hand: horizontally per handedness — CENTRE stays centred,
+      // LEFT/RIGHT rest the ring where that thumb sits, its near edge a
+      // small margin off its bezel. Vertically the LOWER of the midpoint
+      // between canvas centre and bottom (0.75h — the portrait thumb
+      // rest) and the below-the-ship anchor — the camera pins the ship
+      // to the canvas centre, so the ring's TOP edge must clear h/2 by
+      // a margin, and in landscape that anchor is the one that binds
+      // (mirrors touch_controls.cpp).
+      const sideCx = Math.min(r.width, r.height) * 0.05 + rad;
+      const px = r.left + (!_oneHand ? r.width * 0.18
+          : _hand < 0 ? sideCx
+          : _hand > 0 ? r.width - sideCx
+          : r.width * 0.50);
       const py = _oneHand
           ? r.top + Math.max(
                 r.height * 0.5 + Math.min(r.width, r.height) * 0.05 + rad,
@@ -816,8 +833,11 @@ declare const NewtoniaStore: undefined | {
       // Boost: above and between the pair (the thumb triangle), matching
       // the native OSD layout in touch_controls.cpp.
       { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.63, d: 1.0 },
-      // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25).
-      { el: container.querySelector<HTMLElement>(".touch-pause")!, cx: 0.875, cy: 0.12, d: 0.62 },
+      // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25);
+      // LEFT-handed one-hand play mirrors it to the top-left, the playing
+      // thumb's side (the layout rebuilds on a handedness change).
+      { el: container.querySelector<HTMLElement>(".touch-pause")!,
+        cx: _oneHand && _hand < 0 ? 0.125 : 0.875, cy: 0.12, d: 0.62 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
 
