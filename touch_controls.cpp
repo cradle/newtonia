@@ -24,17 +24,21 @@ void touch_controls_resize(int w, int h) {
     if (touch_one_handed()) {
         // One hand: the whole screen is the stick, so the resting hint
         // sits centred horizontally, a touch larger than the two-hand
-        // ring (0.30 was field-rejected as too big). Vertically it hangs
-        // BELOW the ship, never on it: the camera pins the ship to the
-        // viewport centre, so the ring's TOP edge is placed a clearance
-        // under h/2 — anchoring off centre + radius (not a fixed height
-        // fraction) is what keeps that true in portrait and landscape
-        // alike, and 0.5 + 0.05 + 2*0.22 < 1 keeps the whole ring on
-        // screen even in landscape, where minDim IS the height.
+        // ring (0.30 was field-rejected as too big). Vertically it rests
+        // at the LOWER of two anchors: the midpoint between the screen
+        // centre and the bottom (0.75h — where the thumb rests in
+        // portrait, field request 2026-09-03), floored by the
+        // below-the-ship anchor — the camera pins the ship to the
+        // viewport centre, so the ring's TOP edge must clear h/2 by a
+        // margin, and in landscape (minDim IS the height) that anchor
+        // (0.5 + 0.05 + 0.22 = 0.77h) is the one that binds, with
+        // 0.77 + 0.22 < 1 keeping the whole ring on screen.
         g_touch_controls.joy_radius   = minDim * 0.22f;
         g_touch_controls.joy_hint_cx  = (float)w * 0.5f;
-        g_touch_controls.joy_hint_cy  = (float)h * 0.5f + minDim * 0.05f +
-                                        g_touch_controls.joy_radius;
+        g_touch_controls.joy_hint_cy  =
+            std::max((float)h * 0.5f + minDim * 0.05f +
+                         g_touch_controls.joy_radius,
+                     (float)h * 0.75f);
     } else {
         // Joystick: bottom-left area
         g_touch_controls.joy_radius   = minDim * 0.20f;

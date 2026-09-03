@@ -641,14 +641,17 @@ declare const NewtoniaStore: undefined | {
       if (r.width === 0) return; // layout not ready yet
       const rad = Math.min(r.width, r.height) * JOY_FRAC;
       const baseSize = rad * 2, nubSize = rad * 0.62;
-      // One hand: centred horizontally, hanging BELOW the ship — the
-      // camera pins the ship to the canvas centre, so the ring's TOP
-      // edge sits a clearance under h/2 (centre + radius anchoring
-      // keeps that true in portrait and landscape alike; mirrors
-      // touch_controls.cpp).
+      // One hand: centred horizontally; vertically the LOWER of the
+      // midpoint between canvas centre and bottom (0.75h — the portrait
+      // thumb rest) and the below-the-ship anchor — the camera pins the
+      // ship to the canvas centre, so the ring's TOP edge must clear
+      // h/2 by a margin, and in landscape that anchor is the one that
+      // binds (mirrors touch_controls.cpp).
       const px = r.left + r.width * (_oneHand ? 0.50 : 0.18);
       const py = _oneHand
-          ? r.top + r.height * 0.5 + Math.min(r.width, r.height) * 0.05 + rad
+          ? r.top + Math.max(
+                r.height * 0.5 + Math.min(r.width, r.height) * 0.05 + rad,
+                r.height * 0.75)
           : r.top + r.height * 0.75;
       joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
       joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
