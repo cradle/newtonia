@@ -272,9 +272,10 @@ declare const NewtoniaStore: undefined | {
   let _mineAvailable = false;
   // One-handed input (Preferences::touch_one_hand, pushed at startup from
   // web_main.cpp and on options close from Menu::close_options): the whole
-  // screen is one larger joystick resting mid-screen, taps fire the
-  // primary and a long press the secondary; the shoot/mine/boost circles
-  // never show. Mirrors the native gesture layer in touch_controls.cpp.
+  // screen is one joystick resting centred just below the ship, taps fire
+  // the primary and a long press the secondary; the shoot/mine/boost
+  // circles never show. Mirrors the native gesture layer in
+  // touch_controls.cpp.
   let _oneHand = false;
   // The one-hand tap-fire gate: true only in LIVE play (GLGame::tick
   // mirrors touch_zoom_active over setTapFire), so pause/game-over/replay
@@ -511,10 +512,13 @@ declare const NewtoniaStore: undefined | {
     // menu overlay are appended after this zone, so they stay on top and
     // keep answering their own taps.
     if (_oneHand) joyZone.style.width = "100%";
-    // Joystick radius as a fraction of the short canvas edge — the
-    // one-hand stick is larger, matching the native OSD's 0.20 → 0.30
-    // step (touch_controls.cpp).
-    const JOY_FRAC = _oneHand ? 0.39 : 0.26;
+    // Joystick radius as a fraction of the short canvas edge. One-hand
+    // deliberately sits just under the web two-hand ring: the throw area
+    // is the whole screen, and the resting ring must fit below the ship
+    // (see positionJoyPlaceholder) with its bottom still near-on-screen
+    // in landscape — the original 1.5x scale-up was field-rejected as
+    // too big (mirrors touch_controls.cpp's 0.22).
+    const JOY_FRAC = _oneHand ? 0.24 : 0.26;
 
     const joyBase = document.createElement("div");
     joyBase.className = "joy-base";
@@ -637,9 +641,15 @@ declare const NewtoniaStore: undefined | {
       if (r.width === 0) return; // layout not ready yet
       const rad = Math.min(r.width, r.height) * JOY_FRAC;
       const baseSize = rad * 2, nubSize = rad * 0.62;
-      // One hand: resting hint mid-screen, where the thumb hovers.
-      const px = r.left + r.width  * (_oneHand ? 0.50 : 0.18);
-      const py = r.top  + r.height * (_oneHand ? 0.50 : 0.75);
+      // One hand: centred horizontally, hanging BELOW the ship — the
+      // camera pins the ship to the canvas centre, so the ring's TOP
+      // edge sits a clearance under h/2 (centre + radius anchoring
+      // keeps that true in portrait and landscape alike; mirrors
+      // touch_controls.cpp).
+      const px = r.left + r.width * (_oneHand ? 0.50 : 0.18);
+      const py = _oneHand
+          ? r.top + r.height * 0.5 + Math.min(r.width, r.height) * 0.05 + rad
+          : r.top + r.height * 0.75;
       joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
       joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
     }

@@ -23,14 +23,18 @@ void touch_controls_resize(int w, int h) {
 
     if (touch_one_handed()) {
         // One hand: the whole screen is the stick, so the resting hint
-        // sits mid-screen where the thumb naturally hovers, and the
-        // larger ring telegraphs the larger throw. The shoot/mine/boost
-        // circles have no geometry to place — the OSD never draws them
-        // in this mode and no hit test consults them (the gesture layer
-        // below owns every finger).
-        g_touch_controls.joy_radius   = minDim * 0.30f;
+        // sits centred horizontally, a touch larger than the two-hand
+        // ring (0.30 was field-rejected as too big). Vertically it hangs
+        // BELOW the ship, never on it: the camera pins the ship to the
+        // viewport centre, so the ring's TOP edge is placed a clearance
+        // under h/2 — anchoring off centre + radius (not a fixed height
+        // fraction) is what keeps that true in portrait and landscape
+        // alike, and 0.5 + 0.05 + 2*0.22 < 1 keeps the whole ring on
+        // screen even in landscape, where minDim IS the height.
+        g_touch_controls.joy_radius   = minDim * 0.22f;
         g_touch_controls.joy_hint_cx  = (float)w * 0.5f;
-        g_touch_controls.joy_hint_cy  = (float)h * 0.5f;
+        g_touch_controls.joy_hint_cy  = (float)h * 0.5f + minDim * 0.05f +
+                                        g_touch_controls.joy_radius;
     } else {
         // Joystick: bottom-left area
         g_touch_controls.joy_radius   = minDim * 0.20f;

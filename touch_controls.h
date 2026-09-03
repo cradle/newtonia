@@ -86,8 +86,8 @@ struct TouchControlsState {
     SDL_FingerID pause_finger;
 
     // ---- One-handed mode (Preferences::touch_one_hand) ----
-    // The whole screen is one larger joystick resting mid-screen and the
-    // OSD draws no shoot/mine/boost circles. A press that never wanders
+    // The whole screen is one joystick resting centred just below the
+    // ship, and the OSD draws no shoot/mine/boost circles. A press that never wanders
     // past the tap slop is a FIRE gesture instead of steering: released
     // before the long-press threshold it taps the primary (' '), held past
     // it the secondary fires ('x', gated on mine_available exactly like
