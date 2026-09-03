@@ -277,10 +277,13 @@ declare const NewtoniaStore: undefined | {
   // circles never show. Mirrors the native gesture layer in
   // touch_controls.cpp.
   let _oneHand = false;
-  // One-hand handedness (Preferences::touch_handedness as -1/0/+1):
-  // LEFT/RIGHT rest the ring where that thumb sits, and LEFT mirrors the
-  // pause button + zoom column to the playing thumb's side. CENTRE (0)
-  // is the shipped placement. Meaningless while _oneHand is false.
+  // Handedness (Preferences::touch_handedness as -1/0/+1). One-hand:
+  // LEFT/RIGHT rest the ring where that thumb sits (CENTRE keeps it
+  // centred), and LEFT mirrors the pause button + zoom column to the
+  // playing thumb's side. Two-hand: LEFT mirrors the WHOLE layout —
+  // joystick zone right, circle buttons left, pause and the canvas
+  // fallback zones (web_main.cpp) crossing with them; CENTRE/RIGHT are
+  // the classic arrangement.
   let _hand = 0;
   // The one-hand tap-fire gate: true only in LIVE play (GLGame::tick
   // mirrors touch_zoom_active over setTapFire), so pause/game-over/replay
@@ -519,8 +522,10 @@ declare const NewtoniaStore: undefined | {
     joyZone.className = "joy-zone";
     // One-hand mode: the whole screen is the stick. The pause button and
     // menu overlay are appended after this zone, so they stay on top and
-    // keep answering their own taps.
+    // keep answering their own taps. Two-hand with HANDEDNESS LEFT: the
+    // zone crosses to the right half (the buttons mirror to the left).
     if (_oneHand) joyZone.style.width = "100%";
+    else if (_hand < 0) joyZone.style.left = "50%";
     // Joystick radius as a fraction of the short canvas edge. One-hand
     // deliberately sits just under the web two-hand ring: the throw area
     // is the whole screen, and the resting ring must fit below the ship
@@ -661,7 +666,8 @@ declare const NewtoniaStore: undefined | {
       // a margin, and in landscape that anchor is the one that binds
       // (mirrors touch_controls.cpp).
       const sideCx = Math.min(r.width, r.height) * 0.05 + rad;
-      const px = r.left + (!_oneHand ? r.width * 0.18
+      const px = r.left + (!_oneHand
+          ? r.width * (_hand < 0 ? 0.82 : 0.18) // two-hand home, mirrored LEFT
           : _hand < 0 ? sideCx
           : _hand > 0 ? r.width - sideCx
           : r.width * 0.50);
@@ -827,17 +833,19 @@ declare const NewtoniaStore: undefined | {
     // in web_main.cpp finger_down) — at 0.62 the shoot circle's left edge
     // was ~0.57, so a near-miss to its left hit the pause zone instead
     // (Glenn, 2026-07-17). Keep these in sync with touch_to_key's zones.
+    // HANDEDNESS LEFT mirrors every circle to the other side (the layout
+    // rebuilds on a handedness change); web_main.cpp's canvas fallback
+    // zones and pause zone mirror with them.
+    const bcx = (cx: number) => (_hand < 0 ? 1 - cx : cx);
     const circleButtons = [
-      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75, d: 1.0 },
-      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75, d: 1.0 },
+      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: bcx(0.70), cy: 0.75, d: 1.0 },
+      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: bcx(0.90), cy: 0.75, d: 1.0 },
       // Boost: above and between the pair (the thumb triangle), matching
       // the native OSD layout in touch_controls.cpp.
-      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.63, d: 1.0 },
-      // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25);
-      // LEFT-handed one-hand play mirrors it to the top-left, the playing
-      // thumb's side (the layout rebuilds on a handedness change).
-      { el: container.querySelector<HTMLElement>(".touch-pause")!,
-        cx: _oneHand && _hand < 0 ? 0.125 : 0.875, cy: 0.12, d: 0.62 },
+      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: bcx(0.80), cy: 0.63, d: 1.0 },
+      // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25),
+      // crossing to the top-left under HANDEDNESS LEFT.
+      { el: container.querySelector<HTMLElement>(".touch-pause")!, cx: bcx(0.875), cy: 0.12, d: 0.62 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
 

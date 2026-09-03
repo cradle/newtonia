@@ -92,11 +92,12 @@ static const int NUM_RECORD = 2;
 // OSD to re-arrange, and the desktop list sits at its row budget.
 static const char* INPUT_LABELS[] = {"TWO HANDS", "ONE HAND"};
 static const int NUM_INPUT = 2;
-// One-hand handedness (Preferences::touch_handedness): where the one-hand
-// stick's resting ring sits — LEFT/RIGHT park it where that thumb sits,
-// and LEFT also mirrors the pause button + zoom column to the playing
-// thumb's side. Touch list only, meaningful only under ONE HAND (the
-// two-hand layout is untouched); CENTRE is the shipped placement.
+// Handedness (Preferences::touch_handedness), touch list only. One hand:
+// LEFT/RIGHT park the stick's resting ring where that thumb sits, CENTRE
+// keeps it centred. LEFT also MIRRORS the inputs (touch_layout_mirrored):
+// pause + zoom column in one hand, the whole layout in two hands — stick
+// right, shoot/mine/boost left. CENTRE is the shipped default; RIGHT and
+// CENTRE are both the classic arrangement in two-hand mode.
 static const char* HANDEDNESS_LABELS[] = {"LEFT", "CENTRE", "RIGHT"};
 static const int NUM_HANDEDNESS = 3;
 // leaderboard_prompts: ON = ask at game over (the per-run opt-out), OFF =

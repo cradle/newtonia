@@ -142,14 +142,16 @@ struct Preferences {
     // the one-hand gesture layer). Desktop/controller input is untouched;
     // the flag only matters where the touch OSD runs.
     bool touch_one_hand      = false;
-    // One-hand handedness (the Options HANDEDNESS row, touch layouts):
-    // where the one-hand stick's resting ring sits — 0 = LEFT, 1 = CENTRE
-    // (default, the shipped placement), 2 = RIGHT. LEFT and RIGHT rest
-    // the ring where that thumb naturally sits, near its screen edge, and
-    // LEFT additionally mirrors the one-hand layout's remaining inputs —
-    // the pause button and the zoom column — to the left side, the
-    // playing thumb's (touch_controls.h). No effect in TWO HANDS mode,
-    // whose layout is untouched.
+    // Handedness (the Options HANDEDNESS row, touch layouts): 0 = LEFT,
+    // 1 = CENTRE (default — the shipped layouts), 2 = RIGHT. One hand:
+    // LEFT/RIGHT rest the stick's resting ring where that thumb
+    // naturally sits, near its screen edge; CENTRE keeps it centred.
+    // LEFT additionally MIRRORS the inputs to the left
+    // (touch_layout_mirrored, touch_controls.h): in one hand the pause
+    // circle and zoom column, in TWO HANDS the whole layout — stick on
+    // the right half, shoot/mine/boost on the left, pause and zoom
+    // crossing with them (CENTRE and RIGHT are both the classic
+    // right-handed arrangement there).
     int  touch_handedness    = 1;
     // Boost discoverability: the in-game "boost with e" hint keeps
     // appearing (on the F1 hint's alternate flash phase) until the pilot

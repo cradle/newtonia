@@ -15,9 +15,11 @@ static int s_last_w = 0, s_last_h = 0;
 
 bool touch_one_handed() { return g_prefs.touch_one_hand; }
 
-int touch_one_hand_side() {
+int touch_handedness_side() {
     return g_prefs.touch_handedness - 1;  // stored 0/1/2 -> -1/0/+1
 }
+
+bool touch_layout_mirrored() { return touch_handedness_side() < 0; }
 
 void touch_controls_resize(int w, int h) {
     s_last_w = w;
@@ -42,7 +44,7 @@ void touch_controls_resize(int w, int h) {
         // binds, with 0.77 + 0.22 < 1 keeping the whole ring on screen.
         g_touch_controls.joy_radius   = minDim * 0.22f;
         float side_cx = minDim * 0.05f + g_touch_controls.joy_radius;
-        int side = touch_one_hand_side();
+        int side = touch_handedness_side();
         g_touch_controls.joy_hint_cx  =
             side == 0 ? (float)w * 0.5f
                       : side < 0 ? side_cx : (float)w - side_cx;
@@ -99,6 +101,21 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.boost_hit_radius =
         std::min(g_touch_controls.btn_hit_radius, 1.3f * btnR);
 
+    // HANDEDNESS LEFT mirrors the whole TWO-HAND layout: the stick's home
+    // crosses to the right, the shoot/mine/boost circles to the left.
+    // Mirroring the COMPUTED centres (rather than computing left-side
+    // variants) keeps every clamp and radius above correct by symmetry —
+    // btn_hit_radius's bezel cap measures the same distance to the left
+    // edge that it measured to the right — and the entry points' hit
+    // tests read these centres, so only their joystick half split needs
+    // its own flip. One-hand placement chose its own side above.
+    if (!touch_one_handed() && touch_layout_mirrored()) {
+        g_touch_controls.joy_hint_cx = (float)w - g_touch_controls.joy_hint_cx;
+        g_touch_controls.shoot_cx    = (float)w - g_touch_controls.shoot_cx;
+        g_touch_controls.mine_cx     = (float)w - g_touch_controls.mine_cx;
+        g_touch_controls.boost_cx    = (float)w - g_touch_controls.boost_cx;
+    }
+
     // Pause button: top-right, below the score AND the multiplier row under
     // it. The HUD stack in Typer units below the top edge (1 unit = ts/2 px;
     // glyphs extend 2*size DOWN from their anchor; everything shifted by the
@@ -116,13 +133,13 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.pause_radius     = pr;
     g_touch_controls.pause_hit_radius = pr * 2.0f;
 
-    // LEFT-handed one-hand play mirrors the layout's remaining inputs to
-    // the playing thumb's side: the pause circle crosses to the top-LEFT
-    // (the zoom column mirrors through TouchZone::zoom_*_placed). One
-    // geometry drives the draw and every entry point's hit test, so the
-    // flip here moves both. It may brush a long WEAPONS list — cosmetic:
-    // the circle is translucent and the list is not a tap target.
-    if (touch_one_handed() && touch_one_hand_side() < 0)
+    // HANDEDNESS LEFT crosses the pause circle to the top-LEFT in both
+    // input methods (the zoom column mirrors with it through
+    // TouchZone::zoom_*_placed). One geometry drives the draw and every
+    // entry point's hit test, so the flip here moves both. It may brush
+    // a long WEAPONS list — cosmetic: the circle is translucent and the
+    // list is not a tap target.
+    if (touch_layout_mirrored())
         g_touch_controls.pause_cx = (float)w - g_touch_controls.pause_cx;
 }
 

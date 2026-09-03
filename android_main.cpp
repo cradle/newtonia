@@ -158,8 +158,13 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    if(x < 0.5f) {
-        // ---- Left half: virtual joystick (floating base) ----
+    // HANDEDNESS LEFT mirrors the two-hand layout: the stick claims the
+    // RIGHT half and the buttons the left. The circle centres are already
+    // mirrored by touch_controls_resize, so the geometry hit tests below
+    // need no change — only this half split does.
+    bool stick_half = touch_layout_mirrored() ? (x >= 0.5f) : (x < 0.5f);
+    if(stick_half) {
+        // ---- Stick half: virtual joystick (floating base) ----
         g_touch_controls.joy_cx     = px;
         g_touch_controls.joy_cy     = py;
         g_touch_controls.joy_nx     = 0.0f;
@@ -169,7 +174,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         // '\r' is ignored during gameplay but lets any tap start from the menu
         s_game->keyboard('\r', 0, 0);
     } else {
-        // ---- Right half ----
+        // ---- Buttons half ----
         if(y < 0.4f) {
             // Top strip: menu / start key
             s_game->keyboard('\r', 0, 0);

@@ -45,15 +45,13 @@ const TapBand TapBand::roster_anon(0.5f, -260, 13, 16.0f);
 const TouchZone TouchZone::zoom_in (0.88f, 0.40f, 1.0f, 0.50f);
 const TouchZone TouchZone::zoom_out(0.88f, 0.50f, 1.0f, 0.60f);
 
-// See the header note: LEFT-handed one-hand play mirrors the column.
-static bool zoom_column_mirrored() {
-  return touch_one_handed() && touch_one_hand_side() < 0;
-}
+// See the header note: HANDEDNESS LEFT mirrors the column (both input
+// methods — the two-hand layout flips wholesale with it).
 TouchZone TouchZone::zoom_in_placed() {
-  return zoom_column_mirrored() ? zoom_in.mirrored_x() : zoom_in;
+  return touch_layout_mirrored() ? zoom_in.mirrored_x() : zoom_in;
 }
 TouchZone TouchZone::zoom_out_placed() {
-  return zoom_column_mirrored() ? zoom_out.mirrored_x() : zoom_out;
+  return touch_layout_mirrored() ? zoom_out.mirrored_x() : zoom_out;
 }
 
 TapBand TapBand::for_pointer() const {

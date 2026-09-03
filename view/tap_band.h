@@ -121,13 +121,13 @@ struct TouchZone {
   // reaches touch_tap — no entry-point changes, and the web build gets
   // the zones without an HTML counterpart.
   static const TouchZone zoom_in, zoom_out;
-  // The zones as PLACED for the current layout: LEFT-handed one-hand play
-  // (Preferences::touch_handedness) mirrors the column to the LEFT edge —
-  // the playing thumb's side. Every consumer — Overlay::touch_zoom's
-  // draw, GLGame::touch_tap's hit test, the one-hand gesture layer's
-  // carve-out, and web/main.ts's inZoomZone twin — must take these, never
-  // the raw statics, or the drawn glyphs and the hit tests drift apart
-  // (the TapBand rule).
+  // The zones as PLACED for the current layout: HANDEDNESS LEFT
+  // (Preferences::touch_handedness, both input methods) mirrors the
+  // column to the LEFT edge — the busy thumb's side. Every consumer —
+  // Overlay::touch_zoom's draw, GLGame::touch_tap's hit test, the
+  // one-hand gesture layer's carve-out, and web/main.ts's inZoomZone
+  // twin — must take these, never the raw statics, or the drawn glyphs
+  // and the hit tests drift apart (the TapBand rule).
   static TouchZone zoom_in_placed();
   static TouchZone zoom_out_placed();
 };

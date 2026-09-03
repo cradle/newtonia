@@ -142,12 +142,22 @@ void touch_controls_reset(StateManager *game);
 // watchdog and the deferred fire-key releases. The web build's HTML OSD
 // implements the same gesture in web/main.ts.
 bool touch_one_handed();
-// One-hand handedness (Preferences::touch_handedness): -1 LEFT, 0 CENTRE,
-// +1 RIGHT. LEFT/RIGHT rest the ring where that thumb sits, and LEFT
-// mirrors the layout's remaining inputs (pause button, zoom column) to
-// the left — TouchZone::zoom_*_placed() and the pause geometry both key
-// on it. Only meaningful while touch_one_handed().
-int touch_one_hand_side();
+// Handedness (Preferences::touch_handedness): -1 LEFT, 0 CENTRE, +1
+// RIGHT. In ONE HAND mode LEFT/RIGHT rest the ring where that thumb
+// sits; CENTRE keeps it centred (the two-hand layout ignores the
+// RIGHT/CENTRE distinction — its classic arrangement IS the right-handed
+// one).
+int touch_handedness_side();
+// True under HANDEDNESS LEFT: the OSD mirrors to put the busy controls
+// under the left thumb. In ONE HAND that moves the remaining inputs —
+// the pause circle and the zoom column; in TWO HANDS the WHOLE layout
+// flips: the stick claims the right half, the shoot/mine/boost circles
+// the left, pause and zoom crossing with them. touch_controls_resize
+// mirrors the geometry (so every centre-based hit test follows for
+// free), TouchZone::zoom_*_placed() mirrors the zoom zones, and the
+// entry points' half splits + the web build's hard-coded zones key on
+// this predicate directly.
+bool touch_layout_mirrored();
 // px/py = window pixels, nx/ny = the normalized 0..1 SDL finger coords
 // (the zoom-zone carve-out speaks normalized, like touch_tap).
 void touch_one_hand_down(StateManager *game, SDL_FingerID id,
