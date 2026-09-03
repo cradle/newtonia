@@ -1,20 +1,42 @@
 // Compiled on every platform (see touch_controls.h): pure geometry +
 // state, drawn only where touch_osd_enabled().
 #include "touch_controls.h"
+#include "preferences.h"
 #include "state_manager.h"
 #include "view/overlay.h"
+#include "view/tap_band.h"
 #include <algorithm>
+#include <math.h>
 
 TouchControlsState g_touch_controls = {};
 
+// Last real resize, so a mode toggle can re-run the layout in place.
+static int s_last_w = 0, s_last_h = 0;
+
+bool touch_one_handed() { return g_prefs.touch_one_hand; }
+
 void touch_controls_resize(int w, int h) {
+    s_last_w = w;
+    s_last_h = h;
     float minDim = (float)std::min(w, h);
     float ts     = std::min((float)w / 800.0f, (float)h / 600.0f); // matches Typer scale
 
-    // Joystick: bottom-left area
-    g_touch_controls.joy_radius   = minDim * 0.20f;
-    g_touch_controls.joy_hint_cx  = (float)w * 0.15f;
-    g_touch_controls.joy_hint_cy  = (float)h * 0.75f;
+    if (touch_one_handed()) {
+        // One hand: the whole screen is the stick, so the resting hint
+        // sits mid-screen where the thumb naturally hovers, and the
+        // larger ring telegraphs the larger throw. The shoot/mine/boost
+        // circles have no geometry to place — the OSD never draws them
+        // in this mode and no hit test consults them (the gesture layer
+        // below owns every finger).
+        g_touch_controls.joy_radius   = minDim * 0.30f;
+        g_touch_controls.joy_hint_cx  = (float)w * 0.5f;
+        g_touch_controls.joy_hint_cy  = (float)h * 0.5f;
+    } else {
+        // Joystick: bottom-left area
+        g_touch_controls.joy_radius   = minDim * 0.20f;
+        g_touch_controls.joy_hint_cx  = (float)w * 0.15f;
+        g_touch_controls.joy_hint_cy  = (float)h * 0.75f;
+    }
 
     // Action buttons: bottom-right. The natural positions are 0.75/0.90 of the
     // width, but those are width fractions while the radius scales with the
@@ -76,6 +98,10 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.pause_hit_radius = pr * 2.0f;
 }
 
+void touch_controls_relayout() {
+    if (s_last_w > 0 && s_last_h > 0) touch_controls_resize(s_last_w, s_last_h);
+}
+
 void touch_controls_reset(StateManager *game) {
     if(g_touch_controls.joy_active) {
         g_touch_controls.joy_active = false;
@@ -99,5 +125,172 @@ void touch_controls_reset(StateManager *game) {
     if(g_touch_controls.pause_active) {
         g_touch_controls.pause_active = false;
         game->keyboard_up('p', 0, 0);
+    }
+    // One-hand gesture leftovers: drop the fire candidate and release any
+    // synthesized fire key still waiting on its deferred up.
+    g_touch_controls.oh_tap_active = false;
+    if(g_touch_controls.oh_shoot_up_at) {
+        g_touch_controls.oh_shoot_up_at = 0;
+        game->keyboard_up(' ', 0, 0);
+    }
+    if(g_touch_controls.oh_mine_up_at) {
+        g_touch_controls.oh_mine_up_at = 0;
+        game->keyboard_up('x', 0, 0);
+    }
+}
+
+// ============================================================
+// One-handed gesture layer (see touch_controls.h)
+// ============================================================
+
+// Gesture thresholds. LONG_PRESS balances "deliberate hold" against a
+// secondary arriving mid-dodge; the tap slop is the wander budget — past
+// it the press is steering and can never fire (a fraction of the larger
+// one-hand joystick radius: ~3.5% of the short screen edge, a few mm).
+static const Uint32 OH_LONG_PRESS_MS = 400;
+// How long a synthesized fire key stays down before touch_one_hand_tick
+// releases it. The weapons only sample the trigger in their step(), so a
+// down+up in the same event batch would fire nothing at all.
+static const Uint32 OH_KEY_HOLD_MS = 70;
+
+static float oh_tap_slop() { return g_touch_controls.joy_radius * 0.12f; }
+
+static bool oh_moved_past_slop(float px, float py, float ox, float oy) {
+    float dx = px - ox, dy = py - oy;
+    float slop = oh_tap_slop();
+    return dx * dx + dy * dy > slop * slop;
+}
+
+// Same nub math as the entry points' two-hand update_joystick_nub.
+static void oh_update_nub(float px, float py) {
+    float dx = px - g_touch_controls.joy_cx;
+    float dy = py - g_touch_controls.joy_cy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float r = g_touch_controls.joy_radius;
+    if (dist > r) {
+        dx = dx * r / dist;
+        dy = dy * r / dist;
+    }
+    g_touch_controls.joy_nx = (r > 0.0f) ? dx / r : 0.0f;
+    g_touch_controls.joy_ny = (r > 0.0f) ? dy / r : 0.0f;
+}
+
+static void oh_fire_primary(StateManager *game) {
+    game->keyboard(' ', 0, 0);
+    g_touch_controls.oh_shoot_up_at = SDL_GetTicks() + OH_KEY_HOLD_MS;
+}
+
+static void oh_fire_secondary(StateManager *game) {
+    game->keyboard('x', 0, 0);
+    g_touch_controls.oh_mine_up_at = SDL_GetTicks() + OH_KEY_HOLD_MS;
+}
+
+void touch_one_hand_down(StateManager *game, SDL_FingerID id,
+                         float px, float py, float nx, float ny) {
+    TouchControlsState &tc = g_touch_controls;
+    // In live play the zoom zones keep their tap semantics: a finger
+    // starting there stays untracked so its release reaches touch_tap as
+    // a plain tap (the zoom step) instead of firing the gun.
+    if (tc.one_hand_ingame && (TouchZone::zoom_in.contains(nx, ny) ||
+                               TouchZone::zoom_out.contains(nx, ny)))
+        return;
+    if (!tc.joy_active) {
+        // First finger: the joystick, floating base exactly like the
+        // two-hand layout — the mid-screen ring is a resting hint, not an
+        // anchor. Deflection measured from wherever the finger lands is
+        // what keeps a still press still, which is what makes tap vs
+        // long-press vs steering decidable at all (a centre-anchored
+        // stick would read every off-centre touch as full deflection).
+        tc.joy_cx     = px;
+        tc.joy_cy     = py;
+        tc.joy_nx     = 0.0f;
+        tc.joy_ny     = 0.0f;
+        tc.joy_active = true;
+        tc.joy_finger = id;
+        tc.oh_joy_down_ms = SDL_GetTicks();
+        tc.oh_joy_down_px = px;
+        tc.oh_joy_down_py = py;
+        tc.oh_joy_steered = false;
+        tc.oh_joy_fired   = false;
+        // '\r' is ignored during gameplay but lets any tap start from the
+        // menu — the same pairing the two-hand left half sends.
+        game->keyboard('\r', 0, 0);
+    } else if (!tc.oh_tap_active) {
+        // Second finger while the first steers: a pure fire candidate.
+        tc.oh_tap_active  = true;
+        tc.oh_tap_finger  = id;
+        tc.oh_tap_down_ms = SDL_GetTicks();
+        tc.oh_tap_down_px = px;
+        tc.oh_tap_down_py = py;
+        tc.oh_tap_steered = false;
+        tc.oh_tap_fired   = false;
+    }
+    // Further fingers are silently ignored.
+}
+
+void touch_one_hand_motion(SDL_FingerID id, float px, float py) {
+    TouchControlsState &tc = g_touch_controls;
+    if (tc.joy_active && tc.joy_finger == id) {
+        // The steered latch is one-way: once a press has been a dodge it
+        // can never late-fire by drifting back over its start point.
+        if (oh_moved_past_slop(px, py, tc.oh_joy_down_px, tc.oh_joy_down_py))
+            tc.oh_joy_steered = true;
+        oh_update_nub(px, py);
+    } else if (tc.oh_tap_active && tc.oh_tap_finger == id) {
+        if (oh_moved_past_slop(px, py, tc.oh_tap_down_px, tc.oh_tap_down_py))
+            tc.oh_tap_steered = true;  // wandered — no shot on release
+    }
+}
+
+bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
+    TouchControlsState &tc = g_touch_controls;
+    Uint32 now = SDL_GetTicks();
+    if (tc.joy_active && tc.joy_finger == id) {
+        bool tap = !tc.oh_joy_steered && !tc.oh_joy_fired &&
+                   now - tc.oh_joy_down_ms < OH_LONG_PRESS_MS;
+        tc.joy_active = false;
+        tc.joy_nx     = 0.0f;
+        tc.joy_ny     = 0.0f;
+        game->touch_joystick(0.0f, 0.0f);
+        // Pair the '\r' sent in touch_one_hand_down
+        game->keyboard_up('\r', 0, 0);
+        if (tap && tc.one_hand_ingame) oh_fire_primary(game);
+        return true;
+    }
+    if (tc.oh_tap_active && tc.oh_tap_finger == id) {
+        bool tap = !tc.oh_tap_steered && !tc.oh_tap_fired &&
+                   now - tc.oh_tap_down_ms < OH_LONG_PRESS_MS;
+        tc.oh_tap_active = false;
+        if (tap && tc.one_hand_ingame) oh_fire_primary(game);
+        return true;
+    }
+    return false;  // untracked finger: caller's legacy '\r' release path
+}
+
+void touch_one_hand_tick(StateManager *game) {
+    TouchControlsState &tc = g_touch_controls;
+    Uint32 now = SDL_GetTicks();
+    // Deferred fire-key releases (see OH_KEY_HOLD_MS above).
+    if (tc.oh_shoot_up_at && (Sint32)(now - tc.oh_shoot_up_at) >= 0) {
+        tc.oh_shoot_up_at = 0;
+        game->keyboard_up(' ', 0, 0);
+    }
+    if (tc.oh_mine_up_at && (Sint32)(now - tc.oh_mine_up_at) >= 0) {
+        tc.oh_mine_up_at = 0;
+        game->keyboard_up('x', 0, 0);
+    }
+    if (!tc.one_hand_ingame) return;
+    // Long-press watchdog: a held, un-wandered press fires the secondary
+    // once, while the finger is still down (motion events stop when the
+    // finger stops, so release-time checks alone would fire it late).
+    if (tc.joy_active && !tc.oh_joy_steered && !tc.oh_joy_fired &&
+        tc.mine_available && now - tc.oh_joy_down_ms >= OH_LONG_PRESS_MS) {
+        tc.oh_joy_fired = true;
+        oh_fire_secondary(game);
+    }
+    if (tc.oh_tap_active && !tc.oh_tap_steered && !tc.oh_tap_fired &&
+        tc.mine_available && now - tc.oh_tap_down_ms >= OH_LONG_PRESS_MS) {
+        tc.oh_tap_fired = true;
+        oh_fire_secondary(game);
     }
 }

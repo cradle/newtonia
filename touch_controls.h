@@ -84,6 +84,39 @@ struct TouchControlsState {
     float pause_hit_radius;                 // hit-test radius (larger than visual)
     bool  pause_active;
     SDL_FingerID pause_finger;
+
+    // ---- One-handed mode (Preferences::touch_one_hand) ----
+    // The whole screen is one larger joystick resting mid-screen and the
+    // OSD draws no shoot/mine/boost circles. A press that never wanders
+    // past the tap slop is a FIRE gesture instead of steering: released
+    // before the long-press threshold it taps the primary (' '), held past
+    // it the secondary fires ('x', gated on mine_available exactly like
+    // the mine button it replaces). GLGame::tick mirrors one_hand_ingame
+    // from touch_zoom_active() — live play with a local ship — so menu,
+    // pause-screen, replay and game-over taps never synthesize fire keys
+    // (the flag deliberately goes stale-true under the Intro state, where
+    // a tap-anywhere IS the fire input that dismisses it); ~GLGame clears
+    // it, since ' ' doubles as a confirm key in the menus. The synthesized
+    // press is released a beat later by touch_one_hand_tick, never in the
+    // same event batch — the weapons only sample the trigger in step().
+    bool  one_hand_ingame;
+    // The joystick finger doubles as the first fire candidate.
+    Uint32 oh_joy_down_ms;
+    float oh_joy_down_px, oh_joy_down_py;
+    bool  oh_joy_steered;   // wandered past the slop: it is steering
+    bool  oh_joy_fired;     // its long-press secondary already fired
+    // A second finger while the first steers: a pure fire candidate that
+    // never steals the stick (the two-hand layout let a second left-half
+    // finger re-base the joystick mid-flight).
+    bool  oh_tap_active;
+    SDL_FingerID oh_tap_finger;
+    Uint32 oh_tap_down_ms;
+    float oh_tap_down_px, oh_tap_down_py;
+    bool  oh_tap_steered;
+    bool  oh_tap_fired;
+    // Deferred key-ups for the synthesized fire presses (0 = none armed).
+    Uint32 oh_shoot_up_at;
+    Uint32 oh_mine_up_at;
 };
 
 extern TouchControlsState g_touch_controls;
@@ -91,6 +124,30 @@ extern TouchControlsState g_touch_controls;
 // Call whenever the window is resized to reposition controls.
 void touch_controls_resize(int w, int h);
 
+// Re-run the last resize (options toggled the input method: the joystick
+// hint/radius move without the window changing). No-op before the first
+// real resize.
+void touch_controls_relayout();
+
 // Release all held touch inputs and send corresponding key-up events.
 // Call when the app goes to the background so no inputs get stuck.
 void touch_controls_reset(StateManager *game);
+
+// ---- One-handed input (Preferences::touch_one_hand) ----
+// The shared gesture layer for the native entry points: when
+// touch_one_handed() is on, finger_down/motion/up delegate here wholesale
+// (only the top-right pause button keeps its own hit test — the invisible
+// centre pause zone is the joystick field now), and the per-tick loop
+// calls touch_one_hand_tick beside the joystick apply for the long-press
+// watchdog and the deferred fire-key releases. The web build's HTML OSD
+// implements the same gesture in web/main.ts.
+bool touch_one_handed();
+// px/py = window pixels, nx/ny = the normalized 0..1 SDL finger coords
+// (the zoom-zone carve-out speaks normalized, like touch_tap).
+void touch_one_hand_down(StateManager *game, SDL_FingerID id,
+                         float px, float py, float nx, float ny);
+void touch_one_hand_motion(SDL_FingerID id, float px, float py);
+// Returns false for a finger it never tracked (zoom-zone or overflow):
+// the caller falls through to its legacy '\r' release.
+bool touch_one_hand_up(StateManager *game, SDL_FingerID id);
+void touch_one_hand_tick(StateManager *game);

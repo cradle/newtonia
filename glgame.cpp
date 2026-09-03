@@ -631,6 +631,11 @@ GLGame::~GLGame() {
   // Stop answering distance queries — no-op if a newer game already took
   // the hook over (states are built before their predecessor is deleted).
   WorldSound::clear_listener(this);
+  // One-hand tap-fire gate off with the game: nothing updates the mirror
+  // once this state is gone, and ' ' doubles as a confirm key in the
+  // menus (touch_controls.h). Harmless if a newer game already re-armed
+  // it — its own tick rewrites the flag every frame.
+  g_touch_controls.one_hand_ingame = false;
   // Deliberate teardown of a hosted room (quit to menu, game over, clean
   // app exit — the send_close below kills the room NOW): the process-death
   // resume ticket and online save go with it. A crash or OS kill never
@@ -8658,6 +8663,15 @@ void GLGame::tick(int delta) {
     g_touch_controls.secondary_kind =
         has_secondary ? (uint8_t)Ship::secondary_kind_of(*lp->ship->secondary)
                       : 0;
+    // One-handed touch: taps fire only in LIVE play. touch_zoom_active()
+    // is exactly that gate (running, not spectating/replay/roster, a local
+    // ship to fire) — deliberately shared, so the tap can never shoot on a
+    // screen the zoom zones would refuse. The flag goes stale-true under
+    // the Intro state (this tick stops running), which is the wanted
+    // behaviour there: a tap IS the fire input that dismisses an intro.
+    // ~GLGame clears it on the way out.
+    g_touch_controls.one_hand_ingame =
+        touch_one_handed() && touch_zoom_active();
 #ifdef __EMSCRIPTEN__
     // The web build's circle buttons are HTML (web/main.ts), so mirror the
     // flag across the same bridge setMenuMode rides, on change only.
@@ -8674,6 +8688,17 @@ void GLGame::tick(int delta) {
       web_boost_last = g_touch_controls.boost_ready;
       EM_ASM({ if (window.setBoostReady) window.setBoostReady($0); },
              g_touch_controls.boost_ready ? 1 : 0);
+    }
+    // One-hand tap-fire gate for the HTML OSD's gesture layer, on change
+    // only like the flags above. No push from ~GLGame: back in the menu
+    // the full-screen menu overlay owns every tap, so a stale true is
+    // unreachable until a new game's tick rewrites it.
+    static bool web_oh_pushed = false, web_oh_last = false;
+    if (!web_oh_pushed || web_oh_last != g_touch_controls.one_hand_ingame) {
+      web_oh_pushed = true;
+      web_oh_last = g_touch_controls.one_hand_ingame;
+      EM_ASM({ if (window.setTapFire) window.setTapFire($0); },
+             g_touch_controls.one_hand_ingame ? 1 : 0);
     }
     // Active-weapon icons on the HTML circle buttons (Save kind values,
     // -1 secondary = none; main.ts maps them to inline SVG backgrounds).

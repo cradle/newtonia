@@ -1582,7 +1582,12 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   }
 
   // ---- Shoot button ----
-  {
+  // One-handed mode draws no shoot/mine/boost circles at all: the stick
+  // is the trigger (tap = primary, long press = secondary — the gesture
+  // layer in touch_controls.cpp), so a drawn button would be a control
+  // that answers no finger. The joystick above and the pause circle
+  // below stay.
+  if (!touch_one_handed()) {
     float bx = ox(tc.shoot_cx);
     float by = oy(tc.shoot_cy);
     float br = sr(tc.shoot_radius);
@@ -1598,7 +1603,7 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   // Only while a secondary is equipped (GLGame::tick keeps the flag; the
   // entry points gate their hit test on the same flag, so the region and
   // the circle appear and vanish together).
-  if (tc.mine_available) {
+  if (!touch_one_handed() && tc.mine_available) {
     float bx = ox(tc.mine_cx);
     float by = oy(tc.mine_cy);
     float br = sr(tc.mine_radius);
@@ -1614,7 +1619,7 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   // Above and between the shoot/mine pair. Amber; dimmed while Ship's
   // cooldown runs (boost_ready, mirrored by GLGame::tick). The icon is a
   // double up-chevron — "more speed" in one glyph.
-  {
+  if (!touch_one_handed()) {
     float bx = ox(tc.boost_cx);
     float by = oy(tc.boost_cy);
     float br = sr(tc.boost_radius);

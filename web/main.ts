@@ -270,10 +270,22 @@ declare const NewtoniaStore: undefined | {
   // the same bridge setMenuMode rides. Starts false: a fresh ship has no
   // secondary until a pickup grants one.
   let _mineAvailable = false;
+  // One-handed input (Preferences::touch_one_hand, pushed at startup from
+  // web_main.cpp and on options close from Menu::close_options): the whole
+  // screen is one larger joystick resting mid-screen, taps fire the
+  // primary and a long press the secondary; the shoot/mine/boost circles
+  // never show. Mirrors the native gesture layer in touch_controls.cpp.
+  let _oneHand = false;
+  // The one-hand tap-fire gate: true only in LIVE play (GLGame::tick
+  // mirrors touch_zoom_active over setTapFire), so pause/game-over/replay
+  // taps never synthesize fire keys. Deliberately left stale-true under
+  // the Intro state, where a tap IS the fire input that dismisses it.
+  let _tapFire = false;
 
   function applyCircleButtonVisibility(): void {
     for (const el of _circleButtonEls) {
       const hide = _inMenuMode ||
+          (_oneHand && !el.classList.contains("touch-pause")) ||
           (!_mineAvailable && el.classList.contains("touch-mine"));
       el.style.display = hide ? "none" : "";
     }
@@ -302,6 +314,24 @@ declare const NewtoniaStore: undefined | {
     applyCircleButtonVisibility();
   }
   (window as any).setMineAvailable = setMineAvailable;
+
+  // Called from C++ (web_main.cpp startup, Menu::close_options) with the
+  // stored touch input method; a change rebuilds the whole touch layout.
+  // Only ever pushed in the menu, so the setMenuMode(true) inside
+  // applyTouchVisibility is always correct here.
+  function setOneHandMode(on: number | boolean): void {
+    const v = !!on;
+    if (v === _oneHand) return;
+    _oneHand = v;
+    applyTouchVisibility();
+  }
+  (window as any).setOneHandMode = setOneHandMode;
+
+  // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
+  function setTapFire(active: number | boolean): void {
+    _tapFire = !!active;
+  }
+  (window as any).setTapFire = setTapFire;
 
   // Called from C++ via EM_ASM while Ship::boost's cooldown runs — the
   // button dims but stays pressable (presses no-op in Ship::boost()).
@@ -477,6 +507,14 @@ declare const NewtoniaStore: undefined | {
     // ------------------------------------------------------------------
     const joyZone = document.createElement("div");
     joyZone.className = "joy-zone";
+    // One-hand mode: the whole screen is the stick. The pause button and
+    // menu overlay are appended after this zone, so they stay on top and
+    // keep answering their own taps.
+    if (_oneHand) joyZone.style.width = "100%";
+    // Joystick radius as a fraction of the short canvas edge — the
+    // one-hand stick is larger, matching the native OSD's 0.20 → 0.30
+    // step (touch_controls.cpp).
+    const JOY_FRAC = _oneHand ? 0.39 : 0.26;
 
     const joyBase = document.createElement("div");
     joyBase.className = "joy-base";
@@ -492,6 +530,76 @@ declare const NewtoniaStore: undefined | {
 
     let joyFinger: number | null = null;
     let joyCX = 0, joyCY = 0, joyRad = 0;
+
+    // ---- One-hand gesture bookkeeping (mirrors touch_controls.cpp) ----
+    // The joystick finger doubles as the first fire candidate: a press
+    // that never wanders past the tap slop is a FIRE gesture — released
+    // inside the long-press window it taps the primary, held past it the
+    // secondary fires. A second finger while the first steers is a pure
+    // fire candidate that never steals the stick.
+    const OH_LONG_PRESS_MS = 400;
+    let joyDownX = 0, joyDownY = 0, joyDownMs = 0;
+    let joySteered = false, joyFired = false, joyPressSeq = 0;
+    let tapFinger: number | null = null;
+    let tapDownX = 0, tapDownY = 0, tapDownMs = 0;
+    let tapSteered = false, tapFired = false, tapPressSeq = 0;
+    // Fingers deliberately left to the canvas-tap path (the zoom zones).
+    const passFingers = new Set<number>();
+
+    // Synthesized fire press. The weapons only sample the trigger in
+    // their sim step, so the keyup is deferred a beat — a down+up in the
+    // same frame would fire nothing (OH_KEY_HOLD_MS's web twin).
+    function fireKey(key: string): void {
+      const opts = {
+        key,
+        code: key === " " ? "Space" : `Key${key.toUpperCase()}`,
+        bubbles: true,
+        cancelable: true,
+      };
+      canvas.dispatchEvent(new KeyboardEvent("keydown", opts));
+      window.setTimeout(
+        () => canvas.dispatchEvent(new KeyboardEvent("keyup", opts)), 70);
+    }
+
+    // Every one-hand release forwards the tap position to touch_tap —
+    // the native entry points do this on every finger-up, and it is what
+    // keeps the zoom zones and the game-over/pause EXIT band reachable
+    // when the joystick zone covers the whole screen.
+    function forwardTap(t: Touch): void {
+      const r = canvas.getBoundingClientRect();
+      (Module as ModuleEx)._web_menu_tap?.(
+        (t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height);
+    }
+
+    // TouchZone::zoom_in / zoom_out (view/tap_band.cpp) in the normalized
+    // coords touch_tap speaks — keep in sync. Only carved out in live
+    // play, exactly like the native layer's one_hand_ingame gate.
+    function inZoomZone(t: Touch): boolean {
+      if (!_tapFire) return false;
+      const r = canvas.getBoundingClientRect();
+      const nx = (t.clientX - r.left) / r.width;
+      const ny = (t.clientY - r.top) / r.height;
+      return nx >= 0.88 && ny >= 0.40 && ny < 0.60;
+    }
+
+    // Long-press watchdog: fingers that stop moving stop sending events,
+    // so the secondary must fire from a timer, while the press is still
+    // held. The seq token voids a timer whose press already ended.
+    function armLongPress(which: "joy" | "tap", seq: number): void {
+      window.setTimeout(() => {
+        if (!_oneHand || !_tapFire || !_mineAvailable) return;
+        if (which === "joy") {
+          if (joyFinger === null || seq !== joyPressSeq ||
+              joySteered || joyFired) return;
+          joyFired = true;
+        } else {
+          if (tapFinger === null || seq !== tapPressSeq ||
+              tapSteered || tapFired) return;
+          tapFired = true;
+        }
+        fireKey("x");
+      }, OH_LONG_PRESS_MS);
+    }
 
     // Radius is captured at touchstart and reused for the whole drag — avoids
     // a getBoundingClientRect() call on every touchmove.
@@ -527,10 +635,11 @@ declare const NewtoniaStore: undefined | {
       if (_inMenuMode) return;
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
-      const rad = Math.min(r.width, r.height) * 0.26;
+      const rad = Math.min(r.width, r.height) * JOY_FRAC;
       const baseSize = rad * 2, nubSize = rad * 0.62;
-      const px = r.left + r.width * 0.18;
-      const py = r.top  + r.height * 0.75;
+      // One hand: resting hint mid-screen, where the thumb hovers.
+      const px = r.left + r.width  * (_oneHand ? 0.50 : 0.18);
+      const py = r.top  + r.height * (_oneHand ? 0.50 : 0.75);
       joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
       joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
     }
@@ -542,12 +651,32 @@ declare const NewtoniaStore: undefined | {
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
+        if (_oneHand && inZoomZone(t)) {
+          // Live-play zoom zones keep their tap semantics: the release
+          // forwards to touch_tap (the zoom step) instead of the stick.
+          passFingers.add(t.identifier);
+          continue;
+        }
         if (joyFinger === null) {
           joyFinger = t.identifier;
           const r = canvas.getBoundingClientRect();
           // clientX/Y are viewport-relative; touch-controls is position:fixed so no offset needed.
-          showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * 0.26);
-          break;
+          showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * JOY_FRAC);
+          if (_oneHand) {
+            joyDownX = t.clientX; joyDownY = t.clientY;
+            joyDownMs = Date.now();
+            joySteered = false; joyFired = false;
+            armLongPress("joy", ++joyPressSeq);
+          } else {
+            break;
+          }
+        } else if (_oneHand && tapFinger === null) {
+          // Second finger while the first steers: a pure fire candidate.
+          tapFinger = t.identifier;
+          tapDownX = t.clientX; tapDownY = t.clientY;
+          tapDownMs = Date.now();
+          tapSteered = false; tapFired = false;
+          armLongPress("tap", ++tapPressSeq);
         }
       }
     }, { passive: false });
@@ -557,8 +686,18 @@ declare const NewtoniaStore: undefined | {
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         if (t.identifier === joyFinger) {
+          // The steered latch is one-way: once a press has been a dodge
+          // it can never late-fire by drifting back over its start.
+          if (_oneHand && !joySteered &&
+              Math.hypot(t.clientX - joyDownX, t.clientY - joyDownY) >
+                  joyRad * 0.12)
+            joySteered = true;
           moveJoystick(t.clientX, t.clientY);
-          break;
+          if (!_oneHand) break;
+        } else if (_oneHand && t.identifier === tapFinger && !tapSteered) {
+          if (Math.hypot(t.clientX - tapDownX, t.clientY - tapDownY) >
+                  joyRad * 0.12)
+            tapSteered = true;  // wandered — no shot on release
         }
       }
     }, { passive: false });
@@ -566,7 +705,25 @@ declare const NewtoniaStore: undefined | {
     const onJoyEnd = (e: TouchEvent) => {
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === joyFinger) { hideJoystick(); break; }
+        const t = e.changedTouches[i];
+        const id = t.identifier;
+        if (id === joyFinger) {
+          const wasTap = _oneHand && !joySteered && !joyFired &&
+                         Date.now() - joyDownMs < OH_LONG_PRESS_MS;
+          hideJoystick();
+          if (_oneHand) {
+            forwardTap(t);
+            if (wasTap && _tapFire) fireKey(" ");
+          }
+        } else if (_oneHand && id === tapFinger) {
+          const wasTap = !tapSteered && !tapFired &&
+                         Date.now() - tapDownMs < OH_LONG_PRESS_MS;
+          tapFinger = null;
+          forwardTap(t);
+          if (wasTap && _tapFire) fireKey(" ");
+        } else if (passFingers.delete(id)) {
+          forwardTap(t);  // zoom-zone finger: the plain canvas-tap path
+        }
       }
     };
     joyZone.addEventListener("touchend",    onJoyEnd, { passive: false });

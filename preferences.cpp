@@ -227,6 +227,8 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.friendly_fire = (val[0] == '1');
     } else if (strcmp(key, "allow_anonymous") == 0) {
         g_prefs.allow_anonymous = (val[0] == '1');
+    } else if (strcmp(key, "touch_one_hand") == 0) {
+        g_prefs.touch_one_hand = (val[0] == '1');
     } else if (strcmp(key, "boost_hint_done") == 0) {
         g_prefs.boost_hint_done = (val[0] == '1');
     } else if (strcmp(key, "auto_record_replays") == 0) {
@@ -335,6 +337,7 @@ void save_preferences() {
     fprintf(f, "rotate_view=%d\n",             g_prefs.player_keys[0].rotate_view ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
     fprintf(f, "allow_anonymous=%d\n",         g_prefs.allow_anonymous    ? 1 : 0);
+    fprintf(f, "touch_one_hand=%d\n",          g_prefs.touch_one_hand     ? 1 : 0);
     fprintf(f, "boost_hint_done=%d\n",         g_prefs.boost_hint_done    ? 1 : 0);
     fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "leaderboard_prompts=%d\n",     g_prefs.leaderboard_prompts ? 1 : 0);

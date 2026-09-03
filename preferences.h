@@ -134,6 +134,14 @@ struct Preferences {
     // door. Note this is strict by design: a room of desktop builds attests
     // nobody, so turning it off there closes the room to everyone.
     bool allow_anonymous     = true;
+    // Touch input method (the Options INPUT row on touch layouts): false =
+    // TWO HANDS, the classic layout — left-half joystick, right-hand
+    // shoot/mine/boost buttons; true = ONE HAND — the whole screen is one
+    // larger joystick resting mid-screen, a tap fires the primary and a
+    // long press the secondary (touch_controls.h, the one-hand gesture
+    // layer). Desktop/controller input is untouched; the flag only matters
+    // where the touch OSD runs.
+    bool touch_one_hand      = false;
     // Boost discoverability: the in-game "boost with e" hint keeps
     // appearing (on the F1 hint's alternate flash phase) until the pilot
     // has actually boosted once — GLShip latches this on the first boost

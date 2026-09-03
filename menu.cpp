@@ -13,6 +13,7 @@
 #include "net_resume.h"
 #include "net_transport.h"
 #include "preferences.h"
+#include "touch_controls.h"
 #include "presence.h"
 #include "replay.h"
 #include "stats.h"
@@ -84,6 +85,13 @@ static const int NUM_SPEED_ZOOM = 5;
 // extras), and hand-editing preferences.ini is not a player-facing answer.
 static const char* RECORD_LABELS[] = {"OFF", "ON"};
 static const int NUM_RECORD = 2;
+// Touch input method (Preferences::touch_one_hand): the classic two-hand
+// layout (left-half joystick + shoot/mine/boost buttons) vs the one-hand
+// whole-screen stick (tap fires the primary, a long press the secondary —
+// touch_controls.h). Touch row list only: desktop/controller input has no
+// OSD to re-arrange, and the desktop list sits at its row budget.
+static const char* INPUT_LABELS[] = {"TWO HANDS", "ONE HAND"};
+static const int NUM_INPUT = 2;
 // leaderboard_prompts: ON = ask at game over (the per-run opt-out), OFF =
 // upload a qualifying best automatically, still showing the card's
 // UPLOADING/UPLOADED status text (decided with Glenn 2026-08-03). Labelled
@@ -100,7 +108,8 @@ static const int NUM_LEADERBOARD = 2;
 // screen; 9=the CAMERA row, the second opener (its sub-screen holds the
 // per-player smoothing/rotation/zoom rows — four rows per player would
 // blow the flat list's budget, the same reason AUDIO went a level down);
-// 10=zoom, 11=speed-follow zoom (CAMERA sub-menu rows). P2 rows are
+// 10=zoom, 11=speed-follow zoom (CAMERA sub-menu rows); 12=touch input
+// method (touch list only — see INPUT_LABELS above). P2 rows are
 // desktop-only — mobile (touch) shows Player 1 plus the shared options.
 // Options is desktop/controller-only today (see Menu::show_options_row),
 // so the touch list is future-proofing.
@@ -120,6 +129,7 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"},
+  {12, 0, "INPUT METHOD"},
   {9, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {8, 0, "AUDIO"},
@@ -368,6 +378,7 @@ Menu::Menu() :
                                               STAR_DENSITY_MULTIPLIERS, NUM_STAR_DENSITY);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
+  input_index_          = g_prefs.touch_one_hand ? 1 : 0;
   master_volume_index_  = nearest_value_index(g_prefs.master_volume, VOLUME_VALUES, NUM_VOLUME);
   music_volume_index_   = nearest_value_index(g_prefs.music_volume, VOLUME_VALUES, NUM_VOLUME);
   scan_replays();
@@ -829,6 +840,7 @@ void Menu::draw() {
         case 8: case 9: num_steps = 0; cur_idx = 0; lbl = NULL; opener = true; break;
         case 10: num_steps = NUM_ZOOM;        cur_idx = zoom_index_[r.player];        lbl = ZOOM_LABELS;          break;
         case 11: num_steps = NUM_SPEED_ZOOM;  cur_idx = speed_zoom_index_[r.player];  lbl = SPEED_ZOOM_LABELS;    break;
+        case 12: num_steps = NUM_INPUT;       cur_idx = input_index_;                 lbl = INPUT_LABELS;         break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -2231,6 +2243,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
       return;
     case 10: idx = &zoom_index_[r.player];       num = NUM_ZOOM;         break;
     case 11: idx = &speed_zoom_index_[r.player]; num = NUM_SPEED_ZOOM;   break;
+    case 12: idx = &input_index_;                num = NUM_INPUT;        break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2266,7 +2279,18 @@ void Menu::close_options() {
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
   g_prefs.music_volume                 = VOLUME_VALUES[music_volume_index_];
+  g_prefs.touch_one_hand               = (input_index_ == 1);
   save_preferences();
+  // The joystick hint/radius live in the touch layout, so re-run it in
+  // place — the next game must open in the picked input method without
+  // waiting for a window resize.
+  touch_controls_relayout();
+#ifdef __EMSCRIPTEN__
+  // The web build's OSD is HTML (web/main.ts): hand it the mode so it can
+  // rebuild its own layout, over the same bridge setMenuMode rides.
+  EM_ASM({ if (window.setOneHandMode) window.setOneHandMode($0); },
+         g_prefs.touch_one_hand ? 1 : 0);
+#endif
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),
                               STAR_DENSITY_MULTIPLIERS[star_density_index_],
