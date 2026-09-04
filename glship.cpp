@@ -355,12 +355,25 @@ void GLShip::clear_keys() {
 
 void GLShip::set_controller(SDL_GameController *game_controller) {
   controller = game_controller;
+  // Any deliberate bind or strip ends a reconnect wait — only
+  // controller_lost() (the disconnect path) sets it.
+  pad_lost_ = false;
   if(controller) {
     controller_instance_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
     last_input_was_controller = true;
   } else {
     controller_instance_id = -1;
   }
+}
+
+void GLShip::controller_lost() {
+  set_controller(NULL);
+  pad_lost_ = true;
+}
+
+bool GLShip::controller_detached() const {
+  return controller_instance_id != -1 &&
+         (controller == NULL || !SDL_GameControllerGetAttached(controller));
 }
 
 bool GLShip::has_controller() const {

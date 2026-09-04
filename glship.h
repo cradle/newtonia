@@ -98,6 +98,18 @@ public:
   }
   void set_controller(SDL_GameController *game_controller);
   bool has_controller() const;
+  // The seat's pad DISCONNECTED (as opposed to a deliberate
+  // set_controller(NULL) from the roster): drop the binding and remember the
+  // loss, so the next pad to appear comes back to this seat — a re-added pad
+  // is a NEW SDL device (a USB pad re-paired wireless shares nothing with
+  // the id that left), so recognising a reconnect can only mean remembering
+  // which seat is waiting. See GLGame::controller_added.
+  void controller_lost();
+  bool awaiting_pad() const { return pad_lost_; }
+  // A bound pad whose handle reports detached: its DEVICEREMOVED never
+  // reached this seat (or the replacement's ADDED outran it) — the purge in
+  // GLGame::controller_added treats it as the loss it is.
+  bool controller_detached() const;
   // The keymap card is up, so it — not the pause text — owns the screen.
   // GLGame gates the pause menu on this (Overlay reads show_help directly
   // as a friend).
@@ -189,6 +201,7 @@ protected:
   int keymap_slot_ = -1;  // see keymap_slot()
   SDL_GameController *controller = NULL;
   SDL_JoystickID controller_instance_id = -1;
+  bool pad_lost_ = false;  // see awaiting_pad()
   bool r2_shoot_active = false;
   bool l2_shoot_active = false;
   bool left_axis_x_active = false;
