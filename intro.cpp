@@ -9,6 +9,7 @@
 #include "asteroid_drawer.h"
 #include "wrapped_point.h"
 #include "view/overlay.h"
+#include "touch_controls.h"
 #include "typer.h"
 
 #include "gl_compat.h"
@@ -314,8 +315,14 @@ void Intro::draw() {
     // PAUSED in place of the flashing start prompt.
     Typer::draw_centered(0, top * 0.75f, "PAUSED", 20);
   } else if ((time / 700) % 2 == 0) {
+    // One-handed touch has no fire button — a tap anywhere IS the fire
+    // input there (the gesture layer's stale-true gate, touch_controls.h),
+    // so the prompt says what the finger actually does.
     Typer::draw_centered(0, top * 0.75f,
-                         is_touch_mode() ? "TAP FIRE TO START" : "PRESS FIRE TO START", 20);
+                         is_touch_mode()
+                             ? (touch_one_handed() ? "TAP TO START"
+                                                   : "TAP FIRE TO START")
+                             : "PRESS FIRE TO START", 20);
   }
   Typer::draw_centered(0, -top * 0.5f, name, 26);
 }

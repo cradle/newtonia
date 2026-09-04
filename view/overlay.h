@@ -41,6 +41,10 @@ public:
   static void paused(const GLGame *glgame);
   // Seat roster (offline), drawn over the pause menu it replaces.
   static void seat_roster(const GLGame *glgame);
+  // Touch controls help card (GLGame::touch_help_*) — full-window over its
+  // own dim, owning the screen like the roster. No-op unless the card is
+  // up.
+  static void touch_help(const GLGame *glgame);
   // Touch OSD (joystick, fire/mine, pause) — public so the intro screen can
   // draw it too; no-op off Android/iOS. Needs a full-window ortho of
   // ±window extents to be current.

@@ -175,6 +175,8 @@ private:
   int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)
   int  camera_index_[MAX_PLAYERS]      = {1, 1, 1, 1};  // per-player: 0=FIXED, 1=ROTATE
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
+  int  input_index_          = 0;       // 0=TWO HANDS, 1=ONE HAND (Preferences::touch_one_hand)
+  int  handedness_index_     = 1;       // 0=LEFT, 1=CENTRE, 2=RIGHT (Preferences::touch_handedness)
   int  leaderboard_index_    = 1;       // 0=OFF, 1=ON (Preferences::leaderboard_prompts)
   int  master_volume_index_  = 4;       // index into VOLUME_VALUES (4=FULL)
   int  music_volume_index_   = 4;       // index into VOLUME_VALUES (4=FULL)

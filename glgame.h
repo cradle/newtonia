@@ -297,6 +297,25 @@ private:
   // The band itself, hung above the exit band (which is portrait-aware,
   // so this follows it). One definition for draw and hit-test.
   TapBand roster_manage_band() const;
+  // ---- Touch controls help card ----
+  // A full-window card spelling out the current touch layout's controls —
+  // the one-hand gestures (tap / tap-then-hold / cold long press) are
+  // invisible, so it auto-shows ONCE on the first offline one-hand game
+  // (Preferences::touch_help_done latches) and pauses the game under it;
+  // the pause screen's CONTROLS band (touch, both layouts) reopens it any
+  // time. Any tap or Esc/back closes it — back to play if it auto-paused,
+  // back to the pause screen otherwise. While up it owns the screen like
+  // the roster: keyboard_up swallows the entry points' synthesized keys,
+  // touch_zoom_active() refuses (killing tap-fire and the zoom zones),
+  // and the pause chrome/exit band are suppressed under its dim.
+  bool touch_help_active() const { return touch_help_active_; }
+  bool touch_help_offer() const;   // pause screen shows the CONTROLS band
+  TapBand controls_band() const;   // above roster_manage_band's slot
+  void touch_help_open(bool resume_on_close);
+  void touch_help_close();
+  bool touch_help_active_ = false;
+  bool touch_help_resume_ = false;  // the card auto-paused: resume on close
+  bool touch_help_tried_ = false;   // first-tick auto-show decided
   // The policy flip the roster's anon row performs — one write site for
   // the ladder's three keys and the touch band.
   void roster_toggle_anonymous();
