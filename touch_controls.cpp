@@ -359,8 +359,12 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         if (tc.oh_joy_firehold) {
             tc.oh_joy_firehold = false;
             game->keyboard_up(' ', 0, 0);
-            // Refresh the chain: a quick re-press continues the stream.
-            tc.oh_last_tap_ms = now;
+            // Refresh the chain — a quick re-press continues the stream —
+            // but only for a STILL hold: a wandered press was a dodge the
+            // per-tick conversion hasn't caught yet (it releases between
+            // ticks), and the press after a dodge must be a plain
+            // tap/steer again, never an auto-stream.
+            if (!tc.oh_joy_steered) tc.oh_last_tap_ms = now;
         } else if (tap && tc.one_hand_ingame) {
             oh_fire_primary(game);
         }
@@ -394,6 +398,17 @@ void touch_one_hand_tick(StateManager *game) {
     if (tc.oh_mine_up_at && (Sint32)(now - tc.oh_mine_up_at) >= 0) {
         tc.oh_mine_up_at = 0;
         game->keyboard_up('x', 0, 0);
+    }
+    // A hold that MOVES must never also shoot: the joystick finger's
+    // fire-hold converts to pure steering the moment the motion handler
+    // latches steered — release the trigger here (the motion path has no
+    // StateManager to send the key-up itself). The SECOND finger's
+    // fire-hold deliberately survives wandering: it steers nothing, and
+    // it is the fire-while-moving path. Ahead of the one_hand_ingame
+    // gate so a pause mid-press still releases.
+    if (tc.oh_joy_firehold && tc.oh_joy_steered) {
+        tc.oh_joy_firehold = false;
+        game->keyboard_up(' ', 0, 0);
     }
     if (!tc.one_hand_ingame) return;
     // Long-press watchdog: a held, un-wandered press fires the secondary
