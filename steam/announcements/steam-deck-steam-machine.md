@@ -17,6 +17,18 @@ re-verify before editing a claim, and keep the controller map in step with
 Newtonia on Steam Deck and Steam Machine
 ```
 
+## Subtitle (Steamworks limit 120 characters)
+
+```
+Native SteamOS build, everything on the controller, Deck touchscreen, floating keyboard and four-player couch co-op.
+```
+
+## Summary (Steamworks limit 180 characters)
+
+```
+Newtonia is fully supported on Steam Deck and Steam Machine: native SteamOS build, no keyboard or mouse needed, native Deck touch, up to four players on one screen or online.
+```
+
 ## Body
 
 ```
