@@ -572,14 +572,11 @@ declare const NewtoniaStore: undefined | {
     // fire candidate that never steals the stick.
     const OH_LONG_PRESS_MS = 400;
     // A press landing this close behind a tap-fire becomes a FIRE-HOLD:
-    // the primary goes down at the press edge and stays down while the
-    // press holds STILL — automatics stream from a standing hold, and
-    // wandering past the slop converts the press to pure steering (the
-    // trigger releases: a hold to MOVE must never also shoot; the second
-    // finger, which steers nothing, is the fire-while-moving path).
-    // Releasing an un-wandered hold refreshes the window so
-    // tap-hold-tap-hold stays in the stream. The secondary keeps needing
-    // a COLD long press (mirrors OH_DOUBLE_TAP_MS in touch_controls.cpp).
+    // the primary goes down at the press edge and stays down until the
+    // finger lifts (automatics stream; the joystick finger still steers),
+    // and releasing refreshes the window so tap-hold-tap-hold stays in
+    // the stream. The secondary keeps needing a COLD long press (mirrors
+    // OH_DOUBLE_TAP_MS in touch_controls.cpp).
     const OH_DOUBLE_TAP_MS = 250;
     let joyDownX = 0, joyDownY = 0, joyDownMs = 0;
     let joySteered = false, joyFired = false, joyPressSeq = 0;
@@ -800,17 +797,8 @@ declare const NewtoniaStore: undefined | {
           // it can never late-fire by drifting back over its start.
           if (_oneHand && !joySteered &&
               Math.hypot(t.clientX - joyDownX, t.clientY - joyDownY) >
-                  joyRad * 0.12) {
+                  joyRad * 0.12)
             joySteered = true;
-            // A hold that MOVES must never also shoot: the fire-hold
-            // converts to pure steering, releasing the trigger (the
-            // second finger is the fire-while-moving path — mirrors
-            // touch_one_hand_tick's conversion).
-            if (joyFireHold) {
-              joyFireHold = false;
-              keyEvt(" ", "keyup");
-            }
-          }
           moveJoystick(t.clientX, t.clientY);
           if (!_oneHand) break;
         } else if (_oneHand && t.identifier === tapFinger && !tapSteered) {
@@ -832,9 +820,6 @@ declare const NewtoniaStore: undefined | {
           hideJoystick();
           if (_oneHand) {
             forwardTap(t);
-            // A live fire-hold here is necessarily un-wandered (the
-            // touchmove conversion above releases wandered ones
-            // synchronously), so its release always refreshes the chain.
             if (joyFireHold) {
               joyFireHold = false;
               keyEvt(" ", "keyup");
