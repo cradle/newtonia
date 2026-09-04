@@ -135,6 +135,19 @@ start_relay() {
     echo "       (this script boots and owns its own relay)"
     exit 1
   fi
+  # Warm the wrangler install OUTSIDE the readiness window below: the 90 s
+  # probe was silently doubling as npm-install time, and the first fresh
+  # install after a new 4.x release blew it — wrangler 4.129.0 (published
+  # 2026-09-03) had all four relay shards FATAL with nothing in relay.log
+  # but npx's install warning, the download still running at the deadline;
+  # the boot itself takes ~5 s once the cache is warm (verified against
+  # 4.128.0 and 4.129.0 alike). Same "wrangler@4" spec as the boot so npx
+  # resolves the same cache entry. Printing the version also names the
+  # suspect the next time a release breaks something for real.
+  local wrangler_ver
+  wrangler_ver=$(cd "$ROOT/signal" &&
+    timeout 300 npx -y wrangler@4 --version 2>/dev/null | tail -1)
+  echo "== wrangler: ${wrangler_ver:-install failed or timed out}"
   echo "== starting local signal relay on :8787"
   ( cd "$ROOT/signal" && rm -rf .wrangler &&
     exec npx wrangler@4 dev --local --port 8787 \
