@@ -4,7 +4,9 @@ Source of truth for the Steam Community announcement that documents the
 game's Steam Deck and Steam Machine support — the post linked from the
 Deck/Machine compatibility review request. Pasted by hand into Steamworks
 (App Admin → Community → Post/manage announcements), like `rich_presence.vdf`;
-no workflow uploads it. The cover image is rendered by
+no workflow uploads it. Live at
+https://steamcommunity.com/games/4536720/announcements/detail/702152588870550628
+(posted 2026-09-04). The cover image is rendered by
 `generate_deck_announcement.py` (800×450, Steam's event cover size).
 
 The body is the Steam editor's own BBCode export (its `[p]` wrappers and
