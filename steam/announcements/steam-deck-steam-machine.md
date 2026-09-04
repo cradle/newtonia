@@ -7,9 +7,9 @@ Deck/Machine compatibility review request. Pasted by hand into Steamworks
 no workflow uploads it.
 
 The body is Steam's BBCode. Every claim below is field-verified on both
-devices (Deck touch 2026-07-25, Steam Machine pad reconnect 2026-09-04, full
-play-through of both 2026-09-04) — re-verify before editing a claim, and keep
-the controller map in step with `GLShip::controller_input`.
+devices (Deck touch 2026-07-25, full play-through of both 2026-09-04) —
+re-verify before editing a claim, and keep the controller map in step with
+`GLShip::controller_input`.
 
 ## Title
 
@@ -55,7 +55,6 @@ The Deck's touchscreen is native input, not mouse emulation. Every menu row, opt
 
 [list]
 [*]Up to four players locally, in any mix of controllers and keyboards. Seats are claimed by pressing a button on an unassigned pad, and the PLAYERS row on the pause screen shows who is flying what and lets you rebind any seat.
-[*]A controller that drops out — a flat battery, or a pad unplugged from USB that comes back over wireless — pauses the game, and when it returns it re-attaches to the ship it was flying, so you resume with one press of Start instead of picking up a phantom extra player. Found and fixed on the Steam Machine itself.
 [*]Friendly fire is a toggle, for maximum carnage.
 [/list]
 
@@ -73,5 +72,5 @@ Newtonia is a small C++ / SDL2 / OpenGL game with a lightweight vector renderer 
 
 [hr][/hr]
 
-If anything misbehaves on your Deck or Steam Machine, post in the discussions with what you saw. Device reports are what got the touchscreen and the controller-reconnect handling to where they are now.
+If anything misbehaves on your Deck or Steam Machine, post in the discussions with what you saw. Device reports are what got the touchscreen support to where it is now.
 ```
