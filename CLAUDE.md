@@ -484,7 +484,7 @@ All deploy artifacts build with netplay (NETPLAY.md M3-5): web/Android have it i
 
 **Disabled workflows** — `.github/workflows/disabled/` holds inactive workflows (`deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`, and `video.yml` — the replay-to-MP4 renderer, parked because its artifacts are ~240 MB against a 2 GB quota shared with every other workflow here); move a file back into `workflows/` to re-enable it.
 
-**Steam integration** — `steam_build.h` (constants/SDK), `steam_achievements.cpp` (achievements backend behind `STEAM_BUILD`; symbolic→`ACH_*` mapping, progress via increment-only pct stats), `steam_presence.cpp` (rich-presence backend behind `STEAM_BUILD`), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`, plus `rich_presence.vdf` — pasted manually into the portal, not uploaded by a workflow).
+**Steam integration** — `steam_build.h` (constants/SDK), `steam_achievements.cpp` (achievements backend behind `STEAM_BUILD`; symbolic→`ACH_*` mapping, progress via increment-only pct stats), `steam_presence.cpp` (rich-presence backend behind `STEAM_BUILD`), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`, plus `rich_presence.vdf` — pasted manually into the portal, not uploaded by a workflow). `steam/announcements/` holds the BBCode source of hand-posted Steam Community announcements (`steam-deck-steam-machine.md` — the Deck/Machine support post linked from the compatibility review request; its controller map must track `GLShip::controller_input`).
 
 ## Conventions & Patterns
 
