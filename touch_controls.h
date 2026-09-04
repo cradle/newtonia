@@ -131,20 +131,18 @@ struct TouchControlsState {
     // ---- Double-tap-hold: sustained primary fire ----
     // A press landing within OH_DOUBLE_TAP_MS of the last tap-fire is
     // unambiguously SHOOTING, so it becomes a FIRE-HOLD: the synthesized
-    // ' ' goes down at the press edge and stays down while the press
-    // holds STILL — automatics stream from a standing hold. Only a
-    // discrete gesture shoots: the joystick finger's fire-hold CONVERTS
-    // to pure steering the moment it wanders past the slop (the trigger
-    // releases — a hold to MOVE must never also shoot; field decision
-    // 2026-09-04), and fire-while-moving is the SECOND finger's job,
-    // which steers nothing and therefore streams for as long as it is
-    // held. Rapid tap-spam trips the fire-hold naturally and degrades
-    // gracefully: a quickly-released one is just a tap-length pull.
-    // Releasing an un-wandered hold refreshes the tap chain, so
-    // tap-hold-tap-hold stays in the stream (a converted, wandered press
-    // deliberately does not — the press after a dodge is a plain
-    // tap/steer again). A fire-hold press never long-presses — the
-    // secondary needs a COLD press, one that follows no recent tap.
+    // ' ' goes down at the press edge and stays down until the finger
+    // lifts — automatics stream, and the joystick finger still steers
+    // (the fire-hold never cancels on movement — SETTLED, field decision
+    // 2026-09-04: a wander-past-the-slop conversion to pure steering was
+    // tried and reversed the same day, because moving cutting the stream
+    // is exactly what the gesture is for — strafing fire; don't
+    // reintroduce it). Rapid tap-spam trips this naturally and degrades
+    // gracefully: a quickly-released fire-hold is just a tap-length
+    // pull. Releasing refreshes the tap chain, so tap-hold-tap-hold
+    // stays in the stream. A fire-hold press never long-presses — the
+    // secondary needs a COLD press, one that follows no recent tap
+    // (pause a beat, then hold).
     Uint32 oh_last_tap_ms;  // when the last tap fired / fire-hold released
     bool  oh_joy_firehold;
     bool  oh_tap_firehold;
