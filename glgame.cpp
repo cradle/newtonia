@@ -1870,6 +1870,12 @@ void GLGame::focus_lost() {
 
 void GLGame::controller_added(SDL_GameController *ctrl) {
   SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+  // Purge zombie bindings first: a seat still holding a pad whose handle
+  // reports detached missed its DEVICEREMOVED (or this pad's ADDED outran
+  // it) and must not read as "driven" below.
+  for(auto* glship : *players) {
+    if(glship->controller_detached()) glship->controller_lost();
+  }
   // Online, the only ship this machine controls is the local player;
   // players->front() is the remote host's ghost on a client (and the
   // remote client's ghost on a host), so binding "the first ship without
@@ -1884,14 +1890,28 @@ void GLGame::controller_added(SDL_GameController *ctrl) {
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) return;
   }
-  // Give it back to a seat that has NO input at all — a pad-joined seat
-  // whose pad dropped, which is the reconnect case this exists for. It used
-  // to take the first seat without a CONTROLLER, which on a keyboard game is
+  // Reconnect: a seat whose own pad DROPPED gets the new pad back, keys or
+  // not. Matching the id can never recognise a reconnect — a pad unplugged
+  // from USB and re-paired wireless returns as a brand-new SDL device — so
+  // the seat remembers the loss instead (controller_lost). The no-input
+  // pass below can't cover this: the menu-started P1 and every CONTINUE
+  // seat carry key bindings, so the returning pad stayed free and the
+  // START meant to resume the disconnect pause seated a phantom player 2
+  // (field, Steam Machine, 2026-09-04).
+  for(auto* glship : *players) {
+    if(glship->awaiting_pad()) {
+      glship->set_controller(ctrl);
+      return;
+    }
+  }
+  // Otherwise a seat that has NO input at all — a pad-joined seat left
+  // driverless by any path the awaiting flag doesn't see. It used to take
+  // the first seat without a CONTROLLER, which on a keyboard game is
   // player 1: plugging a pad in (or launching with one already connected)
   // silently glued it onto the keyboard pilot, so two people drove one ship
   // and the pad's owner could never claim a seat of their own — the blocker
-  // for 2 keyboard + 2 pad (field, 2026-08-11). A spare pad now stays free,
-  // which is what START-to-join and the seat roster both want.
+  // for 2 keyboard + 2 pad (field, 2026-08-11). A spare pad still stays
+  // free, which is what START-to-join and the seat roster both want.
   for(auto* glship : *players) {
     if(!glship->has_controller() && !glship->has_keys()) {
       glship->set_controller(ctrl);
@@ -1917,7 +1937,9 @@ bool GLGame::has_free_controller() const {
 void GLGame::controller_removed(SDL_JoystickID id) {
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) {
-      glship->set_controller(NULL);
+      // controller_lost, not set_controller(NULL): the seat remembers the
+      // disconnect so controller_added can hand the returning pad back.
+      glship->controller_lost();
       // Don't pause for a player who is already game over (dead, no lives):
       // in two-player their disconnect must not interrupt the survivor.
       bool player_game_over = !glship->ship->is_alive() && glship->ship->lives == 0;
