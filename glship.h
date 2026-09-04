@@ -103,7 +103,9 @@ public:
   // loss, so the next pad to appear comes back to this seat — a re-added pad
   // is a NEW SDL device (a USB pad re-paired wireless shares nothing with
   // the id that left), so recognising a reconnect can only mean remembering
-  // which seat is waiting. See GLGame::controller_added.
+  // which seat is waiting. The wait ends when this seat's own keys play on
+  // (input()) or any deliberate set_controller lands, so a stale wait can't
+  // capture someone else's later pad. See GLGame::controller_added.
   void controller_lost();
   bool awaiting_pad() const { return pad_lost_; }
   // A bound pad whose handle reports detached: its DEVICEREMOVED never

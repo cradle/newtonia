@@ -1332,7 +1332,13 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       Typer::draw_centered(0, -vh + 85, hint, 8);
   }
   if(!glgame->running && glship->show_help) {
-    const char* unpause = glship->has_controller() ? "press start to resume" : "press p to resume";
+    // An awaiting seat's pad just DROPPED — on a pad-only device (Steam
+    // Machine) "press p" is an instruction the player cannot follow, and
+    // reconnecting is the remedy that actually resumes (the returning pad
+    // auto-binds and its START is recognised again).
+    const char* unpause = glship->awaiting_pad()   ? "reconnect controller to resume"
+                        : glship->has_controller() ? "press start to resume"
+                                                   : "press p to resume";
     Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
   }
 

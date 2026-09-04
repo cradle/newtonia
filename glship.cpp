@@ -367,6 +367,11 @@ void GLShip::set_controller(SDL_GameController *game_controller) {
 }
 
 void GLShip::controller_lost() {
+  // The pad vanished mid-hold: drop everything it was holding, like every
+  // other unbind path (roster_apply, the pause's release_player_controls).
+  // On the zombie-purge path no pause runs, so a latched thrust/fire would
+  // otherwise drive the ship until the NEXT pad presses and releases it.
+  release_controls();
   set_controller(NULL);
   pad_lost_ = true;
 }
@@ -714,6 +719,7 @@ void GLShip::input(unsigned char key, bool pressed) {
     if(shoot_key.matches(key) && ship->lives > 0 &&
        ship->time_until_respawn <= ship->respawn_time - 1000) {
       last_input_was_controller = false;
+      pad_lost_ = false;  // respawning on keys = played on without the pad
       net_respawn_count++;
       ship->time_until_respawn = 0;
     }
@@ -725,6 +731,13 @@ void GLShip::input(unsigned char key, bool pressed) {
       next_secondary_key.matches(key) || teleport_key.matches(key) ||
       help_key.matches(key) || toggle_rotate_view_key.matches(key)) {
     last_input_was_controller = false;
+    // The pilot played on with their own keys: end any reconnect wait
+    // (awaiting_pad), or the seat would capture the NEXT pad plugged in —
+    // hours later, someone else's, meant for START-to-join — re-opening
+    // the two-pilots-one-ship failure the no-input rule closed
+    // (2026-08-11). Presses only: a lone release is a key let go across
+    // the disconnect, not a decision to keep playing.
+    if (pressed) pad_lost_ = false;
   }
   if (left_key.matches(key)) {
     if (pressed) ship->rotation_scale = keyboard_sensitivity;
