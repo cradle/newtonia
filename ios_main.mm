@@ -155,6 +155,17 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
+    // One-handed mode: every remaining finger belongs to the shared
+    // gesture layer (touch_controls.cpp) — the whole screen is the
+    // joystick and taps/long-presses fire. The invisible centre pause
+    // zone below is deliberately skipped: it sits exactly where the
+    // one-hand stick now rests, and the visible top-right button above
+    // stays the pause control (matches android_main.cpp).
+    if(touch_one_handed()) {
+        touch_one_hand_down(s_game, id, px, py, x, y);
+        return;
+    }
+
     // Centre-screen pause zone (invisible convenience area; the visible
     // top-right button is the primary control). Deliberately small — the
     // floating joystick claims the whole left half, and in narrow portrait
@@ -169,8 +180,14 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    if(x < 0.5f) {
-        // ---- Left half: virtual joystick (floating base) ----
+    // HANDEDNESS LEFT mirrors the two-hand layout: the stick claims the
+    // RIGHT half and the buttons the left. The circle centres are already
+    // mirrored by touch_controls_resize, so the geometry hit tests below
+    // need no change — only this half split does (matches
+    // android_main.cpp).
+    bool stick_half = touch_layout_mirrored() ? (x >= 0.5f) : (x < 0.5f);
+    if(stick_half) {
+        // ---- Stick half: virtual joystick (floating base) ----
         g_touch_controls.joy_cx     = px;
         g_touch_controls.joy_cy     = py;
         g_touch_controls.joy_nx     = 0.0f;
@@ -180,7 +197,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         // '\r' is ignored during gameplay but lets any tap start from the menu
         s_game->keyboard('\r', 0, 0);
     } else {
-        // ---- Right half ----
+        // ---- Buttons half ----
         if(y < 0.4f) {
             // Top strip: menu / start key
             s_game->keyboard('\r', 0, 0);
@@ -226,6 +243,12 @@ static void finger_up(SDL_FingerID id, float x, float y) {
         s_game->keyboard_up('p', 0, 0);
         return;
     }
+    // One-handed mode: the gesture layer owns its fingers (joystick
+    // release, tap fire). A finger it never tracked — zoom-zone or
+    // overflow — falls through to the legacy paths below, which also
+    // cleanly release a press begun before the options toggle flipped
+    // the mode mid-menu.
+    if(touch_one_handed() && touch_one_hand_up(s_game, id)) return;
     if(g_touch_controls.joy_active && g_touch_controls.joy_finger == id) {
         g_touch_controls.joy_active = false;
         g_touch_controls.joy_nx     = 0.0f;
@@ -256,11 +279,14 @@ static void finger_up(SDL_FingerID id, float x, float y) {
 }
 
 static void finger_motion(SDL_FingerID id, float x, float y) {
-    if(!g_touch_controls.joy_active || g_touch_controls.joy_finger != id)
-        return;
-
     float px = x * (float)s_w;
     float py = y * (float)s_h;
+    if(touch_one_handed()) {
+        touch_one_hand_motion(id, px, py);
+        return;
+    }
+    if(!g_touch_controls.joy_active || g_touch_controls.joy_finger != id)
+        return;
     update_joystick_nub(px, py);
 }
 
@@ -509,6 +535,11 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         if(g_touch_controls.joy_active) {
             s_game->touch_joystick(g_touch_controls.joy_nx, g_touch_controls.joy_ny);
         }
+
+        // One-hand long-press watchdog + deferred fire-key releases.
+        // Unconditional on purpose: a safe no-op in two-hand mode, and a
+        // pending release must still land if the pref just flipped.
+        touch_one_hand_tick(s_game);
 
         Uint32 now   = SDL_GetTicks();
         if(s_reset_tick) {

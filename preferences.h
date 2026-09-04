@@ -134,6 +134,31 @@ struct Preferences {
     // door. Note this is strict by design: a room of desktop builds attests
     // nobody, so turning it off there closes the room to everyone.
     bool allow_anonymous     = true;
+    // Touch input method (the Options INPUT row on touch layouts): false =
+    // TWO HANDS, the classic layout — left-half joystick, right-hand
+    // shoot/mine/boost buttons; true = ONE HAND — the whole screen is one
+    // slightly larger joystick resting centred just below the ship, a tap
+    // fires the primary and a long press the secondary (touch_controls.h,
+    // the one-hand gesture layer). Desktop/controller input is untouched;
+    // the flag only matters where the touch OSD runs.
+    bool touch_one_hand      = false;
+    // Handedness (the Options HANDEDNESS row, touch layouts): 0 = LEFT,
+    // 1 = CENTRE (default — the shipped layouts), 2 = RIGHT. One hand:
+    // LEFT/RIGHT rest the stick's resting ring where that thumb
+    // naturally sits, near its screen edge; CENTRE keeps it centred.
+    // LEFT additionally MIRRORS the inputs to the left
+    // (touch_layout_mirrored, touch_controls.h): in one hand the pause
+    // circle and zoom column, in TWO HANDS the whole layout — stick on
+    // the right half, shoot/mine/boost on the left, pause and zoom
+    // crossing with them (CENTRE and RIGHT are both the classic
+    // right-handed arrangement there).
+    int  touch_handedness    = 1;
+    // Touch controls help card: latched once the card has auto-shown (the
+    // first ONE HAND game — those gestures are invisible, unlike the
+    // two-hand buttons). The pause screen's CONTROLS band reopens it any
+    // time on either layout (GLGame::touch_help_*). Roams with the INI;
+    // old builds ignore the unknown key.
+    bool touch_help_done     = false;
     // Boost discoverability: the in-game "boost with e" hint keeps
     // appearing (on the F1 hint's alternate flash phase) until the pilot
     // has actually boosted once — GLShip latches this on the first boost

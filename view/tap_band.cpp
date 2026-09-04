@@ -1,6 +1,7 @@
 #include "tap_band.h"
 
 #include "../gl_compat.h"  // is_touch_mode
+#include "../touch_controls.h"  // touch_one_handed / touch_one_hand_side
 #include "../typer.h"
 
 const TapBand TapBand::return_to_menu(0.5f, -420, 13, 50.0f, false, true);
@@ -43,6 +44,15 @@ const TapBand TapBand::roster_anon(0.5f, -260, 13, 16.0f);
 
 const TouchZone TouchZone::zoom_in (0.88f, 0.40f, 1.0f, 0.50f);
 const TouchZone TouchZone::zoom_out(0.88f, 0.50f, 1.0f, 0.60f);
+
+// See the header note: HANDEDNESS LEFT mirrors the column (both input
+// methods — the two-hand layout flips wholesale with it).
+TouchZone TouchZone::zoom_in_placed() {
+  return touch_layout_mirrored() ? zoom_in.mirrored_x() : zoom_in;
+}
+TouchZone TouchZone::zoom_out_placed() {
+  return touch_layout_mirrored() ? zoom_out.mirrored_x() : zoom_out;
+}
 
 TapBand TapBand::for_pointer() const {
   if (is_touch_mode()) return *this;

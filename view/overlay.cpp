@@ -561,6 +561,8 @@ void Overlay::paused(const GLGame *glgame) {
   // dim): "Paused" bled through it mid-list on both layouts, and the
   // touch hint named a button the roster does not answer.
   if (glgame->roster_open()) return;
+  // Same rule for the touch controls help card (its own dim + rows).
+  if (glgame->touch_help_active()) return;
   // A help card is the thing that paused the game and already fills its
   // owner's viewport; drawing "Paused" across the window would stack over
   // it. pause_menu_active() refuses while ANY player's help is open (one
@@ -623,6 +625,82 @@ void Overlay::paused(const GLGame *glgame) {
     MenuSelect::draw_row(PAUSE_ROW_Y0 - i * PAUSE_ROW_GAP, label, PAUSE_ROW_SZ,
                          glgame->pause_selection_ == i);
   }
+}
+
+// The touch controls help card (GLGame::touch_help_*): the one-hand
+// gestures — tap, tap-then-hold, cold long press — are invisible, so this
+// spells the current layout out. Auto-shown once on the first one-hand
+// game (paused under it), reopened from the pause screen's CONTROLS band
+// on either layout; any tap closes it. Full-window over its own dim,
+// owning the screen like the roster. Fixed anchors like the roster's —
+// portrait's stretched half-height spreads the rows mid-screen, which is
+// where a reading card belongs anyway.
+void Overlay::touch_help(const GLGame *glgame) {
+  if (!glgame->touch_help_active()) return;
+
+  glViewport(0, 0, glgame->window.x(), glgame->window.y());
+  float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = glgame->window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
+  // A reading card: dimmer than the pause menu's 0.6 so the rows carry
+  // over a busy field.
+  static MeshBuilder mb;
+  static Mesh mesh;
+  mb.clear();
+  mb.begin(GL_TRIANGLES);
+  mb.color(0.0f, 0.0f, 0.0f, 0.75f);
+  mb.vertex(-hw, -hh); mb.vertex(hw, -hh); mb.vertex(hw, hh);
+  mb.vertex(-hw, -hh); mb.vertex(hw, hh); mb.vertex(-hw, hh);
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+
+  Typer::draw_centered(0, 300, "TOUCH CONTROLS", 24);
+
+  // Gesture left / meaning right — the STATS screen's two-column idiom.
+  // Column math (count the glyphs): labels start at -360, size 13
+  // (advance 26), longest "TAP, THEN HOLD" (14) ends at +4, clear of the
+  // value column at 40; the longest value, "SECONDARY (SHIELD: ON/OFF)"
+  // (26), ends at 716, inside the >=800 virtual half-width every aspect
+  // guarantees (Typer pins half-WIDTH, stretching half-height in
+  // portrait). Two-hand names the circles by colour — the shapes are
+  // already on screen — with the halves worded per handedness, since
+  // LEFT mirrors the whole layout.
+  struct Row { const char *gesture, *action; };
+  static const Row ONE_HAND[] = {
+    {"DRAG",           "STEER + THRUST"},
+    {"TAP",            "FIRE"},
+    {"TAP, THEN HOLD", "KEEP FIRING (HOLD STILL)"},
+    {"HOLD",           "SECONDARY (SHIELD: ON/OFF)"},
+    {"SECOND FINGER",  "FIRE WHILE STEERING"},
+    {"+ / -",          "ZOOM"},
+  };
+  static const Row TWO_HANDS[] = {
+    {"LEFT HALF",  "DRAG TO STEER + THRUST"},
+    {"RED",        "FIRE"},
+    {"BLUE",       "SECONDARY"},
+    {"AMBER",      "BOOST"},
+    {"+ / -",      "ZOOM"},
+    {"TOP CIRCLE", "PAUSE"},
+  };
+  bool one_hand = touch_one_handed();
+  const Row *rows = one_hand ? ONE_HAND : TWO_HANDS;
+  int n = (int)(one_hand ? sizeof(ONE_HAND) / sizeof(ONE_HAND[0])
+                         : sizeof(TWO_HANDS) / sizeof(TWO_HANDS[0]));
+  for (int i = 0; i < n; i++) {
+    int y = 190 - i * 64;
+    const char *gesture = rows[i].gesture;
+    if (!one_hand && i == 0 && touch_layout_mirrored())
+      gesture = "RIGHT HALF";
+    Typer::draw(-360, y, gesture, 13);
+    Typer::draw(40, y, rows[i].action, 13);
+  }
+
+  if ((glgame->current_time / 700) % 2 == 0)
+    Typer::draw_centered(0, -290, "TAP TO CONTINUE", 14);
 }
 
 // The seat roster (offline): one row per seat showing what drives it, plus
@@ -1343,15 +1421,21 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // exit_band_showing() is that rule, shared with the badge rows' hoist.
   // Not under the touch roster, whose own BACK band takes the spot
   // (seat_roster draws it; two labels on one zone would lie about one).
-  if(glgame->exit_band_showing() && !glgame->roster_open())
+  // ... and not under the touch controls help card either — while it is
+  // up it owns the screen, and touch_tap answers only its dismissal.
+  if(glgame->exit_band_showing() && !glgame->roster_open() &&
+     !glgame->touch_help_active())
     glgame->exit_band().draw(
         Typer::cursored("EXIT TO MENU", true).c_str(),
         glgame->current_time);
   // The way into the touch roster: the online host's MANAGE PLAYERS band
   // on the pause screen, above the exit band (FOURPLAYER.md O3 touch
   // pass — a phone host had no way to see or remove the pilots).
-  if(glgame->roster_touch_offer())
+  if(glgame->roster_touch_offer() && !glgame->touch_help_active())
     glgame->roster_manage_band().draw("MANAGE PLAYERS");
+  // The way into the touch controls help card, stacked a band above.
+  if(glgame->touch_help_offer())
+    glgame->controls_band().draw("CONTROLS");
 }
 
 void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,
@@ -1510,7 +1594,10 @@ void Overlay::touch_zoom(const GLGame *glgame, const GLShip *glship) {
   static MeshBuilder mb;
   static Mesh mesh_icon;
   for (int which = 0; which < 2; which++) {
-    const TouchZone &z = which == 0 ? TouchZone::zoom_in : TouchZone::zoom_out;
+    // Placed, not the statics: LEFT-handed one-hand play mirrors the
+    // column to the left edge, and the hit tests read the same call.
+    const TouchZone z = which == 0 ? TouchZone::zoom_in_placed()
+                                   : TouchZone::zoom_out_placed();
     int dir = which == 0 ? -1 : 1;
     float cx = (2.0f * z.cx() - 1.0f) * pw;
     float cy = (1.0f - 2.0f * z.cy()) * ph;
@@ -1582,7 +1669,12 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   }
 
   // ---- Shoot button ----
-  {
+  // One-handed mode draws no shoot/mine/boost circles at all: the stick
+  // is the trigger (tap = primary, long press = secondary — the gesture
+  // layer in touch_controls.cpp), so a drawn button would be a control
+  // that answers no finger. The joystick above and the pause circle
+  // below stay.
+  if (!touch_one_handed()) {
     float bx = ox(tc.shoot_cx);
     float by = oy(tc.shoot_cy);
     float br = sr(tc.shoot_radius);
@@ -1598,7 +1690,7 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   // Only while a secondary is equipped (GLGame::tick keeps the flag; the
   // entry points gate their hit test on the same flag, so the region and
   // the circle appear and vanish together).
-  if (tc.mine_available) {
+  if (!touch_one_handed() && tc.mine_available) {
     float bx = ox(tc.mine_cx);
     float by = oy(tc.mine_cy);
     float br = sr(tc.mine_radius);
@@ -1614,7 +1706,7 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   // Above and between the shoot/mine pair. Amber; dimmed while Ship's
   // cooldown runs (boost_ready, mirrored by GLGame::tick). The icon is a
   // double up-chevron — "more speed" in one glyph.
-  {
+  if (!touch_one_handed()) {
     float bx = ox(tc.boost_cx);
     float by = oy(tc.boost_cy);
     float br = sr(tc.boost_radius);

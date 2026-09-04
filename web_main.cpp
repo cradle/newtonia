@@ -61,6 +61,10 @@ static SDL_GameController *s_controller = nullptr;
 static bool             s_idb_ready = false;
 
 static unsigned char touch_to_key(float norm_x, float norm_y) {
+    // HANDEDNESS LEFT mirrors the two-hand layout (main.ts moves the HTML
+    // joystick zone and circle buttons across); mirroring the coordinate
+    // keeps every tuned boundary below tracking them by symmetry.
+    if (touch_layout_mirrored()) norm_x = 1.0f - norm_x;
     bool left_half = (norm_x < 0.5f);
     if (left_half) {
         float lx = norm_x * 2.0f;
@@ -91,8 +95,14 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     // pause hit region, so with pause first the skip tap only ever paused.
     if (s_game->debug_skip_corner_tap(x, y)) return;
 
-    // Pause button: top-right, below score/multiplier
-    if(!s_pause_active && x >= 0.75f && y < 0.25f) {
+    // HANDEDNESS LEFT mirrors the layout, the pause zone with it (the
+    // HTML pause circle crosses to the top-left in main.ts). The centre
+    // zone below reads fx too so its tuned asymmetric right edge keeps
+    // clearing the shoot circle it was measured against.
+    float fx = touch_layout_mirrored() ? 1.0f - x : x;
+
+    // Pause button: top-right (top-left mirrored), below score/multiplier
+    if(!s_pause_active && fx >= 0.75f && y < 0.25f) {
         s_pause_active = true;
         s_pause_finger = id;
         s_game->keyboard('\r', 0, 0);
@@ -107,7 +117,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     // mobile entry points (android_main.cpp): the left half is the
     // steering pad, and in narrow portrait a left thumb strays past 0.30
     // of the width.
-    if(!s_pause_active && x >= 0.38f && x <= 0.60f && y >= 0.30f && y <= 0.60f) {
+    if(!s_pause_active && fx >= 0.38f && fx <= 0.60f && y >= 0.30f && y <= 0.60f) {
         s_pause_active = true;
         s_pause_finger = id;
         s_game->keyboard('\r', 0, 0);
@@ -477,6 +487,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
     // IDBFS is now populated — load preferences before constructing the
     // StateManager so GLShip constructors can read them (e.g. rotate_view).
     load_preferences();
+
+    // Hand the HTML OSD the stored touch input method + handedness side
+    // (-1/0/+1) (web/main.ts): the JS defaults are two-hand/centre, so
+    // only stored non-defaults change anything. Options-menu changes
+    // re-push from Menu::close_options.
+    EM_ASM({ if (window.setOneHandMode) window.setOneHandMode($0, $1); },
+           g_prefs.touch_one_hand ? 1 : 0, g_prefs.touch_handedness - 1);
 
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
