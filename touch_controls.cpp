@@ -172,9 +172,15 @@ void touch_controls_reset(StateManager *game) {
         g_touch_controls.pause_active = false;
         game->keyboard_up('p', 0, 0);
     }
-    // One-hand gesture leftovers: drop the fire candidate and release any
-    // synthesized fire key still waiting on its deferred up.
+    // One-hand gesture leftovers: drop the fire candidate, release a
+    // fire-hold's held primary, and release any synthesized fire key
+    // still waiting on its deferred up.
     g_touch_controls.oh_tap_active = false;
+    if(g_touch_controls.oh_joy_firehold || g_touch_controls.oh_tap_firehold) {
+        g_touch_controls.oh_joy_firehold = false;
+        g_touch_controls.oh_tap_firehold = false;
+        game->keyboard_up(' ', 0, 0);
+    }
     if(g_touch_controls.oh_shoot_up_at) {
         g_touch_controls.oh_shoot_up_at = 0;
         game->keyboard_up(' ', 0, 0);
@@ -198,6 +204,10 @@ static const Uint32 OH_LONG_PRESS_MS = 400;
 // releases it. The weapons only sample the trigger in their step(), so a
 // down+up in the same event batch would fire nothing at all.
 static const Uint32 OH_KEY_HOLD_MS = 70;
+// A press starting this close behind a tap-fire becomes a FIRE-HOLD
+// (touch_controls.h): comfortably above a spam-tap gap, comfortably
+// below a deliberate pause-then-long-press for the secondary.
+static const Uint32 OH_DOUBLE_TAP_MS = 250;
 
 static float oh_tap_slop() { return g_touch_controls.joy_radius * 0.12f; }
 
@@ -224,6 +234,23 @@ static void oh_update_nub(float px, float py) {
 static void oh_fire_primary(StateManager *game) {
     game->keyboard(' ', 0, 0);
     g_touch_controls.oh_shoot_up_at = SDL_GetTicks() + OH_KEY_HOLD_MS;
+    // Opens the double-tap window: the next quick press streams.
+    g_touch_controls.oh_last_tap_ms = SDL_GetTicks();
+}
+
+// True (and the primary pressed AND HELD) when this press lands inside
+// the double-tap window — see the fire-hold note in touch_controls.h.
+static bool oh_start_firehold(StateManager *game) {
+    TouchControlsState &tc = g_touch_controls;
+    Uint32 now = SDL_GetTicks();
+    if (!tc.one_hand_ingame || !tc.oh_last_tap_ms ||
+        now - tc.oh_last_tap_ms > OH_DOUBLE_TAP_MS)
+        return false;
+    // The hold owns the key now: a tap's still-pending deferred release
+    // must not cut the stream short a beat after it starts.
+    tc.oh_shoot_up_at = 0;
+    game->keyboard(' ', 0, 0);
+    return true;
 }
 
 static void oh_fire_secondary(StateManager *game) {
@@ -281,6 +308,10 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         tc.oh_joy_down_py = py;
         tc.oh_joy_steered = false;
         tc.oh_joy_fired   = false;
+        // Double-tap window: this press is a fire-hold — the primary is
+        // already down and stays down until the finger lifts, while the
+        // deflection below still steers.
+        tc.oh_joy_firehold = oh_start_firehold(game);
         // '\r' is ignored during gameplay but lets any tap start from the
         // menu — the same pairing the two-hand left half sends.
         game->keyboard('\r', 0, 0);
@@ -293,6 +324,7 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         tc.oh_tap_down_py = py;
         tc.oh_tap_steered = false;
         tc.oh_tap_fired   = false;
+        tc.oh_tap_firehold = oh_start_firehold(game);
     }
     // Further fingers are silently ignored.
 }
@@ -315,7 +347,8 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
     TouchControlsState &tc = g_touch_controls;
     Uint32 now = SDL_GetTicks();
     if (tc.joy_active && tc.joy_finger == id) {
-        bool tap = !tc.oh_joy_steered && !tc.oh_joy_fired &&
+        bool tap = !tc.oh_joy_firehold && !tc.oh_joy_steered &&
+                   !tc.oh_joy_fired &&
                    now - tc.oh_joy_down_ms < OH_LONG_PRESS_MS;
         tc.joy_active = false;
         tc.joy_nx     = 0.0f;
@@ -323,14 +356,28 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         game->touch_joystick(0.0f, 0.0f);
         // Pair the '\r' sent in touch_one_hand_down
         game->keyboard_up('\r', 0, 0);
-        if (tap && tc.one_hand_ingame) oh_fire_primary(game);
+        if (tc.oh_joy_firehold) {
+            tc.oh_joy_firehold = false;
+            game->keyboard_up(' ', 0, 0);
+            // Refresh the chain: a quick re-press continues the stream.
+            tc.oh_last_tap_ms = now;
+        } else if (tap && tc.one_hand_ingame) {
+            oh_fire_primary(game);
+        }
         return true;
     }
     if (tc.oh_tap_active && tc.oh_tap_finger == id) {
-        bool tap = !tc.oh_tap_steered && !tc.oh_tap_fired &&
+        bool tap = !tc.oh_tap_firehold && !tc.oh_tap_steered &&
+                   !tc.oh_tap_fired &&
                    now - tc.oh_tap_down_ms < OH_LONG_PRESS_MS;
         tc.oh_tap_active = false;
-        if (tap && tc.one_hand_ingame) oh_fire_primary(game);
+        if (tc.oh_tap_firehold) {
+            tc.oh_tap_firehold = false;
+            game->keyboard_up(' ', 0, 0);
+            tc.oh_last_tap_ms = now;
+        } else if (tap && tc.one_hand_ingame) {
+            oh_fire_primary(game);
+        }
         return true;
     }
     return false;  // untracked finger: caller's legacy '\r' release path
@@ -352,13 +399,15 @@ void touch_one_hand_tick(StateManager *game) {
     // Long-press watchdog: a held, un-wandered press fires the secondary
     // once, while the finger is still down (motion events stop when the
     // finger stops, so release-time checks alone would fire it late).
-    if (tc.joy_active && !tc.oh_joy_steered && !tc.oh_joy_fired &&
-        tc.mine_available && now - tc.oh_joy_down_ms >= OH_LONG_PRESS_MS) {
+    if (tc.joy_active && !tc.oh_joy_firehold && !tc.oh_joy_steered &&
+        !tc.oh_joy_fired && tc.mine_available &&
+        now - tc.oh_joy_down_ms >= OH_LONG_PRESS_MS) {
         tc.oh_joy_fired = true;
         oh_long_press_secondary(game);
     }
-    if (tc.oh_tap_active && !tc.oh_tap_steered && !tc.oh_tap_fired &&
-        tc.mine_available && now - tc.oh_tap_down_ms >= OH_LONG_PRESS_MS) {
+    if (tc.oh_tap_active && !tc.oh_tap_firehold && !tc.oh_tap_steered &&
+        !tc.oh_tap_fired && tc.mine_available &&
+        now - tc.oh_tap_down_ms >= OH_LONG_PRESS_MS) {
         tc.oh_tap_fired = true;
         oh_long_press_secondary(game);
     }

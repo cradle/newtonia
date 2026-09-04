@@ -571,11 +571,22 @@ declare const NewtoniaStore: undefined | {
     // secondary fires. A second finger while the first steers is a pure
     // fire candidate that never steals the stick.
     const OH_LONG_PRESS_MS = 400;
+    // A press landing this close behind a tap-fire becomes a FIRE-HOLD:
+    // the primary goes down at the press edge and stays down until the
+    // finger lifts (automatics stream; the joystick finger still steers),
+    // and releasing refreshes the window so tap-hold-tap-hold stays in
+    // the stream. The secondary keeps needing a COLD long press (mirrors
+    // OH_DOUBLE_TAP_MS in touch_controls.cpp).
+    const OH_DOUBLE_TAP_MS = 250;
     let joyDownX = 0, joyDownY = 0, joyDownMs = 0;
     let joySteered = false, joyFired = false, joyPressSeq = 0;
+    let joyFireHold = false;
     let tapFinger: number | null = null;
     let tapDownX = 0, tapDownY = 0, tapDownMs = 0;
     let tapSteered = false, tapFired = false, tapPressSeq = 0;
+    let tapFireHold = false;
+    let lastTapMs = 0;
+    let spaceUpTimer: number | null = null;
     // Fingers deliberately left to the canvas-tap path (the zoom zones).
     const passFingers = new Set<number>();
 
@@ -594,6 +605,34 @@ declare const NewtoniaStore: undefined | {
     function fireKey(key: string): void {
       keyEvt(key, "keydown");
       window.setTimeout(() => keyEvt(key, "keyup"), 70);
+    }
+
+    // The primary's tap pulse tracks its own deferred keyup so a
+    // fire-hold can take the key over cleanly, and opens the double-tap
+    // window.
+    function tapFirePrimary(): void {
+      keyEvt(" ", "keydown");
+      if (spaceUpTimer !== null) window.clearTimeout(spaceUpTimer);
+      spaceUpTimer = window.setTimeout(() => {
+        spaceUpTimer = null;
+        keyEvt(" ", "keyup");
+      }, 70);
+      lastTapMs = Date.now();
+    }
+
+    // True (and the primary pressed AND HELD) when this press lands
+    // inside the double-tap window — the fire-hold's start.
+    function startFireHold(): boolean {
+      if (!_tapFire || !lastTapMs ||
+          Date.now() - lastTapMs > OH_DOUBLE_TAP_MS) return false;
+      // The hold owns the key: a tap's pending deferred release must not
+      // cut the stream short a beat after it starts.
+      if (spaceUpTimer !== null) {
+        window.clearTimeout(spaceUpTimer);
+        spaceUpTimer = null;
+      }
+      keyEvt(" ", "keydown");
+      return true;
     }
 
     // The long-press action: a pulse for edge-fired secondaries; the
@@ -640,11 +679,11 @@ declare const NewtoniaStore: undefined | {
         if (!_oneHand || !_tapFire || !_mineAvailable) return;
         if (which === "joy") {
           if (joyFinger === null || seq !== joyPressSeq ||
-              joySteered || joyFired) return;
+              joySteered || joyFired || joyFireHold) return;
           joyFired = true;
         } else {
           if (tapFinger === null || seq !== tapPressSeq ||
-              tapSteered || tapFired) return;
+              tapSteered || tapFired || tapFireHold) return;
           tapFired = true;
         }
         longPressSecondary();
@@ -732,6 +771,7 @@ declare const NewtoniaStore: undefined | {
             joyDownX = t.clientX; joyDownY = t.clientY;
             joyDownMs = Date.now();
             joySteered = false; joyFired = false;
+            joyFireHold = startFireHold();
             armLongPress("joy", ++joyPressSeq);
           } else {
             break;
@@ -742,6 +782,7 @@ declare const NewtoniaStore: undefined | {
           tapDownX = t.clientX; tapDownY = t.clientY;
           tapDownMs = Date.now();
           tapSteered = false; tapFired = false;
+          tapFireHold = startFireHold();
           armLongPress("tap", ++tapPressSeq);
         }
       }
@@ -774,19 +815,31 @@ declare const NewtoniaStore: undefined | {
         const t = e.changedTouches[i];
         const id = t.identifier;
         if (id === joyFinger) {
-          const wasTap = _oneHand && !joySteered && !joyFired &&
-                         Date.now() - joyDownMs < OH_LONG_PRESS_MS;
+          const wasTap = _oneHand && !joyFireHold && !joySteered &&
+                         !joyFired && Date.now() - joyDownMs < OH_LONG_PRESS_MS;
           hideJoystick();
           if (_oneHand) {
             forwardTap(t);
-            if (wasTap && _tapFire) fireKey(" ");
+            if (joyFireHold) {
+              joyFireHold = false;
+              keyEvt(" ", "keyup");
+              lastTapMs = Date.now();  // a quick re-press continues the stream
+            } else if (wasTap && _tapFire) {
+              tapFirePrimary();
+            }
           }
         } else if (_oneHand && id === tapFinger) {
-          const wasTap = !tapSteered && !tapFired &&
+          const wasTap = !tapFireHold && !tapSteered && !tapFired &&
                          Date.now() - tapDownMs < OH_LONG_PRESS_MS;
           tapFinger = null;
           forwardTap(t);
-          if (wasTap && _tapFire) fireKey(" ");
+          if (tapFireHold) {
+            tapFireHold = false;
+            keyEvt(" ", "keyup");
+            lastTapMs = Date.now();
+          } else if (wasTap && _tapFire) {
+            tapFirePrimary();
+          }
         } else if (passFingers.delete(id)) {
           forwardTap(t);  // zoom-zone finger: the plain canvas-tap path
         }

@@ -1511,6 +1511,41 @@ TapBand GLGame::roster_manage_band() const {
   return TapBand(0.5f, exit_band().y + 170, 12, 16.0f);
 }
 
+// ---- Touch controls help card (see glgame.h) --------------------------
+
+// The pause screen offers the way into the card — the MANAGE band's gates
+// minus the host requirement (every touch pilot has controls), and never
+// in a replay: the playback chrome owns the bottom strip and nobody is
+// flying.
+bool GLGame::touch_help_offer() const {
+  return is_touch_mode() && !running && !touch_help_active_ &&
+         !roster_open() && !all_players_out() && !net_card_owns_input() &&
+         net_mode_ != NetReplay;
+}
+
+// Stacked a band above MANAGE PLAYERS' slot (exit_band().y + 170), same
+// portrait-aware anchor idiom; the 70-unit pitch keeps the two finger
+// zones (glyphs + 16 pad) clear of each other when both show.
+TapBand GLGame::controls_band() const {
+  return TapBand(0.5f, exit_band().y + 240, 12, 16.0f);
+}
+
+void GLGame::touch_help_open(bool resume_on_close) {
+  touch_help_active_ = true;
+  // Through toggle_pause, not a bare running flip, so the pause
+  // invariants hold under the card (inputs force-released, auto-save,
+  // sound channels paused) — the desktop F1 card's convention: a help
+  // card is the thing that paused the game.
+  touch_help_resume_ = resume_on_close && running;
+  if (running) toggle_pause();
+}
+
+void GLGame::touch_help_close() {
+  touch_help_active_ = false;
+  if (touch_help_resume_ && !running) toggle_pause();
+  touch_help_resume_ = false;
+}
+
 // True when this row is a remote pilot the host may remove, rather than a
 // local seat whose input can be re-bound.
 bool GLGame::roster_row_is_peer(int row) const {
@@ -1782,6 +1817,12 @@ bool GLGame::pad_may_command(SDL_JoystickID which) const {
 }
 
 bool GLGame::back_pressed() {
+  // The touch controls help card is one level deep like the roster below:
+  // back closes it first.
+  if (touch_help_active_) {
+    touch_help_close();
+    return true;
+  }
   // The touch roster is one level deep on the pause screen: back closes
   // it first, exactly like the desktop roster's Esc.
   if (roster_open()) {
@@ -8738,6 +8779,22 @@ void GLGame::tick(int delta) {
     replay_tried_ = true;
     if (net_mode_ != NetReplay && !game_over) replay_start();
   }
+  // First one-hand game on this install: the gestures are invisible, so
+  // the touch controls card shows itself once, pausing the game under it
+  // (any tap resumes). Offline only — an online pause is shared state and
+  // an online pilot already navigated a lobby; the pause screen's
+  // CONTROLS band covers them, and replays are watching, not flying.
+  // Latched at show so it can never nag twice, even if this run is quit
+  // mid-card.
+  if (!touch_help_tried_) {
+    touch_help_tried_ = true;
+    if (is_touch_mode() && touch_one_handed() && !g_prefs.touch_help_done &&
+        net_mode_ == NetOff && !game_over && running) {
+      g_prefs.touch_help_done = true;
+      save_preferences();
+      touch_help_open(true);
+    }
+  }
   // Leaderboard game-over flow: poll the qualify/upload socket while the
   // GAME OVER card is up (board_ only exists after the game-over latch).
   if (board_) board_tick();
@@ -10921,6 +10978,7 @@ void GLGame::draw(void) {
   // cursor). No-op while the game runs.
   Overlay::paused(this);
   Overlay::seat_roster(this);  // replaces the pause menu while it is open
+  Overlay::touch_help(this);   // the touch controls card, over everything
   // Leaderboard prompt/upload/result — its own full-window overlay so the
   // OFFLINE game-over card gets it too (the primary solo case). No-op
   // unless a board flow is live (LEADERBOARD.md).
@@ -11947,6 +12005,9 @@ bool GLGame::touch_zoom_active() const {
   if (!running || net_mode_ == NetReplay) return false;
   if (exit_band_showing() || is_spectating() || spectate_arming()) return false;
   if (roster_open()) return false;
+  // The help card owns the screen — this also turns the one-hand
+  // tap-fire gate off under it (one_hand_ingame mirrors this predicate).
+  if (touch_help_active_) return false;
   return local_player() != NULL;
 }
 
@@ -11966,6 +12027,13 @@ bool GLGame::exit_band_showing() const {
 
 void GLGame::touch_tap(float nx, float ny) {
   if (!is_touch_mode()) return;
+  // The touch controls help card owns every tap while it is up: any tap
+  // closes it — back to play if it auto-paused the game, back to the
+  // pause screen otherwise.
+  if (touch_help_active_) {
+    touch_help_close();
+    return;
+  }
   // Leaderboard prompt on the GAME OVER card: a tap on the EXIT TO MENU
   // band still LEAVES (it is drawn under the prompt), and only taps
   // elsewhere answer YES (left half) / NO (right half) — the New-game
@@ -12041,6 +12109,11 @@ void GLGame::touch_tap(float nx, float ny) {
     roster_active_ = true;
     roster_kick_armed_ = -1;
     roster_ban_ = false;
+    return;
+  }
+  // The pause screen's CONTROLS band — the touch controls help card.
+  if (touch_help_offer() && controls_band().contains(nx, ny)) {
+    touch_help_open(false);
     return;
   }
   // In-game touch zoom zones: "+" above "-" on the right edge
@@ -12667,6 +12740,16 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     if (key == (unsigned char)gk.time_slow_down && replay_speed_ > 0.26f)
       replay_speed_ *= 0.5f;
     if (key == (unsigned char)gk.time_reset) replay_speed_ = 1.0f;
+    return;
+  }
+
+  // The touch controls help card owns the screen like the roster below:
+  // the entry points synthesize keys from zones that sit OVER it (the
+  // pause circle's 'p', the legacy '\r' release on every finger-up), so
+  // any key acting here would resume or exit under the tap being
+  // answered. touch_tap closes it; Esc (and Android back) does too.
+  if (touch_help_active_) {
+    if (key == (unsigned char)gk.menu) touch_help_close();
     return;
   }
 

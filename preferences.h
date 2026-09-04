@@ -153,6 +153,12 @@ struct Preferences {
     // crossing with them (CENTRE and RIGHT are both the classic
     // right-handed arrangement there).
     int  touch_handedness    = 1;
+    // Touch controls help card: latched once the card has auto-shown (the
+    // first ONE HAND game — those gestures are invisible, unlike the
+    // two-hand buttons). The pause screen's CONTROLS band reopens it any
+    // time on either layout (GLGame::touch_help_*). Roams with the INI;
+    // old builds ignore the unknown key.
+    bool touch_help_done     = false;
     // Boost discoverability: the in-game "boost with e" hint keeps
     // appearing (on the F1 hint's alternate flash phase) until the pilot
     // has actually boosted once — GLShip latches this on the first boost

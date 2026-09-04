@@ -128,6 +128,20 @@ struct TouchControlsState {
     // Deferred key-ups for the synthesized fire presses (0 = none armed).
     Uint32 oh_shoot_up_at;
     Uint32 oh_mine_up_at;
+    // ---- Double-tap-hold: sustained primary fire ----
+    // A press landing within OH_DOUBLE_TAP_MS of the last tap-fire is
+    // unambiguously SHOOTING, so it becomes a FIRE-HOLD: the synthesized
+    // ' ' goes down at the press edge and stays down until the finger
+    // lifts — automatics stream, and the joystick finger still steers
+    // (the fire-hold never cancels on movement). Rapid tap-spam trips
+    // this naturally and degrades gracefully: a quickly-released
+    // fire-hold is just a tap-length pull. Releasing refreshes the tap
+    // chain, so tap-hold-tap-hold stays in the stream. A fire-hold press
+    // never long-presses — the secondary needs a COLD press, one that
+    // follows no recent tap (pause a beat, then hold).
+    Uint32 oh_last_tap_ms;  // when the last tap fired / fire-hold released
+    bool  oh_joy_firehold;
+    bool  oh_tap_firehold;
 };
 
 extern TouchControlsState g_touch_controls;
