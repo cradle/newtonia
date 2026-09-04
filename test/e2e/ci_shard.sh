@@ -96,6 +96,39 @@ shard_needs_relay() {
   esac
 }
 
+# Wider than shard_needs_relay: solo-misc and leaderboard skip the shard
+# relay but their DRIVERS self-host workers (identity_attested.sh,
+# identity_tick.sh, leaderboard.sh) — only solo-replay never touches
+# wrangler at all.
+shard_needs_wrangler() {
+  case "$1" in
+    solo-replay) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# Warm the wrangler install ONCE, up front, OUTSIDE every readiness
+# window: npm-install time otherwise lands inside whichever wait meets it
+# first — start_relay's 90 s probe, or a self-hosting driver's own — and
+# the first fresh install after a new wrangler 4.x release can blow any
+# of them. 4.129.0 (published 2026-09-03) did exactly that: all four
+# relay shards FATALed "relay never came up" with nothing in relay.log
+# but npx's install warning, the download still running at the deadline,
+# and the Worker-tests job lost the same race an hour later; the boot
+# itself takes ~5 s once the cache is warm (verified against 4.128.0 and
+# 4.129.0 alike). Same "wrangler@4" spec as every boot in the suite so
+# npx resolves the same cache entry. Printing the resolved version names
+# the suspect the next time a release breaks something for real.
+WRANGLER_WARMED=""
+warm_wrangler() {
+  [ -n "$WRANGLER_WARMED" ] && return 0
+  WRANGLER_WARMED=1
+  local v
+  v=$(cd "$ROOT/signal" &&
+    timeout 300 npx -y wrangler@4 --version 2>/dev/null | tail -1)
+  echo "== wrangler: ${v:-install failed or timed out}"
+}
+
 # N-seat drivers default to 4 seats here (FOURPLAYER.md B6); the wrappers
 # threeseat.sh / threeseat_rejoin.sh / fourseat.sh only re-run these with a
 # different SEATS, so CI runs the drivers directly.
@@ -135,19 +168,6 @@ start_relay() {
     echo "       (this script boots and owns its own relay)"
     exit 1
   fi
-  # Warm the wrangler install OUTSIDE the readiness window below: the 90 s
-  # probe was silently doubling as npm-install time, and the first fresh
-  # install after a new 4.x release blew it — wrangler 4.129.0 (published
-  # 2026-09-03) had all four relay shards FATAL with nothing in relay.log
-  # but npx's install warning, the download still running at the deadline;
-  # the boot itself takes ~5 s once the cache is warm (verified against
-  # 4.128.0 and 4.129.0 alike). Same "wrangler@4" spec as the boot so npx
-  # resolves the same cache entry. Printing the version also names the
-  # suspect the next time a release breaks something for real.
-  local wrangler_ver
-  wrangler_ver=$(cd "$ROOT/signal" &&
-    timeout 300 npx -y wrangler@4 --version 2>/dev/null | tail -1)
-  echo "== wrangler: ${wrangler_ver:-install failed or timed out}"
   echo "== starting local signal relay on :8787"
   ( cd "$ROOT/signal" && rm -rf .wrangler &&
     exec npx wrangler@4 dev --local --port 8787 \
@@ -312,6 +332,7 @@ run_shard() {
   CURRENT_SHARD="$shard"
   drivers=$(shard_drivers "$shard") || { echo "unknown shard: $shard"; exit 2; }
   echo "== shard $shard"
+  shard_needs_wrangler "$shard" && warm_wrangler
   shard_needs_relay "$shard" && [ -z "$RELAY_PID" ] && start_relay
   for d in $drivers; do
     [ -f "$ROOT/test/e2e/$d.sh" ] || { echo "  MISSING $d.sh"; FAILED="$FAILED $d"; continue; }

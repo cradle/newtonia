@@ -56,6 +56,15 @@ jobs:
       - name: Signal protocol tests (wrangler dev --local)
         working-directory: signal
         run: |
+          # Warm the wrangler install OUTSIDE the wait loop below: the 60 s
+          # readiness window was silently doubling as npm-install time, and
+          # the first fresh install after a new 4.x release can blow it —
+          # 4.129.0 (2026-09-03) left the loop falling through to the tests
+          # with npx still downloading, and reclaim_test.js died on "ws
+          # error" against a port nothing was serving yet. Boot is ~5 s
+          # once cached (the board step below reuses this job's cache).
+          # Same test/e2e/ci_shard.sh start_relay fix, same version echo.
+          npx -y wrangler@4 --version
           npx wrangler@4 dev --local --port 8787 --var FAKE_VERIFY:1 \
               --var RATE_HOST_LIMIT:200 --var RATE_JOIN_LIMIT:500 \
               > wrangler-dev.log 2>&1 &
