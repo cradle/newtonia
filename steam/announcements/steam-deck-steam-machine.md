@@ -4,7 +4,8 @@ Source of truth for the Steam Community announcement that documents the
 game's Steam Deck and Steam Machine support — the post linked from the
 Deck/Machine compatibility review request. Pasted by hand into Steamworks
 (App Admin → Community → Post/manage announcements), like `rich_presence.vdf`;
-no workflow uploads it.
+no workflow uploads it. The cover image is rendered by
+`generate_deck_announcement.py` (800×450, Steam's event cover size).
 
 The body is Steam's BBCode. Every claim below is field-verified on both
 devices (Deck touch 2026-07-25, full play-through of both 2026-09-04) —
@@ -65,10 +66,7 @@ The Deck's touchscreen is native input, not mouse emulation. Every menu row, opt
 
 [h2]Couch co-op: up to four on a Steam Machine[/h2]
 
-[list]
-[*]Up to four players locally, in any mix of controllers and keyboards. Seats are claimed by pressing a button on an unassigned pad, and the PLAYERS row on the pause screen shows who is flying what and lets you rebind any seat.
-[*]Friendly fire is a toggle, for maximum carnage.
-[/list]
+Up to four players locally, in any mix of controllers and keyboards. Seats are claimed by pressing a button on an unassigned pad, and the PLAYERS row on the pause screen shows who is flying what and lets you rebind any seat.
 
 [h2]Online co-op[/h2]
 
