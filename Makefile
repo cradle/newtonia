@@ -465,12 +465,19 @@ else
   STEAM_RUNTIME = libsteam_api.so
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/linux64/libsteam_api.so
   STEAM_LINK = -L. -lsteam_api -Wl,-rpath,'$$ORIGIN'
+  # freeglut beside the binary too: the shipped depot runs inside Steam's
+  # sniper container, which provides libglut.so.3, but a NON-STEAM SHORTCUT
+  # to this local build gets no container — and under the snap/flatpak Steam
+  # the sandbox can't see the host's /usr/lib either, so the loader died on
+  # "libglut.so.3: cannot open shared object file" before main() (field,
+  # snap Steam, 2026-09-05). The $ORIGIN rpath above picks up the copy.
+  STEAM_LOCAL_LIBS = libglut.so.3
 endif
 STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 
 .PHONY: steam steam-clean
 
-steam: newtonia-steam steam_appid.txt
+steam: newtonia-steam steam_appid.txt $(STEAM_LOCAL_LIBS)
 ifeq ($(UNAME), Darwin)
 	# Also wrap the Steam binary in Newtonia.app so macOS treats it as a real
 	# app: window activation/focus, Game Mode, and App Nap suppression all key
@@ -501,6 +508,13 @@ ifeq ($(UNAME), Darwin)
 	install_name_tool -id @loader_path/libsteam_api.dylib $@
 endif
 
+# Host freeglut, copied beside newtonia-steam (see STEAM_LOCAL_LIBS). Resolved
+# through the dynamic-linker cache so it follows whatever -lglut linked.
+libglut.so.3:
+	@src=$$(ldconfig -p | awk '/libglut\.so\.3 /{print $$NF; exit}'); \
+	if [ -z "$$src" ]; then echo "error: libglut.so.3 not in the ldconfig cache (install freeglut3-dev)"; exit 1; fi; \
+	cp -L "$$src" $@ && echo "Copied $$src beside newtonia-steam"
+
 newtonia-steam: $(STEAM_OBJFILES) $(STEAM_RUNTIME)
 	$(CC) -o $@ $(STEAM_OBJFILES) $(STEAM_LINK) $(LIBS)
 
@@ -508,7 +522,7 @@ steam_appid.txt:
 	echo $(STEAM_APPID) > $@
 
 steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app $(STEAM_LOCAL_LIBS)
 
 %.steam.o: %.cpp
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
