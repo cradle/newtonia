@@ -107,9 +107,16 @@ make steam STEAM_OBJ_TAG=sniper NETPLAY_PREFIX="$NETPREFIX" \
   SDL2_LIBS="-lSDL2_mixer $(sdl2-config --static-libs) -lX11 -lXi" \
   STEAM_LIB_SKIP_EXTRA='libstdc|libgcc_s'
 
-# Hand the outputs back to the host user (a rootless podman already maps
-# root to the caller, where this chown is a no-op that may not be allowed).
-find /work -newer "$CACHE/.started" -user root \
-  -exec chown -h "$HOST_UID:$HOST_GID" {} + 2>/dev/null || true
-chown -R "$HOST_UID:$HOST_GID" "$CACHE" 2>/dev/null || true
+# Hand the outputs back to the host user — ONLY under a real-root runtime
+# (docker's daemon), where the files really are root's. Under rootless
+# podman the container's uid 0 IS the caller, and a chown to the host uid
+# here maps onto a subordinate uid instead, leaving the whole build tree
+# owned by a user that doesn't exist on the host (field, 2026-09-05; the
+# repair is `podman unshare chown -R 0:0 .`). /proc/self/uid_map tells the
+# two apart: "0 0 ..." is real root, "0 <uid> 1" is the rootless mapping.
+if [ "$(awk 'NR==1{print $2}' /proc/self/uid_map)" = "0" ]; then
+  find /work -newer "$CACHE/.started" -user root \
+    -exec chown -h "$HOST_UID:$HOST_GID" {} + 2>/dev/null || true
+  chown -R "$HOST_UID:$HOST_GID" "$CACHE" 2>/dev/null || true
+fi
 echo "== sniper build done: ./newtonia-steam (runtime glibc) + steam-libs/ — launch through ./steam-shortcut.sh"
