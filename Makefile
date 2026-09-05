@@ -445,9 +445,13 @@ root, which creates ./sdk/, or point STEAM_SDK at an existing unzip)
   endif
 endif
 STEAM_CFLAGS = $(CFLAGS) -DSTEAM_BUILD -I$(STEAM_SDK)/public
-STEAM_OBJFILES := $(patsubst %.cpp,%.steam.o,$(ALL_SRCS))
+# Object-name tag: `steam` for the host build, `sniper` when
+# build_steam_sniper.sh builds inside Valve's runtime container, so the two
+# never share (glibc-incompatible) objects.
+STEAM_OBJ_TAG ?= steam
+STEAM_OBJFILES := $(patsubst %.cpp,%.$(STEAM_OBJ_TAG).o,$(ALL_SRCS))
 ifeq ($(UNAME), Darwin)
-  STEAM_OBJFILES += macos_window.steam.o
+  STEAM_OBJFILES += macos_window.$(STEAM_OBJ_TAG).o
   STEAM_RUNTIME = libsteam_api.dylib
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/osx/libsteam_api.dylib
   STEAM_LINK = -L. -lsteam_api
@@ -483,10 +487,16 @@ else
   # and service plumbing, and libpulse also resolves its private
   # libpulsecommon through its OWN runpath into /usr/lib/.../pulseaudio/,
   # which a bundled copy can't follow (field, snap Steam, 2026-09-05).
-  # libstdc++ and libgcc_s are deliberately bundled — a host newer than the
-  # sandbox's base fails on GLIBCXX otherwise.
+  # libstdc++ and libgcc_s are deliberately bundled from a HOST build — a
+  # host newer than the sandbox's base fails on GLIBCXX otherwise — and
+  # deliberately NOT from the sniper container build (STEAM_LIB_SKIP_EXTRA,
+  # set by build_steam_sniper.sh): the runtime's older libstdc++ loaded
+  # first would starve the sandbox's own Mesa of the GLIBCXX it needs.
+  # Note the bundle cannot paper over glibc itself: a host newer than the
+  # sandbox fails on "GLIBC_2.4x not found" from the BINARY, and the only
+  # fix is building against the runtime — ./build_steam_sniper.sh.
   STEAM_LOCAL_LIBS = steam-libs
-  STEAM_LIB_SKIP = ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libresolv\.so|libnss_|libutil\.so|libGL|libEGL|libGLX|libOpenGL|libglapi|libdrm|libgbm|libwayland|libxcb|libX11|libXau|libXdmcp|libnvidia|libvulkan|libpulse|libasound|libpipewire|libjack|libdbus|libsystemd|libudev|libsteam_api
+  STEAM_LIB_SKIP = ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libresolv\.so|libnss_|libutil\.so|libGL|libEGL|libGLX|libOpenGL|libglapi|libdrm|libgbm|libwayland|libxcb|libX11|libXau|libXdmcp|libnvidia|libvulkan|libpulse|libasound|libpipewire|libjack|libdbus|libsystemd|libudev|libsteam_api$(if $(STEAM_LIB_SKIP_EXTRA),|$(STEAM_LIB_SKIP_EXTRA))
 endif
 STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 
@@ -541,12 +551,13 @@ steam_appid.txt:
 	echo $(STEAM_APPID) > $@
 
 steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app $(STEAM_LOCAL_LIBS)
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app $(STEAM_LOCAL_LIBS) \
+	  $(wildcard *.sniper.o */*.sniper.o *.sniper.d */*.sniper.d)
 
-%.steam.o: %.cpp
+%.$(STEAM_OBJ_TAG).o: %.cpp
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
 
-%.steam.o: %.mm
+%.$(STEAM_OBJ_TAG).o: %.mm
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
 
 -include $(DEPFILES)

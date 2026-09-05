@@ -46,7 +46,7 @@ no system trust store anywhere and OpenSSL reaches none on Windows;
 is set by no shipped build.
 
 #### Steam build
-See the `platform-builds` skill (`.claude/skills/platform-builds/SKILL.md`) for local Steam testing — SDK setup, per-OS runtime libs, `NEWTONIA_RESET_STEAM_STATS`.
+See the `platform-builds` skill (`.claude/skills/platform-builds/SKILL.md`) for local Steam testing — SDK setup, per-OS runtime libs, `NEWTONIA_RESET_STEAM_STATS`, and adding the local build as a non-Steam game (Linux: `steam-shortcut.sh` + the `steam-libs/` bundle, and `build_steam_sniper.sh` when the host glibc is newer than the Steam sandbox's).
 
 #### Linux dependencies
 ```sh
