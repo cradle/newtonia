@@ -69,7 +69,6 @@ xbox/build-*/
 /sdk/
 /steam_appid.txt
 /libsteam_api.*
-/steam-libs/
 /steam-sniper/
 *.sniper.o
 *.sniper.d

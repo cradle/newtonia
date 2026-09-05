@@ -468,46 +468,13 @@ else ifneq (,$(findstring _NT,$(UNAME)))
 else
   STEAM_RUNTIME = libsteam_api.so
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/linux64/libsteam_api.so
-  # The bundle (STEAM_LOCAL_LIBS) is deliberately NOT on the rpath: it is
-  # steam-shortcut.sh's LD_LIBRARY_PATH business, so a direct launch of the
-  # binary under Steam's own runtime container ignores it. With an
-  # $ORIGIN/steam-libs DT_RPATH the runtime-built bundle shadowed the host
-  # Mesa's newer dependencies (zlib, expat, ...) that pressure-vessel injects,
-  # and GL context creation died before the first print (field, snap Steam +
-  # sniper compat tool, 2026-09-05).
   STEAM_LINK = -L. -lsteam_api -Wl,-rpath,'$$ORIGIN'
-  # The host libraries the binary links, bundled into ./steam-libs/: the
-  # shipped depot runs inside Steam's sniper container, which supplies
-  # freeglut, SDL2_mixer and the rest, but a NON-STEAM SHORTCUT to this
-  # local build gets no container — and under the snap/flatpak Steam the
-  # sandbox can't see the host's /usr/lib either, so the loader died before
-  # main() on libglut.so.3, then libSDL2_mixer-2.0.so.0 (field, snap Steam,
-  # 2026-09-05). Everything ldd lists is copied EXCEPT what must come from
-  # the running system: glibc + the dynamic loader, the GL / X server /
-  # display-driver stack, and the AUDIO / IPC client libraries (pulse, alsa,
-  # pipewire, dbus, systemd, udev) — those talk to the sandbox's own sound
-  # and service plumbing, and libpulse also resolves its private
-  # libpulsecommon through its OWN runpath into /usr/lib/.../pulseaudio/,
-  # which a bundled copy can't follow (field, snap Steam, 2026-09-05).
-  # libstdc++ and libgcc_s are deliberately bundled from a HOST build — a
-  # host newer than the sandbox's base fails on GLIBCXX otherwise — and
-  # deliberately NOT from the sniper container build (STEAM_LIB_SKIP_EXTRA,
-  # set by build_steam_sniper.sh): the runtime's older libstdc++ loaded
-  # first would starve the sandbox's own Mesa of the GLIBCXX it needs.
-  # Note the bundle cannot paper over glibc itself: a host newer than the
-  # sandbox fails on "GLIBC_2.4x not found" from the BINARY, and the only
-  # fix is building against the runtime — ./build_steam_sniper.sh.
-  STEAM_LOCAL_LIBS = steam-libs
-  # ... and the libraries the HOST's Mesa driver depends on (zlib, zstd,
-  # expat, libffi, libelf, LLVM, sensors): a bundled older copy loaded first
-  # starves the driver of symbols and GL init dies silently.
-  STEAM_LIB_SKIP = ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libresolv\.so|libnss_|libutil\.so|libGL|libEGL|libGLX|libOpenGL|libglapi|libdrm|libgbm|libwayland|libxcb|libX11|libXau|libXdmcp|libnvidia|libvulkan|libpulse|libasound|libpipewire|libjack|libdbus|libsystemd|libudev|libz\.so|libzstd|libexpat|libffi|libelf|libLLVM|libsensors|libsteam_api$(if $(STEAM_LIB_SKIP_EXTRA),|$(STEAM_LIB_SKIP_EXTRA))
 endif
 STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 
 .PHONY: steam steam-clean
 
-steam: newtonia-steam steam_appid.txt $(STEAM_LOCAL_LIBS)
+steam: newtonia-steam steam_appid.txt
 ifeq ($(UNAME), Darwin)
 	# Also wrap the Steam binary in Newtonia.app so macOS treats it as a real
 	# app: window activation/focus, Game Mode, and App Nap suppression all key
@@ -538,17 +505,6 @@ ifeq ($(UNAME), Darwin)
 	install_name_tool -id @loader_path/libsteam_api.dylib $@
 endif
 
-# The binary's host library closure, bundled for non-Steam-shortcut launches
-# WITHOUT Steam's runtime container (see STEAM_LOCAL_LIBS). Re-run on every
-# relink so a new dependency rides along; reached only through
-# ./steam-shortcut.sh's LD_LIBRARY_PATH — never the rpath.
-.PHONY: steam-libs
-steam-libs: newtonia-steam
-	@rm -rf steam-libs && mkdir -p steam-libs
-	@n=0; for lib in $$(ldd newtonia-steam | awk '/=> \//{print $$3}' | grep -vE '$(STEAM_LIB_SKIP)'); do \
-	  cp -L "$$lib" steam-libs/ && n=$$((n+1)); \
-	done; echo "Bundled $$n host libraries into steam-libs/ (non-Steam-shortcut launches)"
-
 newtonia-steam: $(STEAM_OBJFILES) $(STEAM_RUNTIME)
 	$(CC) -o $@ $(STEAM_OBJFILES) $(STEAM_LINK) $(LIBS)
 
@@ -556,7 +512,7 @@ steam_appid.txt:
 	echo $(STEAM_APPID) > $@
 
 steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app $(STEAM_LOCAL_LIBS) \
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app \
 	  $(wildcard *.sniper.o */*.sniper.o *.sniper.d */*.sniper.d)
 
 %.$(STEAM_OBJ_TAG).o: %.cpp

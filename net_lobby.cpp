@@ -2869,13 +2869,13 @@ void NetLobby::draw() {
           char keys[96];
           if (floating_kb_available_)
             snprintf(keys, sizeof(keys), "%s - PASTE   %s - KEYBOARD",
-                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_X),
-                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_Y));
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_X),
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_Y));
           else
             snprintf(keys, sizeof(keys), "%s - TYPE   %s - DELETE   %s - PASTE",
-                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_A),
-                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_B),
-                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_X));
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_A),
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_B),
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_X));
           Typer::draw_centered(0, -48, keys, sz);
         }
         if (grid) {
@@ -2924,7 +2924,7 @@ void NetLobby::draw() {
             char join[64];
             snprintf(join, sizeof(join), "UP/DOWN AND %s TO JOIN",
                      controller_seen_
-                         ? pad_hint_label_any(SDL_CONTROLLER_BUTTON_A)
+                         ? pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_A)
                          : "ENTER");
             Typer::draw_centered(0, -174.0f - (float)show * 46.0f, join, 10);
           }

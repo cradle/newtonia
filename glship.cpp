@@ -390,7 +390,7 @@ PadStyle GLShip::pad_style() const {
 }
 
 const char *GLShip::pad_hint(SDL_GameControllerButton b) const {
-  return pad_hint_label(controller_instance_id, b);
+  return pad_button_label(pad_style(), b);
 }
 
 bool GLShip::is_my_controller_id(SDL_JoystickID id) const {
@@ -920,11 +920,10 @@ void GLShip::draw_keymap(float fit) const {
   float offset = -160.0f * fit;
   int control_index = 0;
 
-  // Draw a controller button as this seat's pilot presses it
-  // (pad_style.h — the live Steam layout where there is one, else the
-  // pad's vocabulary): circled glyph for face buttons (a letter, or a
-  // PlayStation shape), plain text for everything else (L1 / LB,
-  // OPTIONS / START, L3 / LEFT STICK BUTTON, DPAD UP ...).
+  // Draw a controller button in this seat's vocabulary (pad_style.h):
+  // circled glyph for face buttons (a letter, or a PlayStation shape),
+  // plain text for everything else (L1 / LB, OPTIONS / START, L3 / LEFT
+  // STICK BUTTON, DPAD UP ...).
   auto draw_btn = [&](float x, float y, SDL_GameControllerButton btn) {
     const char *s = pad_hint(btn);
     if (strlen(s) == 1)
@@ -1144,8 +1143,7 @@ void GLShip::draw_weapons() const {
       int bind_y = row_y - 35;
       char buf[8];
 
-      // A face button is circled; a layout that puts FIRE on a bumper or
-      // a paddle gets that control's name as plain text (pad_style.h).
+      // A face button is circled; anything else is plain text (pad_style.h).
       auto draw_chip = [&](float x, SDL_GameControllerButton btn) {
         const char *s = pad_hint(btn);
         if (strlen(s) == 1) Typer::draw_button(x, bind_y, s[0], size);

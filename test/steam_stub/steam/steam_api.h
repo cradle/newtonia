@@ -59,68 +59,6 @@ public:
   virtual HAuthTicket GetAuthTicketForWebApi( const char *pchIdentity ) = 0;
   virtual void CancelAuthTicket( HAuthTicket hAuthTicket ) = 0;
 };
-// Steam Input surface used by steam_input.cpp: the physical pad type
-// behind a Steam-emulated controller, for the hint glyphs.
-typedef uint64_t uint64;
-typedef uint64 InputHandle_t;
-#define STEAM_INPUT_MAX_COUNT 16
-enum ESteamInputType {
-  k_ESteamInputType_Unknown = 0,
-  k_ESteamInputType_SteamController = 1,
-  k_ESteamInputType_XBox360Controller = 2,
-  k_ESteamInputType_XBoxOneController = 3,
-  k_ESteamInputType_GenericGamepad = 4,
-  k_ESteamInputType_PS4Controller = 5,
-  k_ESteamInputType_AppleMFiController = 6,
-  k_ESteamInputType_AndroidController = 7,
-  k_ESteamInputType_SwitchJoyConPair = 8,
-  k_ESteamInputType_SwitchJoyConSingle = 9,
-  k_ESteamInputType_SwitchProController = 10,
-  k_ESteamInputType_MobileTouch = 11,
-  k_ESteamInputType_PS3Controller = 12,
-  k_ESteamInputType_PS5Controller = 13,
-  k_ESteamInputType_SteamDeckController = 14,
-  k_ESteamInputType_Count = 15,
-  k_ESteamInputType_MaximumPossibleValue = 255,
-};
-// The emulated-Xbox outputs a legacy title reads (real enum has the
-// trigger/stick-move rows too; only the ones the hints name are here).
-enum EXboxOrigin {
-  k_EXboxOrigin_A, k_EXboxOrigin_B, k_EXboxOrigin_X, k_EXboxOrigin_Y,
-  k_EXboxOrigin_LeftBumper, k_EXboxOrigin_RightBumper,
-  k_EXboxOrigin_Menu, k_EXboxOrigin_View,
-  k_EXboxOrigin_LeftStick_Click, k_EXboxOrigin_RightStick_Click,
-  k_EXboxOrigin_DPad_North, k_EXboxOrigin_DPad_South,
-  k_EXboxOrigin_DPad_West, k_EXboxOrigin_DPad_East,
-  k_EXboxOrigin_Count,
-};
-// Physical-control origins — the real enum is ~500 values across every
-// pad family; steam_input.cpp only ever names None and the Xbox 360
-// rows it translates everything else onto.
-enum EInputActionOrigin {
-  k_EInputActionOrigin_None = 0,
-  k_EInputActionOrigin_XBox360_A, k_EInputActionOrigin_XBox360_B,
-  k_EInputActionOrigin_XBox360_X, k_EInputActionOrigin_XBox360_Y,
-  k_EInputActionOrigin_XBox360_LeftBumper, k_EInputActionOrigin_XBox360_RightBumper,
-  k_EInputActionOrigin_XBox360_Start, k_EInputActionOrigin_XBox360_Back,
-  k_EInputActionOrigin_XBox360_LeftStick_Click, k_EInputActionOrigin_XBox360_RightStick_Click,
-  k_EInputActionOrigin_XBox360_DPad_North, k_EInputActionOrigin_XBox360_DPad_South,
-  k_EInputActionOrigin_XBox360_DPad_West, k_EInputActionOrigin_XBox360_DPad_East,
-};
-// Posted when a controller configuration loads (the player edited or
-// switched a layout) — steam_input.cpp's label-cache invalidation cue.
-struct SteamInputConfigurationLoaded_t { int m_unused; };
-class ISteamInput {
-public:
-  virtual bool Init( bool bExplicitlyCallRunFrame ) = 0;
-  virtual bool Shutdown() = 0;
-  virtual void RunFrame( bool bReservedValue = true ) = 0;
-  virtual int GetConnectedControllers( InputHandle_t *handlesOut ) = 0;
-  virtual ESteamInputType GetInputTypeForHandle( InputHandle_t inputHandle ) = 0;
-  virtual const char *GetStringForActionOrigin( EInputActionOrigin eOrigin ) = 0;
-  virtual EInputActionOrigin GetActionOriginFromXboxOrigin( InputHandle_t inputHandle, EXboxOrigin eOrigin ) = 0;
-  virtual EInputActionOrigin TranslateActionOrigin( ESteamInputType eDestinationInputType, EInputActionOrigin eSourceOrigin ) = 0;
-};
 // Minimal stand-in for the SDK's CCallback registration helper — enough to
 // syntax-check the backends' member-callback wiring without the real SDK.
 template <class T, class P>
@@ -135,4 +73,3 @@ inline ISteamUtils *SteamUtils() { return nullptr; }
 inline ISteamApps *SteamApps() { return nullptr; }
 inline ISteamFriends *SteamFriends() { return nullptr; }
 inline ISteamUser *SteamUser() { return nullptr; }
-inline ISteamInput *SteamInput() { return nullptr; }

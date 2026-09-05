@@ -877,11 +877,7 @@ int main(int argc, char* argv[]) {
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
-  // Steam Input: only to learn what a Steam-emulated pad physically is,
-  // for the hint glyphs (pad_style.h). No-op off Steam.
   startup_trace("steam_init done");
-  steam_input_init();
-  startup_trace("steam_input_init done");
   // Must precede the first frame: the Steam backend registers its stat
   // callbacks here, and the SDK's automatic stats delivery is dispatched on
   // an early SteamAPI_RunCallbacks() — unheard registrations queue forever.
@@ -923,7 +919,7 @@ int main(int argc, char* argv[]) {
   }
   init_controllers_and_audio();
   startup_trace("controllers + audio done");
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_input_shutdown(); steam_shutdown(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < MAX_PLAYERS; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);

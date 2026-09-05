@@ -175,8 +175,8 @@ void Overlay::replay_hud(const GLGame *glgame) {
       if (SDL_IsGameController(i)) { has_ctrl = true; break; }
     if (has_ctrl) {
       snprintf(text, sizeof(text), "%s PAUSE   %s MENU",
-               pad_hint_label_any(SDL_CONTROLLER_BUTTON_START),
-               pad_hint_label_any(SDL_CONTROLLER_BUTTON_B));
+               pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START),
+               pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_B));
     } else {
       const GeneralKeys &gk = g_prefs.general_keys;
       snprintf(text, sizeof(text), "%c PAUSE   %c/%c SPEED   ESC MENU",
@@ -1326,7 +1326,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
           // press OPTIONS, since that pad has no START.
           snprintf(join_hint, sizeof(join_hint),
                    "player %d press %s to join", next_seat,
-                   pad_hint_label_any(SDL_CONTROLLER_BUTTON_START));
+                   pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START));
           Typer::draw_centered(0, top_y, join_hint, 8);
         }
 #ifndef _GAMING_XBOX
@@ -1405,9 +1405,8 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
      !((glgame->current_time)/12000 % 2)) {
     char hint[64];
     if(glship->last_input_was_controller) {
-      // Whatever this pilot's pad (or Steam layout) puts on the boost
-      // button; the Xbox default keeps the friendlier "left bumper" over
-      // the LB abbreviation.
+      // The bumper in this pilot's pad vocabulary; Xbox keeps the
+      // friendlier "left bumper" over the LB abbreviation.
       const char *bl = glship->pad_hint(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
       if(strcmp(bl, "LB") == 0)
         snprintf(hint, sizeof(hint), "boost with left bumper");

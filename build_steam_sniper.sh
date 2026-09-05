@@ -5,13 +5,13 @@
 #
 # Why: a host-built newtonia-steam cannot load inside the snap/flatpak Steam
 # sandbox, whose base glibc is older than any current distro's ("version
-# `GLIBC_2.43' not found (required by newtonia-steam)", field 2026-09-05),
-# and glibc is the one library the steam-libs bundle can't carry. Building
-# against the runtime is the fix, exactly as the depot does.
+# `GLIBC_2.43' not found (required by newtonia-steam)", field 2026-09-05).
+# Building against the runtime is the fix, exactly as the depot does.
 #
 # Needs docker or podman, and the Steamworks SDK at ./sdk/. Produces the
 # same files `make steam` does — newtonia-steam, libsteam_api.so,
-# steam_appid.txt, steam-libs/ — so steam-shortcut.sh launches it unchanged.
+# steam_appid.txt — which steam_run_local.sh launches through the Steam
+# library entry.
 # Objects are *.sniper.o (STEAM_OBJ_TAG), never mixing with the host build's
 # *.steam.o; SDL2 / SDL2_mixer (static, the depot's pins) and libdatachannel
 # are built once and cached under ./steam-sniper/ (rm -rf it to rebuild).
@@ -121,13 +121,9 @@ rm -f steam_appid.txt newtonia-steam
 # Static SDL2 needs its own dependency list (--static-libs), and X11 after it
 # (the Makefile's LIBS names -lX11 -lXi before SDL, which a static libSDL2
 # cannot resolve backwards); -lSDL2_mixer goes first for the same reason.
-# libstdc++/libgcc_s stay OUT of the bundle here — see STEAM_LIB_SKIP in
-# the Makefile. Everything else the container links (freeglut, OpenSSL,
-# libdatachannel with its container-only rpath) is bundled into steam-libs/.
 make steam STEAM_OBJ_TAG=sniper NETPLAY_PREFIX="$NETPREFIX" STEAM_APPID="$STEAM_APPID" \
   SDL2_CFLAGS="$(sdl2-config --cflags)" \
-  SDL2_LIBS="-lSDL2_mixer $(sdl2-config --static-libs) -lX11 -lXi" \
-  STEAM_LIB_SKIP_EXTRA='libstdc|libgcc_s'
+  SDL2_LIBS="-lSDL2_mixer $(sdl2-config --static-libs) -lX11 -lXi"
 
 # Prove the result is a runtime build: the newest glibc symbol version it
 # needs must be one the runtime (glibc 2.31) provides.
@@ -146,4 +142,4 @@ if [ "$(awk 'NR==1{print $2}' /proc/self/uid_map)" = "0" ]; then
     -exec chown -h "$HOST_UID:$HOST_GID" {} + 2>/dev/null || true
   chown -R "$HOST_UID:$HOST_GID" "$CACHE" 2>/dev/null || true
 fi
-echo "== sniper build done: ./newtonia-steam (runtime glibc) + steam-libs/ — compat tool: point the shortcut at the binary; no compat tool: at ./steam-shortcut.sh"
+echo "== sniper build done: ./newtonia-steam (runtime glibc) — launch it through the library entry with steam_run_local.sh"
