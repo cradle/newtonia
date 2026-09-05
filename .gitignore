@@ -69,7 +69,7 @@ xbox/build-*/
 /sdk/
 /steam_appid.txt
 /libsteam_api.*
-/libglut.so.3
+/steam-libs/
 /steam_api64.dll
 /steamworks_sdk.zip
 ## Netplay prebuilt libs (libdatachannel/WebRTC)

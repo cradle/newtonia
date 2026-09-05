@@ -464,14 +464,24 @@ else ifneq (,$(findstring _NT,$(UNAME)))
 else
   STEAM_RUNTIME = libsteam_api.so
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/linux64/libsteam_api.so
-  STEAM_LINK = -L. -lsteam_api -Wl,-rpath,'$$ORIGIN'
-  # freeglut beside the binary too: the shipped depot runs inside Steam's
-  # sniper container, which provides libglut.so.3, but a NON-STEAM SHORTCUT
-  # to this local build gets no container — and under the snap/flatpak Steam
-  # the sandbox can't see the host's /usr/lib either, so the loader died on
-  # "libglut.so.3: cannot open shared object file" before main() (field,
-  # snap Steam, 2026-09-05). The $ORIGIN rpath above picks up the copy.
-  STEAM_LOCAL_LIBS = libglut.so.3
+  # --disable-new-dtags: emit DT_RPATH, not DT_RUNPATH, so the $ORIGIN paths
+  # also govern the bundled libraries' OWN lookups (RUNPATH applies only to
+  # the binary's direct NEEDED entries; SDL2_mixer's decoders would otherwise
+  # be searched on the sandbox's paths). See STEAM_LOCAL_LIBS.
+  STEAM_LINK = -L. -lsteam_api -Wl,--disable-new-dtags \
+               -Wl,-rpath,'$$ORIGIN' -Wl,-rpath,'$$ORIGIN/steam-libs'
+  # The host libraries the binary links, bundled into ./steam-libs/: the
+  # shipped depot runs inside Steam's sniper container, which supplies
+  # freeglut, SDL2_mixer and the rest, but a NON-STEAM SHORTCUT to this
+  # local build gets no container — and under the snap/flatpak Steam the
+  # sandbox can't see the host's /usr/lib either, so the loader died before
+  # main() on libglut.so.3, then libSDL2_mixer-2.0.so.0 (field, snap Steam,
+  # 2026-09-05). Everything ldd lists is copied EXCEPT what must come from
+  # the running system: glibc + the dynamic loader, and the GL / X server /
+  # display-driver stack. libstdc++ and libgcc_s are deliberately bundled —
+  # a host newer than the sandbox's base fails on GLIBCXX otherwise.
+  STEAM_LOCAL_LIBS = steam-libs
+  STEAM_LIB_SKIP = ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libresolv\.so|libnss_|libutil\.so|libGL|libEGL|libGLX|libOpenGL|libglapi|libdrm|libgbm|libwayland|libxcb|libX11|libXau|libXdmcp|libnvidia|libvulkan|libsteam_api
 endif
 STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 
@@ -508,12 +518,16 @@ ifeq ($(UNAME), Darwin)
 	install_name_tool -id @loader_path/libsteam_api.dylib $@
 endif
 
-# Host freeglut, copied beside newtonia-steam (see STEAM_LOCAL_LIBS). Resolved
-# through the dynamic-linker cache so it follows whatever -lglut linked.
-libglut.so.3:
-	@src=$$(ldconfig -p | awk '/libglut\.so\.3 /{print $$NF; exit}'); \
-	if [ -z "$$src" ]; then echo "error: libglut.so.3 not in the ldconfig cache (install freeglut3-dev)"; exit 1; fi; \
-	cp -L "$$src" $@ && echo "Copied $$src beside newtonia-steam"
+# The binary's host library closure, bundled for non-Steam-shortcut launches
+# (see STEAM_LOCAL_LIBS). Re-run on every relink so a new dependency rides
+# along; launch through ./steam-shortcut.sh, which also puts the directory
+# on LD_LIBRARY_PATH ahead of the overlay preload.
+.PHONY: steam-libs
+steam-libs: newtonia-steam
+	@rm -rf steam-libs && mkdir -p steam-libs
+	@n=0; for lib in $$(ldd newtonia-steam | awk '/=> \//{print $$3}' | grep -vE '$(STEAM_LIB_SKIP)'); do \
+	  cp -L "$$lib" steam-libs/ && n=$$((n+1)); \
+	done; echo "Bundled $$n host libraries into steam-libs/ (non-Steam-shortcut launches)"
 
 newtonia-steam: $(STEAM_OBJFILES) $(STEAM_RUNTIME)
 	$(CC) -o $@ $(STEAM_OBJFILES) $(STEAM_LINK) $(LIBS)
