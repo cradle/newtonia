@@ -241,10 +241,23 @@ static bool s_tap_debug = false;
 // stdout print — a Steam-launched process whose output Steam swallows, a
 // sandbox that ends it silently. stderr, not cout: it must survive an
 // exit that never flushes. Dev-only; no shipped launch sets it.
+// NEWTONIA_TRACE=/absolute/path appends to that file instead — for a
+// launch whose stdio never reaches anything (Steam's runtime container
+// swallowed even unbuffered stderr, field 2026-09-05).
+static FILE *startup_trace_out() {
+  static FILE *out = NULL;
+  static bool decided = false;
+  if (!decided) {
+    decided = true;
+    const char *t = SDL_getenv("NEWTONIA_TRACE");
+    if (t && t[0] == '/') out = fopen(t, "a");
+    else if (t) out = stderr;
+  }
+  return out;
+}
 static void startup_trace(const char *step) {
-  static int on = -1;
-  if (on < 0) on = SDL_getenv("NEWTONIA_TRACE") ? 1 : 0;
-  if (on) { fprintf(stderr, "trace: %s\n", step); fflush(stderr); }
+  FILE *out = startup_trace_out();
+  if (out) { fprintf(out, "trace: %s\n", step); fflush(out); }
 }
 static std::string s_tap_debug_line;
 
@@ -669,6 +682,16 @@ void init_controllers_and_audio() {
       }
     }
     if(opened == 0) std::cout << "No controllers found" << std::endl;
+    {
+      char line[160];
+      snprintf(line, sizeof(line), "controllers: SDL_NumJoysticks=%d opened=%d", SDL_NumJoysticks(), opened);
+      startup_trace(line);
+      for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d)", i,
+                 SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?", (int)SDL_IsGameController(i));
+        startup_trace(line);
+      }
+    }
   } else {
     std::cout << "SDL Failed to initialize" << std::endl;
     std::cout << SDL_GetError() << std::endl;

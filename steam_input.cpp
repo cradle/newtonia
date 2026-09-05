@@ -21,13 +21,23 @@
 namespace {
 bool g_input_ready = false;
 
-// NEWTONIA_TRACE=1: stderr diagnostics for the origin lookup (which of
-// the three Steam calls says no when a remap doesn't reach the hints).
-bool trace_on() {
-  static int on = -1;
-  if (on < 0) on = SDL_getenv("NEWTONIA_TRACE") ? 1 : 0;
-  return on == 1;
+// NEWTONIA_TRACE=1 (stderr) or =/absolute/path (appended to that file):
+// diagnostics for the origin lookup — which of the three Steam calls says
+// no when a remap doesn't reach the hints. Same switch as glut.cpp's
+// startup trace.
+FILE *trace_out() {
+  static FILE *out = NULL;
+  static bool decided = false;
+  if (!decided) {
+    decided = true;
+    const char *t = SDL_getenv("NEWTONIA_TRACE");
+    if (t && t[0] == '/') out = fopen(t, "a");
+    else if (t) out = stderr;
+  }
+  return out;
 }
+bool trace_on() { return trace_out() != NULL; }
+#define TRACE(...) do { FILE *o_ = trace_out(); if (o_) { fprintf(o_, __VA_ARGS__); fflush(o_); } } while (0)
 
 // Configuration-loaded watcher: Steam posts SteamInputConfigurationLoaded_t
 // when a layout loads or the player edits one; the counter it bumps is
@@ -112,9 +122,8 @@ void steam_input_init() {
   // tick by steam_run_callbacks) drives RunFrame for us.
   g_input_ready = SteamInput() && SteamInput()->Init(false);
   if (g_input_ready) config_watch();  // register before the first pump
-  if (trace_on())
-    fprintf(stderr, "trace: steam input: interface %s, Init -> %d\n",
-            SteamInput() ? "present" : "NULL", (int)g_input_ready);
+  TRACE("trace: steam input: interface %s, Init -> %d\n",
+        SteamInput() ? "present" : "NULL", (int)g_input_ready);
 }
 
 void steam_input_shutdown() {
@@ -140,8 +149,8 @@ bool steam_pad_origin(uint64_t steam_handle, int sdl_button,
   if (h == 0) {
     if (trace_on() && sdl_button == SDL_CONTROLLER_BUTTON_A) {
       InputHandle_t hs[STEAM_INPUT_MAX_COUNT];
-      fprintf(stderr, "trace: steam origin: no handle (sdl gave %llu, steam lists %d pads)\n",
-              (unsigned long long)steam_handle, SteamInput()->GetConnectedControllers(hs));
+      TRACE("trace: steam origin: no handle (sdl gave %llu, steam lists %d pads)\n",
+            (unsigned long long)steam_handle, SteamInput()->GetConnectedControllers(hs));
     }
     return false;
   }
@@ -155,11 +164,11 @@ bool steam_pad_origin(uint64_t steam_handle, int sdl_button,
       ? k_EInputActionOrigin_None
       : SteamInput()->TranslateActionOrigin(k_ESteamInputType_XBox360Controller, physical);
   int pos = sdl_for_x360(x360);
-  if (trace_on() && sdl_button == SDL_CONTROLLER_BUTTON_A)
-    fprintf(stderr, "trace: steam origin: handle %llu type %d: A -> physical %d (%s) -> x360 %d -> sdl %d\n",
-            (unsigned long long)h, (int)SteamInput()->GetInputTypeForHandle(h),
-            (int)physical, physical == k_EInputActionOrigin_None ? "none" : SteamInput()->GetStringForActionOrigin(physical),
-            (int)x360, pos);
+  if (sdl_button == SDL_CONTROLLER_BUTTON_A)
+    TRACE("trace: steam origin: handle %llu type %d: A -> physical %d (%s) -> x360 %d -> sdl %d\n",
+          (unsigned long long)h, (int)SteamInput()->GetInputTypeForHandle(h),
+          (int)physical, physical == k_EInputActionOrigin_None ? "none" : SteamInput()->GetStringForActionOrigin(physical),
+          (int)x360, pos);
   if (physical == k_EInputActionOrigin_None) return false;
   *position_out = pos;
   if (text_out && text_n) text_out[0] = '\0';
