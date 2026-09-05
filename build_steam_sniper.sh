@@ -32,8 +32,11 @@ if [ "${1:-}" != "--inner" ]; then
   mkdir -p steam-sniper
   TTY=""; [ -t 0 ] && TTY="-t"
   # shellcheck disable=SC2086
+  # STEAM_APPID passes through (480 = Valve's "Spacewar" test app, so a
+  # non-Steam shortcut does NOT register as the real game — see the skill).
   exec "$RT" run --rm -i $TTY -v "$PWD:/work" -w /work \
     -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+    -e STEAM_APPID="${STEAM_APPID:-4536720}" \
     -e MAKEFLAGS="${MAKEFLAGS:--j$(nproc 2>/dev/null || echo 4)}" \
     "$IMAGE" sh /work/build_steam_sniper.sh --inner
 fi
@@ -95,14 +98,17 @@ if [ ! -f "$NETPREFIX/include/rtc/rtc.h" ]; then
   ./build_netplay_deps.sh "$NETPREFIX"
 fi
 
-echo "== sniper: make steam"
+echo "== sniper: make steam (app id $STEAM_APPID)"
+# steam_appid.txt is only written when missing — drop it so a changed
+# STEAM_APPID takes effect.
+rm -f steam_appid.txt
 # Static SDL2 needs its own dependency list (--static-libs), and X11 after it
 # (the Makefile's LIBS names -lX11 -lXi before SDL, which a static libSDL2
 # cannot resolve backwards); -lSDL2_mixer goes first for the same reason.
 # libstdc++/libgcc_s stay OUT of the bundle here — see STEAM_LIB_SKIP in
 # the Makefile. Everything else the container links (freeglut, OpenSSL,
 # libdatachannel with its container-only rpath) is bundled into steam-libs/.
-make steam STEAM_OBJ_TAG=sniper NETPLAY_PREFIX="$NETPREFIX" \
+make steam STEAM_OBJ_TAG=sniper NETPLAY_PREFIX="$NETPREFIX" STEAM_APPID="$STEAM_APPID" \
   SDL2_CFLAGS="$(sdl2-config --cflags)" \
   SDL2_LIBS="-lSDL2_mixer $(sdl2-config --static-libs) -lX11 -lXi" \
   STEAM_LIB_SKIP_EXTRA='libstdc|libgcc_s'
