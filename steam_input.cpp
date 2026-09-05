@@ -8,7 +8,6 @@
 // sets and glyph PNGs stay out, and every pad still drives the game
 // through SDL's GameController events.
 // Compiled in every build; the non-Steam branch reports "unavailable".
-// DEFAULT OFF — see steam_input_init() for why Init is opt-in.
 
 #include <SDL.h>
 
@@ -96,17 +95,10 @@ SteamPadKind kind_from_type(ESteamInputType t) {
 }  // namespace
 
 void steam_input_init() {
-  // OPT-IN ONLY (NEWTONIA_STEAM_INPUT=1). Once a running game calls
-  // ISteamInput::Init the client treats it as a Steam Input API title and
-  // withholds the virtual gamepad SDL reads from: pads plugged in after
-  // launch never reached SDL at all, and pre-connected ones sometimes lost
-  // theirs too (field, Ubuntu snap Steam + DualShock 4 / Xbox pad,
-  // 2026-09-05). The pad-type answer this bought is available from SDL
-  // itself (>= 2.30 reads Steam's virtual-gamepad description — the depot
-  // links 2.32 statically), so by default nothing here runs and only the
-  // live-layout hint lookup is lost. A player who wants remap-aware hints
-  // can opt in and accept the hot-plug cost.
-  if (!SDL_getenv("NEWTONIA_STEAM_INPUT")) return;
+  // NEWTONIA_NO_STEAM_INPUT=1: leave Steam Input uninitialised (hints fall
+  // back to SDL's pad type) — the second bisection step after
+  // NEWTONIA_NO_STEAM, isolating this interface from the rest of the API.
+  if (SDL_getenv("NEWTONIA_NO_STEAM_INPUT")) return;
   // bExplicitlyCallRunFrame = false: SteamAPI_RunCallbacks (pumped every
   // tick by steam_run_callbacks) drives RunFrame for us.
   g_input_ready = SteamInput() && SteamInput()->Init(false);
