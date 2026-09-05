@@ -11,6 +11,7 @@
 #include "net_lobby.h"
 #include "net_policy.h"
 #include "net_resume.h"
+#include "pad_style.h"
 #include "net_transport.h"
 #include "preferences.h"
 #include "touch_controls.h"
@@ -1039,7 +1040,12 @@ void Menu::draw() {
           for (int i = 0; i < nc; i++) {
             if (SDL_IsGameController(i)) { has_ctrl = true; break; }
           }
-          Typer::draw_centered(0, title_bot - gap, has_ctrl ? "press start" : "press enter", sz);
+          // Pad prompt in the plugged-in pad's vocabulary (pad_style.h):
+          // START on Xbox, OPTIONS on PlayStation.
+          char pad_prompt[24];
+          snprintf(pad_prompt, sizeof(pad_prompt), "press %s",
+                   pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START));
+          Typer::draw_centered(0, title_bot - gap, has_ctrl ? pad_prompt : "press enter", sz);
         }
       }
     } else if (quit_confirm_) {

@@ -385,6 +385,10 @@ bool GLShip::has_controller() const {
   return controller_instance_id != -1;
 }
 
+PadStyle GLShip::pad_style() const {
+  return pad_style_for_id(controller_instance_id);
+}
+
 bool GLShip::is_my_controller_id(SDL_JoystickID id) const {
   return id != -1 && controller_instance_id == id;
 }
@@ -912,20 +916,17 @@ void GLShip::draw_keymap(float fit) const {
   float offset = -160.0f * fit;
   int control_index = 0;
 
-  // Draw a controller button: circled glyph for single-char buttons (A/B/X/Y/…),
-  // L3/R3 labels for stick clicks, plain text for everything else.
+  // Draw a controller button in this seat's vocabulary (pad_style.h):
+  // circled glyph for face buttons (a letter, or a PlayStation shape),
+  // plain text for everything else (L1 / LB, OPTIONS / START, L3 / LEFT
+  // STICK BUTTON, DPAD UP ...).
+  PadStyle style = pad_style();
   auto draw_btn = [&](float x, float y, SDL_GameControllerButton btn) {
-    if (btn == SDL_CONTROLLER_BUTTON_LEFTSTICK)
-      Typer::draw(x, y, "Left Stick Button", size);
-    else if (btn == SDL_CONTROLLER_BUTTON_RIGHTSTICK)
-      Typer::draw(x, y, "Right Stick Button", size);
-    else {
-      const char *s = SDL_GameControllerGetStringForButton(btn);
-      if (strlen(s) == 1)
-        Typer::draw_button(x, y, s[0], size);
-      else
-        Typer::draw(x, y, s, size);
-    }
+    const char *s = pad_button_label(style, btn);
+    if (strlen(s) == 1)
+      Typer::draw_button(x, y, s[0], size);
+    else
+      Typer::draw(x, y, s, size);
   };
 
   if(last_input_was_controller) {
@@ -1141,7 +1142,7 @@ void GLShip::draw_weapons() const {
 
       Typer::draw(col_fire, bind_y, "FIRE ", size);
       if (last_input_was_controller) {
-        Typer::draw_button(col_fire_key, bind_y, SDL_GameControllerGetStringForButton(fire_btn)[0], size);
+        Typer::draw_button(col_fire_key, bind_y, pad_button_label(pad_style(), fire_btn)[0], size);
       } else {
         Typer::draw(col_fire_key, bind_y, key_str(fire_key_kb, buf), size);
       }
@@ -1149,7 +1150,7 @@ void GLShip::draw_weapons() const {
       if (has_next) {
         Typer::draw(col_next, bind_y, "NEXT ", size);
         if (last_input_was_controller) {
-          Typer::draw_button(col_next_key, bind_y, SDL_GameControllerGetStringForButton(cycle_btn)[0], size);
+          Typer::draw_button(col_next_key, bind_y, pad_button_label(pad_style(), cycle_btn)[0], size);
         } else {
           Typer::draw(col_next_key, bind_y, key_str(cycle_key_kb, buf), size);
         }

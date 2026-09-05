@@ -1,4 +1,5 @@
 #include "typer.h"
+#include "pad_style.h"
 
 #include "net_identity.h"  // declares net_name_char_drawable (defined here)
 
@@ -570,6 +571,35 @@ void Typer::init_meshes() {
     mb.vertex(0,TML); mb.vertex(TW-TMW,TH*0.1f); mb.vertex(TW,TH*0.9f);
     mb.end(); upload(VERIFIED_TICK, mb); }
 
+  // PlayStation face buttons (pad_style.h) — cross, circle, square,
+  // triangle — as control-byte glyphs, so a hint string can carry one
+  // beside plain text ("\x03 MENU") and draw_button can circle one like
+  // a letter. Each is a square shape TW wide centred on the cell's mid
+  // height (TH/2, not the letters' TM: these are marks, not letters, and
+  // sit on the visual centre like the physical button prints). Control
+  // bytes, like VERIFIED_TICK, so a peer name can never carry one.
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINES);
+    mb.vertex(0,TH/2-TC); mb.vertex(TW,TH/2+TC);
+    mb.vertex(0,TH/2+TC); mb.vertex(TW,TH/2-TC);
+    mb.end(); upload((unsigned char)PAD_GLYPH_CROSS_C, mb); }
+
+  { MeshBuilder mb; mb.begin(GL_LINE_LOOP); mb.color(1,1,1);
+    const int N = 16;
+    for (int i = 0; i < N; i++) {
+      float a = 2.0f * (float)M_PI * i / N;
+      mb.vertex(TC + TC * cosf(a), TH/2 + TC * sinf(a));
+    }
+    mb.end(); upload((unsigned char)PAD_GLYPH_CIRCLE_C, mb); }
+
+  { MeshBuilder mb; mb.begin(GL_LINE_LOOP); mb.color(1,1,1);
+    mb.vertex(0,TH/2-TC); mb.vertex(TW,TH/2-TC); mb.vertex(TW,TH/2+TC); mb.vertex(0,TH/2+TC);
+    mb.end(); upload((unsigned char)PAD_GLYPH_SQUARE_C, mb); }
+
+  { MeshBuilder mb; mb.begin(GL_LINE_LOOP); mb.color(1,1,1);
+    mb.vertex(TC,TH/2+TC); mb.vertex(TW,TH/2-TC); mb.vertex(0,TH/2-TC);
+    mb.end(); upload((unsigned char)PAD_GLYPH_TRIANGLE_C, mb); }
+
   { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
     mb.vertex(TW/2.0f,TH/3.0f); mb.vertex(0,0);
     mb.end(); upload(',', mb); }
@@ -620,7 +650,9 @@ void Typer::draw_button(float x, float y, char c, float size) {
   // Draw letter at 70% size, centred on the circle centre (x+size, y-size).
   // draw(px, py, c, ls) places glyph with centre at (px + ls/2, py - ls),
   // so px = circle_cx - ls/2, py = circle_cy + ls.
-  float ls = size * 0.7f;
+  // A PlayStation shape is only TW tall (half a letter's TH), so it takes
+  // the full size to fill the ring the way a letter's 70% does.
+  float ls = size * (pad_glyph_is_shape(c) ? 1.0f : 0.7f);
   draw(x + size - ls * 0.5f, y - size + ls, c, ls);
 }
 

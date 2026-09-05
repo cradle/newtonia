@@ -4,6 +4,7 @@
 // All functions are safe no-ops on every other build.
 
 #include <cstdlib>  // std::getenv (is_beta_feature_enabled)
+#include <stdint.h>
 #include <string>
 
 #ifdef STEAM_BUILD
@@ -59,6 +60,25 @@ inline void steam_dismiss_floating_keyboard() {
   if (SteamUtils()) SteamUtils()->DismissFloatingGamepadTextInput();
 #endif
 }
+
+// Steam Input (steam_input.cpp): only used to learn what a Steam-emulated
+// pad physically IS, for the hint glyphs (pad_style.h). Init right after
+// steam_init(), shut down before steam_shutdown().
+enum SteamPadKind {
+  STEAM_PAD_UNKNOWN = 0,  // Steam Input unavailable, or no answer (yet)
+  STEAM_PAD_OTHER,        // Xbox, Steam Controller/Deck, Switch, generic
+  STEAM_PAD_PS4,          // PS3/PS4 (DualShock)
+  STEAM_PAD_PS5,          // PS5 (DualSense)
+};
+void steam_input_init();
+void steam_input_shutdown();
+// True once Init succeeded — the classifier's cue to treat an UNKNOWN as
+// "ask again shortly" rather than "Steam can't say".
+bool steam_input_available();
+// The pad behind a Steam Input handle (SDL_GameControllerGetSteamHandle,
+// SDL >= 2.30). Handle 0 = the SDL build has no handle API: answered only
+// when exactly one pad is connected on the Steam side.
+SteamPadKind steam_pad_kind(uint64_t steam_handle);
 
 // One-shot poll: true once after the Deck's floating keyboard was
 // dismissed (FloatingGamepadTextInputDismissed_t, dispatched by

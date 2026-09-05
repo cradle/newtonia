@@ -7,6 +7,7 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 
+#include "pad_style.h"
 #include "state_manager.h"
 #include "asteroid.h"
 #include "typer.h"
@@ -500,7 +501,8 @@ void check_controller() {
           controllers[i] = SDL_GameControllerOpen(e.cdevice.which);
           if(controllers[i]) {
             controller_ids[i] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[i]));
-            std::cout << "Controller " << i+1 << " connected: " << SDL_GameControllerName(controllers[i]) << std::endl;
+            std::cout << "Controller " << i+1 << " connected: " << SDL_GameControllerName(controllers[i])
+                      << " (" << pad_style_name(pad_style_for(controllers[i])) << " glyphs)" << std::endl;
             game->controller_added(controllers[i]);
           }
           break;
@@ -513,6 +515,7 @@ void check_controller() {
           SDL_GameControllerClose(controllers[i]);
           controllers[i] = NULL;
           controller_ids[i] = -1;
+          pad_style_forget(removed_id);
           std::cout << "Controller " << i+1 << " disconnected" << std::endl;
           game->controller_removed(removed_id);
           break;
@@ -647,7 +650,8 @@ void init_controllers_and_audio() {
         controllers[opened] = SDL_GameControllerOpen(i);
         if (controllers[opened]) {
           controller_ids[opened] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[opened]));
-          std::cout << "Controller " << opened+1 << ": " << SDL_GameControllerName(controllers[opened]) << std::endl;
+          std::cout << "Controller " << opened+1 << ": " << SDL_GameControllerName(controllers[opened])
+                    << " (" << pad_style_name(pad_style_for(controllers[opened])) << " glyphs)" << std::endl;
           opened++;
         } else {
           std::cout << "Could not open gamecontroller " << i << ": " << SDL_GetError() << std::endl;
@@ -839,6 +843,9 @@ int main(int argc, char* argv[]) {
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
+  // Steam Input: only to learn what a Steam-emulated pad physically is,
+  // for the hint glyphs (pad_style.h). No-op off Steam.
+  steam_input_init();
   // Must precede the first frame: the Steam backend registers its stat
   // callbacks here, and the SDK's automatic stats delivery is dispatched on
   // an early SteamAPI_RunCallbacks() — unheard registrations queue forever.
@@ -875,7 +882,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   init_controllers_and_audio();
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_shutdown(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_input_shutdown(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < MAX_PLAYERS; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);
