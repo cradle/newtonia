@@ -95,6 +95,10 @@ SteamPadKind kind_from_type(ESteamInputType t) {
 }  // namespace
 
 void steam_input_init() {
+  // NEWTONIA_NO_STEAM_INPUT=1: leave Steam Input uninitialised (hints fall
+  // back to SDL's pad type) — the second bisection step after
+  // NEWTONIA_NO_STEAM, isolating this interface from the rest of the API.
+  if (SDL_getenv("NEWTONIA_NO_STEAM_INPUT")) return;
   // bExplicitlyCallRunFrame = false: SteamAPI_RunCallbacks (pumped every
   // tick by steam_run_callbacks) drives RunFrame for us.
   g_input_ready = SteamInput() && SteamInput()->Init(false);
