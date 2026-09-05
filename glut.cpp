@@ -236,6 +236,16 @@ void special_up(int key, int x, int y) {
 // is also logged to stdout (greppable in headless driver runs and
 // Desktop-Mode terminal launches).
 static bool s_tap_debug = false;
+// NEWTONIA_TRACE=1: one unbuffered stderr line per startup step (and one
+// when the main loop returns), for a launch that dies before the first
+// stdout print — a Steam-launched process whose output Steam swallows, a
+// sandbox that ends it silently. stderr, not cout: it must survive an
+// exit that never flushes. Dev-only; no shipped launch sets it.
+static void startup_trace(const char *step) {
+  static int on = -1;
+  if (on < 0) on = SDL_getenv("NEWTONIA_TRACE") ? 1 : 0;
+  if (on) { fprintf(stderr, "trace: %s\n", step); fflush(stderr); }
+}
 static std::string s_tap_debug_line;
 
 static void tap_debug_note(const char *line) {
@@ -840,16 +850,20 @@ int main(int argc, char* argv[]) {
   // stream, before any of the platform services a capture has no use for.
   if (VideoCapture::requested()) return video_main(argc, argv);
   s_tap_debug = SDL_getenv("NEWTONIA_TAP_DEBUG") != NULL;
+  startup_trace("main: past the selftest/harness hooks");
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
   // Steam Input: only to learn what a Steam-emulated pad physically is,
   // for the hint glyphs (pad_style.h). No-op off Steam.
+  startup_trace("steam_init done");
   steam_input_init();
+  startup_trace("steam_input_init done");
   // Must precede the first frame: the Steam backend registers its stat
   // callbacks here, and the SDK's automatic stats delivery is dispatched on
   // an early SteamAPI_RunCallbacks() — unheard registrations queue forever.
   Achievements::init();
+  startup_trace("Achievements::init done");
   // Register the invite backend before the first callback pump (an invite
   // accepted while running arrives via a Steam callback), and capture a
   // "+connect <code>" the platform may have appended on a cold launch — the
@@ -862,10 +876,13 @@ int main(int argc, char* argv[]) {
   // where a host announced its identity before the ticket existed and stayed
   // unverified for the session. A no-op off Steam (returns "").
   (void)net_local_verify_credential();
+  startup_trace("invites + verify credential done");
   load_preferences();
+  startup_trace("preferences loaded");
   old_width  = g_prefs.window_width;
   old_height = g_prefs.window_height;
   init(argc, argv, g_prefs.window_width, g_prefs.window_height);
+  startup_trace("window + GL init done");
 #ifdef __APPLE__
   enable_game_mode_macos();
 #endif
@@ -882,6 +899,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   init_controllers_and_audio();
+  startup_trace("controllers + audio done");
   atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_input_shutdown(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < MAX_PLAYERS; i++) {
@@ -891,7 +909,9 @@ int main(int argc, char* argv[]) {
   install_macos_focus_observer(on_focus_lost, on_focus_gained);
 #endif
   resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
+  startup_trace("entering main loop");
   glutMainLoop();
+  startup_trace("main loop returned");
   save_preferences();
   for(int i = 0; i < MAX_PLAYERS; i++) {
     if(controllers[i] && SDL_GameControllerGetAttached(controllers[i])) {
