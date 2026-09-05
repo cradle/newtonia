@@ -31,24 +31,31 @@ if [ "${1:-}" != "--inner" ]; then
     echo "error: needs docker or podman on PATH" >&2; exit 1; }
   mkdir -p steam-sniper
   TTY=""; [ -t 0 ] && TTY="-t"
-  # shellcheck disable=SC2086
+  # The checkout is mounted at its OWN host path, not /work: the Makefile
+  # bakes $(NETPLAY_PREFIX)/lib into the binary's rpath, and a path that
+  # only exists inside the build container leaves libdatachannel unfound
+  # when Steam's runtime container runs the result (field, 2026-09-05).
   # STEAM_APPID passes through (480 = Valve's "Spacewar" test app, so a
   # non-Steam shortcut does NOT register as the real game — see the skill).
-  exec "$RT" run --rm -i $TTY -v "$PWD:/work" -w /work \
+  # shellcheck disable=SC2086
+  exec "$RT" run --rm -i $TTY -v "$PWD:$PWD" -w "$PWD" \
+    -e HOST_ROOT="$PWD" \
     -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
     -e STEAM_APPID="${STEAM_APPID:-4536720}" \
     -e MAKEFLAGS="${MAKEFLAGS:--j$(nproc 2>/dev/null || echo 4)}" \
-    "$IMAGE" sh /work/build_steam_sniper.sh --inner
+    "$IMAGE" sh "$PWD/build_steam_sniper.sh" --inner
 fi
 
 # ---- container side (root) ----
-CACHE=/work/steam-sniper
+ROOT=${HOST_ROOT:?}
+cd "$ROOT"
+CACHE=$ROOT/steam-sniper
 PREFIX=$CACHE/prefix
 NETPREFIX=$CACHE/netplay-libs
 export PATH="$PREFIX/bin:$PATH"
 touch "$CACHE/.started"
 # The version stamp's `git describe` runs on a tree another uid owns.
-git config --global --add safe.directory /work
+git config --global --add safe.directory "$ROOT"
 
 # Network fetches retry with backoff, like the workflow.
 try() {
@@ -100,8 +107,11 @@ fi
 
 echo "== sniper: make steam (app id $STEAM_APPID)"
 # steam_appid.txt is only written when missing — drop it so a changed
-# STEAM_APPID takes effect.
-rm -f steam_appid.txt
+# STEAM_APPID takes effect. And ALWAYS relink: the host build writes the
+# same newtonia-steam, and a copy newer than the *.sniper.o objects made
+# make skip the link, so every launch ran the host binary (field,
+# 2026-09-05 — "version GLIBC_2.43 not found" from inside the runtime).
+rm -f steam_appid.txt newtonia-steam
 # Static SDL2 needs its own dependency list (--static-libs), and X11 after it
 # (the Makefile's LIBS names -lX11 -lXi before SDL, which a static libSDL2
 # cannot resolve backwards); -lSDL2_mixer goes first for the same reason.
@@ -113,6 +123,11 @@ make steam STEAM_OBJ_TAG=sniper NETPLAY_PREFIX="$NETPREFIX" STEAM_APPID="$STEAM_
   SDL2_LIBS="-lSDL2_mixer $(sdl2-config --static-libs) -lX11 -lXi" \
   STEAM_LIB_SKIP_EXTRA='libstdc|libgcc_s'
 
+# Prove the result is a runtime build: the newest glibc symbol version it
+# needs must be one the runtime (glibc 2.31) provides.
+need=$(objdump -T newtonia-steam 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+echo "== sniper: newtonia-steam needs up to $need (runtime provides GLIBC_2.31)"
+
 # Hand the outputs back to the host user — ONLY under a real-root runtime
 # (docker's daemon), where the files really are root's. Under rootless
 # podman the container's uid 0 IS the caller, and a chown to the host uid
@@ -121,8 +136,8 @@ make steam STEAM_OBJ_TAG=sniper NETPLAY_PREFIX="$NETPREFIX" STEAM_APPID="$STEAM_
 # repair is `podman unshare chown -R 0:0 .`). /proc/self/uid_map tells the
 # two apart: "0 0 ..." is real root, "0 <uid> 1" is the rootless mapping.
 if [ "$(awk 'NR==1{print $2}' /proc/self/uid_map)" = "0" ]; then
-  find /work -newer "$CACHE/.started" -user root \
+  find "$ROOT" -newer "$CACHE/.started" -user root \
     -exec chown -h "$HOST_UID:$HOST_GID" {} + 2>/dev/null || true
   chown -R "$HOST_UID:$HOST_GID" "$CACHE" 2>/dev/null || true
 fi
-echo "== sniper build done: ./newtonia-steam (runtime glibc) + steam-libs/ — launch through ./steam-shortcut.sh"
+echo "== sniper build done: ./newtonia-steam (runtime glibc) + steam-libs/ — compat tool: point the shortcut at the binary; no compat tool: at ./steam-shortcut.sh"
