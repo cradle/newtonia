@@ -477,11 +477,16 @@ else
   # sandbox can't see the host's /usr/lib either, so the loader died before
   # main() on libglut.so.3, then libSDL2_mixer-2.0.so.0 (field, snap Steam,
   # 2026-09-05). Everything ldd lists is copied EXCEPT what must come from
-  # the running system: glibc + the dynamic loader, and the GL / X server /
-  # display-driver stack. libstdc++ and libgcc_s are deliberately bundled —
-  # a host newer than the sandbox's base fails on GLIBCXX otherwise.
+  # the running system: glibc + the dynamic loader, the GL / X server /
+  # display-driver stack, and the AUDIO / IPC client libraries (pulse, alsa,
+  # pipewire, dbus, systemd, udev) — those talk to the sandbox's own sound
+  # and service plumbing, and libpulse also resolves its private
+  # libpulsecommon through its OWN runpath into /usr/lib/.../pulseaudio/,
+  # which a bundled copy can't follow (field, snap Steam, 2026-09-05).
+  # libstdc++ and libgcc_s are deliberately bundled — a host newer than the
+  # sandbox's base fails on GLIBCXX otherwise.
   STEAM_LOCAL_LIBS = steam-libs
-  STEAM_LIB_SKIP = ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libresolv\.so|libnss_|libutil\.so|libGL|libEGL|libGLX|libOpenGL|libglapi|libdrm|libgbm|libwayland|libxcb|libX11|libXau|libXdmcp|libnvidia|libvulkan|libsteam_api
+  STEAM_LIB_SKIP = ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libresolv\.so|libnss_|libutil\.so|libGL|libEGL|libGLX|libOpenGL|libglapi|libdrm|libgbm|libwayland|libxcb|libX11|libXau|libXdmcp|libnvidia|libvulkan|libpulse|libasound|libpipewire|libjack|libdbus|libsystemd|libudev|libsteam_api
 endif
 STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 
