@@ -180,4 +180,21 @@ PadStyle pad_style_any();
 // Drop a removed pad's cache entry.
 void pad_style_forget(SDL_JoystickID id);
 
+// --- Hint labels that follow the player's live Steam layout ---
+//
+// pad_button_label() renders a POSITION in a vocabulary; these answer the
+// question the hints actually ask — "what does this pilot press for the
+// button the game calls A?" On the Steam build, while Steam Input drives
+// the pad, that is the physical control the layout binds to the emulated
+// A (steam_pad_origin: a circle bound to A reads as the circle glyph, a
+// back paddle reads as Steam's name for it), re-asked whenever Steam loads
+// a configuration and on a slow timer. Everywhere else it is the type
+// table. Same one-char-means-face-button contract as pad_button_label;
+// the pointer stays valid until the next lookup for that pad, so use it
+// immediately (snprintf into the hint).
+const char *pad_hint_label(SDL_JoystickID id, SDL_GameControllerButton b);
+// For hints that address no seat (menu prompt, join invitation, lobby
+// key line): the most recently classified pad, as pad_style_any().
+const char *pad_hint_label_any(SDL_GameControllerButton b);
+
 #endif

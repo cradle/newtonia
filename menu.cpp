@@ -1042,9 +1042,9 @@ void Menu::draw() {
           }
           // Pad prompt in the plugged-in pad's vocabulary (pad_style.h):
           // START on Xbox, OPTIONS on PlayStation.
-          char pad_prompt[24];
+          char pad_prompt[48];
           snprintf(pad_prompt, sizeof(pad_prompt), "press %s",
-                   pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START));
+                   pad_hint_label_any(SDL_CONTROLLER_BUTTON_START));
           Typer::draw_centered(0, title_bot - gap, has_ctrl ? pad_prompt : "press enter", sz);
         }
       }

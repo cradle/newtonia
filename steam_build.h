@@ -4,6 +4,7 @@
 // All functions are safe no-ops on every other build.
 
 #include <cstdlib>  // std::getenv (is_beta_feature_enabled)
+#include <stddef.h>
 #include <stdint.h>
 #include <string>
 
@@ -79,6 +80,24 @@ bool steam_input_available();
 // SDL >= 2.30). Handle 0 = the SDL build has no handle API: answered only
 // when exactly one pad is connected on the Steam side.
 SteamPadKind steam_pad_kind(uint64_t steam_handle);
+// The player's LIVE Steam layout: which physical control is bound to the
+// emulated Xbox button SDL reports as `sdl_button` (an
+// SDL_GameControllerButton value — ints here so this header stays
+// SDL-free). ISteamInput::GetActionOriginFromXboxOrigin answers for
+// legacy (gamepad-emulation) titles like this one, and the origin is
+// translated back to an Xbox 360 POSITION so the ordinary label table
+// renders it in the pad's own vocabulary (a circle bound to A reads as
+// the circle glyph). Returns false when Steam Input isn't driving the pad
+// (the caller uses the type table). On true, *position_out is the SDL
+// button the origin corresponds to, or -1 with `text_out` holding
+// Steam's own name for a control with no Xbox-360 equivalent (a back
+// paddle, a trackpad click).
+bool steam_pad_origin(uint64_t steam_handle, int sdl_button,
+                      int *position_out, char *text_out, size_t text_n);
+// Bumped whenever Steam loads a configuration (SteamInputConfigurationLoaded_t
+// — the player edited or switched a layout): the label cache's cue to
+// re-ask. Constant 0 off Steam.
+unsigned steam_input_config_generation();
 
 // One-shot poll: true once after the Deck's floating keyboard was
 // dismissed (FloatingGamepadTextInputDismissed_t, dispatched by

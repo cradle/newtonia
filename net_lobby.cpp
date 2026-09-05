@@ -2866,17 +2866,16 @@ void NetLobby::draw() {
         if (controller_seen_ && !floating_kb_up_) {
           // In the pad's own vocabulary (pad_style.h): a DualShock pilot
           // reads shapes, not letters that pad doesn't print.
-          PadStyle ps = pad_style_any();
-          char keys[64];
+          char keys[96];
           if (floating_kb_available_)
             snprintf(keys, sizeof(keys), "%s - PASTE   %s - KEYBOARD",
-                     pad_button_label(ps, SDL_CONTROLLER_BUTTON_X),
-                     pad_button_label(ps, SDL_CONTROLLER_BUTTON_Y));
+                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_X),
+                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_Y));
           else
             snprintf(keys, sizeof(keys), "%s - TYPE   %s - DELETE   %s - PASTE",
-                     pad_button_label(ps, SDL_CONTROLLER_BUTTON_A),
-                     pad_button_label(ps, SDL_CONTROLLER_BUTTON_B),
-                     pad_button_label(ps, SDL_CONTROLLER_BUTTON_X));
+                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_A),
+                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_B),
+                     pad_hint_label_any(SDL_CONTROLLER_BUTTON_X));
           Typer::draw_centered(0, -48, keys, sz);
         }
         if (grid) {
@@ -2922,10 +2921,10 @@ void NetLobby::draw() {
             // 14 extra under the last row: a SELECTED row's size-18
             // glyphs reach ~36 below their anchor, which left the hint
             // nearly touching the name (Glenn's screenshot).
-            char join[40];
+            char join[64];
             snprintf(join, sizeof(join), "UP/DOWN AND %s TO JOIN",
                      controller_seen_
-                         ? pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_A)
+                         ? pad_hint_label_any(SDL_CONTROLLER_BUTTON_A)
                          : "ENTER");
             Typer::draw_centered(0, -174.0f - (float)show * 46.0f, join, 10);
           }

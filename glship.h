@@ -102,6 +102,9 @@ public:
   // Which button vocabulary this seat's hints use (pad_style.h): the
   // bound pad's, or — with no pad bound — whatever pad is plugged in.
   PadStyle pad_style() const;
+  // The label for a button as THIS seat's pilot presses it — the live
+  // Steam layout where there is one, else the vocabulary above.
+  const char *pad_hint(SDL_GameControllerButton b) const;
   // The seat's pad DISCONNECTED (as opposed to a deliberate
   // set_controller(NULL) from the roster): drop the binding and remember the
   // loss, so the next pad to appear comes back to this seat — a re-added pad
