@@ -12,12 +12,13 @@
 //
 // Classification (pad_style.cpp): the NEWTONIA_PAD_STYLE override first
 // (dev/screenshot hook — no pad needed to see the PlayStation card), then
-// the Steam Input type behind a Steam-emulated pad (steam_input.cpp:
-// under Steam Input every pad reaches SDL as a virtual Xbox 360
-// controller, so SDL alone would label a DualSense with letters for
-// exactly the players most likely to have configured it in Steam), then
-// SDL's own vendor/product-derived type, then the device name. Results
-// are cached per SDL instance id — ids are never reused within a process.
+// — only when Steam Input was opted into, NEWTONIA_STEAM_INPUT=1, see
+// steam_input.cpp for why it is off by default — the Steam Input type
+// behind a Steam-emulated pad, then SDL's own type (SDL >= 2.30 reads
+// Steam's virtual-gamepad description, so a DualSense behind Steam Input
+// still classifies as one; the depot links 2.32), then the device name.
+// Results are cached per SDL instance id — ids are never reused within a
+// process.
 //
 // The PlayStation face glyphs are Typer CONTROL BYTES (like
 // Typer::VERIFIED_TICK), so a label can ride an ordinary hint string

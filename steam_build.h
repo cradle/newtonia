@@ -68,8 +68,11 @@ inline void steam_dismiss_floating_keyboard() {
 }
 
 // Steam Input (steam_input.cpp): only used to learn what a Steam-emulated
-// pad physically IS, for the hint glyphs (pad_style.h). Init right after
-// steam_init(), shut down before steam_shutdown().
+// pad physically IS and which control the player's layout binds where,
+// for the hint glyphs (pad_style.h). Init right after steam_init(), shut
+// down before steam_shutdown() — but Init is OPT-IN (NEWTONIA_STEAM_INPUT=1):
+// it makes the client withhold the virtual gamepad from SDL, breaking
+// hot-plug (see steam_input.cpp). Default builds answer from SDL alone.
 enum SteamPadKind {
   STEAM_PAD_UNKNOWN = 0,  // Steam Input unavailable, or no answer (yet)
   STEAM_PAD_OTHER,        // Xbox, Steam Controller/Deck, Switch, generic
