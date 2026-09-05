@@ -40,7 +40,7 @@ SDL-type / device-name / `NEWTONIA_PAD_STYLE` classifiers — is header-inline,
 so the test links nothing:
 
 ```sh
-g++ -std=c++11 -I. -I/usr/include/SDL2 test/pad_style_test.cpp -o /tmp/pad_style_test && /tmp/pad_style_test
+g++ -std=c++11 -I. -I/usr/include/SDL2 test/unit/pad_style_test.cpp -o /tmp/pad_style_test && /tmp/pad_style_test
 ```
 
 It pins the contract `Typer::draw_button` relies on (face buttons are the

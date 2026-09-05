@@ -56,7 +56,7 @@ inline bool pad_style_is_playstation(PadStyle s) {
 #include <cstring>
 
 // --- Pure part: labels and classifiers. Header-inline so
-// test/pad_style_test.cpp can exercise them with no SDL runtime linked. ---
+// test/unit/pad_style_test.cpp can exercise them with no SDL runtime linked. ---
 
 // Label for a button in a style. Face buttons (and only face buttons)
 // come back as a ONE-character string — a letter or a shape glyph — which

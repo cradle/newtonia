@@ -1,7 +1,11 @@
 // Unit test for the pure half of pad_style.h — the button-label table and
 // the classifiers. Links nothing (no SDL runtime, no GL):
 //
-//   g++ -std=c++11 -I. -I/usr/include/SDL2 test/pad_style_test.cpp -o /tmp/pad_style_test && /tmp/pad_style_test
+//   g++ -std=c++11 -I. -I/usr/include/SDL2 test/unit/pad_style_test.cpp -o /tmp/pad_style_test && /tmp/pad_style_test
+//
+// Lives under test/unit/, NOT test/: the Makefile's source glob is
+// `*/*.cpp`, so a .cpp directly under test/ links into the game and
+// collides on main().
 //
 // The runtime half (the per-pad cache, the Steam Input query) needs a
 // real pad and is field-verified; NEWTONIA_PAD_STYLE=ps5 forces the
@@ -10,7 +14,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "../pad_style.h"
+#include "../../pad_style.h"
 
 static int fails = 0;
 #define CHECK(cond) do { if (!(cond)) { fails++; \
