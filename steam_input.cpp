@@ -140,6 +140,13 @@ SteamPadKind steam_pad_kind(uint64_t steam_handle) {
   return kind_from_type(SteamInput()->GetInputTypeForHandle(h));
 }
 
+// FIELD RESULT (2026-09-05, Ubuntu snap Steam, Xbox Series X pad, A/B
+// swapped in the app's own layout and the swap live in gameplay):
+// GetActionOriginFromXboxOrigin(A) still answered XBoxOne_A. On that
+// client the call is a pad-type translation, not a layout lookup, so this
+// path renders the type table and the remap-aware hint is inert. The
+// configuration-aware route is an in-game actions file + action sets +
+// GetDigitalActionOrigins (input moving onto Steam Input) — not this API.
 bool steam_pad_origin(uint64_t steam_handle, int sdl_button,
                       int *position_out, char *text_out, size_t text_n) {
   if (!g_input_ready || !SteamInput()) return false;
