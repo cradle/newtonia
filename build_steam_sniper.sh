@@ -72,6 +72,12 @@ try apt-get update -qq
 try apt-get install -y -qq freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev \
   libssl-dev libxi-dev cmake libudev-dev libasound2-dev libpulse-dev git >/dev/null
 
+# A prefix built when the checkout was mounted elsewhere (the old /work
+# mount) has that path baked into sdl2-config — rebuild it.
+if [ -x "$PREFIX/bin/sdl2-config" ] && [ "$("$PREFIX/bin/sdl2-config" --prefix)" != "$PREFIX" ]; then
+  echo "== sniper: SDL prefix was built for $("$PREFIX/bin/sdl2-config" --prefix); rebuilding at $PREFIX"
+  rm -rf "$PREFIX"
+fi
 if [ ! -f "$PREFIX/lib/libSDL2.a" ]; then
   echo "== sniper: building SDL2 2.32.10 (static)"
   rm -rf "$CACHE/SDL2_source"
