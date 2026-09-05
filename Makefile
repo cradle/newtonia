@@ -468,12 +468,14 @@ else ifneq (,$(findstring _NT,$(UNAME)))
 else
   STEAM_RUNTIME = libsteam_api.so
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/linux64/libsteam_api.so
-  # --disable-new-dtags: emit DT_RPATH, not DT_RUNPATH, so the $ORIGIN paths
-  # also govern the bundled libraries' OWN lookups (RUNPATH applies only to
-  # the binary's direct NEEDED entries; SDL2_mixer's decoders would otherwise
-  # be searched on the sandbox's paths). See STEAM_LOCAL_LIBS.
-  STEAM_LINK = -L. -lsteam_api -Wl,--disable-new-dtags \
-               -Wl,-rpath,'$$ORIGIN' -Wl,-rpath,'$$ORIGIN/steam-libs'
+  # The bundle (STEAM_LOCAL_LIBS) is deliberately NOT on the rpath: it is
+  # steam-shortcut.sh's LD_LIBRARY_PATH business, so a direct launch of the
+  # binary under Steam's own runtime container ignores it. With an
+  # $ORIGIN/steam-libs DT_RPATH the runtime-built bundle shadowed the host
+  # Mesa's newer dependencies (zlib, expat, ...) that pressure-vessel injects,
+  # and GL context creation died before the first print (field, snap Steam +
+  # sniper compat tool, 2026-09-05).
+  STEAM_LINK = -L. -lsteam_api -Wl,-rpath,'$$ORIGIN'
   # The host libraries the binary links, bundled into ./steam-libs/: the
   # shipped depot runs inside Steam's sniper container, which supplies
   # freeglut, SDL2_mixer and the rest, but a NON-STEAM SHORTCUT to this
@@ -496,7 +498,10 @@ else
   # sandbox fails on "GLIBC_2.4x not found" from the BINARY, and the only
   # fix is building against the runtime — ./build_steam_sniper.sh.
   STEAM_LOCAL_LIBS = steam-libs
-  STEAM_LIB_SKIP = ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libresolv\.so|libnss_|libutil\.so|libGL|libEGL|libGLX|libOpenGL|libglapi|libdrm|libgbm|libwayland|libxcb|libX11|libXau|libXdmcp|libnvidia|libvulkan|libpulse|libasound|libpipewire|libjack|libdbus|libsystemd|libudev|libsteam_api$(if $(STEAM_LIB_SKIP_EXTRA),|$(STEAM_LIB_SKIP_EXTRA))
+  # ... and the libraries the HOST's Mesa driver depends on (zlib, zstd,
+  # expat, libffi, libelf, LLVM, sensors): a bundled older copy loaded first
+  # starves the driver of symbols and GL init dies silently.
+  STEAM_LIB_SKIP = ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libresolv\.so|libnss_|libutil\.so|libGL|libEGL|libGLX|libOpenGL|libglapi|libdrm|libgbm|libwayland|libxcb|libX11|libXau|libXdmcp|libnvidia|libvulkan|libpulse|libasound|libpipewire|libjack|libdbus|libsystemd|libudev|libz\.so|libzstd|libexpat|libffi|libelf|libLLVM|libsensors|libsteam_api$(if $(STEAM_LIB_SKIP_EXTRA),|$(STEAM_LIB_SKIP_EXTRA))
 endif
 STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 
@@ -534,9 +539,9 @@ ifeq ($(UNAME), Darwin)
 endif
 
 # The binary's host library closure, bundled for non-Steam-shortcut launches
-# (see STEAM_LOCAL_LIBS). Re-run on every relink so a new dependency rides
-# along; launch through ./steam-shortcut.sh, which also puts the directory
-# on LD_LIBRARY_PATH ahead of the overlay preload.
+# WITHOUT Steam's runtime container (see STEAM_LOCAL_LIBS). Re-run on every
+# relink so a new dependency rides along; reached only through
+# ./steam-shortcut.sh's LD_LIBRARY_PATH — never the rpath.
 .PHONY: steam-libs
 steam-libs: newtonia-steam
 	@rm -rf steam-libs && mkdir -p steam-libs
