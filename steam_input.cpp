@@ -389,11 +389,12 @@ void sync_set(StateManager *game, SteamPad &p, PadActionSet want) {
   p.set = want;
   p.set_known = true;
   for (int a = 0; a < PAD_ACT_COUNT; a++) p.primed[a] = false;
-  if (p.adopted) {
+  // One line, no per-action dump: the activation lands a frame late, so
+  // a dump here reads every action inactive whatever the layout. The
+  // dumps that mean something are adoption's and bindings-loaded's.
+  if (p.adopted)
     startup_tracef("steam input: pad %d -> action set %s", p.id - PAD_STEAM_BASE,
                    pad_action_set_name(want));
-    trace_set(in, p, want);
-  }
 }
 
 // Have the layout's bindings reached this pad yet? Any origin on any
