@@ -48,8 +48,11 @@ public:
   // assignments survive the intro.
   void focus_lost();
   void focus_gained();
-  void controller_added(SDL_GameController *ctrl);
-  void controller_removed(SDL_JoystickID id);
+  void controller_added(PadId id);
+  void controller_removed(PadId id);
+  // The intro's only inputs are fire (dismiss), Start (pause) and back —
+  // the Ship set, so a pilot's fire binding starts the level.
+  PadActionSet pad_action_set() const override { return PAD_SET_SHIP; }
 
 private:
   void dismiss();        // hand the game back to the state manager

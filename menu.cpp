@@ -11,7 +11,7 @@
 #include "net_lobby.h"
 #include "net_policy.h"
 #include "net_resume.h"
-#include "pad_style.h"
+#include "pad.h"
 #include "net_transport.h"
 #include "preferences.h"
 #include "touch_controls.h"
@@ -1035,16 +1035,13 @@ void Menu::draw() {
         if (is_touch_mode()) {
           Typer::draw_centered(0, title_bot - gap, "tap to start", sz);
         } else {
-          bool has_ctrl = false;
-          int nc = SDL_NumJoysticks();
-          for (int i = 0; i < nc; i++) {
-            if (SDL_IsGameController(i)) { has_ctrl = true; break; }
-          }
-          // Pad prompt in the plugged-in pad's vocabulary (pad_style.h):
-          // START on Xbox, OPTIONS on PlayStation.
+          bool has_ctrl = pad_count() > 0;
+          // Pad prompt in the plugged-in pad's vocabulary (pad.h): START
+          // on Xbox, OPTIONS on PlayStation — and under Steam Input,
+          // whatever the layout binds the Menu set's start action to.
           char pad_prompt[48];
           snprintf(pad_prompt, sizeof(pad_prompt), "press %s",
-                   pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START));
+                   pad_action_label_any(PAD_ACT_START));
           Typer::draw_centered(0, title_bot - gap, has_ctrl ? pad_prompt : "press enter", sz);
         }
       }
@@ -1155,28 +1152,27 @@ void Menu::tick(int delta) {
   // event path — a private second latch here made one physical pull confirm
   // twice, once per latch. Max across pads so releasing an idle second pad
   // can't release a latch another pad's held trigger armed.
-  int n = SDL_NumJoysticks();
+  // (A Steam Input pad reads 0 here — its trigger arrives as a
+  // synthesized confirm edge, so the poll has nothing to add.)
+  int n = pad_count();
   if (n > 0) {
-    Sint16 rt_max = 0;
-    SDL_GameController *rt_ctrl = NULL;
-    SDL_JoystickID rt_id = -1;
+    int rt_max = 0;
+    PadId rt_id = PAD_NONE;
     for(int i = 0; i < n; i++) {
-      SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
-      if(!ctrl) continue;
-      Sint16 v = SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+      PadId id = pad_id_at(i);
+      int v = pad_axis(id, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
       if(v > rt_max) {
         rt_max = v;
-        rt_ctrl = ctrl;
-        rt_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+        rt_id = id;
       }
     }
     SDL_Event e;
     e.type = SDL_CONTROLLERAXISMOTION;
     e.caxis.which = rt_id;
     e.caxis.axis = SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
-    e.caxis.value = rt_max;
+    e.caxis.value = (Sint16)rt_max;
     unsigned char k = nav_key_from_controller(e);
-    if(k) nav_input(k, rt_ctrl);
+    if(k) nav_input(k, rt_id);
   }
 }
 
@@ -1185,7 +1181,7 @@ void Menu::controller(SDL_Event event) {
   // through the same ladder the keyboard uses — one decision path per
   // screen, so pad directionals and back work wherever keys do. The pad
   // that confirmed rides along so confirm_selection can bind it to P1.
-  SDL_GameController *src = NULL;
+  PadId src = PAD_NONE;
   unsigned char k = nav_key_from_controller(event, &src);
   if (k) nav_input(k, src);
 }
@@ -1210,14 +1206,14 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   // web_menu_tap() synthesizes a stray keyboard_up('\r') per tap.
   if (is_touch_mode()) return;
 #endif
-  nav_input(key, nullptr);
+  nav_input(key, PAD_NONE);
 #endif
 }
 
 // The single menu decision ladder (see menu.h). Everything that navigates —
 // keyboard, controller buttons/stick, the tick() trigger poll — lands here,
 // so each screen's rules exist exactly once.
-void Menu::nav_input(unsigned char key, SDL_GameController *src) {
+void Menu::nav_input(unsigned char key, PadId src) {
   bool confirm = MenuSelect::is_confirm(key);
   if (attract_mode_) {
     if (confirm) {
@@ -1520,13 +1516,13 @@ void Menu::touch_tap(float nx, float ny) {
     if (is_touch_mode()) {
       // Left half = YES (wipe save, start fresh), right half = NO (keep save)
       if (nx < 0.5f) {
-        confirm_selection(nullptr);
+        confirm_selection(PAD_NONE);
       } else {
         new_confirm_ = false;
       }
     } else {
       int pick = desktop_confirm_pick(ny);
-      if (pick == 0) confirm_selection(nullptr);
+      if (pick == 0) confirm_selection(PAD_NONE);
       else if (pick == 1) new_confirm_ = false;
     }
     return;
@@ -1551,7 +1547,7 @@ void Menu::touch_tap(float nx, float ny) {
     stats_mode_ = true;
     return;
   }
-  confirm_selection(nullptr);
+  confirm_selection(PAD_NONE);
 }
 
 // The fixed game-entry rows above ONLINE: RESUME HOSTING (when a killed
@@ -2354,7 +2350,7 @@ void Menu::decline_net_resume() {
   net_resume_code_.clear();
 }
 
-void Menu::confirm_selection(SDL_GameController *ctrl) {
+void Menu::confirm_selection(PadId pad) {
   if (has_net_resume_ && menu_selection == 0) {
     // RESUME HOSTING: rebuild the hosted world from the online save and
     // hand it a game that reclaims the room and awaits the client's
@@ -2371,7 +2367,7 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
       // the save ctor: the replay-playback ctor delegates through it, and
       // watching must bank nothing.
       if (!s.cheated) Stats::note_level_reached((uint32_t)s.generation + 1);
-      request_state_change(new GLGame(s, code, token, ctrl));
+      request_state_change(new GLGame(s, code, token, pad));
       return;
     }
     // Unreadable leftovers: drop the row and stay on the menu.
@@ -2393,7 +2389,7 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
       decline_net_resume();
       // Same reached-level note as the RESUME HOSTING path above.
       if (!s.cheated) Stats::note_level_reached((uint32_t)s.generation + 1);
-      request_state_change(new GLGame(s, ctrl));
+      request_state_change(new GLGame(s, pad));
       return;
     }
     // Corrupt or missing save — fall through to new game
@@ -2411,5 +2407,5 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
   EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
   decline_net_resume();
-  request_state_change(new GLGame(ctrl));
+  request_state_change(new GLGame(pad));
 }

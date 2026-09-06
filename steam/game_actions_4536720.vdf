@@ -1,0 +1,123 @@
+// Newtonia — Steam Input In-Game Actions file (STEAMINPUT.md §2).
+//
+// One entry per PadAction in pad.h, in the same two sets; the game reads
+// these by NAME (GetDigitalActionHandle / GetAnalogActionHandle /
+// GetActionSetHandle), so a rename here is a rename there — the unit test
+// test/unit/pad_actions_test.cpp pins the two together.
+//
+// Ships in the depot root beside the binary (deploy-steam.yml stages it;
+// `make steam` copies it) and is registered in the Steamworks portal as
+// Custom Configuration (Bundled with Game); steam_input.cpp also hands
+// Steam the absolute path (SetInputActionManifestFilePath) when it finds
+// the file next to the executable. Development: copy to
+// <Steam>/controller_config/game_actions_4536720.vdf.
+//
+// Default bindings per controller type are NOT in this file: they are
+// authored once in the client's configurator (from a Deck or the desktop
+// client, on a beta build carrying this manifest), exported, and set as
+// the per-type default configuration in the portal. The "today's Xbox
+// binding" column of STEAMINPUT.md §2 is the layout to author.
+"In Game Actions"
+{
+	"actions"
+	{
+		"Ship"
+		{
+			"title"	"#Set_Ship"
+			"StickPadGyro"
+			{
+				"steer"
+				{
+					"title"	"#Action_Steer"
+					"input_mode"	"joystick_move"
+				}
+			}
+			"AnalogTrigger"
+			{
+			}
+			"Button"
+			{
+				"thrust"	"#Action_Thrust"
+				"reverse"	"#Action_Reverse"
+				"turn_left"	"#Action_TurnLeft"
+				"turn_right"	"#Action_TurnRight"
+				"fire"	"#Action_Fire"
+				"secondary"	"#Action_Secondary"
+				"next_weapon"	"#Action_NextWeapon"
+				"next_secondary"	"#Action_NextSecondary"
+				"boost"	"#Action_Boost"
+				"teleport"	"#Action_Teleport"
+				"rotate_view"	"#Action_RotateView"
+				"help"	"#Action_Help"
+				"pause"	"#Action_Pause"
+				"menu"	"#Action_Menu"
+				"zoom_in"	"#Action_ZoomIn"
+				"zoom_out"	"#Action_ZoomOut"
+			}
+		}
+		"Menu"
+		{
+			"title"	"#Set_Menu"
+			"StickPadGyro"
+			{
+				"nav"
+				{
+					"title"	"#Action_Nav"
+					"input_mode"	"joystick_move"
+				}
+			}
+			"AnalogTrigger"
+			{
+			}
+			"Button"
+			{
+				"nav_up"	"#Action_NavUp"
+				"nav_down"	"#Action_NavDown"
+				"nav_left"	"#Action_NavLeft"
+				"nav_right"	"#Action_NavRight"
+				"confirm"	"#Action_Confirm"
+				"back"	"#Action_Back"
+				"start"	"#Action_Start"
+				"exit"	"#Action_Exit"
+				"paste"	"#Action_Paste"
+				"keyboard"	"#Action_Keyboard"
+			}
+		}
+	}
+	"localization"
+	{
+		"english"
+		{
+			"Set_Ship"	"Ship"
+			"Action_Steer"	"Steer"
+			"Action_Thrust"	"Thrust"
+			"Action_Reverse"	"Reverse"
+			"Action_TurnLeft"	"Turn Left"
+			"Action_TurnRight"	"Turn Right"
+			"Action_Fire"	"Fire"
+			"Action_Secondary"	"Fire Secondary"
+			"Action_NextWeapon"	"Next Weapon"
+			"Action_NextSecondary"	"Next Secondary"
+			"Action_Boost"	"Boost"
+			"Action_Teleport"	"Teleport"
+			"Action_RotateView"	"Rotate View"
+			"Action_Help"	"Controls Card"
+			"Action_Pause"	"Pause / Join"
+			"Action_Menu"	"Menu"
+			"Action_ZoomIn"	"Zoom In"
+			"Action_ZoomOut"	"Zoom Out"
+			"Set_Menu"	"Menu"
+			"Action_Nav"	"Navigate"
+			"Action_NavUp"	"Up"
+			"Action_NavDown"	"Down"
+			"Action_NavLeft"	"Left"
+			"Action_NavRight"	"Right"
+			"Action_Confirm"	"Confirm"
+			"Action_Back"	"Back"
+			"Action_Start"	"Start / Resume"
+			"Action_Exit"	"Exit To Menu"
+			"Action_Paste"	"Paste Code"
+			"Action_Keyboard"	"Keyboard"
+		}
+	}
+}

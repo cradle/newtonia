@@ -1,11 +1,81 @@
 # Steam Input API — plan
 
-Status: **proposed, not started** (2026-09-05). Follows the pad-glyph work on
+Status: **code landed, portal + field verification pending** (2026-09-06;
+plan written 2026-09-05). Follows the pad-glyph work on
 `claude/steam-input-api-support-hk2jll`, which established the rendering
 layer (`pad_style.h`) and the one hard fact this plan is built on: the
 legacy Steam Input calls do not see the player's bindings. Valve's own
 recommendation is the same — use the Steam Input API for broad controller
-support. This is the plan for doing that properly.
+support. This is the plan for doing that properly; §10 records what
+landed against it.
+
+## 10. What landed (2026-09-06) and what is still open
+
+**Code (M1–M3, plus the M4 docs):**
+
+- `pad.h/cpp` — the seam of §1: `PadId`, `pad_attached/pad_name/pad_count/
+  pad_id_at/pad_number/pad_axis`, the style cache (folded in from
+  `pad_style.cpp`, which is gone), `pad_action_label` (§4) and the
+  `ShowBindingPanel` hooks. Every consumer of §1's list holds a `PadId`:
+  `GLShip::set_controller(PadId)`, `GLGame`'s constructors, hot-plug and
+  roster, `State::nav_key_from_controller(e, PadId*)`, `StateManager`,
+  `Intro`, `Menu::confirm_selection(PadId)`, `NetLobby`, `Overlay`,
+  `glut.cpp`, `xbox_main.cpp`, `shot_scene.cpp`. No SDL type in `pad.h`
+  beyond the button/axis enums the consumers already switch on.
+- `steam_input.h/cpp` — the backend of §3: `Init(true)`,
+  `SetInputActionManifestFilePath` (when the manifest sits beside the
+  binary), `RunFrame` from `glut.cpp`'s `tick`, hot-plug by diffing
+  `GetConnectedControllers` per tick (chosen over `EnableDeviceCallbacks`:
+  one mechanism for startup and later, nothing to keep in step with the
+  pump, and §9's flaky device callbacks don't apply), digital edges and
+  the stick → synthesized SDL events with ids from `PAD_STEAM_BASE`,
+  set switching from `State::pad_action_set()` with a release of the
+  outgoing set's held actions, §5's SDL-silencing rule in
+  `init_controllers_and_audio`, total fallback (also `NEWTONIA_STEAM_INPUT=0`
+  as a dev kill switch), every decision under `NEWTONIA_TRACE`
+  (`startup_trace.h`, shared with `glut.cpp` now).
+- `steam/game_actions_4536720.vdf` — §2's manifest, staged by
+  `deploy-steam.yml` into all three depots (macOS also inside
+  `Contents/Resources`, ahead of signing) and by `make steam`.
+  `test/unit/pad_actions_test.cpp` pins it to `pad.h`'s table. Three
+  deviations from the §2 tables, all in the Menu set and all so that TODAY's
+  semantics survive the synthesis (the consumers tell B from Back and Start
+  from A): `start` (Start: attract dismiss, pause toggle, resume) and `exit`
+  (Back: exit-to-menu from the pause screen) are their own actions rather
+  than aliases of `confirm`/`back`, and `delete` is not separate from `back`
+  — B is both, contextually, in the lobby, and synthesizing the same SDL B
+  for both could not have told them apart anyway. `claim` is not an action:
+  press-to-claim reads any Menu-set edge, as planned.
+- §4: hint sites name ACTIONS (`GLShip::pad_hint(PadAction)`,
+  `pad_action_label_any`), the origin → position table covers the seven
+  families (Steam Controller, PS4, PS5, Xbox 360/One, Switch, Deck) for
+  face/bumpers/triggers/stick clicks and moves/d-pad/Start-Back, anything
+  else renders `GetStringForActionOrigin`; triggers and stick moves became
+  labelled pseudo-positions in `pad_style.h` (`RT`/`R2`, `LEFT STICK`).
+  CONTROLLER LAYOUT rows on the pause menu and the seat roster, Steam pads
+  only. `zoom_in`/`zoom_out` actions, synthesized as SDL PADDLE1/2 — which
+  also gives an Elite pad's paddles the zoom on the SDL path.
+
+**Open — needs the Steam client and a pad (the M2/M3/M4 field matrix):**
+
+1. **Portal:** register the manifest as Custom Configuration (Bundled with
+   Game) at the depot-root path; author the default layouts per controller
+   type (Xbox, PlayStation, Deck, Switch, Steam Controller) in the client
+   from a beta build and export them. **Until a default layout exists for
+   a pad's type, that pad has no bindings under Steam Input** — the
+   backend is live the moment `Init` succeeds, so this step gates the
+   first beta push of this branch, not just the polish.
+2. Field matrix from §7: Xbox + DS4 on the sniper build through the
+   library entry; pause/roster/lobby nav and code entry; hot-plug and
+   2 pads; a remap of A/B in the overlay followed by the F1 card and the
+   FIRE chip within a frame; a grip binding showing Steam's text; the
+   Deck (trackpad-as-stick feel, §8); macOS + Windows clients; the
+   Init-false and Steam-Input-disabled-per-pad paths.
+3. Two known seams to watch in that matrix: (a) with `fire` collapsing
+   RT into A, a FRESH trigger pull on the disconnect card now confirms it
+   (a held one still does not — edges only); (b) `SteamInputConfigurationLoaded_t`
+   is not consumed, so a pad whose layout arrives late is simply inert
+   until it does (its actions read `bActive == false`).
 
 ## 0. Why, and what already exists
 

@@ -6,6 +6,7 @@
 #include "typer.h"
 #include "glstarfield.h"
 #include <SDL.h>
+#include "pad.h"          // PadId, PadActionSet
 #include "preferences.h"  // MAX_PLAYERS sizes the nav-pad latches
 
 class State {
@@ -33,6 +34,12 @@ public:
   virtual void touch_tap(float nx, float ny) {}
   virtual bool back_pressed() { return false; } // true = handled, false = quit app
   virtual void resize(int width, int height);
+  // Which Steam Input action set this screen wants on every pad
+  // (STEAMINPUT.md §2): Menu for anything navigated by cursor, Ship for
+  // play. The Steam backend polls this each tick and activates it on a
+  // change; the SDL backend never asks. Menu is the default because every
+  // state but the game and the intro is a menu of some kind.
+  virtual PadActionSet pad_action_set() const { return PAD_SET_MENU; }
 
 protected:
   // transfer_ownership: the next state takes ownership of this one instead
@@ -65,7 +72,7 @@ protected:
   // semantics (gameplay, the lobby's code picker) handle those events
   // BEFORE falling back to this.
   unsigned char nav_key_from_controller(const SDL_Event &e,
-                                        SDL_GameController **src = NULL);
+                                        PadId *src = NULL);
   // Stick nav thresholds (shared by every screen): arm past ON, release
   // inside OFF — the gap stops a stick hovering near the threshold from
   // repeating (the Mac-gamepad sensitivity fix, now in one place).
@@ -93,12 +100,12 @@ private:
   // bounded by the seat cap).
   static const int NAV_PADS = MAX_PLAYERS;
   struct NavPad {
-    SDL_JoystickID id = -1;
+    PadId id = PAD_NONE;
     bool stick[4] = {false, false, false, false};  // up/down/left/right armed
     bool rt = false;                               // right-trigger edge
   };
   NavPad nav_pads_[NAV_PADS];
-  NavPad &nav_pad(SDL_JoystickID which);
+  NavPad &nav_pad(PadId which);
 
   bool finished;
   State* next_state;

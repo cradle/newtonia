@@ -7,7 +7,9 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 
-#include "pad_style.h"
+#include "pad.h"
+#include "startup_trace.h"
+#include "steam_input.h"
 #include "state_manager.h"
 #include "asteroid.h"
 #include "typer.h"
@@ -55,8 +57,13 @@ extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
 
+// The SDL pad backend's table (pad.h): the opened handles and their
+// instance ids, which ARE the game's PadIds on this path. One -1 per slot:
+// 0 is a VALID SDL instance id. Empty for the whole run when the Steam
+// Input backend owns the pads (steam_input.h) — SDL's controller
+// subsystem is not initialised then.
 SDL_GameController *controllers[MAX_PLAYERS] = {};
-SDL_JoystickID controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1}; // one -1 per slot: 0 is a VALID SDL instance id
+SDL_JoystickID controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1};
 bool ENABLE_AUDIO = true;
 
 int last_render_time;
@@ -244,21 +251,6 @@ static bool s_tap_debug = false;
 // NEWTONIA_TRACE=/absolute/path appends to that file instead — for a
 // launch whose stdio never reaches anything (Steam's runtime container
 // swallowed even unbuffered stderr, field 2026-09-05).
-static FILE *startup_trace_out() {
-  static FILE *out = NULL;
-  static bool decided = false;
-  if (!decided) {
-    decided = true;
-    const char *t = SDL_getenv("NEWTONIA_TRACE");
-    if (t && t[0] == '/') out = fopen(t, "a");
-    else if (t) out = stderr;
-  }
-  return out;
-}
-static void startup_trace(const char *step) {
-  FILE *out = startup_trace_out();
-  if (out) { fprintf(out, "trace: %s\n", step); fflush(out); }
-}
 static std::string s_tap_debug_line;
 
 static void tap_debug_note(const char *line) {
@@ -525,8 +517,8 @@ void check_controller() {
           if(controllers[i]) {
             controller_ids[i] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[i]));
             std::cout << "Controller " << i+1 << " connected: " << SDL_GameControllerName(controllers[i])
-                      << " (" << pad_style_name(pad_style_for(controllers[i])) << " glyphs)" << std::endl;
-            game->controller_added(controllers[i]);
+                      << " (" << pad_style_name(pad_style_for_id(controller_ids[i])) << " glyphs)" << std::endl;
+            game->controller_added(controller_ids[i]);
           }
           break;
         }
@@ -538,7 +530,7 @@ void check_controller() {
           SDL_GameControllerClose(controllers[i]);
           controllers[i] = NULL;
           controller_ids[i] = -1;
-          pad_style_forget(removed_id);
+          pad_forget(removed_id);
           std::cout << "Controller " << i+1 << " disconnected" << std::endl;
           game->controller_removed(removed_id);
           break;
@@ -628,6 +620,9 @@ void tick() {
   check_windows_focus();
 #endif
   steam_run_callbacks();
+  // Steam Input pads: RunFrame, hot-plug diff, action edges -> the same
+  // controller events check_controller() would have delivered.
+  steam_input_poll(game);
   game->tick(delta);
   glutPostRedisplay();
 }
@@ -643,7 +638,13 @@ void isVisible(int state) {
 void init_controllers_and_audio() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
-  Uint32 SDL_INIT_FLAGS = SDL_INIT_GAMECONTROLLER;
+  // STEAMINPUT.md §5 rule 1 — a pad has exactly one owner: when the Steam
+  // Input backend took the pads, SDL's controller subsystem stays OFF, so a
+  // pad Steam also emulates (a layout with legacy gamepad output) can
+  // never arrive twice. SDL_INIT_EVENTS still comes up (it is implied by
+  // audio/video below and needed for SDL_QUIT), and the scan under
+  // SDL_NumJoysticks() reports nothing.
+  Uint32 SDL_INIT_FLAGS = steam_input_active() ? SDL_INIT_EVENTS : SDL_INIT_GAMECONTROLLER;
   if(ENABLE_AUDIO) {
     SDL_INIT_FLAGS |= SDL_INIT_AUDIO;
   }
@@ -666,25 +667,27 @@ void init_controllers_and_audio() {
       Mix_AllocateChannels(128);
       Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
     }
-    SDL_JoystickEventState(SDL_ENABLE);
+    if (!steam_input_active()) SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
-    for (int i = 0; i < SDL_NumJoysticks() && opened < LOCAL_PLAYER_CAP; ++i) {
+    for (int i = 0; !steam_input_active() && i < SDL_NumJoysticks() && opened < LOCAL_PLAYER_CAP; ++i) {
       if (SDL_IsGameController(i)) {
         controllers[opened] = SDL_GameControllerOpen(i);
         if (controllers[opened]) {
           controller_ids[opened] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[opened]));
           std::cout << "Controller " << opened+1 << ": " << SDL_GameControllerName(controllers[opened])
-                    << " (" << pad_style_name(pad_style_for(controllers[opened])) << " glyphs)" << std::endl;
+                    << " (" << pad_style_name(pad_style_for_id(controller_ids[opened])) << " glyphs)" << std::endl;
           opened++;
         } else {
           std::cout << "Could not open gamecontroller " << i << ": " << SDL_GetError() << std::endl;
         }
       }
     }
-    if(opened == 0) std::cout << "No controllers found" << std::endl;
+    if(opened == 0 && !steam_input_active()) std::cout << "No controllers found" << std::endl;
+    if(steam_input_active()) std::cout << "Controllers: Steam Input owns them (SDL pads off)" << std::endl;
     {
       char line[160];
-      snprintf(line, sizeof(line), "controllers: SDL_NumJoysticks=%d opened=%d", SDL_NumJoysticks(), opened);
+      snprintf(line, sizeof(line), "controllers: SDL_NumJoysticks=%d opened=%d steam_input=%d", SDL_NumJoysticks(), opened,
+               (int)steam_input_active());
       startup_trace(line);
       for (int i = 0; i < SDL_NumJoysticks(); i++) {
         snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d)", i,
@@ -877,6 +880,8 @@ int main(int argc, char* argv[]) {
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
+  else if (steam_input_init())
+    std::cout << "Steam Input owns the controllers (action sets)" << std::endl;
   startup_trace("steam_init done");
   // Must precede the first frame: the Steam backend registers its stat
   // callbacks here, and the SDK's automatic stats delivery is dispatched on
@@ -919,10 +924,10 @@ int main(int argc, char* argv[]) {
   }
   init_controllers_and_audio();
   startup_trace("controllers + audio done");
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_shutdown(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_input_shutdown(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < MAX_PLAYERS; i++) {
-    if(controllers[i]) game->controller_added(controllers[i]);
+    if(controllers[i]) game->controller_added(controller_ids[i]);
   }
 #ifdef __APPLE__
   install_macos_focus_observer(on_focus_lost, on_focus_gained);

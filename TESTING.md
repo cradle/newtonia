@@ -27,8 +27,16 @@ touches the Steam API against it:
 ```sh
 g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 \
     net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp steam_keyboard.cpp \
-    steam_identity.cpp steam_identity_verify.cpp
+    steam_identity.cpp steam_identity_verify.cpp steam_input.cpp pad.cpp glut.cpp
 ```
+
+`steam_input.cpp` is the Steam Input API pad backend (STEAMINPUT.md): it is
+an empty TU outside `STEAM_BUILD`, so this gate is the ONLY compile of it
+short of the deploy. The stub's `ISteamInput` carries every method it calls
+and every `k_EInputActionOrigin_*` / `k_ESteamInputType_*` member its
+origin table names — on an SDK bump re-check those NAMES against the real
+`isteaminput.h` (a renamed enumerator fails the deploy build, not this
+gate, if the stub is left stale).
 
 When adding a Steamworks call: verify the signature against the SDK docs /
 headers first, add it to the stub, then use it in game code.
@@ -47,9 +55,30 @@ It pins the contract `Typer::draw_button` relies on (face buttons are the
 only one-character labels, and the PlayStation shapes are control bytes)
 and the name fallback's edge (`Wireless Controller` is the DualShock 4's
 bare HID name, `Xbox Wireless Controller` is not a DualShock). The runtime
-half — the per-pad cache and the Steam Input query — needs a real pad;
-`NEWTONIA_PAD_STYLE=ps5` forces the vocabulary for a screenshot pass without
-one.
+half — the per-pad cache behind the pad seam (`pad.cpp`) and the Steam
+Input origin lookup — needs a real pad; `NEWTONIA_PAD_STYLE=ps5` forces the
+vocabulary for a screenshot pass without one.
+
+### Pad action vocabulary vs. the Steam Input manifest (no SDL runtime needed)
+
+`pad.h`'s action table (one entry per In-Game Action, in its set, with the
+SDL button the Steam backend synthesizes for it and the SDL path labels it
+with) is pinned against `steam/game_actions_4536720.vdf`, which the game
+reads by NAME at runtime — so a rename on either side fails here rather
+than as an action that silently never fires:
+
+```sh
+g++ -std=c++11 -I. -I/usr/include/SDL2 test/unit/pad_actions_test.cpp -o /tmp/pad_actions_test && /tmp/pad_actions_test
+```
+
+Run from the repo root (it opens the manifest by relative path). It also
+checks that digital actions within a set synthesize distinct SDL buttons,
+that nothing in the manifest is unknown to the game, and the hard-coded
+positions the consumers switch on (fire = A, confirm = A, pause = Start …).
+The Steam side itself — action sets switching with the screen, origins
+following a remap, hot-plug through `GetConnectedControllers` — is
+field-verified through the library entry (STEAMINPUT.md §7 M2/M3 matrix,
+`platform-builds` skill).
 
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 

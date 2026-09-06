@@ -240,7 +240,7 @@ static Pickup *make_pickup(const Save::Pickup &sp) {
 // world — generous by design, it is the fallen player's only way back.
 const float GLGame::revive_pickup_drop_chance = 0.1f;
 
-GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
+GLGame::GLGame(PadId controller, bool allow_dev_players) :
   State(),
   world(Point(default_world_width, default_world_height)),
   current_time(0),
@@ -326,7 +326,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
   // Suppresses achievements for the game like the other cheat paths.
   god_cheat = (SDL_getenv("NEWTONIA_GOD") != NULL);
   if(god_cheat) Achievements::note_cheat_used();
-  if(controller != NULL) {
+  if(controller != PAD_NONE) {
     object->set_controller(controller);
   }
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
@@ -353,7 +353,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
       int n = atoi(sp);
       if (n > MAX_PLAYERS) n = MAX_PLAYERS;
       for (int i = (int)players->size(); i < n; i++)
-        add_local_player(NULL, /*with_keys=*/true, /*bypass_cap=*/true);
+        add_local_player(PAD_NONE, /*with_keys=*/true, /*bypass_cap=*/true);
       std::cout << "DEV: starting with " << players->size() << " players"
                 << std::endl;
     }
@@ -519,7 +519,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
   }
 }
 
-GLGame::GLGame(NetSession *session, SDL_GameController *controller)
+GLGame::GLGame(NetSession *session, PadId controller)
   : GLGame(std::vector<NetSeated>(1, NetSeated{session, std::string(),
                                                NetIdentity()}),
            controller) {}
@@ -531,7 +531,7 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
 // net_set_peer_jid / net_apply_peer_attestation hand-over fills them),
 // so at N=1 this is the old body with the peer adoption in a loop.
 GLGame::GLGame(const std::vector<NetSeated> &seated,
-               SDL_GameController *controller)
+               PadId controller)
   : GLGame(controller, /*allow_dev_players=*/false) {
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
@@ -590,7 +590,7 @@ GLGame::GLGame(const std::vector<NetSeated> &seated,
 // a mid-game signal drop (fresh TURN creds ride the reclaim reply), and
 // the client's auto-rejoin retries meet it in the middle.
 GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
-               const std::string &room_token, SDL_GameController *controller)
+               const std::string &room_token, PadId controller)
   : GLGame(save, controller) {
   net_mode_ = NetHost;
   Net::set_net_log_role(true);
@@ -609,7 +609,7 @@ GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
       if (gs->ship->net_seat == 1) continue;
       gs->ship->is_local_player = false;
       gs->clear_keys();
-      gs->set_controller(NULL);
+      gs->set_controller(PAD_NONE);
       gs->ship->net_remote_gun = true;
       set_viewer_zoom_prefs(gs);  // the spectate camera keeps OUR zoom
     }
@@ -784,7 +784,7 @@ GLGame::~GLGame() {
   delete warp_pass_;
 }
 
-GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
+GLGame::GLGame(const Save::GameState &save, PadId controller) :
   State(),
   world(Point(save.world_x, save.world_y)),
   generation(save.generation),
@@ -883,7 +883,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     set_player_keys(gs, (int)players->size());
     // Set before restore_state() so restored weapons attribute correctly.
     gs->ship->is_local_player = true;
-    if (controller != NULL && is_p1) {
+    if (controller != PAD_NONE && is_p1) {
       gs->set_controller(controller);
     }
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
@@ -917,12 +917,12 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   }
 
   // Assign any already-connected controllers to players that don't have one yet
-  // (controller_added only fires for newly connected controllers, not pre-existing ones)
-  for (int i = 0; i < SDL_NumJoysticks(); i++) {
-    if (!SDL_IsGameController(i)) continue;
-    SDL_GameController *ctrl = SDL_GameControllerOpen(i);
-    if (!ctrl) continue;
-    controller_added(ctrl);
+  // (controller_added only fires for newly connected controllers, not
+  // pre-existing ones). Through the pad seam: only pads the entry point
+  // opened count (pad_attached), which is what a seat can actually hold.
+  for (int i = 0; i < pad_count(); i++) {
+    PadId id = pad_id_at(i);
+    if (pad_attached(id)) controller_added(id);
   }
 
   if (save.station.present) {
@@ -1423,7 +1423,35 @@ bool GLGame::pause_menu_active() const {
   return true;
 }
 
-void GLGame::pause_nav(unsigned char key) {
+bool GLGame::pause_layout_offered() const {
+  if (is_touch_mode()) return false;
+  for (auto *gs : *players)
+    if (pad_has_binding_panel(gs->controller_id())) return true;
+  return false;
+}
+
+void GLGame::show_pad_layout(PadId src) {
+  if (pad_has_binding_panel(src) && is_player_controller(src)) {
+    pad_show_binding_panel(src);
+    return;
+  }
+  for (auto *gs : *players) {
+    if (pad_has_binding_panel(gs->controller_id())) {
+      pad_show_binding_panel(gs->controller_id());
+      return;
+    }
+  }
+  // The roster's row can be reached with no seat holding a Steam pad yet
+  // (a spare one plugged in): any Steam pad will do.
+  for (int i = 0; i < pad_count(); i++) {
+    if (pad_has_binding_panel(pad_id_at(i))) {
+      pad_show_binding_panel(pad_id_at(i));
+      return;
+    }
+  }
+}
+
+void GLGame::pause_nav(unsigned char key, PadId src) {
   if (MenuSelect::move(key, pause_selection_, pause_row_count())) return;
   if (!MenuSelect::is_confirm(key)) return;
   switch (pause_row_at(pause_selection_)) {
@@ -1433,6 +1461,9 @@ void GLGame::pause_nav(unsigned char key) {
     case PAUSE_PLAYERS:
       roster_active_ = true;
       roster_selection_ = 0;
+      break;
+    case PAUSE_LAYOUT:
+      show_pad_layout(src);
       break;
     default:
       // Exactly what the menu key does — save first, then hand over.
@@ -1466,18 +1497,6 @@ static std::string cluster_label(int slot) {
   char buf[5] = { glyph(k.thrust.primary()), glyph(k.left.primary()),
                   glyph(k.reverse.primary()), glyph(k.right.primary()), 0 };
   return std::string(buf);
-}
-
-// 1-based position among the connected game controllers — stable enough to
-// tell two pads apart on screen, and far shorter than SDL's product names.
-static int pad_number(SDL_JoystickID id) {
-  int n = SDL_NumJoysticks(), num = 0;
-  for (int i = 0; i < n; i++) {
-    if (!SDL_IsGameController(i)) continue;
-    num++;
-    if (SDL_JoystickGetDeviceInstanceID(i) == id) return num;
-  }
-  return 0;
 }
 
 bool GLGame::roster_available() const {
@@ -1591,7 +1610,22 @@ int GLGame::roster_row_count() const {
   // layout ends with the exit row (see roster_row_is_exit).
   if (net_mode_ != NetOff)
     return seats + (roster_has_anon_row() ? 1 : 0) + 1;
-  return (seats < MAX_PLAYERS ? seats + 1 : seats) + 1;
+  return (seats < MAX_PLAYERS ? seats + 1 : seats) +
+         (roster_layout_offered() ? 1 : 0) + 1;
+}
+
+// CONTROLLER LAYOUT: offline, whenever a Steam Input pad is connected
+// (seated or spare — the row is how a spare pad's player finds the
+// configurator before they claim a seat). Drawn just above BACK.
+bool GLGame::roster_layout_offered() const {
+  if (net_mode_ != NetOff || is_touch_mode()) return false;
+  for (int i = 0; i < pad_count(); i++)
+    if (pad_has_binding_panel(pad_id_at(i))) return true;
+  return false;
+}
+
+bool GLGame::roster_row_is_layout(int row) const {
+  return roster_layout_offered() && row == roster_row_count() - 2;
 }
 
 // The trailing BACK row. The screen used to end in an "ESC BACK" hint: a
@@ -1654,12 +1688,11 @@ std::vector<GLGame::SeatInput> GLGame::roster_input_options() const {
     in.slot = s;
     out.push_back(in);
   }
-  int n = SDL_NumJoysticks();
+  int n = pad_count();
   for (int i = 0; i < n; i++) {
-    if (!SDL_IsGameController(i)) continue;
     SeatInput in;
     in.kind = SeatInput::Pad;
-    in.pad = SDL_JoystickGetDeviceInstanceID(i);
+    in.pad = pad_id_at(i);
     out.push_back(in);
   }
   return out;
@@ -1674,7 +1707,7 @@ void GLGame::roster_apply(int row, const SeatInput &in) {
     // can fly, so it stays a no-op.
     if (in.kind == SeatInput::None) return;
     if ((int)players->size() >= MAX_PLAYERS) return;
-    add_local_player(NULL, /*with_keys=*/false);
+    add_local_player(PAD_NONE, /*with_keys=*/false);
     if (row >= (int)players->size()) return;  // refused (e.g. p1 out)
   }
   GLShip *target = seat_ship_at(players, row);
@@ -1684,28 +1717,36 @@ void GLGame::roster_apply(int row, const SeatInput &in) {
     if (in.kind == SeatInput::Keys && gs->keymap_slot() == in.slot)
       gs->clear_keys();
     if (in.kind == SeatInput::Pad && gs->is_my_controller_id(in.pad))
-      gs->set_controller(NULL);
+      gs->set_controller(PAD_NONE);
   }
   // Exclusive per seat: picking one input clears the other, so the row says
   // what actually drives the ship.
   target->release_controls();  // a held key/stick must not latch across this
   switch (in.kind) {
     case SeatInput::Keys:
-      target->set_controller(NULL);
+      target->set_controller(PAD_NONE);
       set_player_keys(target, in.slot);
       break;
     case SeatInput::Pad:
       target->clear_keys();
-      target->set_controller(SDL_GameControllerFromInstanceID(in.pad));
+      // A pad the entry point never opened (past the seat cap) can't drive
+      // a seat: bind nothing, as the SDL handle lookup used to.
+      target->set_controller(pad_attached(in.pad) ? in.pad : PAD_NONE);
       break;
     default:
       target->clear_keys();
-      target->set_controller(NULL);
+      target->set_controller(PAD_NONE);
       break;
   }
 }
 
-void GLGame::roster_nav(unsigned char key) {
+void GLGame::roster_nav(unsigned char key, PadId src) {
+  if (roster_row_is_layout(roster_selection_)) {
+    if (MenuSelect::is_confirm(key)) {
+      show_pad_layout(src);
+      return;
+    }
+  }
   // Host rows: left/right picks WHICH removal (kick, which they can come
   // back from, or ban, which they can't) — the same left/right that cycles
   // a local seat's input, on rows where rebinding is meaningless. Confirm
@@ -1784,7 +1825,7 @@ void GLGame::roster_toggle_anonymous() {
   save_preferences();
 }
 
-bool GLGame::roster_claim_pad(SDL_JoystickID which) {
+bool GLGame::roster_claim_pad(PadId which) {
   // Offline only. Press-to-claim binds a LOCAL device to the highlighted
   // row, and online that row is a remote pilot's ship: the host's spare
   // pad would end up driving the peer's hull alongside their INPUT
@@ -1799,7 +1840,7 @@ bool GLGame::roster_claim_pad(SDL_JoystickID which) {
   return true;
 }
 
-bool GLGame::is_player_controller(SDL_JoystickID which) const {
+bool GLGame::is_player_controller(PadId which) const {
   for (auto *gs : *players)
     if (gs->wasMyController(which)) return true;
   return false;
@@ -1809,11 +1850,25 @@ bool GLGame::is_player_controller(SDL_JoystickID which) const {
 // (FOURPLAYER.md A4): GUIDE-pause, BACK-exit and the game-over confirms act
 // only from a player's pad — or from any pad in a game where NO player has
 // one (keyboard players with a couch pad, the long-shipped behaviour).
-bool GLGame::pad_may_command(SDL_JoystickID which) const {
+bool GLGame::pad_may_command(PadId which) const {
   if (is_player_controller(which)) return true;
   for (auto *gs : *players)
     if (gs->has_controller()) return false;
   return true;
+}
+
+// Which Steam Input action set every pad should be in right now
+// (STEAMINPUT.md §2). Ship while the ships take input; Menu whenever a
+// cursor screen owns the pads — the pause screen (menu, roster, help card,
+// the disconnect pause), the game-over card and its leaderboard prompt,
+// the terminal net card. Pause is global, so this is per game, not per
+// pad. The synthesized events are the same SDL vocabulary either way; the
+// set only decides which of the player's LAYOUT bindings apply.
+PadActionSet GLGame::pad_action_set() const {
+  if (!running) return PAD_SET_MENU;
+  if (all_players_out()) return PAD_SET_MENU;
+  if (net_card_owns_input()) return PAD_SET_MENU;
+  return PAD_SET_SHIP;
 }
 
 bool GLGame::back_pressed() {
@@ -1868,8 +1923,8 @@ void GLGame::focus_lost() {
   Mix_PauseMusic();
 }
 
-void GLGame::controller_added(SDL_GameController *ctrl) {
-  SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+void GLGame::controller_added(PadId id) {
+  if (id == PAD_NONE) return;
   // Purge zombie bindings first: a seat still holding a pad whose handle
   // reports detached missed its DEVICEREMOVED (or this pad's ADDED outran
   // it) and must not read as "driven" below.
@@ -1883,7 +1938,7 @@ void GLGame::controller_added(SDL_GameController *ctrl) {
   if (net_mode_ != NetOff) {
     GLShip *local = local_player();
     if (local && !local->is_my_controller_id(id) && !local->has_controller())
-      local->set_controller(ctrl);
+      local->set_controller(id);
     return;
   }
   // Skip if any player already has this controller
@@ -1900,7 +1955,7 @@ void GLGame::controller_added(SDL_GameController *ctrl) {
   // (field, Steam Machine, 2026-09-04).
   for(auto* glship : *players) {
     if(glship->awaiting_pad()) {
-      glship->set_controller(ctrl);
+      glship->set_controller(id);
       return;
     }
   }
@@ -1914,17 +1969,17 @@ void GLGame::controller_added(SDL_GameController *ctrl) {
   // free, which is what START-to-join and the seat roster both want.
   for(auto* glship : *players) {
     if(!glship->has_controller() && !glship->has_keys()) {
-      glship->set_controller(ctrl);
+      glship->set_controller(id);
       return;
     }
   }
 }
 
 bool GLGame::has_free_controller() const {
-  int n = SDL_NumJoysticks();
+  int n = pad_count();
   for(int i = 0; i < n; i++) {
-    if(!SDL_IsGameController(i)) continue;
-    SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
+    PadId id = pad_id_at(i);
+    if(!pad_attached(id)) continue;  // unopened (past the seat cap): not joinable
     bool assigned = false;
     for(auto* glship : *players) {
       if(glship->is_my_controller_id(id)) { assigned = true; break; }
@@ -1934,10 +1989,10 @@ bool GLGame::has_free_controller() const {
   return false;
 }
 
-void GLGame::controller_removed(SDL_JoystickID id) {
+void GLGame::controller_removed(PadId id) {
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) {
-      // controller_lost, not set_controller(NULL): the seat remembers the
+      // controller_lost, not set_controller(PAD_NONE): the seat remembers the
       // disconnect so controller_added can hand the returning pad back.
       glship->controller_lost();
       // Don't pause for a player who is already game over (dead, no lives):
@@ -1954,7 +2009,7 @@ void GLGame::controller_removed(SDL_JoystickID id) {
 // with_keys so the new seat's PlayerKeys slot binds. Gated on
 // LOCAL_PLAYER_CAP, not MAX_PLAYERS — the dark-launch rule (FOURPLAYER.md
 // §3); bypass_cap is the NEWTONIA_START_PLAYERS test hook's door.
-void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
+void GLGame::add_local_player(PadId pad, bool with_keys,
                               bool bypass_cap) {
   if(net_mode_ != NetOff) return;  // extra seats online are Phase B
   if(!bypass_cap && (int)players->size() >= LOCAL_PLAYER_CAP) return;
@@ -1963,7 +2018,7 @@ void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
   if(!p1->is_alive() && !p1->lives) return;
   GLShip* object = make_seat_ship(grid, (int)players->size());
   set_player_keys(object, (int)players->size(), /*with_bindings=*/with_keys);
-  if(ctrl != NULL) object->set_controller(ctrl);
+  if(pad != PAD_NONE) object->set_controller(pad);
   object->ship->is_local_player = true;
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -5291,7 +5346,7 @@ bool GLGame::board_nav(char key) {
 // that's inert here (ghosts can't earn, and the next real game re-runs the
 // hooks) but noted for honesty.
 GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
-  : GLGame(snapshot, (SDL_GameController *)NULL) {
+  : GLGame(snapshot, PAD_NONE) {
   net_mode_ = NetReplay;
   // Quiet restores, exactly like the net client: every 10 Hz state apply
   // runs restore_state -> respawn -> reset(), and an un-quiet reset()
@@ -5971,8 +6026,8 @@ void GLGame::net_set_generation_banner(int gen) {
 // ---- client side ---------------------------------------------------------
 
 GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
-               SDL_GameController *controller)
-  : GLGame(snapshot, (SDL_GameController *)NULL) {
+               PadId controller)
+  : GLGame(snapshot, PAD_NONE) {
   net_mode_ = NetClient;
   Net::set_net_log_role(false);  // lobby set it too; belt & braces
   net_peer_make().session = session;
@@ -6039,7 +6094,7 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
       if (gs == local) continue;
       gs->ship->is_local_player = false;
       gs->clear_keys();
-      gs->set_controller(NULL);
+      gs->set_controller(PAD_NONE);
       set_viewer_zoom_prefs(gs);  // the spectate camera keeps OUR zoom
     }
     set_player_keys(local, 0);
@@ -11794,7 +11849,7 @@ void GLGame::controller(SDL_Event event) {
         roster_claim_pad(event.cbutton.which);
         return;
       }
-      roster_nav(nav_key_from_controller(event));
+      roster_nav(nav_key_from_controller(event), event.cbutton.which);
       return;
     }
     if (event.type == SDL_CONTROLLERAXISMOTION &&
@@ -11822,7 +11877,7 @@ void GLGame::controller(SDL_Event event) {
         return;
       }
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
-        pause_nav('\r');
+        pause_nav('\r', event.cbutton.which);
         return;
       }
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
@@ -11882,8 +11937,8 @@ void GLGame::controller(SDL_Event event) {
           toggle_pause();
         }
       } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
-        SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
-        if(ctrl) add_local_player(ctrl, /*with_keys=*/false);
+        if(pad_attached(event.cbutton.which))
+          add_local_player(event.cbutton.which, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
                event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
@@ -11917,8 +11972,8 @@ void GLGame::controller(SDL_Event event) {
           return;
         }
       } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
-        SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
-        if(ctrl) add_local_player(ctrl, /*with_keys=*/false);
+        if(pad_attached(event.cbutton.which))
+          add_local_player(event.cbutton.which, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
       if(running && pad_may_command(event.cbutton.which)) toggle_pause();
@@ -12862,7 +12917,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
   // controller-first, and the keyboard has no third layout to hand out.
   if (key == (unsigned char)gk.add_player2 && players->size() < 2)
-    add_local_player(NULL, /*with_keys=*/true);
+    add_local_player(PAD_NONE, /*with_keys=*/true);
 #endif
   // A live board prompt/upload OWNS all game-over input, including the menu
   // key (Esc). Only a key whose DOWN happened while the prompt was up acts

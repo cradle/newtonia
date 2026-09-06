@@ -37,12 +37,18 @@ public:
   bool back_pressed();
   void focus_lost();
   void focus_gained();
-  void controller_added(SDL_GameController *ctrl);
-  void controller_removed(SDL_JoystickID id);
+  // Pad hot-plug, by PadId (pad.h) — the SDL entry points pass instance
+  // ids, the Steam Input backend its own range; neither hands over an SDL
+  // object.
+  void controller_added(PadId id);
+  void controller_removed(PadId id);
+  // The current state's Steam Input action set (State::pad_action_set).
+  PadActionSet pad_action_set() const { return state->pad_action_set(); }
 
 private:
-  SDL_GameController *active_controllers[MAX_PLAYERS] = {};
-  SDL_JoystickID active_controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1}; // one -1 per slot: 0 is a VALID SDL instance id
+  // Pads seen so far, re-announced to every new GLGame (its seats bind
+  // from controller_added). One PAD_NONE per slot: 0 is a VALID id.
+  PadId active_pads[MAX_PLAYERS] = {PAD_NONE, PAD_NONE, PAD_NONE, PAD_NONE};
   Point window;
   State *state;
 

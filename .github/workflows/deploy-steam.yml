@@ -131,6 +131,8 @@ jobs:
           cp newtonia.exe steam_output/windows/
           cp steam_api64.dll steam_output/windows/
           cp -r audio steam_output/windows/
+          # Steam Input action manifest, beside the binary (STEAMINPUT.md §2)
+          cp steam/game_actions_4536720.vdf steam_output/windows/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -337,6 +339,11 @@ jobs:
           cp newtonia Newtonia.app/Contents/MacOS/newtonia
           cp icon.icns Newtonia.app/Contents/Resources/icon.icns
           cp -r audio Newtonia.app/Contents/Resources/audio
+          # Steam Input action manifest INSIDE the bundle (SDL_GetBasePath is
+          # Contents/Resources there — steam_input.cpp's own manifest path),
+          # here before signing so it rides under the seal; the depot-root
+          # copy for the portal's bundled-config setting is staged later.
+          cp steam/game_actions_4536720.vdf Newtonia.app/Contents/Resources/
 
           FW="Newtonia.app/Contents/Frameworks"
           bundle() {
@@ -477,6 +484,10 @@ jobs:
         run: |
           mkdir -p steam_output/macos
           cp -r Newtonia.app steam_output/macos/
+          # Steam Input action manifest at the depot root (STEAMINPUT.md §2)
+          # for the portal's bundled-config setting; the in-bundle copy was
+          # sealed with the app above.
+          cp steam/game_actions_4536720.vdf steam_output/macos/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -629,6 +640,8 @@ jobs:
           soname=$(objdump -p newtonia | awk '/NEEDED.*datachannel/{print $2}')
           cp -L "netplay-libs/lib/$soname" steam_output/linux/
           cp -r audio steam_output/linux/
+          # Steam Input action manifest, beside the binary (STEAMINPUT.md §2)
+          cp steam/game_actions_4536720.vdf steam_output/linux/
 
       - uses: actions/upload-artifact@v4
         with:

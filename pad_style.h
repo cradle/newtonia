@@ -10,18 +10,21 @@
 // Deck, or Switch — SDL's default button-label mapping already names
 // Nintendo pads by their printed letters) pilot keeps the letters.
 //
-// Classification (pad_style.cpp): the NEWTONIA_PAD_STYLE override first
-// (dev/screenshot hook — no pad needed to see the PlayStation card), then
-// SDL's own type (vendor/product-derived; SDL >= 2.30 also reads Steam's
-// description of a Steam-Input-emulated pad, so a DualSense behind Steam
-// Input still classifies as one — the depot links 2.32 statically), then
-// the device name. Cached per SDL instance id — ids are never reused
-// within a process.
+// Classification (pad.cpp, behind the pad seam): the NEWTONIA_PAD_STYLE
+// override first (dev/screenshot hook — no pad needed to see the
+// PlayStation card), then the backend's own type — SDL's
+// (vendor/product-derived; SDL >= 2.30 also reads Steam's description of a
+// Steam-Input-emulated pad, so a DualSense behind Steam Input still
+// classifies as one — the depot links 2.32 statically) or Steam Input's
+// ESteamInputType — then the device name. Cached per PadId — ids are never
+// reused within a process.
 //
-// Labels follow the pad's TYPE only. Following the player's Steam layout
-// remap was tried and dropped: ISteamInput::GetActionOriginFromXboxOrigin
-// translates pad types, it does not read bindings (field, 2026-09-05,
-// Linux and macOS). Remap-aware hints need Steam Input action sets.
+// This header is the pure VOCABULARY only: (style, position) -> label.
+// Which position a hint should name is the pad seam's business
+// (pad_action_label in pad.h): for an SDL pad it is the position the
+// game hard-codes, for a Steam Input pad it is whatever the player's
+// current layout binds the ACTION to (STEAMINPUT.md §4). Labels follow the
+// pad's TYPE for the glyph set and the LAYOUT for the position.
 //
 // The PlayStation face glyphs are Typer CONTROL BYTES (like
 // Typer::VERIFIED_TICK), so a label can ride an ordinary hint string
@@ -62,11 +65,38 @@ inline bool pad_style_is_playstation(PadStyle s) {
 // --- Pure part: labels and classifiers. Header-inline so
 // test/unit/pad_style_test.cpp can exercise them with no SDL runtime linked. ---
 
-// Label for a button in a style. Face buttons (and only face buttons)
-// come back as a ONE-character string — a letter or a shape glyph — which
-// is the contract Typer::draw_button relies on to decide what to circle;
-// everything else is a word ("L1", "OPTIONS", "DPAD UP"). Never NULL.
-inline const char *pad_button_label(PadStyle s, SDL_GameControllerButton b) {
+// Positions beyond SDL's button enum that a hint can still name: the
+// triggers and the sticks, which SDL reports as axes. Numbered past every
+// SDL_CONTROLLER_BUTTON_* value (the enum stops at 21 in SDL 2.32) so an
+// int carrying either vocabulary never collides. Steam Input layouts bind
+// actions to them freely (fire on RT alone, steer on the right stick), so
+// the label table has to speak them; on the SDL path the game never asks
+// for them.
+enum PadPseudoButton {
+  PAD_BUTTON_LEFT_TRIGGER  = 64,
+  PAD_BUTTON_RIGHT_TRIGGER = 65,
+  PAD_BUTTON_LEFT_STICK    = 66,  // the stick's MOVE, not its click
+  PAD_BUTTON_RIGHT_STICK   = 67,
+  // The two pad zoom steps (STEAMINPUT.md §2: new actions, no hard-coded
+  // pad position). Synthesized as SDL button events on these values, which
+  // are SDL's PADDLE1/PADDLE2 where the SDL is new enough to have them —
+  // so an Elite pad's paddles zoom on the SDL path for free — and inert
+  // numbers on an older SDL, where nothing emits them.
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+  PAD_BUTTON_ZOOM_IN  = SDL_CONTROLLER_BUTTON_PADDLE1,
+  PAD_BUTTON_ZOOM_OUT = SDL_CONTROLLER_BUTTON_PADDLE2,
+#else
+  PAD_BUTTON_ZOOM_IN  = 15,
+  PAD_BUTTON_ZOOM_OUT = 16,
+#endif
+};
+
+// Label for a button (an SDL_GameControllerButton or a PadPseudoButton) in
+// a style. Face buttons (and only face buttons) come back as a
+// ONE-character string — a letter or a shape glyph — which is the contract
+// Typer::draw_button relies on to decide what to circle; everything else
+// is a word ("L1", "OPTIONS", "DPAD UP"). Never NULL.
+inline const char *pad_button_label(PadStyle s, int b) {
   bool ps = pad_style_is_playstation(s);
   switch (b) {
     case SDL_CONTROLLER_BUTTON_A:             return ps ? PAD_GLYPH_CROSS    : "A";
@@ -85,7 +115,14 @@ inline const char *pad_button_label(PadStyle s, SDL_GameControllerButton b) {
     case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     return "DPAD DOWN";
     case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     return "DPAD LEFT";
     case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    return "DPAD RIGHT";
-    // Touchpad, misc, paddles: never hinted; a WORD so it is never circled.
+    case PAD_BUTTON_LEFT_TRIGGER:             return ps ? "L2" : "LT";
+    case PAD_BUTTON_RIGHT_TRIGGER:            return ps ? "R2" : "RT";
+    case PAD_BUTTON_LEFT_STICK:               return "LEFT STICK";
+    case PAD_BUTTON_RIGHT_STICK:              return "RIGHT STICK";
+    case PAD_BUTTON_ZOOM_IN:                  return "PADDLE 1";
+    case PAD_BUTTON_ZOOM_OUT:                 return "PADDLE 2";
+    // Touchpad, misc, the other paddles: never hinted; a WORD so it is
+    // never circled.
     default:                                  return "BUTTON";
   }
 }
@@ -166,22 +203,8 @@ inline bool pad_style_parse(const char *s, PadStyle *out) {
   return false;
 }
 
-// --- Runtime (cached per SDL instance id) ---
-
-// Classify (and cache) an opened pad. Safe to call every frame.
-PadStyle pad_style_for(SDL_GameController *c);
-
-// Cached lookup by instance id; -1 (no pad) or an id never classified
-// falls back to pad_style_any(), so a hint drawn for a seat without a
-// pad still matches whatever pad IS plugged in.
-PadStyle pad_style_for_id(SDL_JoystickID id);
-
-// The style of the most recently classified pad — for hints that address
-// no particular seat (the menu's PRESS START, the join invitation, the
-// lobby's code-entry key line). Xbox when no pad has ever been seen.
-PadStyle pad_style_any();
-
-// Drop a removed pad's cache entry.
-void pad_style_forget(SDL_JoystickID id);
+// The runtime half — per-pad classification, the cache, pad_style_any —
+// lives behind the pad seam (pad.h), which is also where a hint asks which
+// POSITION an action sits on.
 
 #endif

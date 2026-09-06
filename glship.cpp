@@ -353,17 +353,12 @@ void GLShip::clear_keys() {
   keymap_slot_ = -1;
 }
 
-void GLShip::set_controller(SDL_GameController *game_controller) {
-  controller = game_controller;
+void GLShip::set_controller(PadId pad) {
+  controller_id_ = pad;
   // Any deliberate bind or strip ends a reconnect wait — only
   // controller_lost() (the disconnect path) sets it.
   pad_lost_ = false;
-  if(controller) {
-    controller_instance_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
-    last_input_was_controller = true;
-  } else {
-    controller_instance_id = -1;
-  }
+  if(pad != PAD_NONE) last_input_was_controller = true;
 }
 
 void GLShip::controller_lost() {
@@ -372,29 +367,32 @@ void GLShip::controller_lost() {
   // On the zombie-purge path no pause runs, so a latched thrust/fire would
   // otherwise drive the ship until the NEXT pad presses and releases it.
   release_controls();
-  set_controller(NULL);
+  set_controller(PAD_NONE);
   pad_lost_ = true;
 }
 
 bool GLShip::controller_detached() const {
-  return controller_instance_id != -1 &&
-         (controller == NULL || !SDL_GameControllerGetAttached(controller));
+  return controller_id_ != PAD_NONE && !pad_attached(controller_id_);
 }
 
 bool GLShip::has_controller() const {
-  return controller_instance_id != -1;
+  return controller_id_ != PAD_NONE;
 }
 
 PadStyle GLShip::pad_style() const {
-  return pad_style_for_id(controller_instance_id);
+  return pad_style_for_id(controller_id_);
 }
 
-const char *GLShip::pad_hint(SDL_GameControllerButton b) const {
-  return pad_button_label(pad_style(), b);
+const char *GLShip::pad_hint(PadAction a) const {
+  return pad_action_label(controller_id_, a);
 }
 
-bool GLShip::is_my_controller_id(SDL_JoystickID id) const {
-  return id != -1 && controller_instance_id == id;
+bool GLShip::pad_hint_bound(PadAction a) const {
+  return pad_action_bound(controller_id_, a);
+}
+
+bool GLShip::is_my_controller_id(PadId id) const {
+  return id != PAD_NONE && controller_id_ == id;
 }
 
 void GLShip::draw_temperature() const {
@@ -491,16 +489,9 @@ void GLShip::draw_temperature_status() const {
   }
 }
 
-bool GLShip::wasMyController(SDL_JoystickID id) {
-  if(controller != NULL && SDL_GameControllerGetAttached(controller)) {
-    if(id != SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))) {
-      return false;
-    } else {
-      return true;
-    }
-  } else {
-    return false;
-  }
+bool GLShip::wasMyController(PadId id) {
+  return controller_id_ != PAD_NONE && id == controller_id_ &&
+         pad_attached(controller_id_);
 }
 
 void GLShip::controller_input(SDL_Event event) {
@@ -551,6 +542,12 @@ void GLShip::controller_input(SDL_Event event) {
     if (rotate_view_pref_) *rotate_view_pref_ = rotating_view;
     else g_prefs.rotate_view = rotating_view;
     save_preferences();
+  } else if (event.cbutton.button == PAD_BUTTON_ZOOM_IN && pressed) {
+    // The zoom_in/zoom_out pad actions (STEAMINPUT.md §2) — a Steam
+    // layout's binding, or an SDL pad's PADDLE1/2 where SDL knows them.
+    step_zoom(+1);
+  } else if (event.cbutton.button == PAD_BUTTON_ZOOM_OUT && pressed) {
+    step_zoom(-1);
   }
 }
 
@@ -910,9 +907,12 @@ void GLShip::draw_keymap(float fit) const {
   // top stays at the classic +485 (any higher and the heading sits on the
   // LEVEL text), and the bottom has the room.
   float size = 10 * fit;
-  // Keyboard lists ZOOM IN / ZOOM OUT too (no pad button steps the zoom);
-  // the controller list swaps those two for its MOVE row.
-  int num_controls  = last_input_was_controller ? 11 : 12;
+  // Keyboard lists ZOOM IN / ZOOM OUT too; the controller list swaps those
+  // two for its MOVE row — and gets them back only when the pad's layout
+  // binds the zoom actions (a Steam Input layout can; an SDL pad never).
+  bool pad_zoom_rows = last_input_was_controller &&
+                       (pad_hint_bound(PAD_ACT_ZOOM_IN) || pad_hint_bound(PAD_ACT_ZOOM_OUT));
+  int num_controls  = last_input_was_controller ? (pad_zoom_rows ? 13 : 11) : 12;
   float padding = 2.0f * fit;
   float char_height = 5.0f;
   float y_offset = (last_input_was_controller ? 110.0f : 80.0f) * fit;
@@ -924,8 +924,10 @@ void GLShip::draw_keymap(float fit) const {
   // circled glyph for face buttons (a letter, or a PlayStation shape),
   // plain text for everything else (L1 / LB, OPTIONS / START, L3 / LEFT
   // STICK BUTTON, DPAD UP ...).
-  auto draw_btn = [&](float x, float y, SDL_GameControllerButton btn) {
-    const char *s = pad_hint(btn);
+  // Named by ACTION (pad.h): on an SDL pad the game's own position, on a
+  // Steam Input pad the position the player's layout binds it to.
+  auto draw_btn = [&](float x, float y, PadAction act) {
+    const char *s = pad_hint(act);
     if (strlen(s) == 1)
       Typer::draw_button(x, y, s[0], size);
     else
@@ -934,84 +936,84 @@ void GLShip::draw_keymap(float fit) const {
 
   if(last_input_was_controller) {
     Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "MOVE", size);
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "LEFT STICK", size);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_STEER);
     control_index++;
   }
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "THRUST", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(thrust_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_DPAD_UP);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_THRUST);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "REVERSE", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(reverse_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_REVERSE);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TURN RIGHT", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(right_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_TURN_RIGHT);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TURN LEFT", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(left_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_TURN_LEFT);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "SHOOT", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(shoot_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_A);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_FIRE);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "MINE", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(mine_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_B);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_SECONDARY);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "CHANGE WEAPON", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(next_weapon_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_X);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_NEXT_WEAPON);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "CHANGE SECONDARY", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(next_secondary_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_Y);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_NEXT_SECONDARY);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "BOOST", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(boost_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_BOOST);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TELEPORT", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(teleport_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_TELEPORT);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ROTATE VIEW", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(toggle_rotate_view_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_LEFTSTICK);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_ROTATE_VIEW);
   }
   control_index++;
   if(!last_input_was_controller) {
@@ -1020,6 +1022,15 @@ void GLShip::draw_keymap(float fit) const {
     control_index++;
     Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ZOOM OUT", size);
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(zoom_out_key).c_str(), size);
+    control_index++;
+  } else if (pad_hint_bound(PAD_ACT_ZOOM_IN) || pad_hint_bound(PAD_ACT_ZOOM_OUT)) {
+    // Pad zoom rows only where the pad HAS them — a Steam layout that
+    // binds the zoom actions (an SDL pad never does).
+    Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ZOOM IN", size);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_ZOOM_IN);
+    control_index++;
+    Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ZOOM OUT", size);
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, PAD_ACT_ZOOM_OUT);
     control_index++;
   }
 
@@ -1035,7 +1046,7 @@ void GLShip::draw_keymap(float fit) const {
   if(!last_input_was_controller) {
     Typer::draw(-offset, row_y(), key_label(gk.pause).c_str(), size);
   } else {
-    draw_btn(-offset, row_y(), SDL_CONTROLLER_BUTTON_START);
+    draw_btn(-offset, row_y(), PAD_ACT_PAUSE);
   }
   row += 1.0f;
   if(!last_input_was_controller) {
@@ -1050,14 +1061,14 @@ void GLShip::draw_keymap(float fit) const {
   if(!last_input_was_controller) {
     Typer::draw(-offset, row_y(), binding_label(help_key).c_str(), size);
   } else {
-    draw_btn(-offset, row_y(), SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    draw_btn(-offset, row_y(), PAD_ACT_HELP);
   }
   row += 1.0f;
   Typer::draw(offset, row_y(), "QUIT", size);
   if(!last_input_was_controller) {
     Typer::draw(-offset, row_y(), key_label(gk.menu).c_str(), size);
   } else {
-    draw_btn(-offset, row_y(), SDL_CONTROLLER_BUTTON_BACK);
+    draw_btn(-offset, row_y(), PAD_ACT_MENU);
   }
   row += 1.0f;
 
@@ -1096,8 +1107,8 @@ void GLShip::draw_weapons() const {
   //   FIRE [key]      NEXT [key]
   auto draw_weapon_row = [&](int row_y, Weapon::Base *weapon, bool has_next,
                              bool flash_low,
-                             const KeyBinding &cycle_key_bind, SDL_GameControllerButton cycle_btn,
-                             const KeyBinding &fire_key_bind,  SDL_GameControllerButton fire_btn) {
+                             const KeyBinding &cycle_key_bind, PadAction cycle_act,
+                             const KeyBinding &fire_key_bind,  PadAction fire_act) {
     // The 3-char HUD slot only fits one key, so show the binding's primary.
     int cycle_key_kb = cycle_key_bind.primary();
     int fire_key_kb  = fire_key_bind.primary();
@@ -1144,15 +1155,16 @@ void GLShip::draw_weapons() const {
       char buf[8];
 
       // A face button is circled; anything else is plain text (pad_style.h).
-      auto draw_chip = [&](float x, SDL_GameControllerButton btn) {
-        const char *s = pad_hint(btn);
+      // By action, so a Steam layout's remap moves the chip (pad.h).
+      auto draw_chip = [&](float x, PadAction act) {
+        const char *s = pad_hint(act);
         if (strlen(s) == 1) Typer::draw_button(x, bind_y, s[0], size);
         else Typer::draw(x, bind_y, s, size);
       };
 
       Typer::draw(col_fire, bind_y, "FIRE ", size);
       if (last_input_was_controller) {
-        draw_chip(col_fire_key, fire_btn);
+        draw_chip(col_fire_key, fire_act);
       } else {
         Typer::draw(col_fire_key, bind_y, key_str(fire_key_kb, buf), size);
       }
@@ -1160,7 +1172,7 @@ void GLShip::draw_weapons() const {
       if (has_next) {
         Typer::draw(col_next, bind_y, "NEXT ", size);
         if (last_input_was_controller) {
-          draw_chip(col_next_key, cycle_btn);
+          draw_chip(col_next_key, cycle_act);
         } else {
           Typer::draw(col_next_key, bind_y, key_str(cycle_key_kb, buf), size);
         }
@@ -1177,8 +1189,8 @@ void GLShip::draw_weapons() const {
     if (weapon != NULL) {
       draw_weapon_row(y, weapon, ship->primary_weapons.size() > 1,
         /*flash_low=*/true,
-        next_weapon_key,   SDL_CONTROLLER_BUTTON_X,
-        shoot_key,         SDL_CONTROLLER_BUTTON_A);
+        next_weapon_key,   PAD_ACT_NEXT_WEAPON,
+        shoot_key,         PAD_ACT_FIRE);
     }
   }
 
@@ -1189,8 +1201,8 @@ void GLShip::draw_weapons() const {
     if (weapon != NULL && (!nova_w || nova_w->ammo() > 0)) {
       draw_weapon_row(y - (is_touch_mode() ? 45 : 80), weapon, ship->secondary_weapons.size() > 1,
         /*flash_low=*/false,
-        next_secondary_key, SDL_CONTROLLER_BUTTON_Y,
-        mine_key,           SDL_CONTROLLER_BUTTON_B);
+        next_secondary_key, PAD_ACT_NEXT_SECONDARY,
+        mine_key,           PAD_ACT_SECONDARY);
     }
   }
 
