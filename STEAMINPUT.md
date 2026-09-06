@@ -88,24 +88,53 @@ landed against it.
 3. Two known seams to watch in that matrix: (a) with `fire` collapsing
    RT into A, a FRESH trigger pull on the disconnect card now confirms it
    (a held one still does not — edges only); (b) `SteamInputConfigurationLoaded_t`
-   is not consumed, so a pad whose layout arrives late is simply inert
-   until it does (its actions read `bActive == false`).
+   is not consumed — a pad whose layout arrives late, or sits on a gamepad
+   template, reads `bActive == false` and is left to SDL until a layout
+   with the actions loads (then adopted within a tick).
 
 **Mixed mode (Steam Input + SDL pads at once) — landed 2026-09-06**, the
-same day it was filed as future work, because the first field run showed
-the alternative does not exist: a pad with Steam Input disabled is NOT
-presented through the API, so silencing SDL left it with nothing. The
-de-dup is per device: SDL stays up, and Steam's virtual gamepad (vendor
-0x28DE, product 0x11FF, the emulation of pads the API presents) is
-skipped on the SDL side — `pad_sdl_device_is_steam_virtual`, consulted by
-`glut.cpp`'s open paths and `pad.cpp`'s enumeration, which unions the two
-tables (Steam pads first). Nothing downstream changed: both backends
-speak `PadId`, style dispatches on the id range, action-set switching
-applies to the Steam pads alone. Still to field-verify in the §7 matrix:
-one Steam pad + one SDL pad in two seats; and whether SDL also enumerates
-the PHYSICAL device of a Steam-presented pad (Steam grabs it, so it would
-be a silent phantom in the roster) — the startup trace now prints every
-SDL device with vendor/product/steam_virtual for exactly this question.
+same day it was filed as future work, because the first field runs showed
+the alternative does not exist. What the traces taught, in order:
+
+- With no official layout, Steam runs an Xbox pad on its **legacy gamepad
+  template**: the API still presents the handle, but every action reads
+  `bActive == false` (not in the configuration), and Steam emulates an
+  XInput pad that SDL sees as `Xbox Series X Controller` with the REAL
+  vendor/product (045e/0b12 — the 0x28DE/0x11FF "Steam Virtual Gamepad"
+  ids are a Windows thing). So the pad "worked" through SDL while every
+  hint read "-" from the bound-nothing Steam pad.
+- "Steam Input disabled" on the snap client still presented the handle
+  (no actions) AND still grabbed the physical device, so SDL's copy was
+  silent — the pad had no working path. Whether the shipped build behaves
+  the same there is the control run still owed.
+
+The rule as landed — **adoption by actions, ownership per device**:
+
+- `steam_input.cpp` tracks every connected handle but ADOPTS one (assigns
+  a `PadId`, announces `controller_added`, polls it) only while its
+  layout uses the game's actions — `any_action_active` on the wanted set
+  each tick. A handle on a gamepad template is left to SDL, whose
+  emulated device is the pad exactly as on the shipped build; an adopted
+  pad whose actions all go inactive for `INACTIVE_DROP_TICKS` is
+  released back (`controller_removed`). The switch is live, so picking a
+  layout in the overlay moves the pad between backends without a restart.
+- The SDL side de-dups by HANDLE, not vendor id: SDL ≥ 2.30's
+  `SDL_GameControllerGetSteamHandle` names the handle behind a Steam
+  virtual gamepad; `glut.cpp` probes each device once on first sight
+  (`sdl_probe_steam_handle` → `pad_sdl_note_steam_handle`) and
+  `pad_sdl_device_is_steam_virtual` checks that handle LIVE against the
+  backend's adoption (`steam_input_owns_handle`). A ~250 ms
+  `sdl_pads_sync` closes an opened SDL pad the backend now drives and
+  opens an unopened one it no longer does. Enumeration (`pad_count`/
+  `pad_id_at`) unions adopted Steam pads first, then the listed SDL pads.
+
+Still to field-verify in the §7 matrix: a layout that binds the actions
+(the adoption line in the trace, then FIRE/START chips following a
+remap); one Steam pad + one SDL pad in two seats; the control run above;
+and whether SDL's Linux backend also enumerates the grabbed PHYSICAL
+device beside the emulated one (a silent phantom in the roster) — the
+startup trace prints every SDL device with vendor/product/steam_handle
+for that question.
 
 ## 0. Why, and what already exists
 

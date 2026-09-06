@@ -46,7 +46,20 @@ void steam_input_poll(StateManager *game);
 void steam_input_shutdown();
 
 // Backend queries for pad.cpp (ids are PAD_STEAM_BASE-relative there).
+// Only ADOPTED handles count as pads here: a handle whose current layout
+// uses the game's actions (some action reports bActive). A handle on a
+// legacy gamepad template — Steam emulating an XInput pad, every action
+// inactive — is left to SDL, whose emulated device is the pad exactly as
+// on the shipped build (field, 2026-09-06: that is Steam's default for a
+// pad with no official layout yet). Adoption is re-evaluated every tick,
+// so switching layouts in the overlay moves the pad between the backends
+// live.
 bool steam_input_attached(PadId id);
+// Does the backend drive this raw Steam Input handle? SDL's
+// SDL_GameControllerGetSteamHandle names the handle behind a Steam
+// virtual gamepad; an SDL device whose handle is adopted here is the
+// SAME pad and must not also drive a seat (pad.cpp / glut.cpp).
+bool steam_input_owns_handle(unsigned long long handle);
 int steam_input_count();
 PadId steam_input_id_at(int index);
 const char *steam_input_name(PadId id);
@@ -66,6 +79,7 @@ inline bool steam_input_active() { return false; }
 inline void steam_input_poll(StateManager *) {}
 inline void steam_input_shutdown() {}
 inline bool steam_input_attached(PadId) { return false; }
+inline bool steam_input_owns_handle(unsigned long long) { return false; }
 inline int steam_input_count() { return 0; }
 inline PadId steam_input_id_at(int) { return PAD_NONE; }
 inline const char *steam_input_name(PadId) { return "Steam pad"; }

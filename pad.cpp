@@ -131,15 +131,37 @@ const char *pad_name(PadId id) {
   return n ? n : "?";
 }
 
+namespace {
+// SDL instance id -> Steam Input handle (0 = probed, none). Filled by the
+// entry point's per-device probe; entries leave with pad_forget.
+std::map<int, unsigned long long> &sdl_steam_handles() {
+  static std::map<int, unsigned long long> m;
+  return m;
+}
+}  // namespace
+
+bool pad_sdl_steam_handle_known(int instance_id) {
+  return sdl_steam_handles().count(instance_id) > 0;
+}
+
+void pad_sdl_note_steam_handle(int instance_id, unsigned long long handle) {
+  sdl_steam_handles()[instance_id] = handle;
+}
+
+unsigned long long pad_sdl_steam_handle(int instance_id) {
+  std::map<int, unsigned long long>::iterator it = sdl_steam_handles().find(instance_id);
+  return it == sdl_steam_handles().end() ? 0 : it->second;
+}
+
 bool pad_sdl_device_is_steam_virtual(int device_index) {
   if (!steam_input_active()) return false;
 #if SDL_VERSION_ATLEAST(2, 0, 6)
-  return SDL_JoystickGetDeviceVendor(device_index) == 0x28DE &&
-         SDL_JoystickGetDeviceProduct(device_index) == 0x11FF;
-#else
-  (void)device_index;
-  return false;
+  if (SDL_JoystickGetDeviceVendor(device_index) == 0x28DE &&
+      SDL_JoystickGetDeviceProduct(device_index) == 0x11FF)
+    return true;
 #endif
+  return steam_input_owns_handle(
+      pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(device_index)));
 }
 
 int pad_count() {
@@ -219,6 +241,7 @@ PadId pad_any() {
 
 void pad_forget(PadId id) {
   style_cache().erase(id);
+  if (!pad_is_steam(id)) sdl_steam_handles().erase(id);
   std::map<std::pair<PadId, int>, LabelEntry> &m = label_cache();
   for (std::map<std::pair<PadId, int>, LabelEntry>::iterator it = m.begin();
        it != m.end();) {

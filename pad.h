@@ -118,16 +118,29 @@ inline const char *pad_action_set_name(PadActionSet s) {
 
 // ---- Runtime queries ------------------------------------------------
 
-// An SDL device (by SDL device index) that is Steam's OWN emulation of a
-// pad Steam Input already presents through the API — Valve's "Steam
-// Virtual Gamepad", vendor 0x28DE product 0x11FF. When the Steam backend
-// is active these are skipped on the SDL side (the entry point never
-// opens them, enumeration never lists them), so a pad arrives exactly once
-// (STEAMINPUT.md §5 rule 1, per DEVICE); a pad Steam does NOT present — one
-// the player disabled Steam Input for, a device Steam does not model —
-// stays a plain SDL pad. Always false when the Steam backend is inactive
-// (then the virtual gamepad IS the pad, as on every shipped build).
+// An SDL device (by SDL device index) that is the SAME pad the Steam
+// backend already drives — Steam's emulation of an ADOPTED handle. When
+// the Steam backend is active these are skipped on the SDL side (the
+// entry point closes them, enumeration never lists them), so a pad
+// arrives exactly once (STEAMINPUT.md §5 rule 1, per DEVICE). Two
+// signals: Valve's "Steam Virtual Gamepad" vendor 0x28DE / product 0x11FF
+// (Windows), and — the one that works everywhere — the Steam Input handle
+// SDL >= 2.30 reads off the device (SDL_GameControllerGetSteamHandle;
+// Linux's emulated pad carries the REAL pad's vendor/product, field
+// 2026-09-06), recorded per instance id by pad_sdl_note_steam_handle
+// when the entry point opens the device and checked LIVE against the
+// backend's adoption, so a layout switch moves the pad between backends.
+// A pad Steam presents on a legacy gamepad template (not adopted), or does
+// not present at all, stays a plain SDL pad. Always false when the Steam
+// backend is inactive (then the virtual gamepad IS the pad, as on every
+// shipped build).
 bool pad_sdl_device_is_steam_virtual(int device_index);
+// Whether an SDL device has been probed for its Steam handle yet
+// (the entry point probes each device once, on first sight).
+bool pad_sdl_steam_handle_known(int instance_id);
+void pad_sdl_note_steam_handle(int instance_id, unsigned long long handle);
+// The handle recorded for an instance id (0 = none / not a Steam device).
+unsigned long long pad_sdl_steam_handle(int instance_id);
 
 // Connected right now (an id the backend still reports). PAD_NONE: false.
 bool pad_attached(PadId id);

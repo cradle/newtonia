@@ -33,13 +33,21 @@ const char *MANIFEST_NAME = "game_actions_4536720.vdf";
 
 struct SteamPad {
   InputHandle_t handle;
-  PadId id;
+  PadId id;                   // PAD_NONE until adopted
   ESteamInputType type;
+  bool adopted;               // its layout uses the game's actions (see steam_input.h)
+  bool legacy_traced;         // the "left to SDL" line, once per handle
+  int inactive_ticks;         // adopted but every action inactive, consecutive
   bool set_known;
   PadActionSet set;
   bool held[PAD_ACT_COUNT];   // last state sent for each digital action
   Sint16 axis_x, axis_y;      // last emitted stick values
 };
+// An adopted pad whose layout stops using the actions (the player picked a
+// gamepad template in the overlay) is handed back to SDL after this many
+// consecutive all-inactive ticks — long enough to ride out a layout
+// reload, short enough to feel like a switch.
+const int INACTIVE_DROP_TICKS = 60;
 
 bool g_active = false;
 std::vector<SteamPad> g_pads;
@@ -49,9 +57,17 @@ InputDigitalActionHandle_t g_digital[PAD_ACT_COUNT] = {};
 InputAnalogActionHandle_t g_analog[PAD_ACT_COUNT] = {};
 
 SteamPad *find_pad(PadId id) {
+  if (id == PAD_NONE) return NULL;
   for (size_t i = 0; i < g_pads.size(); i++)
-    if (g_pads[i].id == id) return &g_pads[i];
+    if (g_pads[i].id == id && g_pads[i].adopted) return &g_pads[i];
   return NULL;
+}
+
+int adopted_count() {
+  int n = 0;
+  for (size_t i = 0; i < g_pads.size(); i++)
+    if (g_pads[i].adopted) n++;
+  return n;
 }
 
 const char *type_name(ESteamInputType t) {
@@ -308,38 +324,65 @@ std::string &origin_text(EInputActionOrigin o) {
   return s;
 }
 
+// What the layout binds in a set, action by action: origin count (0 =
+// unbound, which the HUD renders as "-") and whether the action is
+// active (in the layout at all). Traced on adoption and on every set
+// switch — the field question it answers is "a pad that plays but whose
+// hints read '-': is the set unbound, or is the origin query failing?"
+void trace_set(ISteamInput *in, const SteamPad &p, PadActionSet set) {
+  for (int a = 0; a < PAD_ACT_COUNT; a++) {
+    const PadActionInfo &info = pad_action_info((PadAction)a);
+    if (info.set != set) continue;
+    EInputActionOrigin origins[STEAM_INPUT_MAX_ORIGINS];
+    int n = info.analog
+        ? in->GetAnalogActionOrigins(p.handle, g_set[set], g_analog[a], origins)
+        : in->GetDigitalActionOrigins(p.handle, g_set[set], g_digital[a], origins);
+    bool active = info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
+                              : in->GetDigitalActionData(p.handle, g_digital[a]).bActive;
+    startup_tracef("  %-15s handle=%llu origins=%d active=%d%s%s", info.name,
+                   (unsigned long long)(info.analog ? g_analog[a] : g_digital[a]), n,
+                   (int)active, n > 0 ? " first=" : "",
+                   n > 0 ? origin_text(origins[0]).c_str() : "");
+  }
+}
+
+// Does the layout use the game's actions in this set at all? bActive is
+// Steam's "this action exists in the active configuration"; all-false is
+// a legacy gamepad template (XInput emulation) — SDL's pad, not ours.
+bool any_action_active(ISteamInput *in, const SteamPad &p, PadActionSet set) {
+  for (int a = 0; a < PAD_ACT_COUNT; a++) {
+    const PadActionInfo &info = pad_action_info((PadAction)a);
+    if (info.set != set) continue;
+    bool active = info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
+                              : in->GetDigitalActionData(p.handle, g_digital[a]).bActive;
+    if (active) return true;
+  }
+  return false;
+}
+
+// Keep the pad's active set in step with the screen. Every handle gets
+// this, adopted or not: bActive is only meaningful for the ACTIVE set, so
+// an un-adopted handle must sit in the wanted set for the probe to see a
+// layout that binds it.
+void sync_set(StateManager *game, SteamPad &p, PadActionSet want) {
+  ISteamInput *in = SteamInput();
+  if (p.set_known && p.set == want) return;
+  if (p.adopted) release_all(game, p);
+  in->ActivateActionSet(p.handle, g_set[want]);
+  p.set = want;
+  p.set_known = true;
+  if (p.adopted) {
+    startup_tracef("steam input: pad %d -> action set %s", p.id - PAD_STEAM_BASE,
+                   pad_action_set_name(want));
+    trace_set(in, p, want);
+  }
+}
+
 // Steam's analog joystick_move data is up-positive (XInput's frame — the
 // API grew out of the gamepad it emulates); SDL's LEFTY is down-positive.
 // Negate on the way through so the ship handlers see what they always saw.
 void poll_pad(StateManager *game, SteamPad &p, PadActionSet want) {
   ISteamInput *in = SteamInput();
-  if (!p.set_known || p.set != want) {
-    release_all(game, p);
-    in->ActivateActionSet(p.handle, g_set[want]);
-    p.set = want;
-    p.set_known = true;
-    startup_tracef("steam input: pad %d -> action set %s", p.id - PAD_STEAM_BASE,
-                   pad_action_set_name(want));
-    // What the layout binds in this set, action by action: origin count
-    // (0 = unbound, which the HUD renders as "-") and whether the action
-    // is active. The field question this answers: a pad that plays but
-    // whose hints read "-" — is the set unbound, or is the origin query
-    // failing? (2026-09-06)
-    for (int a = 0; a < PAD_ACT_COUNT; a++) {
-      const PadActionInfo &info = pad_action_info((PadAction)a);
-      if (info.set != want) continue;
-      EInputActionOrigin origins[STEAM_INPUT_MAX_ORIGINS];
-      int n = info.analog
-          ? in->GetAnalogActionOrigins(p.handle, g_set[want], g_analog[a], origins)
-          : in->GetDigitalActionOrigins(p.handle, g_set[want], g_digital[a], origins);
-      bool active = info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
-                                : in->GetDigitalActionData(p.handle, g_digital[a]).bActive;
-      startup_tracef("  %-15s handle=%llu origins=%d active=%d%s%s", info.name,
-                     (unsigned long long)(info.analog ? g_analog[a] : g_digital[a]), n,
-                     (int)active, n > 0 ? " first=" : "",
-                     n > 0 ? origin_text(origins[0]).c_str() : "");
-    }
-  }
   for (int a = 0; a < PAD_ACT_COUNT; a++) {
     const PadActionInfo &info = pad_action_info((PadAction)a);
     if (info.set != want) continue;
@@ -433,8 +476,9 @@ void steam_input_poll(StateManager *game) {
       if (handles[k] == g_pads[i].handle) { still = true; break; }
     if (still) { i++; continue; }
     SteamPad gone = g_pads[i];
-    release_all(game, gone);
     g_pads.erase(g_pads.begin() + i);
+    if (!gone.adopted) continue;
+    release_all(game, gone);
     startup_tracef("steam input: pad %d disconnected", gone.id - PAD_STEAM_BASE);
     pad_forget(gone.id);
     game->controller_removed(gone.id);
@@ -447,16 +491,62 @@ void steam_input_poll(StateManager *game) {
     SteamPad p;
     memset(&p, 0, sizeof p);
     p.handle = handles[k];
-    p.id = g_next_id++;
+    p.id = PAD_NONE;
     p.type = in->GetInputTypeForHandle(handles[k]);
-    p.set_known = false;
     g_pads.push_back(p);
-    startup_tracef("steam input: pad %d connected: %s (%s glyphs)", p.id - PAD_STEAM_BASE,
-                   type_name(p.type), pad_style_name(pad_style_for_id(p.id)));
-    game->controller_added(p.id);
+    startup_tracef("steam input: handle %llu seen: %s", (unsigned long long)p.handle,
+                   type_name(p.type));
   }
   PadActionSet want = game->pad_action_set();
-  for (size_t i = 0; i < g_pads.size(); i++) poll_pad(game, g_pads[i], want);
+  for (size_t i = 0; i < g_pads.size(); i++) {
+    SteamPad &p = g_pads[i];
+    sync_set(game, p, want);
+    bool active = any_action_active(in, p, want);
+    if (!p.adopted) {
+      if (!active) {
+        if (!p.legacy_traced) {
+          p.legacy_traced = true;
+          startup_tracef("steam input: handle %llu: layout has no %s-set actions "
+                         "(legacy gamepad template) — SDL's emulated pad drives it",
+                         (unsigned long long)p.handle, pad_action_set_name(want));
+        }
+        continue;
+      }
+      // The layout binds the game's actions: this pad is ours from here.
+      p.adopted = true;
+      p.legacy_traced = false;
+      p.inactive_ticks = 0;
+      p.id = g_next_id++;
+      startup_tracef("steam input: pad %d adopted (handle %llu): %s (%s glyphs)",
+                     p.id - PAD_STEAM_BASE, (unsigned long long)p.handle,
+                     type_name(p.type), pad_style_name(pad_style_for_id(p.id)));
+      trace_set(in, p, want);
+      game->controller_added(p.id);
+    } else if (!active) {
+      if (++p.inactive_ticks < INACTIVE_DROP_TICKS) continue;
+      // Back to a gamepad template: SDL's emulated device is the pad now.
+      startup_tracef("steam input: pad %d released (handle %llu): layout no longer uses the actions",
+                     p.id - PAD_STEAM_BASE, (unsigned long long)p.handle);
+      release_all(game, p);
+      PadId old = p.id;
+      p.adopted = false;
+      p.inactive_ticks = 0;
+      p.id = PAD_NONE;
+      pad_forget(old);
+      game->controller_removed(old);
+      continue;
+    } else {
+      p.inactive_ticks = 0;
+    }
+    poll_pad(game, p, want);
+  }
+}
+
+bool steam_input_owns_handle(unsigned long long handle) {
+  if (!g_active || handle == 0) return false;
+  for (size_t i = 0; i < g_pads.size(); i++)
+    if (g_pads[i].handle == handle) return g_pads[i].adopted;
+  return false;
 }
 
 void steam_input_shutdown() {
@@ -468,11 +558,16 @@ void steam_input_shutdown() {
 
 bool steam_input_attached(PadId id) { return find_pad(id) != NULL; }
 
-int steam_input_count() { return (int)g_pads.size(); }
+int steam_input_count() { return adopted_count(); }
 
 PadId steam_input_id_at(int index) {
-  if (index < 0 || index >= (int)g_pads.size()) return PAD_NONE;
-  return g_pads[index].id;
+  int seen = 0;
+  for (size_t i = 0; i < g_pads.size(); i++) {
+    if (!g_pads[i].adopted) continue;
+    if (seen == index) return g_pads[i].id;
+    seen++;
+  }
+  return PAD_NONE;
 }
 
 const char *steam_input_name(PadId id) {

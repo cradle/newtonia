@@ -487,7 +487,81 @@ static void on_focus_gained() { if (game) game->focus_gained(); }
 #endif // __APPLE__
 
 
+// Probe an SDL device ONCE for the Steam Input handle behind it (SDL >= 2.30
+// reads it off Steam's virtual gamepad; 0 for a raw pad or an older SDL),
+// so pad_sdl_device_is_steam_virtual can tell "the pad the Steam backend
+// drives" from "a pad only SDL has" — by handle, live against the
+// backend's adoption. Open/close for the read is refcounted and cheap;
+// the note persists until DEVICEREMOVED.
+static void sdl_probe_steam_handle(int device_index) {
+  SDL_JoystickID inst = SDL_JoystickGetDeviceInstanceID(device_index);
+  if (pad_sdl_steam_handle_known(inst)) return;
+  Uint64 h = 0;
+#if SDL_VERSION_ATLEAST(2, 30, 0)
+  SDL_GameController *c = SDL_GameControllerOpen(device_index);
+  if (c) {
+    h = SDL_GameControllerGetSteamHandle(c);
+    SDL_GameControllerClose(c);
+  }
+#endif
+  pad_sdl_note_steam_handle(inst, (unsigned long long)h);
+  startup_tracef("controllers: device %d (instance %d) steam handle %llu", device_index,
+                 (int)inst, (unsigned long long)h);
+}
+
+// Beside the Steam Input backend, ownership of a physical pad can change
+// while the game runs — the player switches its layout in the overlay
+// between a gamepad template (SDL's emulated pad drives it) and one that
+// uses the game's actions (the backend adopts it). Every ~250 ms: close an
+// opened SDL pad the backend now drives, and open an unopened SDL pad it
+// no longer does (or never did). DEVICEADDED/REMOVED still handle the
+// arrivals and departures themselves.
+static void sdl_pads_sync() {
+  if (!steam_input_active() || !game) return;
+  static Uint32 last = 0;
+  Uint32 now = SDL_GetTicks();
+  if (now - last < 250) return;
+  last = now;
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    if (!controllers[i]) continue;
+    SDL_JoystickID id = controller_ids[i];
+    unsigned long long h = pad_sdl_steam_handle(id);
+    if (!steam_input_owns_handle(h)) continue;
+    SDL_GameControllerClose(controllers[i]);
+    controllers[i] = NULL;
+    controller_ids[i] = -1;
+    pad_forget(id);
+    pad_sdl_note_steam_handle(id, h);  // keep it known-owned, no re-probe
+    startup_tracef("controllers: SDL pad %d (instance %d) released — the Steam backend drives handle %llu",
+                   i + 1, (int)id, h);
+    game->controller_removed(id);
+  }
+  int n = SDL_NumJoysticks();
+  for (int d = 0; d < n; d++) {
+    if (!SDL_IsGameController(d)) continue;
+    SDL_JoystickID inst = SDL_JoystickGetDeviceInstanceID(d);
+    bool opened = false;
+    for (int i = 0; i < MAX_PLAYERS; i++)
+      if (controller_ids[i] == inst) opened = true;
+    if (opened) continue;
+    sdl_probe_steam_handle(d);
+    if (pad_sdl_device_is_steam_virtual(d)) continue;
+    for (int i = 0; i < LOCAL_PLAYER_CAP; i++) {
+      if (controllers[i] != NULL) continue;
+      controllers[i] = SDL_GameControllerOpen(d);
+      if (!controllers[i]) break;
+      controller_ids[i] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[i]));
+      startup_tracef("controllers: SDL pad %d (instance %d) opened: %s (%s glyphs)", i + 1,
+                     (int)controller_ids[i], SDL_GameControllerName(controllers[i]),
+                     pad_style_name(pad_style_for_id(controller_ids[i])));
+      game->controller_added(controller_ids[i]);
+      break;
+    }
+  }
+}
+
 void check_controller() {
+  sdl_pads_sync();
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
     if(e.type == SDL_QUIT) {
@@ -513,7 +587,9 @@ void check_controller() {
       for(int i = 0; i < MAX_PLAYERS; i++)
         if(controller_ids[i] == added_id) known = true;
       // Steam's emulation of a pad the Steam Input backend already
-      // presents: not ours to open (pad.h).
+      // drives: not ours to open (pad.h). Probe the handle first — this is
+      // the device's first sighting.
+      if(steam_input_active()) sdl_probe_steam_handle(e.cdevice.which);
       if(pad_sdl_device_is_steam_virtual(e.cdevice.which)) {
         known = true;
         startup_tracef("controllers: skipping Steam virtual gamepad (device %d)", e.cdevice.which);
@@ -679,6 +755,7 @@ void init_controllers_and_audio() {
     SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
     for (int i = 0; i < SDL_NumJoysticks() && opened < LOCAL_PLAYER_CAP; ++i) {
+      if (steam_input_active() && SDL_IsGameController(i)) sdl_probe_steam_handle(i);
       if (SDL_IsGameController(i) && !pad_sdl_device_is_steam_virtual(i)) {
         controllers[opened] = SDL_GameControllerOpen(i);
         if (controllers[opened]) {
@@ -699,13 +776,14 @@ void init_controllers_and_audio() {
                (int)steam_input_active());
       startup_trace(line);
       for (int i = 0; i < SDL_NumJoysticks(); i++) {
-        snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d vid=%04x pid=%04x steam_virtual=%d)", i,
+        snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d vid=%04x pid=%04x steam_handle=%llu steam_virtual=%d)", i,
                  SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?", (int)SDL_IsGameController(i),
 #if SDL_VERSION_ATLEAST(2, 0, 6)
                  (unsigned)SDL_JoystickGetDeviceVendor(i), (unsigned)SDL_JoystickGetDeviceProduct(i),
 #else
                  0u, 0u,
 #endif
+                 pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(i)),
                  (int)pad_sdl_device_is_steam_virtual(i));
         startup_trace(line);
       }
