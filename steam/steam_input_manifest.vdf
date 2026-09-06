@@ -5,11 +5,17 @@
 	{
 		"0"
 		{
+			"controller_type"	"controller_neptune"
+			"path"	"controller_neptune.vdf"
+			"enabled"	"1"
+		}
+		"1"
+		{
 			"controller_type"	"controller_ps5"
 			"path"	"controller_ps5.vdf"
 			"enabled"	"1"
 		}
-		"1"
+		"2"
 		{
 			"controller_type"	"controller_xboxone"
 			"path"	"controller_xboxone.vdf"
