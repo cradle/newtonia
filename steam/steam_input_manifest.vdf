@@ -3,6 +3,12 @@
 	"version"	"1"
 	"configurations"
 	{
+		"0"
+		{
+			"controller_type"	"controller_xboxone"
+			"path"	"controller_xboxone.vdf"
+			"enabled"	"1"
+		}
 	}
 
 	"actions"
