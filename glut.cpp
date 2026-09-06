@@ -505,8 +505,14 @@ static void sdl_probe_steam_handle(int device_index) {
   }
 #endif
   pad_sdl_note_steam_handle(inst, (unsigned long long)h);
-  startup_tracef("controllers: device %d (instance %d) steam handle %llu", device_index,
-                 (int)inst, (unsigned long long)h);
+  startup_tracef("controllers: device %d (instance %d) %s vid=%04x pid=%04x steam handle %llu", device_index,
+                 (int)inst, SDL_JoystickNameForIndex(device_index) ? SDL_JoystickNameForIndex(device_index) : "?",
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+                 (unsigned)SDL_JoystickGetDeviceVendor(device_index), (unsigned)SDL_JoystickGetDeviceProduct(device_index),
+#else
+                 0u, 0u,
+#endif
+                 (unsigned long long)h);
 }
 
 // Beside the Steam Input backend, ownership of a physical pad can change
@@ -608,6 +614,8 @@ void check_controller() {
       }
     } else if(e.type == SDL_CONTROLLERDEVICEREMOVED) {
       SDL_JoystickID removed_id = e.cdevice.which;
+      // Whether we held it or skipped it, its handle note is stale now.
+      if(steam_input_active()) pad_forget(removed_id);
       for(int i = 0; i < MAX_PLAYERS; i++) {
         if(controller_ids[i] == removed_id) {
           SDL_GameControllerClose(controllers[i]);
@@ -772,6 +780,12 @@ void init_controllers_and_audio() {
     if(steam_input_active()) std::cout << "Controllers: Steam Input presents its pads; SDL keeps the rest" << std::endl;
     {
       char line[200];
+      // Steam hides the physical pads behind its virtual ones from SDL games
+      // through this env var; whether it reached this process is the first
+      // question when a pad shows up twice.
+      const char *ign = SDL_getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES");
+      snprintf(line, sizeof(line), "controllers: SDL_GAMECONTROLLER_IGNORE_DEVICES=%s", ign ? ign : "(unset)");
+      startup_trace(line);
       snprintf(line, sizeof(line), "controllers: SDL_NumJoysticks=%d opened=%d steam_input=%d", SDL_NumJoysticks(), opened,
                (int)steam_input_active());
       startup_trace(line);

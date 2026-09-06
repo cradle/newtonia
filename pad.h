@@ -130,10 +130,17 @@ inline const char *pad_action_set_name(PadActionSet s) {
 // 2026-09-06), recorded per instance id by pad_sdl_note_steam_handle
 // when the entry point opens the device and checked LIVE against the
 // backend's adoption, so a layout switch moves the pad between backends.
-// A pad Steam presents on a legacy gamepad template (not adopted), or does
-// not present at all, stays a plain SDL pad. Always false when the Steam
-// backend is inactive (then the virtual gamepad IS the pad, as on every
-// shipped build).
+// A pad Steam presents on a legacy gamepad template (not adopted) stays a
+// plain SDL pad — through its virtual device, which carries the handle.
+// A device with NO handle while Steam presents handles is the PHYSICAL
+// pad behind one of them (Linux: SDL's hidapi path reads the raw pad even
+// while Steam's evdev grab keeps others out, so it arrived beside the
+// virtual one and drove a second seat with the same input — field,
+// 2026-09-06) — skipped once every presented handle already has a driver
+// (adopted, or an SDL device carrying it); kept while some handle has
+// none, and always when Steam presents nothing (Steam Input off: the raw
+// device IS the pad). Always false when the Steam backend is inactive
+// (then the virtual gamepad IS the pad, as on every shipped build).
 bool pad_sdl_device_is_steam_virtual(int device_index);
 // Whether an SDL device has been probed for its Steam handle yet
 // (the entry point probes each device once, on first sight).

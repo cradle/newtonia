@@ -470,6 +470,11 @@ void steam_input_poll(StateManager *game) {
   // pump, and immune to the snap client's flaky device callbacks (§9).
   InputHandle_t handles[STEAM_INPUT_MAX_COUNT];
   int n = in->GetConnectedControllers(handles);
+  static int last_n = -1;
+  if (n != last_n) {
+    last_n = n;
+    startup_tracef("steam input: handles presented=%d", n);
+  }
   for (size_t i = 0; i < g_pads.size();) {
     bool still = false;
     for (int k = 0; k < n; k++)
@@ -541,6 +546,8 @@ void steam_input_poll(StateManager *game) {
     poll_pad(game, p, want);
   }
 }
+
+int steam_input_handle_count() { return g_active ? (int)g_pads.size() : 0; }
 
 bool steam_input_owns_handle(unsigned long long handle) {
   if (!g_active || handle == 0) return false;

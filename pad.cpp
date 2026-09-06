@@ -160,8 +160,17 @@ bool pad_sdl_device_is_steam_virtual(int device_index) {
       SDL_JoystickGetDeviceProduct(device_index) == 0x11FF)
     return true;
 #endif
-  return steam_input_owns_handle(
-      pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(device_index)));
+  unsigned long long h = pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(device_index));
+  if (h) return steam_input_owns_handle(h);
+  // No handle: the physical pad behind a Steam-presented one, redundant
+  // once every presented handle has a driver (see pad.h).
+  int presented = steam_input_handle_count();
+  if (presented == 0) return false;
+  int drivers = steam_input_count();  // adopted by the backend
+  int n = SDL_NumJoysticks();
+  for (int i = 0; i < n; i++)
+    if (pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(i)) != 0) drivers++;
+  return drivers >= presented;
 }
 
 int pad_count() {

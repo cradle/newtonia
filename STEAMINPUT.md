@@ -128,13 +128,27 @@ The rule as landed — **adoption by actions, ownership per device**:
   opens an unopened one it no longer does. Enumeration (`pad_count`/
   `pad_id_at`) unions adopted Steam pads first, then the listed SDL pads.
 
+- Third run, same day: SDL DID enumerate the physical pad beside Steam's
+  virtual one — instance 0 (045e/0b12, no handle) from the startup scan,
+  then Steam's virtual gamepad recreated three times as it loaded configs
+  (instances 1→3, each carrying the handle) — and both delivered the same
+  input, so two seats played as one. Not a silent phantom: SDL's hidapi
+  path reads the raw pad regardless of Steam's evdev grab. The rule now
+  covers it: while Steam presents handles and every presented handle
+  already has a driver (adopted by the backend, or an SDL device carrying
+  that handle), a handle-less SDL device is the physical duplicate and is
+  skipped; while some handle has no driver yet it is kept (the pad must
+  work even if SDL cannot read the handle), and with no handles presented
+  at all (Steam Input off for the game — which now works, display and
+  buttons correct) the raw device is the pad. A mixed rig — one pad on
+  Steam Input, a second with it disabled — loses the second under this
+  rule; Steam's own `SDL_GAMECONTROLLER_IGNORE_DEVICES` mechanism makes
+  the same assumption, and the trace now prints whether that env var
+  reached the process at all.
+
 Still to field-verify in the §7 matrix: a layout that binds the actions
 (the adoption line in the trace, then FIRE/START chips following a
-remap); one Steam pad + one SDL pad in two seats; the control run above;
-and whether SDL's Linux backend also enumerates the grabbed PHYSICAL
-device beside the emulated one (a silent phantom in the roster) — the
-startup trace prints every SDL device with vendor/product/steam_handle
-for that question.
+remap); one Steam pad + one SDL pad in two seats; the control run above.
 
 ## 0. Why, and what already exists
 

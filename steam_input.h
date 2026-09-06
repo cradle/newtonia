@@ -60,6 +60,10 @@ bool steam_input_attached(PadId id);
 // virtual gamepad; an SDL device whose handle is adopted here is the
 // SAME pad and must not also drive a seat (pad.cpp / glut.cpp).
 bool steam_input_owns_handle(unsigned long long handle);
+// How many handles Steam presents right now, adopted or not — the pads
+// Steam has taken. 0 is the "Steam Input off for this game" picture,
+// where SDL's raw devices are the only pads there are.
+int steam_input_handle_count();
 int steam_input_count();
 PadId steam_input_id_at(int index);
 const char *steam_input_name(PadId id);
@@ -80,6 +84,7 @@ inline void steam_input_poll(StateManager *) {}
 inline void steam_input_shutdown() {}
 inline bool steam_input_attached(PadId) { return false; }
 inline bool steam_input_owns_handle(unsigned long long) { return false; }
+inline int steam_input_handle_count() { return 0; }
 inline int steam_input_count() { return 0; }
 inline PadId steam_input_id_at(int) { return PAD_NONE; }
 inline const char *steam_input_name(PadId) { return "Steam pad"; }
