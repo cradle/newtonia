@@ -539,8 +539,12 @@ static void sdl_pads_sync() {
     for (int d = 0; d < n; d++)
       if (SDL_JoystickGetDeviceInstanceID(d) == id) { dev = d; break; }
     // pad.h's whole rule — an adopted handle's device, or the raw pad
-    // behind one Steam runs — not just the adopted case.
-    if (dev < 0 || !pad_sdl_device_is_steam_virtual(dev)) continue;
+    // behind one Steam runs — not just the adopted case. Probe first: a
+    // pad opened while the action sets were still resolving (the retry
+    // window) was opened with no probe at all.
+    if (dev < 0) continue;
+    sdl_probe_steam_handle(dev);
+    if (!pad_sdl_device_is_steam_virtual(dev)) continue;
     unsigned long long h = pad_sdl_steam_handle(id);
     SDL_GameControllerClose(controllers[i]);
     controllers[i] = NULL;

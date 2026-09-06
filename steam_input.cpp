@@ -67,6 +67,14 @@ struct SteamPad {
 const int INACTIVE_DROP_TICKS = 60;
 
 bool g_active = false;
+// Init succeeded but the action-set handles read 0: Steam had not resolved
+// the actions yet (a DualSense session read them 0 on the first frame an
+// hour after an Xbox session read 1 and 2 — field, 2026-09-06). Retry per
+// tick for SETS_RETRY_TICKS before concluding they are unregistered; SDL
+// drives the pads meanwhile and the sync hands them over on success.
+bool g_sets_pending = false;
+int g_sets_retry = 0;
+const int SETS_RETRY_TICKS = 300;  // ~5 s
 std::vector<SteamPad> g_pads;
 PadId g_next_id = PAD_STEAM_BASE;
 InputActionSetHandle_t g_set[PAD_SET_COUNT] = {0, 0};
@@ -453,6 +461,8 @@ void poll_pad(StateManager *game, SteamPad &p, PadActionSet want) {
 
 }  // namespace
 
+static bool steam_input_finish_init();
+
 bool steam_input_init() {
   g_active = false;
   const char *off = std::getenv("NEWTONIA_STEAM_INPUT");
@@ -492,19 +502,24 @@ bool steam_input_init() {
   in->RunFrame();
   for (int s = 0; s < PAD_SET_COUNT; s++)
     g_set[s] = in->GetActionSetHandle(pad_action_set_name((PadActionSet)s));
-  // A 0 handle means Steam has no In-Game Actions for this app — the IGA
-  // is neither uploaded in the portal nor in controller_config — so no
-  // layout could ever bind anything and every pad would be inert (field,
-  // 2026-09-06: "PRESS -" and no controller at all). That is STEAMINPUT.md
-  // §5 rule 2's "fallback is total" case in another guise: hand the pads
-  // back to SDL, where Steam's gamepad emulation drives them exactly as the
-  // shipped build's.
   if (g_set[PAD_SET_SHIP] == 0 || g_set[PAD_SET_MENU] == 0) {
-    startup_trace("steam input: action sets UNKNOWN — In-Game Actions file not registered "
-                  "(portal Steam Input section, or <Steam>/controller_config/) — SDL pads");
-    in->Shutdown();
+    // Not resolved yet — or not registered at all (the IGA neither in the
+    // portal nor in controller_config, and no manifest: then no layout
+    // could ever bind anything and every pad would be inert — "PRESS -",
+    // field 2026-09-06). Keep retrying from the poll for a few seconds;
+    // SDL drives the pads until then.
+    startup_trace("steam input: action sets not resolved yet — retrying (SDL pads meanwhile)");
+    g_sets_pending = true;
+    g_sets_retry = SETS_RETRY_TICKS;
     return false;
   }
+  return steam_input_finish_init();
+}
+
+// The rest of Init once the set handles exist: action handles, the
+// collision check, go live. Shared by Init and the pending retry.
+static bool steam_input_finish_init() {
+  ISteamInput *in = SteamInput();
   for (int a = 0; a < PAD_ACT_COUNT; a++) {
     const PadActionInfo &info = pad_action_info((PadAction)a);
     if (info.analog) g_analog[a] = in->GetAnalogActionHandle(info.name);
@@ -542,6 +557,27 @@ bool steam_input_init() {
 bool steam_input_active() { return g_active; }
 
 void steam_input_poll(StateManager *game) {
+  if (g_sets_pending) {
+    ISteamInput *in = SteamInput();
+    if (!in) { g_sets_pending = false; return; }
+    in->RunFrame();
+    for (int s = 0; s < PAD_SET_COUNT; s++)
+      g_set[s] = in->GetActionSetHandle(pad_action_set_name((PadActionSet)s));
+    if (g_set[PAD_SET_SHIP] != 0 && g_set[PAD_SET_MENU] != 0) {
+      g_sets_pending = false;
+      startup_tracef("steam input: action sets resolved after %d ticks", SETS_RETRY_TICKS - g_sets_retry);
+      if (!steam_input_finish_init()) return;
+    } else if (--g_sets_retry <= 0) {
+      g_sets_pending = false;
+      startup_trace("steam input: action sets UNKNOWN after the retry window — the actions are not "
+                    "registered for this session (portal Steam Input section / manifest / "
+                    "controller_config) — SDL pads");
+      in->Shutdown();
+      return;
+    } else {
+      return;
+    }
+  }
   if (!g_active || !game) return;
   ISteamInput *in = SteamInput();
   if (!in) return;
