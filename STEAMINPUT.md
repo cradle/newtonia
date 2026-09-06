@@ -77,6 +77,33 @@ landed against it.
    is not consumed, so a pad whose layout arrives late is simply inert
    until it does (its actions read `bActive == false`).
 
+**Future — mixed mode (Steam Input + SDL pads at once).** Not supported,
+by §5 rule 1: when `Init` succeeds Steam owns every pad and SDL's
+controller subsystem is never initialised, so a Steam pad and a "native"
+SDL pad cannot drive two seats in the same run. The case that looks like
+native is still served — a pad the player disabled Steam Input for
+arrives through the API with a default layout, just not remappable in the
+overlay. If a real need appears (a pad Steam refuses to present at all,
+or a wheel/HOTAS-class device Steam Input does not model), the shape of
+the work is:
+
+- keep `SDL_INIT_GAMECONTROLLER` on beside the Steam backend, and
+  de-duplicate PER DEVICE rather than per backend: ask Steam which XInput
+  slot each handle occupies (`GetGamepadIndexForController`) and drop the
+  SDL device in that slot (SDL's `SDL_GameControllerGetPlayerIndex` /
+  XInput user index on Windows; on Linux/macOS Steam's emulated pad is a
+  distinct virtual device, matched by name or by its appearing only while
+  the handle exists), so a pad Steam emulates never arrives twice;
+- both backends already speak `PadId` into the same seam, so nothing
+  downstream changes — `pad_count`/`pad_id_at` would simply union the two
+  tables, `pad_style_for_id` already dispatches on the id range, and the
+  action-set switching keeps applying to the Steam pads alone;
+- it is a NEW field matrix (Steam Machine, Deck, a Windows client with an
+  XInput pad beside a Steam-owned DS4), not a code-only change, and it
+  must not land before the one-owner version has passed the §7 matrix —
+  the double-delivery failure that rule 1 exists to prevent is exactly
+  what an incomplete de-dup produces.
+
 ## 0. Why, and what already exists
 
 **Why.** Three things only the Steam Input API gives:
