@@ -74,7 +74,14 @@ bool g_active = false;
 // drives the pads meanwhile and the sync hands them over on success.
 bool g_sets_pending = false;
 int g_sets_retry = 0;
-const int SETS_RETRY_TICKS = 300;  // ~5 s
+const int SETS_RETRY_TICKS = 300;  // ~5 s, per tick
+// Past the window: Steam builds the actions only when it prepares a layout
+// for a pad it MANAGES (a DualSense Steam was not running read the sets 0
+// for good while an Xbox pad it emulated read them at once — field,
+// 2026-09-06), so a pad opted in or plugged in later can still bring them.
+// Keep asking, once a second, for the life of the process.
+const int SETS_SLOW_RETRY_TICKS = 60;
+bool g_sets_slow = false;
 std::vector<SteamPad> g_pads;
 PadId g_next_id = PAD_STEAM_BASE;
 InputActionSetHandle_t g_set[PAD_SET_COUNT] = {0, 0};
@@ -565,14 +572,17 @@ void steam_input_poll(StateManager *game) {
       g_set[s] = in->GetActionSetHandle(pad_action_set_name((PadActionSet)s));
     if (g_set[PAD_SET_SHIP] != 0 && g_set[PAD_SET_MENU] != 0) {
       g_sets_pending = false;
-      startup_tracef("steam input: action sets resolved after %d ticks", SETS_RETRY_TICKS - g_sets_retry);
+      if (g_sets_slow) startup_trace("steam input: action sets resolved late (a pad Steam manages arrived)");
+      else startup_tracef("steam input: action sets resolved after %d ticks", SETS_RETRY_TICKS - g_sets_retry);
       if (!steam_input_finish_init()) return;
     } else if (--g_sets_retry <= 0) {
-      g_sets_pending = false;
-      startup_trace("steam input: action sets UNKNOWN after the retry window — the actions are not "
-                    "registered for this session (portal Steam Input section / manifest / "
-                    "controller_config) — SDL pads");
-      in->Shutdown();
+      if (!g_sets_slow) {
+        g_sets_slow = true;
+        startup_trace("steam input: action sets UNKNOWN after the retry window — Steam manages no pad "
+                      "with a layout for this game (Steam Input off for its type, or no configuration "
+                      "for the type in the manifest / portal) — SDL pads; still asking once a second");
+      }
+      g_sets_retry = SETS_SLOW_RETRY_TICKS;
       return;
     } else {
       return;
@@ -679,10 +689,11 @@ bool steam_input_owns_handle(unsigned long long handle) {
 }
 
 void steam_input_shutdown() {
-  if (!g_active) return;
+  bool inited = g_active || g_sets_pending;  // Init succeeded either way
   g_active = false;
+  g_sets_pending = false;
   g_pads.clear();
-  if (SteamInput()) SteamInput()->Shutdown();
+  if (inited && SteamInput()) SteamInput()->Shutdown();
 }
 
 bool steam_input_attached(PadId id) { return find_pad(id) != NULL; }
