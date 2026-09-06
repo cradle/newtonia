@@ -127,6 +127,16 @@ inline const char *pad_button_label(PadStyle s, int b) {
   }
 }
 
+// Typer::draw_button's cue: a face-button label — ONE character that is a
+// letter or a shape glyph. The hint sites circle exactly these; a word
+// ("LB", "LEFT STICK") and the one-character UNBOUND marker "-" (a Steam
+// layout that binds nothing to the action) draw as plain text — the
+// marker drew as a circled dash before this existed (field, 2026-09-06).
+inline bool pad_label_is_face(const char *s) {
+  return s && s[0] && !s[1] &&
+         (pad_glyph_is_shape(s[0]) || isalnum((unsigned char)s[0]));
+}
+
 // The name to log beside a pad ("xbox", "ps4", "ps5").
 inline const char *pad_style_name(PadStyle s) {
   switch (s) {

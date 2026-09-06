@@ -69,6 +69,11 @@ int main() {
       CHECK(shape == (face && pad_style_is_playstation(styles[s])));
     }
   }
+  // The circle cue: letters and shapes, never a word, never the "-"
+  // unbound marker.
+  CHECK(pad_label_is_face("A") && pad_label_is_face(PAD_GLYPH_CROSS));
+  CHECK(!pad_label_is_face("-") && !pad_label_is_face("LB") && !pad_label_is_face(""));
+
   // Shape glyphs are outside the peer-name whitelist by construction:
   // control bytes, never printable.
   CHECK(PAD_GLYPH_CROSS_C < ' ' && PAD_GLYPH_TRIANGLE_C < ' ');
