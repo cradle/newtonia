@@ -70,6 +70,12 @@ landed against it.
   only. `zoom_in`/`zoom_out` actions, synthesized as SDL PADDLE1/2 — which
   also gives an Elite pad's paddles the zoom on the SDL path.
 
+The IGA file is pure KeyValues — no `//` header comment: Steam resolved
+the set handles from the commented version, but the layout editor
+offered no action sets (2026-09-06), and a comment-free file removes one
+variable while that is chased. What the file is and how it is registered
+is documented here and in the platform-builds skill instead.
+
 **Open — needs the Steam client and a pad (the M2/M3/M4 field matrix):**
 
 1. **Portal:** register the manifest as Custom Configuration (Bundled with

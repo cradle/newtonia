@@ -1,22 +1,3 @@
-// Newtonia — Steam Input In-Game Actions file (STEAMINPUT.md §2).
-//
-// One entry per PadAction in pad.h, in the same two sets; the game reads
-// these by NAME (GetDigitalActionHandle / GetAnalogActionHandle /
-// GetActionSetHandle), so a rename here is a rename there — the unit test
-// test/unit/pad_actions_test.cpp pins the two together.
-//
-// Ships in the depot root beside the binary (deploy-steam.yml stages it;
-// `make steam` copies it) and is registered in the Steamworks portal as
-// Custom Configuration (Bundled with Game); steam_input.cpp also hands
-// Steam the absolute path (SetInputActionManifestFilePath) when it finds
-// the file next to the executable. Development: copy to
-// <Steam>/controller_config/game_actions_4536720.vdf.
-//
-// Default bindings per controller type are NOT in this file: they are
-// authored once in the client's configurator (from a Deck or the desktop
-// client, on a beta build carrying this manifest), exported, and set as
-// the per-type default configuration in the portal. The "today's Xbox
-// binding" column of STEAMINPUT.md §2 is the layout to author.
 "In Game Actions"
 {
 	"actions"
