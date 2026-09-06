@@ -12,6 +12,7 @@
 #include "presence.h"
 #include "glstarfield.h"
 #include "mat4.h"
+#include "pad_style.h"
 #include "menu.h"
 #include "menu_select.h"
 #include "net_identity.h"
@@ -2862,12 +2863,21 @@ void NetLobby::draw() {
         // typing AND has its own backspace, so a delete key hint is
         // noise there (Glenn). B still backs out of a highlighted LAN
         // row and deletes a typed char — it's just not advertised.
-        if (controller_seen_ && !floating_kb_up_)
-          Typer::draw_centered(0, -48,
-                               floating_kb_available_
-                                   ? "X - PASTE   Y - KEYBOARD"
-                                   : "A - TYPE   B - DELETE   X - PASTE",
-                               sz);
+        if (controller_seen_ && !floating_kb_up_) {
+          // In the pad's own vocabulary (pad_style.h): a DualShock pilot
+          // reads shapes, not letters that pad doesn't print.
+          char keys[96];
+          if (floating_kb_available_)
+            snprintf(keys, sizeof(keys), "%s - PASTE   %s - KEYBOARD",
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_X),
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_Y));
+          else
+            snprintf(keys, sizeof(keys), "%s - TYPE   %s - DELETE   %s - PASTE",
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_A),
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_B),
+                     pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_X));
+          Typer::draw_centered(0, -48, keys, sz);
+        }
         if (grid) {
           draw_picker();
           // LAN host rows under the picker grid (grid bottom ~ -204):
@@ -2911,11 +2921,12 @@ void NetLobby::draw() {
             // 14 extra under the last row: a SELECTED row's size-18
             // glyphs reach ~36 below their anchor, which left the hint
             // nearly touching the name (Glenn's screenshot).
-            Typer::draw_centered(0, -174.0f - (float)show * 46.0f,
-                                 controller_seen_
-                                     ? "UP/DOWN AND A TO JOIN"
-                                     : "UP/DOWN AND ENTER TO JOIN",
-                                 10);
+            char join[64];
+            snprintf(join, sizeof(join), "UP/DOWN AND %s TO JOIN",
+                     controller_seen_
+                         ? pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_A)
+                         : "ENTER");
+            Typer::draw_centered(0, -174.0f - (float)show * 46.0f, join, 10);
           }
         }
       }

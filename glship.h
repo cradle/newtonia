@@ -1,6 +1,7 @@
 #ifndef GL_SHIP_H
 #define GL_SHIP_H
 
+#include "pad_style.h"
 #include "ship.h"
 #include "point.h"
 #include "gltrail.h"
@@ -98,6 +99,11 @@ public:
   }
   void set_controller(SDL_GameController *game_controller);
   bool has_controller() const;
+  // Which button vocabulary this seat's hints use (pad_style.h): the
+  // bound pad's, or — with no pad bound — whatever pad is plugged in.
+  PadStyle pad_style() const;
+  // A button's label in that vocabulary (pad_button_label shorthand).
+  const char *pad_hint(SDL_GameControllerButton b) const;
   // The seat's pad DISCONNECTED (as opposed to a deliberate
   // set_controller(NULL) from the roster): drop the binding and remember the
   // loss, so the next pad to appear comes back to this seat — a re-added pad

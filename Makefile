@@ -445,9 +445,13 @@ root, which creates ./sdk/, or point STEAM_SDK at an existing unzip)
   endif
 endif
 STEAM_CFLAGS = $(CFLAGS) -DSTEAM_BUILD -I$(STEAM_SDK)/public
-STEAM_OBJFILES := $(patsubst %.cpp,%.steam.o,$(ALL_SRCS))
+# Object-name tag: `steam` for the host build, `sniper` when
+# build_steam_sniper.sh builds inside Valve's runtime container, so the two
+# never share (glibc-incompatible) objects.
+STEAM_OBJ_TAG ?= steam
+STEAM_OBJFILES := $(patsubst %.cpp,%.$(STEAM_OBJ_TAG).o,$(ALL_SRCS))
 ifeq ($(UNAME), Darwin)
-  STEAM_OBJFILES += macos_window.steam.o
+  STEAM_OBJFILES += macos_window.$(STEAM_OBJ_TAG).o
   STEAM_RUNTIME = libsteam_api.dylib
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/osx/libsteam_api.dylib
   STEAM_LINK = -L. -lsteam_api
@@ -508,12 +512,13 @@ steam_appid.txt:
 	echo $(STEAM_APPID) > $@
 
 steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app \
+	  $(wildcard *.sniper.o */*.sniper.o *.sniper.d */*.sniper.d)
 
-%.steam.o: %.cpp
+%.$(STEAM_OBJ_TAG).o: %.cpp
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
 
-%.steam.o: %.mm
+%.$(STEAM_OBJ_TAG).o: %.mm
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
 
 -include $(DEPFILES)

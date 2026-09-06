@@ -33,6 +33,24 @@ g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/
 When adding a Steamworks call: verify the signature against the SDK docs /
 headers first, add it to the stub, then use it in game code.
 
+### Pad glyph vocabulary unit test (no SDL runtime needed)
+
+The pure half of `pad_style.h` — the per-style button-label table and the
+SDL-type / device-name / `NEWTONIA_PAD_STYLE` classifiers — is header-inline,
+so the test links nothing:
+
+```sh
+g++ -std=c++11 -I. -I/usr/include/SDL2 test/unit/pad_style_test.cpp -o /tmp/pad_style_test && /tmp/pad_style_test
+```
+
+It pins the contract `Typer::draw_button` relies on (face buttons are the
+only one-character labels, and the PlayStation shapes are control bytes)
+and the name fallback's edge (`Wireless Controller` is the DualShock 4's
+bare HID name, `Xbox Wireless Controller` is not a DualShock). The runtime
+half — the per-pad cache and the Steam Input query — needs a real pad;
+`NEWTONIA_PAD_STYLE=ps5` forces the vocabulary for a screenshot pass without
+one.
+
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 
 ```sh

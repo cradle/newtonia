@@ -1,4 +1,5 @@
 #include "overlay.h"
+#include <cstring>
 
 #include "../menu_select.h"
 #include "tap_band.h"
@@ -7,6 +8,7 @@
 #include "../net_session.h"
 #include "../net_transport.h"
 #include "../glship.h"
+#include "../pad_style.h"
 #include "../glgame.h"
 #include "../typer.h"
 #include "../ship.h"
@@ -129,7 +131,7 @@ void Overlay::replay_hud(const GLGame *glgame) {
   // chrome mid-screen, right on top of the action (field: Moto E14,
   // 2026-07-27) — the exact bug GLGame::exit_band() was re-anchored for.
   float lift = TapBand::bottom_lift();
-  char text[48];
+  char text[80];
   if (glgame->replay_speed_ != 1.0f) {
     snprintf(text, sizeof(text), "REPLAY x%g", (double)glgame->replay_speed_);
   } else {
@@ -172,7 +174,9 @@ void Overlay::replay_hud(const GLGame *glgame) {
     for (int i = 0; i < nc; i++)
       if (SDL_IsGameController(i)) { has_ctrl = true; break; }
     if (has_ctrl) {
-      snprintf(text, sizeof(text), "START PAUSE   B MENU");
+      snprintf(text, sizeof(text), "%s PAUSE   %s MENU",
+               pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START),
+               pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_B));
     } else {
       const GeneralKeys &gk = g_prefs.general_keys;
       snprintf(text, sizeof(text), "%c PAUSE   %c/%c SPEED   ESC MENU",
@@ -1316,10 +1320,13 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       // The join invitation blinks — it is an offer, not the only move here.
       if((glgame->current_time/1400) % 2 && !is_touch_mode()) {
         int next_seat = (int)glgame->players->size() + 1;
-        char join_hint[40];
+        char join_hint[64];
         if(glgame->has_free_controller()) {
+          // The free pad's vocabulary — a DualShock pilot is told to
+          // press OPTIONS, since that pad has no START.
           snprintf(join_hint, sizeof(join_hint),
-                   "player %d press start to join", next_seat);
+                   "player %d press %s to join", next_seat,
+                   pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START));
           Typer::draw_centered(0, top_y, join_hint, 8);
         }
 #ifndef _GAMING_XBOX
@@ -1396,9 +1403,15 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // binding; a pad pilot gets the bumper. Touch has its own button.
   if(!is_touch_mode() && !glship->show_help && !g_prefs.boost_hint_done &&
      !((glgame->current_time)/12000 % 2)) {
-    char hint[48];
+    char hint[64];
     if(glship->last_input_was_controller) {
-      snprintf(hint, sizeof(hint), "boost with left bumper");
+      // The bumper in this pilot's pad vocabulary; Xbox keeps the
+      // friendlier "left bumper" over the LB abbreviation.
+      const char *bl = glship->pad_hint(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+      if(strcmp(bl, "LB") == 0)
+        snprintf(hint, sizeof(hint), "boost with left bumper");
+      else
+        snprintf(hint, sizeof(hint), "boost with %s", bl);
     } else {
       int bk = glship->boost_key.primary();
       if(bk >= 33 && bk <= 126)
@@ -1414,8 +1427,11 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     // Machine) "press p" is an instruction the player cannot follow, and
     // reconnecting is the remedy that actually resumes (the returning pad
     // auto-binds and its START is recognised again).
+    char pad_unpause[64];
+    snprintf(pad_unpause, sizeof(pad_unpause), "press %s to resume",
+             glship->pad_hint(SDL_CONTROLLER_BUTTON_START));
     const char* unpause = glship->awaiting_pad()   ? "reconnect controller to resume"
-                        : glship->has_controller() ? "press start to resume"
+                        : glship->has_controller() ? pad_unpause
                                                    : "press p to resume";
     Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
   }

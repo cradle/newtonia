@@ -7,6 +7,7 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 
+#include "pad_style.h"
 #include "state_manager.h"
 #include "asteroid.h"
 #include "typer.h"
@@ -235,6 +236,29 @@ void special_up(int key, int x, int y) {
 // is also logged to stdout (greppable in headless driver runs and
 // Desktop-Mode terminal launches).
 static bool s_tap_debug = false;
+// NEWTONIA_TRACE=1: one unbuffered stderr line per startup step (and one
+// when the main loop returns), for a launch that dies before the first
+// stdout print — a Steam-launched process whose output Steam swallows, a
+// sandbox that ends it silently. stderr, not cout: it must survive an
+// exit that never flushes. Dev-only; no shipped launch sets it.
+// NEWTONIA_TRACE=/absolute/path appends to that file instead — for a
+// launch whose stdio never reaches anything (Steam's runtime container
+// swallowed even unbuffered stderr, field 2026-09-05).
+static FILE *startup_trace_out() {
+  static FILE *out = NULL;
+  static bool decided = false;
+  if (!decided) {
+    decided = true;
+    const char *t = SDL_getenv("NEWTONIA_TRACE");
+    if (t && t[0] == '/') out = fopen(t, "a");
+    else if (t) out = stderr;
+  }
+  return out;
+}
+static void startup_trace(const char *step) {
+  FILE *out = startup_trace_out();
+  if (out) { fprintf(out, "trace: %s\n", step); fflush(out); }
+}
 static std::string s_tap_debug_line;
 
 static void tap_debug_note(const char *line) {
@@ -500,7 +524,8 @@ void check_controller() {
           controllers[i] = SDL_GameControllerOpen(e.cdevice.which);
           if(controllers[i]) {
             controller_ids[i] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[i]));
-            std::cout << "Controller " << i+1 << " connected: " << SDL_GameControllerName(controllers[i]) << std::endl;
+            std::cout << "Controller " << i+1 << " connected: " << SDL_GameControllerName(controllers[i])
+                      << " (" << pad_style_name(pad_style_for(controllers[i])) << " glyphs)" << std::endl;
             game->controller_added(controllers[i]);
           }
           break;
@@ -513,6 +538,7 @@ void check_controller() {
           SDL_GameControllerClose(controllers[i]);
           controllers[i] = NULL;
           controller_ids[i] = -1;
+          pad_style_forget(removed_id);
           std::cout << "Controller " << i+1 << " disconnected" << std::endl;
           game->controller_removed(removed_id);
           break;
@@ -647,7 +673,8 @@ void init_controllers_and_audio() {
         controllers[opened] = SDL_GameControllerOpen(i);
         if (controllers[opened]) {
           controller_ids[opened] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[opened]));
-          std::cout << "Controller " << opened+1 << ": " << SDL_GameControllerName(controllers[opened]) << std::endl;
+          std::cout << "Controller " << opened+1 << ": " << SDL_GameControllerName(controllers[opened])
+                    << " (" << pad_style_name(pad_style_for(controllers[opened])) << " glyphs)" << std::endl;
           opened++;
         } else {
           std::cout << "Could not open gamecontroller " << i << ": " << SDL_GetError() << std::endl;
@@ -655,6 +682,16 @@ void init_controllers_and_audio() {
       }
     }
     if(opened == 0) std::cout << "No controllers found" << std::endl;
+    {
+      char line[160];
+      snprintf(line, sizeof(line), "controllers: SDL_NumJoysticks=%d opened=%d", SDL_NumJoysticks(), opened);
+      startup_trace(line);
+      for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d)", i,
+                 SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?", (int)SDL_IsGameController(i));
+        startup_trace(line);
+      }
+    }
   } else {
     std::cout << "SDL Failed to initialize" << std::endl;
     std::cout << SDL_GetError() << std::endl;
@@ -836,13 +873,16 @@ int main(int argc, char* argv[]) {
   // stream, before any of the platform services a capture has no use for.
   if (VideoCapture::requested()) return video_main(argc, argv);
   s_tap_debug = SDL_getenv("NEWTONIA_TAP_DEBUG") != NULL;
+  startup_trace("main: past the selftest/harness hooks");
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
+  startup_trace("steam_init done");
   // Must precede the first frame: the Steam backend registers its stat
   // callbacks here, and the SDK's automatic stats delivery is dispatched on
   // an early SteamAPI_RunCallbacks() — unheard registrations queue forever.
   Achievements::init();
+  startup_trace("Achievements::init done");
   // Register the invite backend before the first callback pump (an invite
   // accepted while running arrives via a Steam callback), and capture a
   // "+connect <code>" the platform may have appended on a cold launch — the
@@ -855,10 +895,13 @@ int main(int argc, char* argv[]) {
   // where a host announced its identity before the ticket existed and stayed
   // unverified for the session. A no-op off Steam (returns "").
   (void)net_local_verify_credential();
+  startup_trace("invites + verify credential done");
   load_preferences();
+  startup_trace("preferences loaded");
   old_width  = g_prefs.window_width;
   old_height = g_prefs.window_height;
   init(argc, argv, g_prefs.window_width, g_prefs.window_height);
+  startup_trace("window + GL init done");
 #ifdef __APPLE__
   enable_game_mode_macos();
 #endif
@@ -875,6 +918,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   init_controllers_and_audio();
+  startup_trace("controllers + audio done");
   atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < MAX_PLAYERS; i++) {
@@ -884,7 +928,9 @@ int main(int argc, char* argv[]) {
   install_macos_focus_observer(on_focus_lost, on_focus_gained);
 #endif
   resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
+  startup_trace("entering main loop");
   glutMainLoop();
+  startup_trace("main loop returned");
   save_preferences();
   for(int i = 0; i < MAX_PLAYERS; i++) {
     if(controllers[i] && SDL_GameControllerGetAttached(controllers[i])) {
