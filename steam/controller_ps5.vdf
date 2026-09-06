@@ -1,18 +1,18 @@
 "controller_mappings"
 {
 	"version"		"3"
-	"revision"		"92"
+	"revision"		"32"
 	"title"		"Newtonia Official (PlayStation)"
-	"description"		"Left stick steers, A fires, B fires the secondary, X and Y cycle weapons, Start pauses. Menu and Ship action sets."
+	"description"		"Left stick steers, Cross fires, Circle fires the secondary, Square and Triangle cycle weapons, Options pauses. Menu and Ship action sets."
 	"creator"		"76561197962648570"
 	"progenitor"		""
-	"url"		"workshop://3796703996"
+	"url"		"autosave:///home/glenn/snap/steam/common/.local/share/Steam/steamapps/common/Steam Controller Configs/2382842/config/4536720-beta/54c-ce6-245bfa.vdf"
 	"export_type"		"template"
 	"controller_type"		"controller_ps5"
-	"controller_caps"		"9978879"
+	"controller_caps"		"35148799"
 	"major_revision"		"0"
 	"minor_revision"		"0"
-	"Timestamp"		"1788689772"
+	"Timestamp"		"1788700914"
 	"actions"
 	{
 		"Menu"
@@ -131,7 +131,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button B, , "
+							"binding"		"xinput_button A, , "
 						}
 					}
 				}
@@ -147,7 +147,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button A, , "
+							"binding"		"xinput_button B, , "
 						}
 					}
 				}
@@ -163,7 +163,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button SHOULDER_LEFT, , "
+							"binding"		"xinput_button X, , "
 						}
 					}
 				}
@@ -560,7 +560,59 @@
 	}
 	"group"
 	{
+		"id"		"10"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button START, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
 		"id"		"11"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button SELECT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"13"
 		"mode"		"four_buttons"
 		"name"		""
 		"description"		""
@@ -598,53 +650,11 @@
 				{
 				}
 			}
-			"button_x"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"game_action Menu paste, Paste Code, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
-			"button_y"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"game_action Menu Keyboard, Keyboard, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
 		}
 	}
 	"group"
 	{
-		"id"		"12"
-		"mode"		"trigger"
-		"name"		""
-		"description"		""
-		"inputs"
-		{
-		}
-	}
-	"group"
-	{
-		"id"		"13"
+		"id"		"14"
 		"mode"		"trigger"
 		"name"		""
 		"description"		""
@@ -655,6 +665,36 @@
 	"group"
 	{
 		"id"		"15"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu confirm, Confirm, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"17"
 		"mode"		"four_buttons"
 		"name"		""
 		"description"		""
@@ -728,61 +768,8 @@
 	}
 	"group"
 	{
-		"id"		"16"
+		"id"		"18"
 		"mode"		"trigger"
-		"name"		""
-		"description"		""
-		"inputs"
-		{
-		}
-	}
-	"group"
-	{
-		"id"		"17"
-		"mode"		"trigger"
-		"name"		""
-		"description"		""
-		"inputs"
-		{
-		}
-	}
-	"group"
-	{
-		"id"		"21"
-		"mode"		"dpad"
-		"name"		""
-		"description"		""
-		"inputs"
-		{
-		}
-		"settings"
-		{
-			"requires_click"		"0"
-			"haptic_intensity_override"		"0"
-		}
-	}
-	"group"
-	{
-		"id"		"24"
-		"mode"		"joystick_move"
-		"name"		""
-		"description"		""
-		"inputs"
-		{
-		}
-		"settings"
-		{
-			"virtual_mode"		"1"
-		}
-		"gameactions"
-		{
-			"Menu"		"nav"
-		}
-	}
-	"group"
-	{
-		"id"		"25"
-		"mode"		"joystick_move"
 		"name"		""
 		"description"		""
 		"inputs"
@@ -795,7 +782,11 @@
 					{
 						"bindings"
 						{
-							"binding"		"game_action Ship rotate_view, Rotate View, , "
+							"binding"		"game_action Ship secondary, Fire Secondary, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
 						}
 					}
 				}
@@ -804,19 +795,11 @@
 				}
 			}
 		}
-		"settings"
-		{
-			"virtual_mode"		"1"
-		}
-		"gameactions"
-		{
-			"Ship"		"steer"
-		}
 	}
 	"group"
 	{
-		"id"		"26"
-		"mode"		"joystick_move"
+		"id"		"19"
+		"mode"		"trigger"
 		"name"		""
 		"description"		""
 		"inputs"
@@ -829,7 +812,11 @@
 					{
 						"bindings"
 						{
-							"binding"		"game_action Ship help, Controls Card, , "
+							"binding"		"game_action Ship fire, Fire, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
 						}
 					}
 				}
@@ -837,14 +824,6 @@
 				{
 				}
 			}
-		}
-		"settings"
-		{
-			"virtual_mode"		"1"
-		}
-		"gameactions"
-		{
-			"Ship"		"steer"
 		}
 	}
 	"group"
@@ -867,7 +846,7 @@
 	}
 	"group"
 	{
-		"id"		"28"
+		"id"		"34"
 		"mode"		"dpad"
 		"name"		""
 		"description"		""
@@ -946,12 +925,107 @@
 	}
 	"group"
 	{
-		"id"		"29"
+		"id"		"40"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship thrust, Thrust, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship reverse, Reverse, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship turn_right, Turn Right, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship turn_left, Turn Left, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"46"
 		"mode"		"joystick_move"
 		"name"		""
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship rotate_view, Rotate View, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 		"settings"
 		{
@@ -964,17 +1038,36 @@
 	}
 	"group"
 	{
-		"id"		"30"
-		"mode"		"dpad"
+		"id"		"47"
+		"mode"		"joystick_move"
 		"name"		""
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship help, Controls Card, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 		"settings"
 		{
-			"requires_click"		"0"
-			"haptic_intensity_override"		"0"
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"Ship"		"steer"
 		}
 	}
 	"group"
@@ -1025,7 +1118,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button X, , "
+							"binding"		"xinput_button shoulder_left, , "
 						}
 					}
 				}
@@ -1049,27 +1142,11 @@
 				{
 				}
 			}
-			"button_capture"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"controller_action SCREENSHOT, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
 		}
 	}
 	"group"
 	{
-		"id"		"10"
+		"id"		"12"
 		"mode"		"switches"
 		"name"		""
 		"description"		""
@@ -1111,7 +1188,7 @@
 	}
 	"group"
 	{
-		"id"		"14"
+		"id"		"16"
 		"mode"		"switches"
 		"name"		""
 		"description"		""
@@ -1157,7 +1234,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"game_action Ship teleport, Teleport, , "
+							"binding"		"game_action Ship boost, Boost, , "
 						}
 					}
 				}
@@ -1173,7 +1250,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"game_action Ship boost, Boost, , "
+							"binding"		"game_action Ship teleport, Teleport, , "
 						}
 					}
 				}
@@ -1189,14 +1266,12 @@
 		"name"		"Menu"
 		"group_source_bindings"
 		{
-			"10"		"switch active"
-			"11"		"button_diamond active"
-			"12"		"left_trigger active"
-			"13"		"right_trigger active"
-			"21"		"dpad inactive"
-			"28"		"dpad active"
-			"24"		"joystick active"
-			"27"		"right_joystick active"
+			"12"		"switch active"
+			"13"		"button_diamond active"
+			"14"		"left_trigger active"
+			"15"		"right_trigger active"
+			"27"		"joystick active"
+			"34"		"dpad active"
 		}
 	}
 	"preset"
@@ -1205,14 +1280,13 @@
 		"name"		"Ship"
 		"group_source_bindings"
 		{
-			"14"		"switch active"
-			"15"		"button_diamond active"
-			"16"		"left_trigger active"
-			"17"		"right_trigger active"
-			"29"		"dpad active"
-			"30"		"dpad inactive"
-			"25"		"joystick active"
-			"26"		"right_joystick active"
+			"16"		"switch active"
+			"17"		"button_diamond active"
+			"18"		"left_trigger active"
+			"19"		"right_trigger active"
+			"46"		"joystick active"
+			"40"		"dpad active"
+			"47"		"right_joystick active"
 		}
 	}
 	"settings"
