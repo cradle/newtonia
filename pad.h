@@ -201,6 +201,13 @@ const char *pad_action_label_any(PadAction a);
 // actions have none on the SDL path, so the F1 card omits their rows
 // there and shows them for a Steam layout that binds them.
 bool pad_action_bound(PadId id, PadAction a);
+// `a` when the pad binds it, else `fallback` — for a hint whose screen
+// answers two actions (the attract screen dismisses on Start OR Confirm,
+// the pause screen resumes on Start OR a Confirm of its RESUME row, an
+// unseated pad joins on Start OR Fire): a Steam layout that binds only
+// the second must not read "PRESS -" (field, 2026-09-06). On the SDL
+// path every listed action is bound, so this is always `a` there.
+PadAction pad_action_or(PadId id, PadAction a, PadAction fallback);
 
 // Steam's overlay configurator for this pad's layout (ISteamInput::
 // ShowBindingPanel). Only a Steam pad has one; false otherwise.

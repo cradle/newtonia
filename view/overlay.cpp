@@ -1330,9 +1330,11 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         if(glgame->has_free_controller()) {
           // The free pad's vocabulary — a DualShock pilot is told to
           // press OPTIONS, since that pad has no START.
+          // Start joins, and so does Fire (an unknown pad's A): name
+          // whichever the free pad's layout binds.
           snprintf(join_hint, sizeof(join_hint),
                    "player %d press %s to join", next_seat,
-                   pad_action_label_any(PAD_ACT_PAUSE));
+                   pad_action_label_any(pad_action_or(PAD_NONE, PAD_ACT_PAUSE, PAD_ACT_FIRE)));
           Typer::draw_centered(0, top_y, join_hint, 8);
         }
 #ifndef _GAMING_XBOX
@@ -1434,8 +1436,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     // reconnecting is the remedy that actually resumes (the returning pad
     // auto-binds and its START is recognised again).
     char pad_unpause[64];
+    // Start resumes directly; Confirm answers the RESUME row every pause
+    // opens on — name whichever this seat's layout binds.
     snprintf(pad_unpause, sizeof(pad_unpause), "press %s to resume",
-             glship->pad_hint(PAD_ACT_START));
+             glship->pad_hint(pad_action_or(glship->controller_id(), PAD_ACT_START, PAD_ACT_CONFIRM)));
     const char* unpause = glship->awaiting_pad()   ? "reconnect controller to resume"
                         : glship->has_controller() ? pad_unpause
                                                    : "press p to resume";

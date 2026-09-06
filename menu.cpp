@@ -1040,8 +1040,10 @@ void Menu::draw() {
           // on Xbox, OPTIONS on PlayStation — and under Steam Input,
           // whatever the layout binds the Menu set's start action to.
           char pad_prompt[48];
+          // Start dismisses it, and so does Confirm — name whichever the
+          // layout binds (pad_action_or).
           snprintf(pad_prompt, sizeof(pad_prompt), "press %s",
-                   pad_action_label_any(PAD_ACT_START));
+                   pad_action_label_any(pad_action_or(PAD_NONE, PAD_ACT_START, PAD_ACT_CONFIRM)));
           Typer::draw_centered(0, title_bot - gap, has_ctrl ? pad_prompt : "press enter", sz);
         }
       }

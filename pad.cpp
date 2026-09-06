@@ -283,6 +283,10 @@ bool pad_action_bound(PadId id, PadAction a) {
   return label_for(id, a).bound;
 }
 
+PadAction pad_action_or(PadId id, PadAction a, PadAction fallback) {
+  return pad_action_bound(id, a) ? a : fallback;
+}
+
 bool pad_has_binding_panel(PadId id) {
   return pad_is_steam(id) && steam_input_attached(id);
 }
