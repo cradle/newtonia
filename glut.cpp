@@ -528,21 +528,29 @@ static void sdl_pads_sync() {
   Uint32 now = SDL_GetTicks();
   if (now - last < 250) return;
   last = now;
+  // Close first, open second: a seat whose pad is closed here waits for
+  // the next pad (GLShip::awaiting_pad), so the replacement opened below
+  // lands on the same seat instead of a new one.
+  int n = SDL_NumJoysticks();
   for (int i = 0; i < MAX_PLAYERS; i++) {
     if (!controllers[i]) continue;
     SDL_JoystickID id = controller_ids[i];
+    int dev = -1;
+    for (int d = 0; d < n; d++)
+      if (SDL_JoystickGetDeviceInstanceID(d) == id) { dev = d; break; }
+    // pad.h's whole rule — an adopted handle's device, or the raw pad
+    // behind one Steam runs — not just the adopted case.
+    if (dev < 0 || !pad_sdl_device_is_steam_virtual(dev)) continue;
     unsigned long long h = pad_sdl_steam_handle(id);
-    if (!steam_input_owns_handle(h)) continue;
     SDL_GameControllerClose(controllers[i]);
     controllers[i] = NULL;
     controller_ids[i] = -1;
     pad_forget(id);
-    pad_sdl_note_steam_handle(id, h);  // keep it known-owned, no re-probe
-    startup_tracef("controllers: SDL pad %d (instance %d) released — the Steam backend drives handle %llu",
-                   i + 1, (int)id, h);
+    pad_sdl_note_steam_handle(id, h);  // keep the note, no re-probe
+    startup_tracef("controllers: SDL pad %d (instance %d) released — %s", i + 1, (int)id,
+                   h ? "the Steam backend drives its handle" : "the raw pad behind Steam's virtual gamepad");
     game->controller_removed(id);
   }
-  int n = SDL_NumJoysticks();
   for (int d = 0; d < n; d++) {
     if (!SDL_IsGameController(d)) continue;
     SDL_JoystickID inst = SDL_JoystickGetDeviceInstanceID(d);
@@ -592,13 +600,13 @@ void check_controller() {
       bool known = false;
       for(int i = 0; i < MAX_PLAYERS; i++)
         if(controller_ids[i] == added_id) known = true;
-      // Steam's emulation of a pad the Steam Input backend already
-      // drives: not ours to open (pad.h). Probe the handle first — this is
-      // the device's first sighting.
-      if(steam_input_active()) sdl_probe_steam_handle(e.cdevice.which);
-      if(pad_sdl_device_is_steam_virtual(e.cdevice.which)) {
+      // Beside the Steam backend, arrivals go through sdl_pads_sync, which
+      // closes what the newcomer makes redundant BEFORE opening it (so a
+      // seat's pad is replaced, not doubled). Probe the handle now — the
+      // device's first sighting — and leave the open to the sync.
+      if(steam_input_active()) {
+        sdl_probe_steam_handle(e.cdevice.which);
         known = true;
-        startup_tracef("controllers: skipping Steam virtual gamepad (device %d)", e.cdevice.which);
       }
       if(!known) for(int i = 0; i < LOCAL_PLAYER_CAP; i++) {
         if(controllers[i] == NULL) {
