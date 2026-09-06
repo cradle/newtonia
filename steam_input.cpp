@@ -41,6 +41,15 @@ struct SteamPad {
   bool set_known;
   PadActionSet set;
   bool held[PAD_ACT_COUNT];   // last state sent for each digital action
+  // A digital action fires only after it has been SEEN RELEASED since its
+  // set was activated. The same physical button is `pause` in the Ship
+  // set and `start` in the Menu set, and a pause switches the set — so a
+  // Start still held across the switch read as a fresh press in the new
+  // set, which toggled the pause back, which switched the set again:
+  // Start oscillated the pause for as long as it was held (field,
+  // 2026-09-06). A press belongs to the set it began in; the next set
+  // needs its own press.
+  bool primed[PAD_ACT_COUNT];
   Sint16 axis_x, axis_y;      // last emitted stick values
 };
 // An adopted pad whose layout stops using the actions (the player picked a
@@ -371,6 +380,7 @@ void sync_set(StateManager *game, SteamPad &p, PadActionSet want) {
   in->ActivateActionSet(p.handle, g_set[want]);
   p.set = want;
   p.set_known = true;
+  for (int a = 0; a < PAD_ACT_COUNT; a++) p.primed[a] = false;
   if (p.adopted) {
     startup_tracef("steam input: pad %d -> action set %s", p.id - PAD_STEAM_BASE,
                    pad_action_set_name(want));
@@ -395,7 +405,14 @@ void poll_pad(StateManager *game, SteamPad &p, PadActionSet want) {
       continue;
     }
     InputDigitalActionData_t d = in->GetDigitalActionData(p.handle, g_digital[a]);
-    bool down = d.bActive && d.bState;
+    // Not in the active set yet (the switch lands a frame late): nothing
+    // to read, and not yet a basis for priming either.
+    if (!d.bActive) continue;
+    bool down = d.bState;
+    if (!p.primed[a]) {
+      if (!down) p.primed[a] = true;  // released once: live from here
+      continue;
+    }
     if (down == p.held[a]) continue;
     p.held[a] = down;
     emit_button(game, p.id, info.button, down);
