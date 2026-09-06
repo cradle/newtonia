@@ -136,10 +136,14 @@ inline const char *pad_action_set_name(PadActionSet s) {
 // pad behind one of them (Linux: SDL's hidapi path reads the raw pad even
 // while Steam's evdev grab keeps others out, so it arrived beside the
 // virtual one and drove a second seat with the same input — field,
-// 2026-09-06) — skipped once every presented handle already has a driver
-// (adopted, or an SDL device carrying it); kept while some handle has
-// none, and always when Steam presents nothing (Steam Input off: the raw
-// device IS the pad). Always false when the Steam backend is inactive
+// 2026-09-06) — skipped once every pad Steam runs already has a driver
+// (adopted, or an SDL device carrying its handle); kept while some has
+// none, and always when Steam runs nothing (Steam Input off: the raw
+// device IS the pad). "Steam runs it" is read from EITHER the API's
+// presented handles or an SDL device carrying a handle: the API presented
+// nothing while Steam's virtual gamepad existed (field, same day), and a
+// Gamepad-template remap only reaches the game through that device — the
+// raw pad never sees it. Always false when the Steam backend is inactive
 // (then the virtual gamepad IS the pad, as on every shipped build).
 bool pad_sdl_device_is_steam_virtual(int device_index);
 // Whether an SDL device has been probed for its Steam handle yet

@@ -162,15 +162,24 @@ bool pad_sdl_device_is_steam_virtual(int device_index) {
 #endif
   unsigned long long h = pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(device_index));
   if (h) return steam_input_owns_handle(h);
-  // No handle: the physical pad behind a Steam-presented one, redundant
-  // once every presented handle has a driver (see pad.h).
+  // No handle: the physical pad behind one Steam is running. Steam is
+  // running a pad when its API presents a handle OR when an SDL device
+  // carries one (Steam's virtual gamepad — the API may present nothing
+  // while that device exists, field 2026-09-06, and a template remap only
+  // ever reaches the game through that device). The raw pad is redundant
+  // once every pad Steam runs has a driver — adopted by the backend, or an
+  // SDL device carrying its handle (see pad.h); kept while some pad has
+  // none (the handle unreadable), and always when Steam runs none (Steam
+  // Input off: the raw device IS the pad).
   int presented = steam_input_handle_count();
-  if (presented == 0) return false;
-  int drivers = steam_input_count();  // adopted by the backend
+  int with_handle = 0;
   int n = SDL_NumJoysticks();
   for (int i = 0; i < n; i++)
-    if (pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(i)) != 0) drivers++;
-  return drivers >= presented;
+    if (pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(i)) != 0) with_handle++;
+  int running = presented > with_handle ? presented : with_handle;
+  if (running == 0) return false;
+  int drivers = steam_input_count() + with_handle;
+  return drivers >= running;
 }
 
 int pad_count() {
