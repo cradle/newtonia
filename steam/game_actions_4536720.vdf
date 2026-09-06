@@ -69,6 +69,8 @@
 	{
 		"english"
 		{
+			"Title"	"Newtonia"
+			"Description"	"Official layout for Newtonia"
 			"Set_Ship"	"Ship"
 			"Action_Steer"	"Steer"
 			"Action_Thrust"	"Thrust"
