@@ -50,6 +50,11 @@ struct SteamPad {
   // 2026-09-06). A press belongs to the set it began in; the next set
   // needs its own press.
   bool primed[PAD_ACT_COUNT];
+  // Some action in some set has reported an origin: the layout's
+  // bindings are loaded. Until then every action reads unbound, which is
+  // "not yet", not "unbound".
+  bool bindings_seen;
+  int bindings_poll;          // ticks until the next check while unseen
   Sint16 axis_x, axis_y;      // last emitted stick values
 };
 // An adopted pad whose layout stops using the actions (the player picked a
@@ -388,11 +393,34 @@ void sync_set(StateManager *game, SteamPad &p, PadActionSet want) {
   }
 }
 
+// Have the layout's bindings reached this pad yet? Any origin on any
+// action of the active set says yes; checked every ~half second until so.
+void check_bindings(ISteamInput *in, SteamPad &p, PadActionSet set) {
+  if (p.bindings_seen) return;
+  if (p.bindings_poll-- > 0) return;
+  p.bindings_poll = 30;
+  for (int a = 0; a < PAD_ACT_COUNT; a++) {
+    const PadActionInfo &info = pad_action_info((PadAction)a);
+    if (info.set != set) continue;
+    EInputActionOrigin origins[STEAM_INPUT_MAX_ORIGINS];
+    int n = info.analog
+        ? in->GetAnalogActionOrigins(p.handle, g_set[set], g_analog[a], origins)
+        : in->GetDigitalActionOrigins(p.handle, g_set[set], g_digital[a], origins);
+    if (n > 0) {
+      p.bindings_seen = true;
+      startup_tracef("steam input: pad %d bindings loaded", p.id - PAD_STEAM_BASE);
+      trace_set(in, p, set);
+      return;
+    }
+  }
+}
+
 // Steam's analog joystick_move data is up-positive (XInput's frame — the
 // API grew out of the gamepad it emulates); SDL's LEFTY is down-positive.
 // Negate on the way through so the ship handlers see what they always saw.
 void poll_pad(StateManager *game, SteamPad &p, PadActionSet want) {
   ISteamInput *in = SteamInput();
+  check_bindings(in, p, want);
   for (int a = 0; a < PAD_ACT_COUNT; a++) {
     const PadActionInfo &info = pad_action_info((PadAction)a);
     if (info.set != want) continue;
@@ -629,7 +657,7 @@ int steam_input_action_origin(PadId id, PadAction a, int *button,
   int n = info.analog
       ? in->GetAnalogActionOrigins(p->handle, g_set[info.set], g_analog[a], origins)
       : in->GetDigitalActionOrigins(p->handle, g_set[info.set], g_digital[a], origins);
-  if (n <= 0) return 0;
+  if (n <= 0) return p->bindings_seen ? 0 : -1;
   if (n > STEAM_INPUT_MAX_ORIGINS) n = STEAM_INPUT_MAX_ORIGINS;
   // The first origin the table knows wins; otherwise the first origin's
   // own name (a grip, a trackpad).

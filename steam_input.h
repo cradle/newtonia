@@ -73,7 +73,11 @@ bool steam_input_show_binding_panel(PadId id);
 // The layout's origin for an action: *button receives an
 // SDL_GameControllerButton / PadPseudoButton when the first origin is a
 // standard position, else -1 with *text naming it in Steam's words
-// (a back grip, a trackpad). Returns the origin count (0 = unbound).
+// (a back grip, a trackpad). Returns the origin count: 0 = the layout
+// leaves it unbound; -1 = the pad has NO bindings loaded yet at all
+// (Steam applies a layout when the game window has focus, and reported
+// every action unbound until then — field, 2026-09-06), which the caller
+// renders as the type's default position rather than "-".
 int steam_input_action_origin(PadId id, PadAction a, int *button,
                               const char **text);
 

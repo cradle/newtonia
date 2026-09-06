@@ -86,6 +86,13 @@ void resolve_label(PadId id, PadAction a, LabelEntry &e) {
     int button = -1;
     const char *text = "";
     int n = steam_input_action_origin(id, a, &button, &text);
+    if (n < 0) {
+      // No bindings loaded for this pad yet (Steam applies them on
+      // focus): the type's default position, not an "unbound" claim.
+      e.bound = info.button != PAD_BUTTON_ZOOM_IN && info.button != PAD_BUTTON_ZOOM_OUT;
+      e.label = e.bound ? pad_button_label(pad_style_for_id(id), info.button) : "-";
+      return;
+    }
     e.bound = n > 0;
     if (n <= 0) e.label = "-";
     else if (button >= 0) e.label = pad_button_label(pad_style_for_id(id), button);
