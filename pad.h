@@ -118,6 +118,17 @@ inline const char *pad_action_set_name(PadActionSet s) {
 
 // ---- Runtime queries ------------------------------------------------
 
+// An SDL device (by SDL device index) that is Steam's OWN emulation of a
+// pad Steam Input already presents through the API — Valve's "Steam
+// Virtual Gamepad", vendor 0x28DE product 0x11FF. When the Steam backend
+// is active these are skipped on the SDL side (the entry point never
+// opens them, enumeration never lists them), so a pad arrives exactly once
+// (STEAMINPUT.md §5 rule 1, per DEVICE); a pad Steam does NOT present — one
+// the player disabled Steam Input for, a device Steam does not model —
+// stays a plain SDL pad. Always false when the Steam backend is inactive
+// (then the virtual gamepad IS the pad, as on every shipped build).
+bool pad_sdl_device_is_steam_virtual(int device_index);
+
 // Connected right now (an id the backend still reports). PAD_NONE: false.
 bool pad_attached(PadId id);
 // Product name for logs — never NULL.

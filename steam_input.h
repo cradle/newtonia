@@ -16,12 +16,16 @@
 // the poll activates it on every pad the moment it changes, releasing
 // whatever the outgoing set still held.
 //
-// The two rules of §5: (1) one owner per pad — glut.cpp initialises SDL
-// WITHOUT the controller subsystem when this backend is active, so a pad
-// Steam also emulates can never arrive twice; (2) fallback is total —
-// Init false (not launched by Steam, client too old, NEWTONIA_NO_STEAM,
-// NEWTONIA_STEAM_INPUT=0) means the SDL backend exactly as before, and
-// nothing here is consulted again. Decided once at startup.
+// The two rules of §5: (1) one owner per pad, kept per DEVICE — SDL's
+// controller subsystem stays up beside this backend, and glut.cpp/pad.cpp
+// skip Steam's own virtual gamepads (its emulation of the pads this API
+// presents; pad_sdl_device_is_steam_virtual), so a pad Steam presents
+// arrives once and a pad Steam does not present (Steam Input disabled for
+// it) still arrives through SDL; (2) fallback is total — Init false (not
+// launched by Steam, client too old, NEWTONIA_NO_STEAM,
+// NEWTONIA_STEAM_INPUT=0) OR action sets Steam does not know (the In-Game
+// Actions file not registered) means the SDL backend exactly as before,
+// and nothing here is consulted again. Decided once at startup.
 //
 // Every decision traces through startup_trace (NEWTONIA_TRACE) — the only
 // reliable output channel under Steam's runtime container (§9).

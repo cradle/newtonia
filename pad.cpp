@@ -1,9 +1,10 @@
 // The pad seam — see pad.h. SDL half here; the Steam Input half is
-// steam_input.cpp, consulted for ids from PAD_STEAM_BASE up and, when it
-// is active, in place of SDL for enumeration (SDL's controller subsystem is
-// not initialised then — STEAMINPUT.md §5 rule 1 — so it would report
-// nothing anyway; the explicit gate keeps that a decision, not a side
-// effect).
+// steam_input.cpp, consulted for ids from PAD_STEAM_BASE up. When it is
+// active the two coexist per DEVICE: enumeration lists the Steam pads
+// first, then every SDL pad that is not Steam's own virtual gamepad
+// (pad_sdl_device_is_steam_virtual) — so a pad Steam presents arrives once,
+// through the API, and a pad Steam does not present (Steam Input disabled
+// for it) still arrives, through SDL.
 
 #include "pad.h"
 #include "steam_input.h"
@@ -26,8 +27,14 @@ std::map<PadId, PadStyle> &style_cache() {
 PadId g_last_id = PAD_NONE;  // pad_any() / pad_style_any()
 
 SDL_GameController *sdl_pad(PadId id) {
-  if (id == PAD_NONE || pad_is_steam(id) || steam_input_active()) return NULL;
+  if (id == PAD_NONE || pad_is_steam(id)) return NULL;
   return SDL_GameControllerFromInstanceID(id);
+}
+
+// SDL device indices the SDL half lists: game controllers, minus Steam's
+// virtual gamepads while the Steam backend presents the real pads.
+bool sdl_device_listed(int i) {
+  return SDL_IsGameController(i) && !pad_sdl_device_is_steam_virtual(i);
 }
 
 bool forced_style(PadStyle *out) {
@@ -124,19 +131,31 @@ const char *pad_name(PadId id) {
   return n ? n : "?";
 }
 
+bool pad_sdl_device_is_steam_virtual(int device_index) {
+  if (!steam_input_active()) return false;
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+  return SDL_JoystickGetDeviceVendor(device_index) == 0x28DE &&
+         SDL_JoystickGetDeviceProduct(device_index) == 0x11FF;
+#else
+  (void)device_index;
+  return false;
+#endif
+}
+
 int pad_count() {
-  if (steam_input_active()) return steam_input_count();
-  int n = SDL_NumJoysticks(), pads = 0;
+  int pads = steam_input_count();
+  int n = SDL_NumJoysticks();
   for (int i = 0; i < n; i++)
-    if (SDL_IsGameController(i)) pads++;
+    if (sdl_device_listed(i)) pads++;
   return pads;
 }
 
 PadId pad_id_at(int index) {
-  if (steam_input_active()) return steam_input_id_at(index);
-  int n = SDL_NumJoysticks(), seen = 0;
+  int steam = steam_input_count();
+  if (index < steam) return steam_input_id_at(index);
+  int n = SDL_NumJoysticks(), seen = steam;
   for (int i = 0; i < n; i++) {
-    if (!SDL_IsGameController(i)) continue;
+    if (!sdl_device_listed(i)) continue;
     if (seen == index) return SDL_JoystickGetDeviceInstanceID(i);
     seen++;
   }

@@ -18,11 +18,17 @@
 
 namespace {
 
-// Where the depot carries the In-Game Actions file (steam/ in the repo).
-// The portal's "bundled with game" setting and SetInputActionManifestFilePath
-// both point at it; SDL_GetBasePath is the executable's directory on
+// Where the depot carries the In-Game Actions file (steam/ in the repo):
+// beside the binary — SDL_GetBasePath is the executable's directory on
 // Linux/Windows and Contents/Resources inside the macOS bundle, and the
-// deploy workflow stages the file at each of those.
+// deploy workflow stages the file at each of those. Steam learns the
+// actions from the PORTAL (the Steam Input configurator section, where
+// the IGA is uploaded and the bundled-config path points here) or, in
+// development, from <Steam>/controller_config/. NOT from
+// SetInputActionManifestFilePath: that call takes a different file — an
+// "input manifest" listing the IGA and per-type configuration files —
+// and REFUSED the IGA itself (field, 2026-09-06). The presence check
+// below is a trace aid only.
 const char *MANIFEST_NAME = "game_actions_4536720.vdf";
 
 struct SteamPad {
@@ -348,20 +354,13 @@ bool steam_input_init() {
     startup_trace("steam input: no ISteamInput (SDL pads)");
     return false;
   }
-  // The bundled manifest, when it rides beside the binary; the portal's
-  // bundled-config setting covers a depot that stages it elsewhere.
   char *base = SDL_GetBasePath();
   if (base) {
     std::string path = std::string(base) + MANIFEST_NAME;
     SDL_free(base);
     SDL_RWops *f = SDL_RWFromFile(path.c_str(), "rb");
-    if (f) {
-      SDL_RWclose(f);
-      bool ok = in->SetInputActionManifestFilePath(path.c_str());
-      startup_tracef("steam input: manifest %s (%s)", path.c_str(), ok ? "set" : "REFUSED");
-    } else {
-      startup_tracef("steam input: no manifest at %s (portal config governs)", path.c_str());
-    }
+    if (f) SDL_RWclose(f);
+    startup_tracef("steam input: IGA %s beside the binary at %s", f ? "present" : "ABSENT", path.c_str());
   }
   // Explicit RunFrame: the poll paces its own reads, right before the
   // game tick, instead of riding the callback pump.
@@ -369,8 +368,22 @@ bool steam_input_init() {
     startup_trace("steam input: Init FAILED (SDL pads)");
     return false;
   }
+  in->RunFrame();
   for (int s = 0; s < PAD_SET_COUNT; s++)
     g_set[s] = in->GetActionSetHandle(pad_action_set_name((PadActionSet)s));
+  // A 0 handle means Steam has no In-Game Actions for this app — the IGA
+  // is neither uploaded in the portal nor in controller_config — so no
+  // layout could ever bind anything and every pad would be inert (field,
+  // 2026-09-06: "PRESS -" and no controller at all). That is STEAMINPUT.md
+  // §5 rule 2's "fallback is total" case in another guise: hand the pads
+  // back to SDL, where Steam's gamepad emulation drives them exactly as the
+  // shipped build's.
+  if (g_set[PAD_SET_SHIP] == 0 || g_set[PAD_SET_MENU] == 0) {
+    startup_trace("steam input: action sets UNKNOWN — In-Game Actions file not registered "
+                  "(portal Steam Input section, or <Steam>/controller_config/) — SDL pads");
+    in->Shutdown();
+    return false;
+  }
   for (int a = 0; a < PAD_ACT_COUNT; a++) {
     const PadActionInfo &info = pad_action_info((PadAction)a);
     if (info.analog) g_analog[a] = in->GetAnalogActionHandle(info.name);

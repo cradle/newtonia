@@ -59,9 +59,10 @@ StateManager *game;
 
 // The SDL pad backend's table (pad.h): the opened handles and their
 // instance ids, which ARE the game's PadIds on this path. One -1 per slot:
-// 0 is a VALID SDL instance id. Empty for the whole run when the Steam
-// Input backend owns the pads (steam_input.h) — SDL's controller
-// subsystem is not initialised then.
+// 0 is a VALID SDL instance id. Beside the Steam Input backend
+// (steam_input.h) it holds only pads Steam does NOT present — Steam's own
+// virtual gamepads are skipped (pad_sdl_device_is_steam_virtual), so a
+// pad never arrives twice.
 SDL_GameController *controllers[MAX_PLAYERS] = {};
 SDL_JoystickID controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1};
 bool ENABLE_AUDIO = true;
@@ -511,6 +512,12 @@ void check_controller() {
       bool known = false;
       for(int i = 0; i < MAX_PLAYERS; i++)
         if(controller_ids[i] == added_id) known = true;
+      // Steam's emulation of a pad the Steam Input backend already
+      // presents: not ours to open (pad.h).
+      if(pad_sdl_device_is_steam_virtual(e.cdevice.which)) {
+        known = true;
+        startup_tracef("controllers: skipping Steam virtual gamepad (device %d)", e.cdevice.which);
+      }
       if(!known) for(int i = 0; i < LOCAL_PLAYER_CAP; i++) {
         if(controllers[i] == NULL) {
           controllers[i] = SDL_GameControllerOpen(e.cdevice.which);
@@ -638,13 +645,15 @@ void isVisible(int state) {
 void init_controllers_and_audio() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
-  // STEAMINPUT.md §5 rule 1 — a pad has exactly one owner: when the Steam
-  // Input backend took the pads, SDL's controller subsystem stays OFF, so a
-  // pad Steam also emulates (a layout with legacy gamepad output) can
-  // never arrive twice. SDL_INIT_EVENTS still comes up (it is implied by
-  // audio/video below and needed for SDL_QUIT), and the scan under
-  // SDL_NumJoysticks() reports nothing.
-  Uint32 SDL_INIT_FLAGS = steam_input_active() ? SDL_INIT_EVENTS : SDL_INIT_GAMECONTROLLER;
+  // STEAMINPUT.md §5 rule 1 — a pad has exactly one owner — is kept per
+  // DEVICE, not per backend: SDL's controller subsystem comes up beside
+  // the Steam Input backend, and the scans below skip Steam's own virtual
+  // gamepads (the emulation of pads the API already presents), so a pad
+  // Steam presents arrives once and a pad Steam does NOT present (Steam
+  // Input disabled for it) still arrives through SDL. Silencing SDL
+  // wholesale left the second kind with no controller at all (field,
+  // 2026-09-06).
+  Uint32 SDL_INIT_FLAGS = SDL_INIT_GAMECONTROLLER;
   if(ENABLE_AUDIO) {
     SDL_INIT_FLAGS |= SDL_INIT_AUDIO;
   }
@@ -667,10 +676,10 @@ void init_controllers_and_audio() {
       Mix_AllocateChannels(128);
       Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
     }
-    if (!steam_input_active()) SDL_JoystickEventState(SDL_ENABLE);
+    SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
-    for (int i = 0; !steam_input_active() && i < SDL_NumJoysticks() && opened < LOCAL_PLAYER_CAP; ++i) {
-      if (SDL_IsGameController(i)) {
+    for (int i = 0; i < SDL_NumJoysticks() && opened < LOCAL_PLAYER_CAP; ++i) {
+      if (SDL_IsGameController(i) && !pad_sdl_device_is_steam_virtual(i)) {
         controllers[opened] = SDL_GameControllerOpen(i);
         if (controllers[opened]) {
           controller_ids[opened] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[opened]));
@@ -683,15 +692,21 @@ void init_controllers_and_audio() {
       }
     }
     if(opened == 0 && !steam_input_active()) std::cout << "No controllers found" << std::endl;
-    if(steam_input_active()) std::cout << "Controllers: Steam Input owns them (SDL pads off)" << std::endl;
+    if(steam_input_active()) std::cout << "Controllers: Steam Input presents its pads; SDL keeps the rest" << std::endl;
     {
-      char line[160];
+      char line[200];
       snprintf(line, sizeof(line), "controllers: SDL_NumJoysticks=%d opened=%d steam_input=%d", SDL_NumJoysticks(), opened,
                (int)steam_input_active());
       startup_trace(line);
       for (int i = 0; i < SDL_NumJoysticks(); i++) {
-        snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d)", i,
-                 SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?", (int)SDL_IsGameController(i));
+        snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d vid=%04x pid=%04x steam_virtual=%d)", i,
+                 SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?", (int)SDL_IsGameController(i),
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+                 (unsigned)SDL_JoystickGetDeviceVendor(i), (unsigned)SDL_JoystickGetDeviceProduct(i),
+#else
+                 0u, 0u,
+#endif
+                 (int)pad_sdl_device_is_steam_virtual(i));
         startup_trace(line);
       }
     }

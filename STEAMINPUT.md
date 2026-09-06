@@ -22,18 +22,32 @@ landed against it.
   `Intro`, `Menu::confirm_selection(PadId)`, `NetLobby`, `Overlay`,
   `glut.cpp`, `xbox_main.cpp`, `shot_scene.cpp`. No SDL type in `pad.h`
   beyond the button/axis enums the consumers already switch on.
-- `steam_input.h/cpp` — the backend of §3: `Init(true)`,
-  `SetInputActionManifestFilePath` (when the manifest sits beside the
-  binary), `RunFrame` from `glut.cpp`'s `tick`, hot-plug by diffing
+- `steam_input.h/cpp` — the backend of §3: `Init(true)`, `RunFrame` from
+  `glut.cpp`'s `tick`, hot-plug by diffing
   `GetConnectedControllers` per tick (chosen over `EnableDeviceCallbacks`:
   one mechanism for startup and later, nothing to keep in step with the
   pump, and §9's flaky device callbacks don't apply), digital edges and
   the stick → synthesized SDL events with ids from `PAD_STEAM_BASE`,
   set switching from `State::pad_action_set()` with a release of the
-  outgoing set's held actions, §5's SDL-silencing rule in
-  `init_controllers_and_audio`, total fallback (also `NEWTONIA_STEAM_INPUT=0`
-  as a dev kill switch), every decision under `NEWTONIA_TRACE`
-  (`startup_trace.h`, shared with `glut.cpp` now).
+  outgoing set's held actions, total fallback (also `NEWTONIA_STEAM_INPUT=0`
+  as a dev kill switch, and — field, 2026-09-06 — action sets Steam does
+  not know: a 0 `GetActionSetHandle` means the In-Game Actions file is
+  registered nowhere, so `Init` is undone and SDL drives the pads exactly
+  as the shipped build's), every decision under `NEWTONIA_TRACE`
+  (`startup_trace.h`, shared with `glut.cpp` now). **§5 rule 1 landed per
+  DEVICE, not per backend** (first field run, 2026-09-06: with SDL's
+  controller subsystem silenced, "Steam Input off" left no controller at
+  all — Steam does NOT present such a pad through the API, contrary to the
+  §5 assumption). SDL stays up beside the backend; `glut.cpp` and
+  `pad.cpp` skip Steam's own virtual gamepad (vendor 0x28DE, product
+  0x11FF — `pad_sdl_device_is_steam_virtual`), which is its emulation of
+  the pads the API already presents, so a Steam pad arrives once and a pad
+  Steam does not present still arrives through SDL. `SetInputActionManifestFilePath`
+  was tried and dropped: it takes an "input manifest" (a file listing the
+  IGA and per-type configuration files), not the IGA, and REFUSED the IGA
+  (trace, 2026-09-06). Registration is the portal's job (or
+  `controller_config/` in development); the depot copy exists for the
+  portal's bundled-config path.
 - `steam/game_actions_4536720.vdf` — §2's manifest, staged by
   `deploy-steam.yml` into all three depots (macOS also inside
   `Contents/Resources`, ahead of signing) and by `make steam`.
@@ -77,32 +91,21 @@ landed against it.
    is not consumed, so a pad whose layout arrives late is simply inert
    until it does (its actions read `bActive == false`).
 
-**Future — mixed mode (Steam Input + SDL pads at once).** Not supported,
-by §5 rule 1: when `Init` succeeds Steam owns every pad and SDL's
-controller subsystem is never initialised, so a Steam pad and a "native"
-SDL pad cannot drive two seats in the same run. The case that looks like
-native is still served — a pad the player disabled Steam Input for
-arrives through the API with a default layout, just not remappable in the
-overlay. If a real need appears (a pad Steam refuses to present at all,
-or a wheel/HOTAS-class device Steam Input does not model), the shape of
-the work is:
-
-- keep `SDL_INIT_GAMECONTROLLER` on beside the Steam backend, and
-  de-duplicate PER DEVICE rather than per backend: ask Steam which XInput
-  slot each handle occupies (`GetGamepadIndexForController`) and drop the
-  SDL device in that slot (SDL's `SDL_GameControllerGetPlayerIndex` /
-  XInput user index on Windows; on Linux/macOS Steam's emulated pad is a
-  distinct virtual device, matched by name or by its appearing only while
-  the handle exists), so a pad Steam emulates never arrives twice;
-- both backends already speak `PadId` into the same seam, so nothing
-  downstream changes — `pad_count`/`pad_id_at` would simply union the two
-  tables, `pad_style_for_id` already dispatches on the id range, and the
-  action-set switching keeps applying to the Steam pads alone;
-- it is a NEW field matrix (Steam Machine, Deck, a Windows client with an
-  XInput pad beside a Steam-owned DS4), not a code-only change, and it
-  must not land before the one-owner version has passed the §7 matrix —
-  the double-delivery failure that rule 1 exists to prevent is exactly
-  what an incomplete de-dup produces.
+**Mixed mode (Steam Input + SDL pads at once) — landed 2026-09-06**, the
+same day it was filed as future work, because the first field run showed
+the alternative does not exist: a pad with Steam Input disabled is NOT
+presented through the API, so silencing SDL left it with nothing. The
+de-dup is per device: SDL stays up, and Steam's virtual gamepad (vendor
+0x28DE, product 0x11FF, the emulation of pads the API presents) is
+skipped on the SDL side — `pad_sdl_device_is_steam_virtual`, consulted by
+`glut.cpp`'s open paths and `pad.cpp`'s enumeration, which unions the two
+tables (Steam pads first). Nothing downstream changed: both backends
+speak `PadId`, style dispatches on the id range, action-set switching
+applies to the Steam pads alone. Still to field-verify in the §7 matrix:
+one Steam pad + one SDL pad in two seats; and whether SDL also enumerates
+the PHYSICAL device of a Steam-presented pad (Steam grabs it, so it would
+be a silent phantom in the roster) — the startup trace now prints every
+SDL device with vendor/product/steam_virtual for exactly this question.
 
 ## 0. Why, and what already exists
 
@@ -287,12 +290,16 @@ would be the one non-vector element on screen.
    Steam owns every controller it reports, and the SDL controller subsystem
    must not also open them — otherwise a pad Steam still emulates (a
    layout with legacy gamepad output, a pad Steam Input is disabled for)
-   arrives twice. Rule: after `Init`, SDL is initialised WITHOUT
+   arrives twice. ~~Rule: after `Init`, SDL is initialised WITHOUT
    `SDL_INIT_GAMECONTROLLER`, and the SDL pad backend reports zero pads.
    A pad the player has disabled Steam Input for is then Steam's problem to
    present (it does: such pads still appear through the API with a default
-   layout). This is the one behavioural cliff of the whole plan and gets
-   its own field test.
+   layout).~~ **Falsified in the first field run (2026-09-06):** a pad with
+   Steam Input disabled is NOT presented through the API, so this version
+   of the rule left it with no controller at all. The rule as landed is
+   per DEVICE: SDL stays up, and the SDL side skips Steam's virtual
+   gamepad (the emulation of a pad the API presents), so each physical pad
+   arrives exactly once — see §10.
 2. **Fallback is total, never partial.** `Init` false (not launched by
    Steam, client too old, Steam absent) → the SDL backend exactly as today,
    Steam backend never consulted, `steam_appid.txt` terminal runs keep
