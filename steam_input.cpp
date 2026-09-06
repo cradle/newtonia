@@ -493,7 +493,18 @@ bool steam_input_init() {
     startup_tracef("steam input: IGA %s beside the binary at %s", f ? "present" : "ABSENT", actions.c_str());
     std::string manifest = dir + MANIFEST_NAME;
     f = SDL_RWFromFile(manifest.c_str(), "rb");
-    if (f) {
+    // Dev switch: authoring a layout in the client needs the IGA in
+    // <Steam>/controller_config/ (the editor learns the actions only from
+    // there or from the portal), and that copy beside the bundled manifest
+    // hands out colliding handles. NEWTONIA_STEAM_INPUT_MANIFEST=0 leaves
+    // the manifest unset for that session, so the dev copy is the one
+    // definition loaded.
+    const char *no_manifest = std::getenv("NEWTONIA_STEAM_INPUT_MANIFEST");
+    if (f && no_manifest && no_manifest[0] == '0' && no_manifest[1] == '\0') {
+      SDL_RWclose(f);
+      f = NULL;
+      startup_trace("steam input: action manifest NOT set (NEWTONIA_STEAM_INPUT_MANIFEST=0 — controller_config/ governs)");
+    } else if (f) {
       SDL_RWclose(f);
       bool ok = in->SetInputActionManifestFilePath(manifest.c_str());
       startup_tracef("steam input: action manifest %s (%s)", manifest.c_str(), ok ? "set" : "REFUSED");
