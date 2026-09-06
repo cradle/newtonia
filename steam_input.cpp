@@ -18,18 +18,21 @@
 
 namespace {
 
-// Where the depot carries the In-Game Actions file (steam/ in the repo):
-// beside the binary — SDL_GetBasePath is the executable's directory on
-// Linux/Windows and Contents/Resources inside the macOS bundle, and the
-// deploy workflow stages the file at each of those. Steam learns the
-// actions from the PORTAL (the Steam Input configurator section, where
-// the IGA is uploaded and the bundled-config path points here) or, in
-// development, from <Steam>/controller_config/. NOT from
-// SetInputActionManifestFilePath: that call takes a different file — an
-// "input manifest" listing the IGA and per-type configuration files —
-// and REFUSED the IGA itself (field, 2026-09-06). The presence check
-// below is a trace aid only.
-const char *MANIFEST_NAME = "game_actions_4536720.vdf";
+// The depot carries three Steam Input files beside the binary
+// (SDL_GetBasePath: the executable's directory on Linux/Windows,
+// Contents/Resources inside the macOS bundle; deploy-steam.yml and `make
+// steam` stage them there): the In-Game Actions file (the action sets),
+// the exported default layouts (controller_<type>.vdf), and the ACTION
+// MANIFEST — the actions plus a "configurations" block naming those
+// layouts (steam/make_input_manifest.py generates it). The manifest is
+// what the portal's Steam Input page is told about and what
+// SetInputActionManifestFilePath takes — the call REFUSED the actions
+// file itself (field, 2026-09-06). Handing Steam the path here is belt
+// and braces beside the portal setting: a local build under
+// steam_run_local.sh gets its layouts without the portal or a
+// controller_config/ copy.
+const char *ACTIONS_NAME = "game_actions_4536720.vdf";
+const char *MANIFEST_NAME = "steam_input_manifest.vdf";
 
 struct SteamPad {
   InputHandle_t handle;
@@ -463,11 +466,21 @@ bool steam_input_init() {
   }
   char *base = SDL_GetBasePath();
   if (base) {
-    std::string path = std::string(base) + MANIFEST_NAME;
+    std::string dir(base);
     SDL_free(base);
-    SDL_RWops *f = SDL_RWFromFile(path.c_str(), "rb");
+    std::string actions = dir + ACTIONS_NAME;
+    SDL_RWops *f = SDL_RWFromFile(actions.c_str(), "rb");
     if (f) SDL_RWclose(f);
-    startup_tracef("steam input: IGA %s beside the binary at %s", f ? "present" : "ABSENT", path.c_str());
+    startup_tracef("steam input: IGA %s beside the binary at %s", f ? "present" : "ABSENT", actions.c_str());
+    std::string manifest = dir + MANIFEST_NAME;
+    f = SDL_RWFromFile(manifest.c_str(), "rb");
+    if (f) {
+      SDL_RWclose(f);
+      bool ok = in->SetInputActionManifestFilePath(manifest.c_str());
+      startup_tracef("steam input: action manifest %s (%s)", manifest.c_str(), ok ? "set" : "REFUSED");
+    } else {
+      startup_tracef("steam input: no action manifest at %s (portal / controller_config govern)", manifest.c_str());
+    }
   }
   // Explicit RunFrame: the poll paces its own reads, right before the
   // game tick, instead of riding the callback pump.

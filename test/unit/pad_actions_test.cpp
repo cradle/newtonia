@@ -191,6 +191,22 @@ int main() {
   // Steam ids never collide with SDL instance ids.
   CHECK(!pad_is_steam(0) && !pad_is_steam(PAD_NONE) && pad_is_steam(PAD_STEAM_BASE));
 
+  // The generated action manifest (steam/make_input_manifest.py) carries
+  // the same action sets: a stale manifest ships bindings for actions the
+  // game no longer reads.
+  {
+    std::ifstream mf("steam/steam_input_manifest.vdf");
+    CHECK(mf.good());
+    std::stringstream ms;
+    ms << mf.rdbuf();
+    std::string manifest = ms.str();
+    CHECK(manifest.find("\"Action Manifest\"") == 0);
+    CHECK(has_key(manifest, "configurations"));
+    for (int i = 0; i < PAD_ACT_COUNT; i++)
+      CHECKF(has_key(manifest, pad_action_info((PadAction)i).name),
+             "manifest lacks %s — re-run steam/make_input_manifest.py", pad_action_info((PadAction)i).name);
+  }
+
   printf("pad_actions_test: %s\n", fails ? "FAIL" : "PASS");
   return fails ? 1 : 0;
 }
