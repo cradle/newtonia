@@ -1,11 +1,13 @@
 # Steam Input API — plan
 
-Status: **field-verified on Linux with an Xbox Series X pad, portal
-registration pending** (2026-09-06; plan written 2026-09-05). Through the
-Steam library entry with a layout that binds the game's actions: the
-backend adopts the pad, every hint names the layout's position, the FIRE
-chip and the F1 card follow a remap, pause/menu/roster/lobby navigate on
-the Menu set. What the day's field runs corrected is in §10. Follows the pad-glyph work on
+Status: **field-verified on Linux with an Xbox Series X pad AND a
+DualSense, portal registration pending** (2026-09-06; plan written
+2026-09-05). Through the Steam library entry with a layout that binds the
+game's actions: the backend adopts the pad, every hint names the layout's
+position (shapes and OPTIONS/CREATE on the DualSense), the FIRE chip and
+the F1 card follow a remap, pause/menu/roster/lobby navigate on the Menu
+set. Two authored layouts ride in the manifest: `controller_xboxone.vdf`
+and `controller_ps5.vdf`. What the day's field runs corrected is in §10. Follows the pad-glyph work on
 `claude/steam-input-api-support-hk2jll`, which established the rendering
 layer (`pad_style.h`) and the one hard fact this plan is built on: the
 legacy Steam Input calls do not see the player's bindings. Valve's own
@@ -101,6 +103,33 @@ controller layer keys off the shortcut's id and has no actions for it,
 while the API side answers as the real app through `steam_appid.txt`, so
 everything looks half-registered. Launch Options on the real library
 entry, always.
+
+**Field-verified 2026-09-06, evening (same client, a DualSense):** the
+manifest path is honoured — `SetInputActionManifestFilePath` set, sets
+resolved at Init, the pad adopted with `ps5 glyphs` and every Menu action
+reporting its shape — but only once a configuration for the pad's TYPE
+existed. What the three traces on the way there taught: (1) with no
+`controller_ps5` entry in the manifest Steam did not manage the pad at
+all — SDL saw the raw 054c/0ce6 device with no Steam handle, and both set
+handles read 0, because Steam builds a game's actions only when it
+prepares a layout for a pad it manages; (2) with a SEEDED entry (the Xbox
+export retyped `controller_ps5`) Steam claimed the pad — SDL saw no
+joystick — yet still ran it on the plain Gamepad template ("this game
+has built in controller support for some controllers, but not yours":
+the portal declares native support for Xbox only, so a PlayStation pad
+is translated to Xbox by default) and the sets stayed 0; (3) the layout
+editor for the pad listed only a "Default" set until the IGA was back in
+`<Steam>/controller_config/` — the editor learns the actions from there
+or from the portal, never from the bundled manifest. So authoring a new
+type's layout in dev is: IGA copy in `controller_config/`, launch with
+`NEWTONIA_STEAM_INPUT_MANIFEST=0` (a new dev switch — the copy beside the
+bundled manifest hands out colliding handles), bind the sets in the
+editor, export as a template, copy the export over
+`steam/controller_<type>.vdf`, regenerate the manifest, remove the copy
+and the switch. Two backend changes came out of it: set handles that read
+0 at Init are retried per tick for ~5 s and then once a second for the
+life of the process (a pad Steam takes over later brings them), and the
+pending phase traces the presented handles with their input types.
 
 **Open — needs the Steam client and a pad (the M2/M3/M4 field matrix):**
 

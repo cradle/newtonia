@@ -671,11 +671,15 @@ void steam_input_poll(StateManager *game) {
       if (!active) {
         // The set activation lands a frame late, so the first tick after
         // a handle appears reads every action inactive whatever the
-        // layout — say "legacy template" only once that has held a while.
+        // layout — say so only once that has held a while, and name both
+        // causes: a gamepad template, or a layout Steam has not applied
+        // yet (it applies one when the window has focus — a DualSense sat
+        // inactive for a second and then adopted, field 2026-09-06).
         if (!p.legacy_traced && ++p.inactive_ticks >= INACTIVE_DROP_TICKS) {
           p.legacy_traced = true;
-          startup_tracef("steam input: handle %llu: layout has no %s-set actions "
-                         "(legacy gamepad template) — SDL's emulated pad drives it",
+          startup_tracef("steam input: handle %llu: no %s-set actions active — a gamepad template, "
+                         "or the layout not applied until the window has focus — SDL's emulated pad "
+                         "drives it meanwhile",
                          (unsigned long long)p.handle, pad_action_set_name(want));
         }
         continue;
