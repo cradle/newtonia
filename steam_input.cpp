@@ -12,6 +12,7 @@
 #include <steam/steam_api.h>
 
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -570,6 +571,27 @@ void steam_input_poll(StateManager *game) {
     in->RunFrame();
     for (int s = 0; s < PAD_SET_COUNT; s++)
       g_set[s] = in->GetActionSetHandle(pad_action_set_name((PadActionSet)s));
+    // What Steam presents while the sets are unknown — the evidence that
+    // separates "Steam manages no pad" from "a pad with no usable layout"
+    // (a DualSense vanished from SDL yet the sets stayed 0 — field,
+    // 2026-09-06). Traced on change.
+    {
+      InputHandle_t hs[STEAM_INPUT_MAX_COUNT];
+      int n = in->GetConnectedControllers(hs);
+      static int last_pending_n = -1;
+      if (n != last_pending_n) {
+        last_pending_n = n;
+        char types[128] = "";
+        for (int k = 0; k < n && k < 4; k++) {
+          char one[32];
+          snprintf(one, sizeof(one), "%s%d:type%d/set%llu", k ? "," : "", k,
+                   (int)in->GetInputTypeForHandle(hs[k]),
+                   (unsigned long long)in->GetCurrentActionSet(hs[k]));
+          strncat(types, one, sizeof(types) - strlen(types) - 1);
+        }
+        startup_tracef("steam input: sets unknown, handles presented=%d %s", n, types);
+      }
+    }
     if (g_set[PAD_SET_SHIP] != 0 && g_set[PAD_SET_MENU] != 0) {
       g_sets_pending = false;
       if (g_sets_slow) startup_trace("steam input: action sets resolved late (a pad Steam manages arrived)");
