@@ -477,7 +477,10 @@ STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 # The Steam Input action manifest rides beside the binary (steam_input.cpp
 # hands Steam its absolute path — STEAMINPUT.md §2).
 STEAM_ACTIONS = game_actions_$(STEAM_APPID).vdf
-steam: newtonia-steam steam_appid.txt $(STEAM_ACTIONS)
+# The exported default layouts (steam/controller_*.vdf) ride beside it —
+# the portal names each by its bare file name.
+STEAM_LAYOUTS = $(notdir $(wildcard steam/controller_*.vdf))
+steam: newtonia-steam steam_appid.txt $(STEAM_ACTIONS) $(STEAM_LAYOUTS)
 ifeq ($(UNAME), Darwin)
 	# Also wrap the Steam binary in Newtonia.app so macOS treats it as a real
 	# app: window activation/focus, Game Mode, and App Nap suppression all key
@@ -518,8 +521,11 @@ steam_appid.txt:
 $(STEAM_ACTIONS): steam/game_actions_4536720.vdf
 	cp $< $@
 
+controller_%.vdf: steam/controller_%.vdf
+	cp $< $@
+
 steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt $(STEAM_ACTIONS) Newtonia.app \
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt $(STEAM_ACTIONS) $(STEAM_LAYOUTS) Newtonia.app \
 	  $(wildcard *.sniper.o */*.sniper.o *.sniper.d */*.sniper.d)
 
 %.$(STEAM_OBJ_TAG).o: %.cpp

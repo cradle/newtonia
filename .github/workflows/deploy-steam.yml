@@ -131,8 +131,11 @@ jobs:
           cp newtonia.exe steam_output/windows/
           cp steam_api64.dll steam_output/windows/
           cp -r audio steam_output/windows/
-          # Steam Input action manifest, beside the binary (STEAMINPUT.md §2)
+          # Steam Input action manifest + the exported default layouts,
+          # beside the binary (STEAMINPUT.md §2): the portal names each
+          # layout by its path relative to the install dir, i.e. bare.
           cp steam/game_actions_4536720.vdf steam_output/windows/
+          for f in steam/controller_*.vdf; do [ -e "$f" ] && cp "$f" steam_output/windows/; done; true
 
       - uses: actions/upload-artifact@v4
         with:
@@ -484,10 +487,11 @@ jobs:
         run: |
           mkdir -p steam_output/macos
           cp -r Newtonia.app steam_output/macos/
-          # Steam Input action manifest at the depot root (STEAMINPUT.md §2)
-          # for the portal's bundled-config setting; the in-bundle copy was
-          # sealed with the app above.
+          # Steam Input action manifest + exported default layouts at the
+          # depot root (STEAMINPUT.md §2) for the portal's bundled-config
+          # paths; the in-bundle manifest copy was sealed with the app above.
           cp steam/game_actions_4536720.vdf steam_output/macos/
+          for f in steam/controller_*.vdf; do [ -e "$f" ] && cp "$f" steam_output/macos/; done; true
 
       - uses: actions/upload-artifact@v4
         with:
@@ -640,8 +644,10 @@ jobs:
           soname=$(objdump -p newtonia | awk '/NEEDED.*datachannel/{print $2}')
           cp -L "netplay-libs/lib/$soname" steam_output/linux/
           cp -r audio steam_output/linux/
-          # Steam Input action manifest, beside the binary (STEAMINPUT.md §2)
+          # Steam Input action manifest + the exported default layouts,
+          # beside the binary (STEAMINPUT.md §2)
           cp steam/game_actions_4536720.vdf steam_output/linux/
+          for f in steam/controller_*.vdf; do [ -e "$f" ] && cp "$f" steam_output/linux/; done; true
 
       - uses: actions/upload-artifact@v4
         with:

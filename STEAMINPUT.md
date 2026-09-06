@@ -104,13 +104,21 @@ entry, always.
 
 **Open — needs the Steam client and a pad (the M2/M3/M4 field matrix):**
 
-1. **Portal:** register the manifest as Custom Configuration (Bundled with
-   Game) at the depot-root path; author the default layouts per controller
-   type (Xbox, PlayStation, Deck, Switch, Steam Controller) in the client
-   from a beta build and export them. **Until a default layout exists for
-   a pad's type, that pad has no bindings under Steam Input** — the
-   backend is live the moment `Init` succeeds, so this step gates the
-   first beta push of this branch, not just the polish.
+1. **Portal:** the Steam Input page takes each default layout as a file
+   path RELATIVE TO THE INSTALL DIR (the Workshop route is deprecated,
+   2026-09-06). So: export the layout from the client (a saved template
+   lands under `userdata/<account>/ugc/referenced/<id>/…_controller_config.vdf`),
+   copy it into the repo as `steam/controller_<type>.vdf` (`controller_xboxone.vdf`,
+   `controller_ps4.vdf`, `controller_ps5.vdf`, `controller_neptune.vdf` for
+   the Deck, `controller_switch_pro.vdf`, `controller_steamcontroller_gordon.vdf`
+   — Valve's own type names), and the deploy workflow + `make steam` stage
+   every `steam/controller_*.vdf` at the depot root beside the actions
+   file, so the portal path is the bare file name. The actions file's
+   portal path is `game_actions_4536720.vdf`. **Until a default layout
+   exists for a pad's type, that pad has no bindings under Steam Input** —
+   the backend hands it to SDL, so the game still plays, but without the
+   layout-aware hints — so this step gates the first beta push of this
+   branch, not just the polish.
 2. Field matrix from §7: Xbox + DS4 on the sniper build through the
    library entry; pause/roster/lobby nav and code entry; hot-plug and
    2 pads; a remap of A/B in the overlay followed by the F1 card and the

@@ -15,6 +15,7 @@ build
 /newtonia-x86_64
 /selftest.log
 /game_actions_*.vdf
+/controller_*.vdf
 /sigtest.log
 /attempt.log
 /Newtonia-netplay.app/
