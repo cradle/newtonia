@@ -509,6 +509,28 @@ bool steam_input_init() {
     if (info.analog) g_analog[a] = in->GetAnalogActionHandle(info.name);
     else g_digital[a] = in->GetDigitalActionHandle(info.name);
   }
+  // Handles are one namespace per app: every action distinct. Two
+  // definitions of the actions loaded at once (a controller_config/ dev
+  // copy beside the bundled manifest, the first launch after the manifest
+  // path was set — field, 2026-09-06) handed out colliding handles, and
+  // the Menu set then read the Ship set's bindings under the wrong names
+  // (start = X, paste = right shoulder). A colliding table is not a pad
+  // backend; hand the pads to SDL and say why.
+  for (int a = 0; a < PAD_ACT_COUNT; a++) {
+    for (int b = a + 1; b < PAD_ACT_COUNT; b++) {
+      const PadActionInfo &ia = pad_action_info((PadAction)a);
+      const PadActionInfo &ib = pad_action_info((PadAction)b);
+      if (ia.analog != ib.analog) continue;
+      unsigned long long ha = ia.analog ? g_analog[a] : g_digital[a];
+      unsigned long long hb = ib.analog ? g_analog[b] : g_digital[b];
+      if (ha != hb) continue;
+      startup_tracef("steam input: action handles COLLIDE (%s and %s both %llu) — two definitions "
+                     "of the actions loaded? (a controller_config/ copy beside the bundled manifest) — SDL pads",
+                     ia.name, ib.name, ha);
+      in->Shutdown();
+      return false;
+    }
+  }
   g_active = true;
   startup_tracef("steam input: Init ok, sets Ship=%llu Menu=%llu",
                  (unsigned long long)g_set[PAD_SET_SHIP],
@@ -567,7 +589,10 @@ void steam_input_poll(StateManager *game) {
     bool active = any_action_active(in, p, want);
     if (!p.adopted) {
       if (!active) {
-        if (!p.legacy_traced) {
+        // The set activation lands a frame late, so the first tick after
+        // a handle appears reads every action inactive whatever the
+        // layout — say "legacy template" only once that has held a while.
+        if (!p.legacy_traced && ++p.inactive_ticks >= INACTIVE_DROP_TICKS) {
           p.legacy_traced = true;
           startup_tracef("steam input: handle %llu: layout has no %s-set actions "
                          "(legacy gamepad template) — SDL's emulated pad drives it",
@@ -579,6 +604,8 @@ void steam_input_poll(StateManager *game) {
       p.adopted = true;
       p.legacy_traced = false;
       p.inactive_ticks = 0;
+      p.bindings_seen = false;
+      p.bindings_poll = 0;
       p.id = g_next_id++;
       startup_tracef("steam input: pad %d adopted (handle %llu): %s (%s glyphs)",
                      p.id - PAD_STEAM_BASE, (unsigned long long)p.handle,
