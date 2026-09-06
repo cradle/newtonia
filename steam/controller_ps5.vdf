@@ -1,7 +1,7 @@
 "controller_mappings"
 {
 	"version"		"3"
-	"revision"		"32"
+	"revision"		"35"
 	"title"		"Newtonia Official (PlayStation)"
 	"description"		"Left stick steers, Cross fires, Circle fires the secondary, Square and Triangle cycle weapons, Options pauses. Menu and Ship action sets."
 	"creator"		"76561197962648570"
@@ -12,7 +12,7 @@
 	"controller_caps"		"35148799"
 	"major_revision"		"0"
 	"minor_revision"		"0"
-	"Timestamp"		"1788700914"
+	"Timestamp"		"1788701334"
 	"actions"
 	{
 		"Menu"
@@ -643,6 +643,38 @@
 						"bindings"
 						{
 							"binding"		"game_action Menu back, Back, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu paste, Paste Code, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu Keyboard, Keyboard, , "
 						}
 					}
 				}
