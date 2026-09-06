@@ -1,7 +1,11 @@
 # Steam Input API — plan
 
-Status: **code landed, portal + field verification pending** (2026-09-06;
-plan written 2026-09-05). Follows the pad-glyph work on
+Status: **field-verified on Linux with an Xbox Series X pad, portal
+registration pending** (2026-09-06; plan written 2026-09-05). Through the
+Steam library entry with a layout that binds the game's actions: the
+backend adopts the pad, every hint names the layout's position, the FIRE
+chip and the F1 card follow a remap, pause/menu/roster/lobby navigate on
+the Menu set. What the day's field runs corrected is in §10. Follows the pad-glyph work on
 `claude/steam-input-api-support-hk2jll`, which established the rendering
 layer (`pad_style.h`) and the one hard fact this plan is built on: the
 legacy Steam Input calls do not see the player's bindings. Valve's own
@@ -75,6 +79,28 @@ the set handles from the commented version, but the layout editor
 offered no action sets (2026-09-06), and a comment-free file removes one
 variable while that is chased. What the file is and how it is registered
 is documented here and in the platform-builds skill instead.
+
+**Field-verified 2026-09-06 (Linux snap client, Xbox Series X pad, the
+sniper build through the library entry):** adoption on a layout that
+binds the actions, hints following the layout, play + pause + menus on
+the two sets, the raw-pad de-dup, Steam Input off (SDL path), a template
+remap (SDL path through Steam's emulated pad). Three more rules came out
+of it, all in `steam_input.cpp`: a digital action fires only after being
+SEEN RELEASED since its set was activated (Start is `pause` in Ship and
+`start` in Menu, and a pause switches the set — a held Start toggled the
+pause for as long as it was held); hints show the type's default position
+until the pad's bindings have loaded (Steam applies a layout on window
+focus, and reports every action in-set-but-unbound until then, which read
+as "PRESS -"); the F1 card lists only the rows the layout binds and never
+circles the "-" marker. And two things learned about the client: the
+layout editor on this client adds a duplicate activator per mouse click
+(harmless — Steam ORs them) and snaps back to the auto-generated
+"Official Layout" on launch in dev mode, so edit that one in place; and a
+NON-STEAM SHORTCUT to `steam_run_local.sh` is not the app — Steam's
+controller layer keys off the shortcut's id and has no actions for it,
+while the API side answers as the real app through `steam_appid.txt`, so
+everything looks half-registered. Launch Options on the real library
+entry, always.
 
 **Open — needs the Steam client and a pad (the M2/M3/M4 field matrix):**
 
