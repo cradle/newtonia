@@ -320,6 +320,25 @@ void poll_pad(StateManager *game, SteamPad &p, PadActionSet want) {
     p.set_known = true;
     startup_tracef("steam input: pad %d -> action set %s", p.id - PAD_STEAM_BASE,
                    pad_action_set_name(want));
+    // What the layout binds in this set, action by action: origin count
+    // (0 = unbound, which the HUD renders as "-") and whether the action
+    // is active. The field question this answers: a pad that plays but
+    // whose hints read "-" — is the set unbound, or is the origin query
+    // failing? (2026-09-06)
+    for (int a = 0; a < PAD_ACT_COUNT; a++) {
+      const PadActionInfo &info = pad_action_info((PadAction)a);
+      if (info.set != want) continue;
+      EInputActionOrigin origins[STEAM_INPUT_MAX_ORIGINS];
+      int n = info.analog
+          ? in->GetAnalogActionOrigins(p.handle, g_set[want], g_analog[a], origins)
+          : in->GetDigitalActionOrigins(p.handle, g_set[want], g_digital[a], origins);
+      bool active = info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
+                                : in->GetDigitalActionData(p.handle, g_digital[a]).bActive;
+      startup_tracef("  %-15s handle=%llu origins=%d active=%d%s%s", info.name,
+                     (unsigned long long)(info.analog ? g_analog[a] : g_digital[a]), n,
+                     (int)active, n > 0 ? " first=" : "",
+                     n > 0 ? origin_text(origins[0]).c_str() : "");
+    }
   }
   for (int a = 0; a < PAD_ACT_COUNT; a++) {
     const PadActionInfo &info = pad_action_info((PadAction)a);
