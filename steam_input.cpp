@@ -44,6 +44,7 @@ struct SteamPad {
   int inactive_ticks;         // adopted but every action inactive, consecutive
   bool set_known;
   PadActionSet set;
+  bool set_nudged;            // Steam's reported set disagreed with `set` (traced once per episode)
   bool held[PAD_ACT_COUNT];   // last state sent for each digital action
   // A digital action fires only after it has been SEEN RELEASED since its
   // set was activated. The same physical button is `pause` in the Ship
@@ -423,13 +424,37 @@ bool any_action_active(ISteamInput *in, const SteamPad &p, PadActionSet set) {
 // this, adopted or not: bActive is only meaningful for the ACTIVE set, so
 // an un-adopted handle must sit in the wanted set for the probe to see a
 // layout that binds it.
+//
+// The activation is judged against STEAM'S state, not this cache: a
+// layout change resets the handle's active set to the new layout's own
+// default (a Deck switched from the gamepad template to the official
+// layout came up in Ship while the game's cache still said Menu, so the
+// Menu-set probe read 0/11 actions active forever and the pad never
+// adopted — field, 2026-09-07). ActivateActionSet is cheap to repeat, so
+// while GetCurrentActionSet disagrees it is re-issued every tick, with no
+// release/re-prime — from the game's side the set never changed.
 void sync_set(StateManager *game, SteamPad &p, PadActionSet want) {
   ISteamInput *in = SteamInput();
-  if (p.set_known && p.set == want) return;
+  if (p.set_known && p.set == want) {
+    InputActionSetHandle_t cur = in->GetCurrentActionSet(p.handle);
+    if (cur != g_set[want]) {
+      in->ActivateActionSet(p.handle, g_set[want]);
+      if (!p.set_nudged) {
+        p.set_nudged = true;
+        startup_tracef("steam input: handle %llu reports set %llu, re-activating %s=%llu",
+                       (unsigned long long)p.handle, (unsigned long long)cur,
+                       pad_action_set_name(want), (unsigned long long)g_set[want]);
+      }
+    } else {
+      p.set_nudged = false;
+    }
+    return;
+  }
   if (p.adopted) release_all(game, p);
   in->ActivateActionSet(p.handle, g_set[want]);
   p.set = want;
   p.set_known = true;
+  p.set_nudged = false;
   for (int a = 0; a < PAD_ACT_COUNT; a++) p.primed[a] = false;
   // One line, no per-action dump: the activation lands a frame late, so
   // a dump here reads every action inactive whatever the layout. The
