@@ -163,21 +163,22 @@ never from the manifest, so a seeded file was the bootstrap; Deck
 capability value 23117823; every Ship and Menu action bound, zoom grips
 still unbound). Verified on the Deck from the beta depot: sets resolved
 at Init, the layout offered in the picker, a manual pick adopting the
-pad and driving seat 1, switches in both directions clean. **OPEN: the
-Deck client does not apply it by default.** With an empty
-`configset_<serial>.vdf`, the per-controller copy reverted to the shared
-configuration and the header stripped of the export's personal
-`workshop://` URL, the Deck still starts on its "Gamepad With Joystick
-Trackpad" template, while the PC client applies the PlayStation layout
-from the very same manifest. The game side is identical in both traces
-(`Init ok, sets Ship=1 Menu=2`, the handle presented, no actions active
-under the generic template). Not a file problem as far as the evidence
-goes; a client-side default rule, possibly the Deck's stable client
-lagging the desktop one. Two ways to close it: a second account on the
-Deck through Family Sharing for a true first-launch, and the Deck's
-Steam client beta. Until then a Deck player picks "Newtonia Official
-(Steam Deck)" once in the layout picker, and the seed lesson stands: a
-layout is only ever applied by default when it is that type's own export. Valve's own dev
+pad and driving seat 1, switches in both directions clean. **The Deck
+did not apply it by default — and the reason was the account, not the
+client.** Deleting `Steam Controller Configs/<user>/config/4536720-beta/`
+and the `configset_<serial>.vdf` beside it changed nothing because that
+folder is Steam Cloud synced (`steam_autocloud.vdf`): every delete was
+undone before the next launch, and the restored `controller_neptune.vdf`
+was dated **July 26** — the generic-template autosave saved the first day
+the game ran on the Deck, months before a Deck layout existed. "Revert to
+shared configuration" reverts to exactly that file. A stored shared
+configuration always beats the manifest's default, so this account's
+Deck never made a first-launch choice; a player with no such file gets
+the official layout, as the DualSense did on the PC from the depot. Two
+fixes for a tester's own account: pick the official layout once (Steam
+overwrites the shared file with a copy of it), or Steam Cloud off, delete
+the folder, launch, Cloud on. The seed lesson still stands: a layout is
+only ever applied by default when it is that type's own export. Valve's own dev
 switch for testing bundled layouts before a publish: Big Picture →
 Settings → System → Dev mode, then "Steam Input Layout Dev Mode".
 
@@ -211,10 +212,7 @@ Settings → System → Dev mode, then "Steam Input Layout Dev Mode".
    FIRE chip within a frame; a grip binding showing Steam's text; the
    Deck (trackpad-as-stick feel, §8); macOS + Windows clients; the
    Init-false and Steam-Input-disabled-per-pad paths.
-3. **Deck default layout** — see the Steam Deck paragraph in §10: the
-   picker offers it and a pick works; only the automatic first-launch
-   default is unproven on the Deck (second-account / client-beta test).
-4. Two known seams to watch in that matrix: (a) with `fire` collapsing
+3. Two known seams to watch in that matrix: (a) with `fire` collapsing
    RT into A, a FRESH trigger pull on the disconnect card now confirms it
    (a held one still does not — edges only); (b) `SteamInputConfigurationLoaded_t`
    is not consumed — a pad whose layout arrives late, or sits on a gamepad
