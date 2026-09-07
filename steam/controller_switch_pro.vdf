@@ -1,18 +1,18 @@
 "controller_mappings"
 {
 	"version"		"3"
-	"revision"		"92"
-	"title"		"Newtonia Official (Nintendo Switch)"
-	"description"		"Left stick steers, A fires, B fires the secondary, X and Y cycle weapons, Start pauses. Menu and Ship action sets."
+	"revision"		"98"
+	"title"		"newtonia switch 2 pro"
+	"description"		"Your modified layout for this game."
 	"creator"		"76561197962648570"
 	"progenitor"		""
-	"url"		"workshop://3796703996"
+	"url"		"autosave:///home/glenn/snap/steam/common/.local/share/Steam/steamapps/common/Steam Controller Configs/2382842/config/4536720-beta/NSP000000000001.vdf"
 	"export_type"		"template"
 	"controller_type"		"controller_switch_pro"
-	"controller_caps"		"9978879"
+	"controller_caps"		"76563455"
 	"major_revision"		"0"
 	"minor_revision"		"0"
-	"Timestamp"		"1788689772"
+	"Timestamp"		"0"
 	"actions"
 	{
 		"Menu"
@@ -123,22 +123,6 @@
 		"description"		""
 		"inputs"
 		{
-			"button_a"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"xinput_button B, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
 			"button_b"
 			{
 				"activators"
@@ -155,7 +139,7 @@
 				{
 				}
 			}
-			"button_x"
+			"button_a"
 			{
 				"activators"
 				{
@@ -163,7 +147,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button SHOULDER_LEFT, , "
+							"binding"		"xinput_button B, , "
 						}
 					}
 				}
@@ -180,6 +164,22 @@
 						"bindings"
 						{
 							"binding"		"xinput_button Y, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button SHOULDER_LEFT, , "
 						}
 					}
 				}
@@ -566,22 +566,6 @@
 		"description"		""
 		"inputs"
 		{
-			"button_a"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"game_action Menu confirm, Confirm, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
 			"button_b"
 			{
 				"activators"
@@ -598,7 +582,7 @@
 				{
 				}
 			}
-			"button_x"
+			"button_a"
 			{
 				"activators"
 				{
@@ -606,7 +590,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"game_action Menu paste, Paste Code, , "
+							"binding"		"game_action Menu confirm, Confirm, , "
 						}
 					}
 				}
@@ -630,6 +614,22 @@
 				{
 				}
 			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu paste, Paste Code, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
@@ -640,6 +640,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu back, Back, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
@@ -650,6 +670,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu confirm, Confirm, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
@@ -660,22 +700,6 @@
 		"description"		""
 		"inputs"
 		{
-			"button_a"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"game_action Ship fire, Fire, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
 			"button_b"
 			{
 				"activators"
@@ -692,7 +716,7 @@
 				{
 				}
 			}
-			"button_x"
+			"button_a"
 			{
 				"activators"
 				{
@@ -700,7 +724,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"game_action Ship next_weapon, Next Weapon, , "
+							"binding"		"game_action Ship fire, Fire, , "
 						}
 					}
 				}
@@ -724,6 +748,22 @@
 				{
 				}
 			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship next_weapon, Next Weapon, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
@@ -734,6 +774,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship fire, Fire, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
@@ -744,6 +804,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship secondary, Fire Secondary, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
