@@ -182,6 +182,24 @@ IGA's order) or the layout's preset id (Menu=1, every export authored
 Menu-first) — so the un-adopted dump now counts active actions in BOTH
 sets, which says which set is live whatever the number means.
 
+**A dead button on the Deck's template is the template's personal copy
+(2026-09-07).** L1 did nothing on the Deck under "Gamepad With Joystick
+Trackpad" while R1 and both stick clicks worked. Nothing in the game or in
+SDL's mapping could drop one bumper alone, and it was neither: the copy of
+the template in the account's `Steam Controller Configs` folder carried a
+stray L1 binding, and resetting the template in the picker fixed it. Every
+template a player has ever touched is a personal copy, so a single dead
+button on a Steam pad starts there. `NEWTONIA_TRACE=1` now prints SDL's
+mapping string per opened pad at startup and a `pad event:` line per raw
+press (the SDL button decoded and the joystick index under it), so the next
+one names itself. The same pass found the bumpers REVERSED in three of the
+four official layouts — boost on the right, teleport on the left, an
+authoring slip in the Xbox seed that the Deck and Switch exports inherited;
+only the independently authored PS5 layout matched the game's convention
+(boost left bumper, teleport right — `pad.h`, the SDL path, the F1 card,
+the Deck announcement). Swapped in place, and the seed's Menu-set legacy
+left bumper (an XInput X) set to shoulder_left as in the PS5 export.
+
 **Steam Deck (2026-09-07).** `controller_neptune.vdf` is a genuine Deck
 export (authored on the device from the official layout's editor — the
 Deck's editor lists the action sets only for a layout that EMBEDS them,
