@@ -87,6 +87,12 @@ class Ship : public CompositeObject {
     static const float BOOST_COOLDOWN_MS;
     // Shared by keyboard, controller and host-applied netplay requests.
     void teleport();
+    bool find_teleport_destination(const Grid &grid);
+    static void play_teleport_sound(Point at);
+    static void play_boost_sound(Point at);
+    static std::vector<std::pair<uint8_t, Point>> boost_events;
+    static std::vector<std::pair<uint8_t, Point>> teleport_events;
+    void set_teleport_hazards(const std::list<class Hazard*> *h) { teleport_hazards = h; }
     bool teleport_ready() const { return teleport_cooldown_left <= 0.0f; }
     static const float TELEPORT_COOLDOWN_MS;
     int multiplier() const;
@@ -606,6 +612,8 @@ class Ship : public CompositeObject {
 
     float heat_rate, retro_heat_rate, cool_rate, boost_heat;
     float boost_cooldown_left = 0.0f;  // ms until boost() fires again
+    bool teleport_pending = false;
+    const std::list<class Hazard*> *teleport_hazards = nullptr;
     float teleport_cooldown_left = 0.0f;  // transient, like the boost cooldown
 
     // Forces

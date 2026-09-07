@@ -1,5 +1,6 @@
 #include "ship.h"
 #include "teleport.h"
+#include "hazard.h"
 #include "achievements.h"
 #include "stats.h"
 #include "asset_path.h"
@@ -31,6 +32,8 @@ int Ship::shield_hum_shared_channel = -1;
 std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
 std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
+std::vector<std::pair<uint8_t, Point>> Ship::teleport_events;
+std::vector<std::pair<uint8_t, Point>> Ship::boost_events;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::net_lance_reports;
@@ -1464,17 +1467,54 @@ void Ship::update_missile_fly_volumes() {
 const float Ship::BOOST_COOLDOWN_MS = 2000.0f;
 const float Ship::TELEPORT_COOLDOWN_MS = 5000.0f;
 
+void Ship::play_teleport_sound(Point at) {
+  // Process-lifetime chunk: playback can outlive the ship that triggered it.
+  static Mix_Chunk *sound = Mix_LoadWAV(asset_path("audio/player_teleport.wav").c_str());
+  WorldSound::play(sound, at);
+}
+
+bool Ship::find_teleport_destination(const Grid &grid) {
+  WrappedPoint original = position;
+  // A crowded world must never hang the simulation or force an unsafe jump.
+  for (int attempt = 0; attempt < 512; ++attempt) {
+    position = WrappedPoint();
+    if (grid.collide(*this, 50.0f)) continue;
+    bool blocked = false;
+    if (black_holes) for (const auto *bh : *black_holes)
+      if (position.distance_to(bh->position) < BlackHole::influence_radius + radius)
+        blocked = true;
+    if (teleport_hazards) for (const auto *h : *teleport_hazards) {
+      if (!h->is_alive()) continue;
+      float danger = h->teleport_clearance();
+      if (position.distance_to(h->position) < danger + radius + 50.0f) blocked = true;
+    }
+    if (missile_ships_list) for (const auto *o : *missile_ships_list)
+      if (o != this && o->is_alive() && collide(*o, 50.0f)) blocked = true;
+    if (shock_targets) for (const auto *o : *shock_targets)
+      if (o != this && o->is_alive() && collide(*o, 50.0f)) blocked = true;
+    if (!blocked) return true;
+  }
+  position = original;
+  return false;
+}
+
 void Ship::teleport() {
   if (!teleport_ready()) return;
   teleport_cooldown_left = TELEPORT_COOLDOWN_MS;
-  net_teleport_count++;
-  add_behaviour(new Teleport(this));
+  teleport_pending = true;
+}
+
+void Ship::play_boost_sound(Point at) {
+  static Mix_Chunk *sound = Mix_LoadWAV(asset_path("audio/boost_burst.wav").c_str());
+  WorldSound::play(sound, at, 0.75f);
 }
 
 void Ship::boost() {
   if (!boost_ready()) return;
   boost_cooldown_left = BOOST_COOLDOWN_MS;
   net_boost_count++;
+  play_boost_sound(position);
+  boost_events.push_back(std::make_pair(net_seat, Point(position)));
   boosting = true;
 }
 
@@ -2832,6 +2872,12 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta, const Grid &grid) {
+  if (teleport_pending) {
+    teleport_pending = false;
+    uint8_t before = net_teleport_count;
+    if (is_alive()) Teleport(this, grid).step((int)delta);
+    if (net_teleport_count == before) teleport_cooldown_left = 0;
+  }
   toggled = !toggled;
   list<Behaviour *>::iterator vi = behaviours.begin();
   while(vi != behaviours.end()) {

@@ -362,6 +362,18 @@ declare const NewtoniaStore: undefined | {
   }
   (window as any).setBoostReady = setBoostReady;
 
+  let _teleportReady = false;
+  function setTeleportReady(ready: number | boolean): void {
+    _teleportReady = !!ready;
+    const el = document.querySelector<HTMLElement>(".touch-teleport");
+    if (el) {
+      el.classList.toggle("cooldown", !_teleportReady);
+      el.setAttribute("aria-disabled", String(!_teleportReady));
+      if (!_teleportReady) el.classList.remove("pressed");
+    }
+  }
+  (window as any).setTeleportReady = setTeleportReady;
+
   // Active-weapon icons on the shoot/mine circles: C++ pushes the selected
   // primary/secondary kinds (Save::WeaponEntry::Kind values; secondary -1 =
   // none) via EM_ASM whenever they change, and the buttons carry a small
@@ -857,6 +869,7 @@ declare const NewtoniaStore: undefined | {
       { label: "",  key: " ", cls: "touch-btn touch-shoot" },
       { label: "",  key: "x", cls: "touch-btn touch-mine"  },
       { label: "",  key: "e", cls: "touch-btn touch-boost" },
+      { label: "", key: "t", cls: "touch-btn touch-teleport" },
       // Pause: the top-right tap zone (web_main.cpp finger_down) existed
       // with NO visual — the comment there called it "the visible
       // top-right button" but nothing ever drew it on web (the native
@@ -884,6 +897,7 @@ declare const NewtoniaStore: undefined | {
 
       btn.addEventListener("touchstart", (e) => {
         e.preventDefault();
+        if (key === "t" && !_teleportReady) return;
         for (let i = 0; i < e.changedTouches.length; i++) {
           const id = e.changedTouches[i].identifier;
           if (!activeFingers.has(id)) {
@@ -912,25 +926,22 @@ declare const NewtoniaStore: undefined | {
 
     // Capture button elements once; reused by the resize handler to avoid
     // repeated querySelector calls.
-    // Button centres sit clear of the canvas centre-pause zone (x <= 0.60
-    // in web_main.cpp finger_down) — at 0.62 the shoot circle's left edge
-    // was ~0.57, so a near-miss to its left hit the pause zone instead
-    // (Glenn, 2026-07-17). Keep these in sync with touch_to_key's zones.
-    // HANDEDNESS LEFT mirrors every circle to the other side (the layout
-    // rebuilds on a handedness change); web_main.cpp's canvas fallback
-    // zones and pause zone mirror with them.
+    // Match native action geometry in touch_controls_resize, including
+    // portrait spacing and left-handed mirroring. Pause retains its own zone.
     const bcx = (cx: number) => (_hand < 0 ? 1 - cx : cx);
     const circleButtons = [
       { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: bcx(0.70), cy: 0.75, d: 1.0 },
       { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: bcx(0.90), cy: 0.75, d: 1.0 },
-      // Boost: above and between the pair (the thumb triangle), matching
+      // Boost: above and between the pair (the top of the diamond), matching
       // the native OSD layout in touch_controls.cpp.
       { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: bcx(0.80), cy: 0.63, d: 1.0 },
+      { el: container.querySelector<HTMLElement>(".touch-teleport")!, cx: bcx(0.80), cy: 0.87, d: 1.0 },
       // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25),
       // crossing to the top-left under HANDEDNESS LEFT.
       { el: container.querySelector<HTMLElement>(".touch-pause")!, cx: bcx(0.875), cy: 0.12, d: 0.62 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
+    setTeleportReady(_teleportReady);
 
     // Full-screen overlay active during menu: any tap dispatches Enter to start the game.
     const menuOverlay = document.createElement("div");
@@ -951,10 +962,28 @@ declare const NewtoniaStore: undefined | {
     function sizeCircleButtons(): void {
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
-      const diam = Math.min(r.width, r.height) * 0.19;
-      for (const { el, cx, cy, d } of circleButtons) {
-        el.style.width  = `${diam * d}px`;
-        el.style.height = `${diam * d}px`;
+      const diam = Math.min(r.width, r.height) * 0.14;
+      const radius = diam / 2;
+      const mineX = Math.min(r.width * 0.90, r.width - 2 * radius);
+      const shootX = Math.min(r.width * 0.75, mineX - 2.5 * radius);
+      const rowY = Math.min(r.height * 0.80, r.height - 3.6 * radius);
+      for (const button of circleButtons) {
+        const { el, d } = button;
+        let { cx, cy } = button;
+        if (!el.classList.contains("touch-pause")) {
+          let x = (shootX + mineX) / 2;
+          let y = rowY;
+          if (el.classList.contains("touch-shoot")) x = shootX;
+          if (el.classList.contains("touch-mine")) x = mineX;
+          if (el.classList.contains("touch-boost")) y -= 2.2 * radius;
+          if (el.classList.contains("touch-teleport")) y += 2.2 * radius;
+          cx = bcx(x / r.width);
+          cy = y / r.height;
+        }
+        const buttonDiam = el.classList.contains("touch-pause")
+            ? Math.min(r.width, r.height) * 0.19 : diam;
+        el.style.width  = `${buttonDiam * d}px`;
+        el.style.height = `${buttonDiam * d}px`;
         el.style.left   = `${r.left + r.width * cx}px`;
         el.style.top    = `${r.top + r.height * cy}px`;
       }

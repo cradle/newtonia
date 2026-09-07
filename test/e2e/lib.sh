@@ -204,7 +204,9 @@ nav_join() {
   # No auto-join (no game host on this display owns the clipboard — e.g.
   # mismatch.sh's node stand-in): type it, the join fires on the fifth
   # character.
-  for c in $(echo "$code" | grep -o .); do key "$w" "$c"; done
+  # Codes are case-insensitive. Avoid synthetic Shift for uppercase input:
+  # repeated letters were missing from failed CI room-entry screenshots.
+  for c in $(printf '%s' "$code" | tr '[:upper:]' '[:lower:]' | grep -o .); do key "$w" "$c"; done
 }
 
 # host_room_code LOGNAME: poll the host's log for the room code (30 s)

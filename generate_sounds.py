@@ -288,6 +288,22 @@ def make_boost():
         samples.append(s * 0.7)
     return samples
 
+def make_boost_burst():
+    """Boost ignition: thrust's 50/100/150Hz rumble, bigger and brief, 360ms."""
+    n = int(SAMPLE_RATE * 0.36)
+    rng = random.Random(124)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        engine = (0.45 * math.sin(2 * math.pi * 50 * t)
+                  + 0.22 * math.sin(2 * math.pi * 100 * t)
+                  + 0.12 * math.sin(2 * math.pi * 150 * t))
+        bass = 0.18 * math.sin(2 * math.pi * 35 * t)
+        roar = (rng.random() * 2 - 1) * 0.16
+        env = min(1.0, t / 0.008) * math.exp(-t * 7.0) * min(1.0, (0.36 - t) / 0.06)
+        samples.append(math.tanh((engine + bass + roar) * 1.5) * env * 0.92)
+    return samples
+
 def make_giga_mine_explode():
     """Giga-mine explosion: massive deep boom with rumble, 2s."""
     n = int(SAMPLE_RATE * 2.0)
@@ -356,6 +372,22 @@ def make_warp():
         noise = (rng.random() * 2 - 1) * 0.30 * whoosh_env
         # Overall envelope: fast attack, smooth decay
         env = min(1.0, t / 0.015) * math.exp(-t * 4.0)
+        samples.append((tone + noise) * env * 0.85)
+    return samples
+
+def make_player_teleport():
+    """Player warp: shorter, cleaner twin of the asteroid shimmer, 480ms."""
+    n = int(SAMPLE_RATE * 0.48)
+    rng = random.Random(162)
+    samples = []
+    phase = 0.0
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        phase += 2 * math.pi * (420 + 1700 * (i / n) ** 0.5) / SAMPLE_RATE
+        shimmer = 0.3 * math.sin(2 * math.pi * 24 * t)
+        tone = 0.45 * math.sin(phase + shimmer) + 0.18 * math.sin(1.5 * phase)
+        noise = (rng.random() * 2 - 1) * 0.22 * math.exp(-((t - 0.16) ** 2) / 0.009)
+        env = min(1.0, t / 0.012) * math.exp(-t * 5.5) * min(1.0, (0.48 - t) / 0.04)
         samples.append((tone + noise) * env * 0.85)
     return samples
 
@@ -823,6 +855,7 @@ if __name__ == '__main__':
         'tic_low.wav':         make_tic_low,
         'shield_hum.wav':      make_shield_hum,
         'boost.wav':           make_boost,
+        'boost_burst.wav':     make_boost_burst,
         'title.wav':           make_title,
         'intro.wav':           make_intro,
         'pause.wav':           make_pause,
@@ -834,6 +867,7 @@ if __name__ == '__main__':
         'ting.wav':              make_ting,
         'asteroid_ting.wav':     make_asteroid_ting,
         'warp.wav':              make_warp,
+        'player_teleport.wav':   make_player_teleport,
         'time_slow_start.wav':   make_time_slow_start,
         'time_slow_end.wav':     make_time_slow_end,
     }

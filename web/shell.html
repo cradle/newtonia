@@ -198,7 +198,7 @@
     }
 
     /* Circular action buttons — sized in JS, centred via transform in CSS */
-    .touch-shoot, .touch-mine, .touch-boost, .touch-pause {
+    .touch-shoot, .touch-mine, .touch-boost, .touch-teleport, .touch-pause {
       border-radius: 50%;
       color: rgba(255, 255, 255, 0.65);
       transform: translate(-50%, -50%);
@@ -221,6 +221,18 @@
       border-color: rgba(90, 150, 255, 0.80);
       transform: translate(-50%, -50%) scale(0.93);
     }
+    .touch-teleport {
+      background: rgba(191, 102, 255, 0.25);
+      border: 2px solid rgba(191, 102, 255, 0.7);
+    }
+    .touch-teleport.pressed { background: rgba(191, 102, 255, 0.55); }
+    .touch-teleport.cooldown { opacity: 0.25; }
+    .touch-teleport::before, .touch-teleport::after {
+      content: ""; position: absolute; top: 35%; width: 30%; height: 30%;
+      border: 2px solid rgb(191, 102, 255); border-radius: 50%; box-sizing: border-box;
+    }
+    .touch-teleport::before { left: 24%; }
+    .touch-teleport::after { left: 46%; }
     .touch-boost {
       border: 2px solid rgba(255, 190, 80, 0.35);
       background: rgba(255, 190, 80, 0.07);
