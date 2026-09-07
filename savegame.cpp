@@ -3,6 +3,7 @@
 #include "preferences.h"  // MAX_PLAYERS bounds the save's player count
 #include <SDL.h>
 #include <cstdio>
+#include <cerrno>
 #include <cstring>
 #include <string>
 
@@ -644,7 +645,11 @@ static bool save_game_in(const char *file, const Save::GameState &s) {
     // Never truncate the last good save before the new one is complete.
     const std::string temporary = path + ".tmp";
     FILE *fp = fopen(temporary.c_str(), "wb");
-    if (!fp) return false;
+    if (!fp) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "save: cannot create %s: %s (previous save kept)",
+                     temporary.c_str(), std::strerror(errno));
+        return false;
+    }
 
     Save::FileStream f(fp);
     bool ok = true;
@@ -674,6 +679,7 @@ static bool save_game_in(const char *file, const Save::GameState &s) {
 #endif
     }
     if (!ok) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "save: write or replacement failed for %s (previous save kept)", path.c_str());
         std::remove(temporary.c_str());
         return false;
     }
