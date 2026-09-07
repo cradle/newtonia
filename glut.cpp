@@ -382,11 +382,14 @@ static Time x11_server_time(Display *dpy, Window win) {
 // the user's behalf) is what wmctrl sends and what KWin and Mutter honour
 // without a user-time contest, stamped with a real server time; the
 // _NET_WM_USER_TIME property is set beside it so the manager also counts
-// this as user interaction. The direct XSetInputFocus covers a bare X
-// server with no manager, guarded on the window being viewable — on an
-// unmapped window it is a BadMatch, and X errors exit the process
-// unless x_error_logger is in (installed here as well as by the touch
-// listener, since either may run first).
+// this as user interaction. Both are REQUESTS to a window manager and
+// nothing without one — deliberately: a direct XSetInputFocus/XRaiseWindow
+// for the manager-less case gave the newest instance real keyboard focus
+// on the e2e suite's bare Xvfb, where xdotool then switched from synthetic
+// events to XTEST for that window and the typed room code stopped
+// landing (seats-and-soak, 2026-09-07). A bare server is not a target.
+// x_error_logger is installed here as well as by the touch listener,
+// since either may run first and X errors exit the process by default.
 static void activate_window_x11() {
   Display *dpy = glXGetCurrentDisplay();
   Window win = dpy ? (Window)glXGetCurrentDrawable() : 0;
@@ -408,10 +411,6 @@ static void activate_window_x11() {
   ev.xclient.data.l[1] = (long)t;   // timestamp
   ev.xclient.data.l[2] = 0;         // requestor's currently active window: none
   XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
-  XRaiseWindow(dpy, win);
-  XWindowAttributes a;
-  if (XGetWindowAttributes(dpy, win, &a) && a.map_state == IsViewable)
-    XSetInputFocus(dpy, win, RevertToParent, t);
   XFlush(dpy);
 }
 
