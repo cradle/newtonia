@@ -44,7 +44,8 @@ struct SteamPad {
   int inactive_ticks;         // adopted but every action inactive, consecutive
   bool set_known;
   PadActionSet set;
-  bool set_nudged;            // Steam's reported set disagreed with `set` (traced once per episode)
+  bool set_nudged;            // a bounce has been traced this divergence episode
+  int diverged_ticks;         // consecutive ticks Steam reported a set other than `set`
   bool held[PAD_ACT_COUNT];   // last state sent for each digital action
   // A digital action fires only after it has been SEEN RELEASED since its
   // set was activated. The same physical button is `pause` in the Ship
@@ -115,6 +116,9 @@ ConfigLoadedTrace *g_config_trace = NULL;
 // the set Steam reports active, the binding revision it holds, and how
 // many of the wanted set's actions read bActive.
 const int UNADOPTED_DUMP_TICKS = 300;  // ~5 s
+// A set request lands a frame late; a divergence older than this is Steam
+// not taking the request, and gets the two-set bounce (sync_set).
+const int SET_BOUNCE_TICKS = 30;       // ~0.5 s
 
 SteamPad *find_pad(PadId id) {
   if (id == PAD_NONE) return NULL;
@@ -438,15 +442,32 @@ void sync_set(StateManager *game, SteamPad &p, PadActionSet want) {
   if (p.set_known && p.set == want) {
     InputActionSetHandle_t cur = in->GetCurrentActionSet(p.handle);
     if (cur != g_set[want]) {
-      in->ActivateActionSet(p.handle, g_set[want]);
-      if (!p.set_nudged) {
+      // Steam ignored the plain repeat: a Deck's layout loaded in Ship
+      // while the game had last asked for Menu, and re-asking for Menu
+      // every tick left it reporting Ship for good (run 219, 2026-09-07)
+      // — the client dedupes against the set last REQUESTED, not the one
+      // in force. So once the one-frame settling window has passed, go
+      // through the other set first: two requests Steam cannot collapse.
+      p.diverged_ticks++;
+      if (p.diverged_ticks == 1) {
+        in->ActivateActionSet(p.handle, g_set[want]);
+      } else if (p.diverged_ticks % SET_BOUNCE_TICKS == 0) {
+        PadActionSet other = want == PAD_SET_SHIP ? PAD_SET_MENU : PAD_SET_SHIP;
+        in->ActivateActionSet(p.handle, g_set[other]);
+        in->ActivateActionSet(p.handle, g_set[want]);
+        if (!p.set_nudged || p.diverged_ticks % UNADOPTED_DUMP_TICKS == 0)
+          startup_tracef("steam input: handle %llu reports set %llu after %d ticks, bouncing %s=%llu -> %s=%llu",
+                         (unsigned long long)p.handle, (unsigned long long)cur, p.diverged_ticks,
+                         pad_action_set_name(other), (unsigned long long)g_set[other],
+                         pad_action_set_name(want), (unsigned long long)g_set[want]);
         p.set_nudged = true;
-        startup_tracef("steam input: handle %llu reports set %llu, re-activating %s=%llu",
-                       (unsigned long long)p.handle, (unsigned long long)cur,
-                       pad_action_set_name(want), (unsigned long long)g_set[want]);
       }
     } else {
+      if (p.set_nudged)
+        startup_tracef("steam input: handle %llu reports %s after %d diverged ticks",
+                       (unsigned long long)p.handle, pad_action_set_name(want), p.diverged_ticks);
       p.set_nudged = false;
+      p.diverged_ticks = 0;
     }
     return;
   }
@@ -455,6 +476,7 @@ void sync_set(StateManager *game, SteamPad &p, PadActionSet want) {
   p.set = want;
   p.set_known = true;
   p.set_nudged = false;
+  p.diverged_ticks = 0;
   for (int a = 0; a < PAD_ACT_COUNT; a++) p.primed[a] = false;
   // One line, no per-action dump: the activation lands a frame late, so
   // a dump here reads every action inactive whatever the layout. The
