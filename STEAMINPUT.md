@@ -1,8 +1,8 @@
 # Steam Input API — plan
 
-Status: **field-verified on Linux with an Xbox Series X pad AND a
-DualSense; portal registered and publishing official layouts**
-(2026-09-07; plan written 2026-09-05). With the app configuration
+Status: **field-verified on Linux with an Xbox Series X pad, a
+DualSense AND a Switch Pro Controller; portal registered and publishing
+official layouts** (2026-09-07; plan written 2026-09-05). With the app configuration
 published (PlayStation opted in, Custom Configuration →
 `steam_input_manifest.vdf`) and the manifest's `configurations` block in
 Valve's documented shape, a DualSense with no personal layout is handed
@@ -11,8 +11,9 @@ client's layout page ticks every type the manifest names. Through the Steam libr
 game's actions: the backend adopts the pad, every hint names the layout's
 position (shapes and OPTIONS/CREATE on the DualSense), the FIRE chip and
 the F1 card follow a remap, pause/menu/roster/lobby navigate on the Menu
-set. Two authored layouts ride in the manifest: `controller_xboxone.vdf`
-and `controller_ps5.vdf`. What the day's field runs corrected is in §10. Follows the pad-glyph work on
+set. Four authored layouts ride in the manifest: `controller_xboxone.vdf`,
+`controller_ps5.vdf`, `controller_neptune.vdf` and
+`controller_switch_pro.vdf`. What the day's field runs corrected is in §10. Follows the pad-glyph work on
 `claude/steam-input-api-support-hk2jll`, which established the rendering
 layer (`pad_style.h`) and the one hard fact this plan is built on: the
 legacy Steam Input calls do not see the player's bindings. Valve's own
@@ -181,6 +182,23 @@ the folder, launch, Cloud on. The seed lesson still stands: a layout is
 only ever applied by default when it is that type's own export. Valve's own dev
 switch for testing bundled layouts before a publish: Big Picture →
 Settings → System → Dev mode, then "Steam Input Layout Dev Mode".
+
+**Nintendo Switch Pro Controller (2026-09-07).** Nintendo Switch opted in
+on the portal beside Xbox and PlayStation; `controller_switch_pro.vdf` is
+the pad's own export (capability value 76563455). Verified on the Linux
+desktop client from the beta depot: the official layout applied by
+default on first launch (like the DualSense, unlike the Deck), the pad
+adopted, hints in the Switch vocabulary (`PAD_STYLE_SWITCH` — the
+printed letters, L/R, ZL/ZR, PLUS/MINUS, HOME). Two corrections on the
+way there, both in the file, neither in code: the first Switch layout was
+an Xbox export retyped, and on that pad the triggers were dead — a
+Switch's ZL/ZR are digital BUTTONS, so the seed's analog trigger groups
+matched nothing, while the face buttons carried over; the real export
+then had the two trigger groups the wrong way round (fire on ZL), and
+the sources of groups 16/17 were swapped in place so ZR fires and ZL is
+the secondary, the game's convention on every pad (run 218). The lesson
+generalises the seed rule: a file authored on another pad type is not
+just never applied by default, it can silently lose whole input groups.
 
 **Open — needs the Steam client and a pad (the M2/M3/M4 field matrix):**
 
