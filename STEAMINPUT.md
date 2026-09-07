@@ -147,7 +147,37 @@ The generator had written the inverse (numeric keys carrying a
 as no defaults at all; the actions block still parsed, which is why the
 API side resolved the sets whenever a personal layout supplied bindings.
 Regenerated in the documented shape, `pad_actions_test` pins it, and the
-DualSense picked up the official layout by itself. Valve's own dev
+DualSense picked up the official layout by itself — from the beta DEPOT,
+no local launcher, which is the path every player takes. Same day, the
+Xbox pad confirmed the live handover between the two backends after the
+SDL-twin-first fix (`sdl_pads_sync_now`: the backend closes the SDL
+device driving a seat BEFORE announcing the adopted Steam pad, so the pad
+lands on that seat instead of sitting unassigned with its A joining a
+phantom player 2 — a Deck layout switch had worked or gone inert by
+which event won).
+
+**Steam Deck (2026-09-07).** `controller_neptune.vdf` is a genuine Deck
+export (authored on the device from the official layout's editor — the
+Deck's editor lists the action sets only for a layout that EMBEDS them,
+never from the manifest, so a seeded file was the bootstrap; Deck
+capability value 23117823; every Ship and Menu action bound, zoom grips
+still unbound). Verified on the Deck from the beta depot: sets resolved
+at Init, the layout offered in the picker, a manual pick adopting the
+pad and driving seat 1, switches in both directions clean. **OPEN: the
+Deck client does not apply it by default.** With an empty
+`configset_<serial>.vdf`, the per-controller copy reverted to the shared
+configuration and the header stripped of the export's personal
+`workshop://` URL, the Deck still starts on its "Gamepad With Joystick
+Trackpad" template, while the PC client applies the PlayStation layout
+from the very same manifest. The game side is identical in both traces
+(`Init ok, sets Ship=1 Menu=2`, the handle presented, no actions active
+under the generic template). Not a file problem as far as the evidence
+goes; a client-side default rule, possibly the Deck's stable client
+lagging the desktop one. Two ways to close it: a second account on the
+Deck through Family Sharing for a true first-launch, and the Deck's
+Steam client beta. Until then a Deck player picks "Newtonia Official
+(Steam Deck)" once in the layout picker, and the seed lesson stands: a
+layout is only ever applied by default when it is that type's own export. Valve's own dev
 switch for testing bundled layouts before a publish: Big Picture →
 Settings → System → Dev mode, then "Steam Input Layout Dev Mode".
 
@@ -181,7 +211,10 @@ Settings → System → Dev mode, then "Steam Input Layout Dev Mode".
    FIRE chip within a frame; a grip binding showing Steam's text; the
    Deck (trackpad-as-stick feel, §8); macOS + Windows clients; the
    Init-false and Steam-Input-disabled-per-pad paths.
-3. Two known seams to watch in that matrix: (a) with `fire` collapsing
+3. **Deck default layout** — see the Steam Deck paragraph in §10: the
+   picker offers it and a pick works; only the automatic first-launch
+   default is unproven on the Deck (second-account / client-beta test).
+4. Two known seams to watch in that matrix: (a) with `fire` collapsing
    RT into A, a FRESH trigger pull on the disconnect card now confirms it
    (a held one still does not — edges only); (b) `SteamInputConfigurationLoaded_t`
    is not consumed — a pad whose layout arrives late, or sits on a gamepad
