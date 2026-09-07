@@ -55,6 +55,7 @@ public:
   void draw(bool minimap) const;
 
   Kind kind_of() const { return kind_; }
+  float teleport_clearance() const { return kind_ == PULSAR ? PULSAR_MAX_RADIUS : effective_radius(); }
 
   // PULSAR: true while the lethal shockwave is expanding this cycle.
   bool wave_active() const;

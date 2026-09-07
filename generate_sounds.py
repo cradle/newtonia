@@ -359,6 +359,22 @@ def make_warp():
         samples.append((tone + noise) * env * 0.85)
     return samples
 
+def make_player_teleport():
+    """Player warp: shorter, cleaner twin of the asteroid shimmer, 480ms."""
+    n = int(SAMPLE_RATE * 0.48)
+    rng = random.Random(162)
+    samples = []
+    phase = 0.0
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        phase += 2 * math.pi * (420 + 1700 * (i / n) ** 0.5) / SAMPLE_RATE
+        shimmer = 0.3 * math.sin(2 * math.pi * 24 * t)
+        tone = 0.45 * math.sin(phase + shimmer) + 0.18 * math.sin(1.5 * phase)
+        noise = (rng.random() * 2 - 1) * 0.22 * math.exp(-((t - 0.16) ** 2) / 0.009)
+        env = min(1.0, t / 0.012) * math.exp(-t * 5.5) * min(1.0, (0.48 - t) / 0.04)
+        samples.append((tone + noise) * env * 0.85)
+    return samples
+
 def make_time_slow_start():
     """Time-slow engage: a tape-style pitch dive, 1400->170 Hz over 0.9s with
     a sub-octave under it and a shimmer that drags as it falls — the world's
@@ -834,6 +850,7 @@ if __name__ == '__main__':
         'ting.wav':              make_ting,
         'asteroid_ting.wav':     make_asteroid_ting,
         'warp.wav':              make_warp,
+        'player_teleport.wav':   make_player_teleport,
         'time_slow_start.wav':   make_time_slow_start,
         'time_slow_end.wav':     make_time_slow_end,
     }

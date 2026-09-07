@@ -389,6 +389,9 @@ enum EventCode {
   // bump: an old client ignores the unknown code and just misses the
   // cue.
   EV_ROID_BOUNCE_AT = 20,
+  // Additive cosmetic cue: packed departure position, same EVENT envelope.
+  // Older peers ignore the unknown event; no snapshot layout changes.
+  EV_PLAYER_TELEPORT = 21,
 };
 
 // EV_ACHIEVEMENT arg values. Stable wire numbers — append only.

@@ -335,6 +335,7 @@ GLGame::GLGame(PadId controller, bool allow_dev_players) :
   object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
+  object->ship->set_teleport_hazards(hazards);
   players->push_back(object);
 
   // Dev/testing (beta builds only): NEWTONIA_START_PLAYERS=N starts the game
@@ -892,6 +893,7 @@ GLGame::GLGame(const Save::GameState &save, PadId controller) :
     gs->ship->missiles_seek_players = friendly_fire;
     gs->ship->set_shock_targets(shock_targets);
     gs->ship->set_black_holes(black_holes);
+    gs->ship->set_teleport_hazards(hazards);
     gs->ship->restore_state(sp, grid);
     gs->snap_camera_to_heading();
     players->push_back(gs);
@@ -2027,6 +2029,7 @@ void GLGame::add_local_player(PadId pad, bool with_keys,
   object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
+  object->ship->set_teleport_hazards(hazards);
   players->push_back(object);
   update_presence();
 }
@@ -2066,6 +2069,7 @@ void GLGame::add_remote_player(uint8_t seat) {
   object->ship->set_missile_ships(ship_objects);
   object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_black_holes(black_holes);
+  object->ship->set_teleport_hazards(hazards);
   players->push_back(object);
   // The Ship constructor creates ships dead (offline player 2 waits out
   // the respawn countdown after pressing Enter to join mid-game). The
@@ -5007,6 +5011,16 @@ void GLGame::replay_record_shot(float x, float y, uint8_t kind) {
 }
 
 void GLGame::replay_drain_effects() {
+  for (const auto &event : Ship::teleport_events) {
+    uint32_t where = Net::pack_pos(event.second.x(), event.second.y(), world.x(), world.y());
+    if (replay_) replay_->record_event(Net::EV_PLAYER_TELEPORT, where);
+    if (net_mode_ == NetHost)
+      for (NetPeer *peer : net_peers_)
+        // The initiating client already played its predicted teleport.
+        if (peer->seat != event.first)
+          net_send_event_to(*peer, Net::EV_PLAYER_TELEPORT, where, false);
+  }
+  Ship::teleport_events.clear();
   if (replay_) {
     for (auto &lf : Ship::replay_lance_flashes)
       replay_record_polyline(Replay::FX_LANCE, lf.first, lf.second);
@@ -5653,6 +5667,7 @@ void GLGame::host_toggle_friendly_fire() {
 // dereference freed ships. Clearing at construction guarantees each game
 // starts from empty regardless of how the previous one ended.
 void GLGame::net_clear_event_outboxes() {
+  Ship::teleport_events.clear();
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
   Ship::net_booms.clear();
@@ -5873,6 +5888,12 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
       // the client but a missile visibly hunting the partner reads wrong.
       for (auto *p : *players) p->ship->missiles_seek_players = friendly_fire;
       NET_LOG("net: friendly fire %s\n", on ? "on" : "off");
+      break;
+    }
+    case Net::EV_PLAYER_TELEPORT: {
+      float x, y;
+      Net::unpack_pos(arg, x, y, world.x(), world.y());
+      Ship::play_teleport_sound(Point(x, y));
       break;
     }
     case Net::EV_ROID_THUD:
@@ -7960,6 +7981,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ghost->ship->set_missile_ships(ship_objects);
       ghost->ship->missiles_seek_players = friendly_fire;
       ghost->ship->set_black_holes(black_holes);
+      ghost->ship->set_teleport_hazards(hazards);
       ghost->ship->net_remote_gun = true;
       players->push_back(ghost);
       SDL_Log("replay: player %d joined", (int)players->size());
