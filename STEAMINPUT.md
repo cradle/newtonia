@@ -1,8 +1,13 @@
 # Steam Input API — plan
 
 Status: **field-verified on Linux with an Xbox Series X pad AND a
-DualSense, portal registration pending** (2026-09-06; plan written
-2026-09-05). Through the Steam library entry with a layout that binds the
+DualSense; portal registered and publishing official layouts**
+(2026-09-07; plan written 2026-09-05). With the app configuration
+published (PlayStation opted in, Custom Configuration →
+`steam_input_manifest.vdf`) and the manifest's `configurations` block in
+Valve's documented shape, a DualSense with no personal layout is handed
+"Official Layout for Newtonia - Newtonia Official (PlayStation)" and the
+client's layout page ticks every type the manifest names. Through the Steam library entry with a layout that binds the
 game's actions: the backend adopts the pad, every hint names the layout's
 position (shapes and OPTIONS/CREATE on the DualSense), the FIRE chip and
 the F1 card follow a remap, pause/menu/roster/lobby navigate on the Menu
@@ -131,9 +136,25 @@ and the switch. Two backend changes came out of it: set handles that read
 life of the process (a pad Steam takes over later brings them), and the
 pending phase traces the presented handles with their input types.
 
+**2026-09-07, the manifest shape.** With the app configuration published
+the client still handed the Deck the generic template with no action
+sets in its editor, and `appinfo.vdf` proved the client HAD the config.
+Valve's Action Manifest Files page keys `configurations` BY CONTROLLER
+TYPE, then by load priority, each entry only a `path` relative to the
+manifest — `"controller_ps5" { "0" { "path" "controller_ps5.vdf" } }`.
+The generator had written the inverse (numeric keys carrying a
+`controller_type` field), which Steam parsed without complaint and read
+as no defaults at all; the actions block still parsed, which is why the
+API side resolved the sets whenever a personal layout supplied bindings.
+Regenerated in the documented shape, `pad_actions_test` pins it, and the
+DualSense picked up the official layout by itself. Valve's own dev
+switch for testing bundled layouts before a publish: Big Picture →
+Settings → System → Dev mode, then "Steam Input Layout Dev Mode".
+
 **Open — needs the Steam client and a pad (the M2/M3/M4 field matrix):**
 
-1. **Portal:** the Steam Input page (Workshop route deprecated,
+1. **Portal — DONE 2026-09-07** (PlayStation opted in, manifest path
+   set, published): the Steam Input page (Workshop route deprecated,
    2026-09-06) asks for ONE path relative to the install dir: the **action
    manifest**, `steam_input_manifest.vdf` — the actions plus a
    `configurations` block naming the bundled layouts per controller type.
