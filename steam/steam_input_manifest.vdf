@@ -16,6 +16,13 @@
 				"path"	"controller_ps5.vdf"
 			}
 		}
+		"controller_switch_pro"
+		{
+			"0"
+			{
+				"path"	"controller_switch_pro.vdf"
+			}
+		}
 		"controller_xboxone"
 		{
 			"0"

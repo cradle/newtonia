@@ -55,7 +55,7 @@ int main() {
   static const SDL_GameControllerButton faces[] = {
     SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B,
     SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_Y };
-  static const PadStyle styles[] = { PAD_STYLE_XBOX, PAD_STYLE_PS4, PAD_STYLE_PS5 };
+  static const PadStyle styles[] = { PAD_STYLE_XBOX, PAD_STYLE_PS4, PAD_STYLE_PS5, PAD_STYLE_SWITCH };
   for (size_t s = 0; s < 3; s++) {
     for (int b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++) {
       const char *label = pad_button_label(styles[s], (SDL_GameControllerButton)b);
@@ -85,7 +85,23 @@ int main() {
   CHECK(pad_style_from_sdl_type(SDL_CONTROLLER_TYPE_PS5) == PAD_STYLE_PS5);
   CHECK(pad_style_from_sdl_type(SDL_CONTROLLER_TYPE_XBOX360) == PAD_STYLE_XBOX);
   CHECK(pad_style_from_sdl_type(SDL_CONTROLLER_TYPE_XBOXONE) == PAD_STYLE_XBOX);
-  CHECK(pad_style_from_sdl_type(SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO) == PAD_STYLE_XBOX);
+  CHECK(pad_style_from_sdl_type(SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO) == PAD_STYLE_SWITCH);
+  // Switch: printed letters, L/R, ZL/ZR, words for + and - ("-" is the
+  // unbound marker), HOME.
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, SDL_CONTROLLER_BUTTON_A), "A");
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, SDL_CONTROLLER_BUTTON_B), "B");
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, SDL_CONTROLLER_BUTTON_LEFTSHOULDER), "L");
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER), "R");
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, PAD_BUTTON_LEFT_TRIGGER), "ZL");
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, PAD_BUTTON_RIGHT_TRIGGER), "ZR");
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, SDL_CONTROLLER_BUTTON_START), "PLUS");
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, SDL_CONTROLLER_BUTTON_BACK), "MINUS");
+  CHECK_STR(pad_button_label(PAD_STYLE_SWITCH, SDL_CONTROLLER_BUTTON_GUIDE), "HOME");
+  CHECK_STR(pad_style_name(PAD_STYLE_SWITCH), "switch");
+  CHECK(pad_style_from_name("Nintendo Switch Pro Controller") == PAD_STYLE_SWITCH);
+  CHECK(pad_style_from_name("Pro Controller") == PAD_STYLE_SWITCH);
+  CHECK(pad_style_from_name("Joy-Con (L)") == PAD_STYLE_SWITCH);
+  { PadStyle st; CHECK(pad_style_parse("switch", &st) && st == PAD_STYLE_SWITCH); }
   CHECK(pad_style_from_sdl_type(SDL_CONTROLLER_TYPE_VIRTUAL) == PAD_STYLE_XBOX);
   CHECK(pad_style_from_sdl_type(SDL_CONTROLLER_TYPE_UNKNOWN) == PAD_STYLE_XBOX);
 #endif
@@ -105,7 +121,7 @@ int main() {
   CHECK(pad_style_from_name("wireless controller") == PAD_STYLE_PS4);
   CHECK(pad_style_from_name("Steam Virtual Gamepad") == PAD_STYLE_XBOX);
   CHECK(pad_style_from_name("Microsoft X-Box 360 pad") == PAD_STYLE_XBOX);
-  CHECK(pad_style_from_name("Pro Controller") == PAD_STYLE_XBOX);
+  CHECK(pad_style_from_name("Pro Controller") == PAD_STYLE_SWITCH);  // the Switch Pro's bare HID name
   CHECK(pad_style_from_name("") == PAD_STYLE_XBOX);
   CHECK(pad_style_from_name(NULL) == PAD_STYLE_XBOX);
 

@@ -6,9 +6,11 @@
 // card, the weapon rows' FIRE/NEXT chips, the pause/resume/join/boost
 // hints, the lobby's code-entry hints) asks here instead of spelling out
 // "A" or "START": a DualShock/DualSense pilot reads cross / circle /
-// square / triangle, L1/R1, OPTIONS and SHARE/CREATE, and an Xbox (or
-// Deck, or Switch — SDL's default button-label mapping already names
-// Nintendo pads by their printed letters) pilot keeps the letters.
+// square / triangle, L1/R1, OPTIONS and SHARE/CREATE, a Switch pilot
+// reads the pad's printed letters (SDL's default button-label mapping and
+// Steam's Switch_* origins both name Nintendo pads by the letter, whatever
+// its position) with L/R, ZL/ZR, PLUS and MINUS, and an Xbox (or Deck)
+// pilot keeps the Xbox letters.
 //
 // Classification (pad.cpp, behind the pad seam): the NEWTONIA_PAD_STYLE
 // override first (dev/screenshot hook — no pad needed to see the
@@ -36,9 +38,10 @@
 #include <SDL.h>
 
 enum PadStyle {
-  PAD_STYLE_XBOX = 0,  // letters: A B X Y, LB RB, START BACK — the default
-  PAD_STYLE_PS4  = 1,  // shapes, L1 R1, OPTIONS SHARE
-  PAD_STYLE_PS5  = 2,  // shapes, L1 R1, OPTIONS CREATE
+  PAD_STYLE_XBOX   = 0,  // letters: A B X Y, LB RB, START BACK — the default
+  PAD_STYLE_PS4    = 1,  // shapes, L1 R1, OPTIONS SHARE
+  PAD_STYLE_PS5    = 2,  // shapes, L1 R1, OPTIONS CREATE
+  PAD_STYLE_SWITCH = 3,  // printed letters, L R, ZL ZR, PLUS MINUS
 };
 
 // Typer glyph slots for the PlayStation face buttons (see the header
@@ -98,25 +101,27 @@ enum PadPseudoButton {
 // is a word ("L1", "OPTIONS", "DPAD UP"). Never NULL.
 inline const char *pad_button_label(PadStyle s, int b) {
   bool ps = pad_style_is_playstation(s);
+  bool sw = s == PAD_STYLE_SWITCH;
   switch (b) {
     case SDL_CONTROLLER_BUTTON_A:             return ps ? PAD_GLYPH_CROSS    : "A";
     case SDL_CONTROLLER_BUTTON_B:             return ps ? PAD_GLYPH_CIRCLE   : "B";
     case SDL_CONTROLLER_BUTTON_X:             return ps ? PAD_GLYPH_SQUARE   : "X";
     case SDL_CONTROLLER_BUTTON_Y:             return ps ? PAD_GLYPH_TRIANGLE : "Y";
-    case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  return ps ? "L1" : "LB";
-    case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: return ps ? "R1" : "RB";
+    case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  return ps ? "L1" : sw ? "L" : "LB";
+    case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: return ps ? "R1" : sw ? "R" : "RB";
     case SDL_CONTROLLER_BUTTON_LEFTSTICK:     return ps ? "L3" : "LEFT STICK BUTTON";
     case SDL_CONTROLLER_BUTTON_RIGHTSTICK:    return ps ? "R3" : "RIGHT STICK BUTTON";
-    case SDL_CONTROLLER_BUTTON_START:         return ps ? "OPTIONS" : "START";
+    // Words for the Switch's + and -: "-" is the UNBOUND marker in hints.
+    case SDL_CONTROLLER_BUTTON_START:         return ps ? "OPTIONS" : sw ? "PLUS" : "START";
     case SDL_CONTROLLER_BUTTON_BACK:
-      return s == PAD_STYLE_PS5 ? "CREATE" : ps ? "SHARE" : "BACK";
-    case SDL_CONTROLLER_BUTTON_GUIDE:         return ps ? "PS" : "GUIDE";
+      return s == PAD_STYLE_PS5 ? "CREATE" : ps ? "SHARE" : sw ? "MINUS" : "BACK";
+    case SDL_CONTROLLER_BUTTON_GUIDE:         return ps ? "PS" : sw ? "HOME" : "GUIDE";
     case SDL_CONTROLLER_BUTTON_DPAD_UP:       return "DPAD UP";
     case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     return "DPAD DOWN";
     case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     return "DPAD LEFT";
     case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    return "DPAD RIGHT";
-    case PAD_BUTTON_LEFT_TRIGGER:             return ps ? "L2" : "LT";
-    case PAD_BUTTON_RIGHT_TRIGGER:            return ps ? "R2" : "RT";
+    case PAD_BUTTON_LEFT_TRIGGER:             return ps ? "L2" : sw ? "ZL" : "LT";
+    case PAD_BUTTON_RIGHT_TRIGGER:            return ps ? "R2" : sw ? "ZR" : "RT";
     case PAD_BUTTON_LEFT_STICK:               return "LEFT STICK";
     case PAD_BUTTON_RIGHT_STICK:              return "RIGHT STICK";
     case PAD_BUTTON_ZOOM_IN:                  return "PADDLE 1";
@@ -140,15 +145,17 @@ inline bool pad_label_is_face(const char *s) {
 // The name to log beside a pad ("xbox", "ps4", "ps5").
 inline const char *pad_style_name(PadStyle s) {
   switch (s) {
-    case PAD_STYLE_PS4: return "ps4";
-    case PAD_STYLE_PS5: return "ps5";
-    default:            return "xbox";
+    case PAD_STYLE_PS4:    return "ps4";
+    case PAD_STYLE_PS5:    return "ps5";
+    case PAD_STYLE_SWITCH: return "switch";
+    default:               return "xbox";
   }
 }
 
 // From an SDL_GameControllerType value (int so a pre-2.0.12 SDL, which
-// has no such enum, still compiles): PS3/PS4 -> PS4, PS5 -> PS5, anything
-// else — Xbox, Switch, generic, virtual, unknown — -> Xbox.
+// has no such enum, still compiles): PS3/PS4 -> PS4, PS5 -> PS5, the
+// Switch Pro and Joy-Cons -> Switch, anything else — Xbox, generic,
+// virtual, unknown — -> Xbox.
 inline PadStyle pad_style_from_sdl_type(int sdl_type) {
 #if SDL_VERSION_ATLEAST(2, 0, 12)
   switch (sdl_type) {
@@ -158,6 +165,12 @@ inline PadStyle pad_style_from_sdl_type(int sdl_type) {
 #endif
 #if SDL_VERSION_ATLEAST(2, 0, 16)
     case SDL_CONTROLLER_TYPE_PS3: return PAD_STYLE_PS4;
+#endif
+    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO: return PAD_STYLE_SWITCH;
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return PAD_STYLE_SWITCH;
 #endif
     default: break;
   }
@@ -199,17 +212,23 @@ inline PadStyle pad_style_from_name(const char *name) {
   for (size_t i = 0; i < sizeof(ps4_marks) / sizeof(ps4_marks[0]); i++)
     if (pad_style_contains_ci(name, ps4_marks[i])) return PAD_STYLE_PS4;
   if (pad_style_equals_ci(name, "Wireless Controller")) return PAD_STYLE_PS4;
+  static const char *const switch_marks[] = {
+    "switch", "joy-con", "joycon", "nintendo", "pro controller",
+  };
+  for (size_t i = 0; i < sizeof(switch_marks) / sizeof(switch_marks[0]); i++)
+    if (pad_style_contains_ci(name, switch_marks[i])) return PAD_STYLE_SWITCH;
   return PAD_STYLE_XBOX;
 }
 
 // From the NEWTONIA_PAD_STYLE value ("xbox", "ps4", "ps5",
-// "playstation" = ps5). false when the string names no style.
+// "playstation" = ps5, "switch"). false when the string names no style.
 inline bool pad_style_parse(const char *s, PadStyle *out) {
   if (!s || !out) return false;
   if (!strcmp(s, "xbox"))        { *out = PAD_STYLE_XBOX; return true; }
   if (!strcmp(s, "ps4"))         { *out = PAD_STYLE_PS4;  return true; }
   if (!strcmp(s, "ps5"))         { *out = PAD_STYLE_PS5;  return true; }
   if (!strcmp(s, "playstation")) { *out = PAD_STYLE_PS5;  return true; }
+  if (!strcmp(s, "switch"))      { *out = PAD_STYLE_SWITCH; return true; }
   return false;
 }
 

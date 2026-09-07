@@ -820,6 +820,9 @@ PadStyle steam_input_style(PadId id) {
     case k_ESteamInputType_PS4Controller:
     case k_ESteamInputType_PS3Controller: return PAD_STYLE_PS4;
     case k_ESteamInputType_PS5Controller: return PAD_STYLE_PS5;
+    case k_ESteamInputType_SwitchProController:
+    case k_ESteamInputType_SwitchJoyConPair:
+    case k_ESteamInputType_SwitchJoyConSingle: return PAD_STYLE_SWITCH;
     default:                              return PAD_STYLE_XBOX;
   }
 }
