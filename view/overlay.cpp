@@ -169,14 +169,14 @@ void Overlay::replay_hud(const GLGame *glgame) {
     TapBand::return_to_menu.lifted(lift).draw(
         Typer::cursored("EXIT TO MENU", true).c_str(), now);
   } else {
-    bool has_ctrl = false;
-    int nc = SDL_NumJoysticks();
-    for (int i = 0; i < nc; i++)
-      if (SDL_IsGameController(i)) { has_ctrl = true; break; }
-    if (has_ctrl) {
+    if (pad_count() > 0) {
+      // Replay transport: Start pauses, B (the Menu set's back — the
+      // recording plays under the Ship set, so name that set's
+      // secondary position, which is the same B on every layout that
+      // hasn't split them) leaves.
       snprintf(text, sizeof(text), "%s PAUSE   %s MENU",
-               pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START),
-               pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_B));
+               pad_action_label_any(PAD_ACT_PAUSE),
+               pad_action_label_any(PAD_ACT_SECONDARY));
     } else {
       const GeneralKeys &gk = g_prefs.general_keys;
       snprintf(text, sizeof(text), "%c PAUSE   %c/%c SPEED   ESC MENU",
@@ -624,6 +624,7 @@ void Overlay::paused(const GLGame *glgame) {
     switch (glgame->pause_row_at(i)) {
       case GLGame::PAUSE_RESUME:  label = "RESUME"; break;
       case GLGame::PAUSE_PLAYERS: label = "PLAYERS"; break;
+      case GLGame::PAUSE_LAYOUT:  label = "CONTROLLER LAYOUT"; break;
       default: break;
     }
     MenuSelect::draw_row(PAUSE_ROW_Y0 - i * PAUSE_ROW_GAP, label, PAUSE_ROW_SZ,
@@ -793,6 +794,11 @@ void Overlay::seat_roster(const GLGame *glgame) {
       // would have been.
       snprintf(label, sizeof label, "ALLOW ANONYMOUS PLAYERS   %s",
                g_prefs.allow_anonymous ? "YES" : "NO");
+    } else if (glgame->roster_row_is_layout(i)) {
+      // Steam's configurator for the pad's action bindings (pad.h) — the
+      // one place pad remapping lives; the game has no rebinding screen
+      // for pads.
+      snprintf(label, sizeof label, "CONTROLLER LAYOUT");
     } else if (i >= seats) {
       snprintf(label, sizeof label, "ADD PLAYER %d", i + 1);
     } else if (glgame->roster_row_is_peer(i)) {
@@ -1324,9 +1330,11 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         if(glgame->has_free_controller()) {
           // The free pad's vocabulary — a DualShock pilot is told to
           // press OPTIONS, since that pad has no START.
+          // Start joins, and so does Fire (an unknown pad's A): name
+          // whichever the free pad's layout binds.
           snprintf(join_hint, sizeof(join_hint),
                    "player %d press %s to join", next_seat,
-                   pad_button_label(pad_style_any(), SDL_CONTROLLER_BUTTON_START));
+                   pad_action_label_any(pad_action_or(PAD_NONE, PAD_ACT_PAUSE, PAD_ACT_FIRE)));
           Typer::draw_centered(0, top_y, join_hint, 8);
         }
 #ifndef _GAMING_XBOX
@@ -1407,7 +1415,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(glship->last_input_was_controller) {
       // The bumper in this pilot's pad vocabulary; Xbox keeps the
       // friendlier "left bumper" over the LB abbreviation.
-      const char *bl = glship->pad_hint(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+      const char *bl = glship->pad_hint(PAD_ACT_BOOST);
       if(strcmp(bl, "LB") == 0)
         snprintf(hint, sizeof(hint), "boost with left bumper");
       else
@@ -1428,8 +1436,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     // reconnecting is the remedy that actually resumes (the returning pad
     // auto-binds and its START is recognised again).
     char pad_unpause[64];
+    // Start resumes directly; Confirm answers the RESUME row every pause
+    // opens on — name whichever this seat's layout binds.
     snprintf(pad_unpause, sizeof(pad_unpause), "press %s to resume",
-             glship->pad_hint(SDL_CONTROLLER_BUTTON_START));
+             glship->pad_hint(pad_action_or(glship->controller_id(), PAD_ACT_START, PAD_ACT_CONFIRM)));
     const char* unpause = glship->awaiting_pad()   ? "reconnect controller to resume"
                         : glship->has_controller() ? pad_unpause
                                                    : "press p to resume";

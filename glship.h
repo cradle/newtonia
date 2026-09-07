@@ -1,7 +1,7 @@
 #ifndef GL_SHIP_H
 #define GL_SHIP_H
 
-#include "pad_style.h"
+#include "pad.h"
 #include "ship.h"
 #include "point.h"
 #include "gltrail.h"
@@ -43,7 +43,7 @@ public:
   virtual void controller_touchpad_input(SDL_Event event);
   void touch_joystick_input(float nx, float ny);
   void release_controls();
-  bool wasMyController(SDL_JoystickID id);
+  bool wasMyController(PadId id);
 
   void set_keys(const PlayerKeys &k);
   // Strip every keyboard binding (the netplay ghost ship must never respond
@@ -97,15 +97,21 @@ public:
     if (pref) rotating_view = *pref;
     rotate_view_pref_ = pref;
   }
-  void set_controller(SDL_GameController *game_controller);
+  // Bind a pad by PadId (pad.h) — PAD_NONE strips it. Never an SDL object:
+  // the id may belong to the Steam Input backend.
+  void set_controller(PadId pad);
   bool has_controller() const;
   // Which button vocabulary this seat's hints use (pad_style.h): the
   // bound pad's, or — with no pad bound — whatever pad is plugged in.
   PadStyle pad_style() const;
-  // A button's label in that vocabulary (pad_button_label shorthand).
-  const char *pad_hint(SDL_GameControllerButton b) const;
+  // The label of the position an ACTION sits on for this seat's pad
+  // (pad_action_label): the game's own position on an SDL pad, the
+  // player's layout on a Steam pad — so a remapped A/B follows.
+  const char *pad_hint(PadAction a) const;
+  // Whether the action has a position at all (the zoom rows).
+  bool pad_hint_bound(PadAction a) const;
   // The seat's pad DISCONNECTED (as opposed to a deliberate
-  // set_controller(NULL) from the roster): drop the binding and remember the
+  // set_controller(PAD_NONE) from the roster): drop the binding and remember the
   // loss, so the next pad to appear comes back to this seat — a re-added pad
   // is a NEW SDL device (a USB pad re-paired wireless shares nothing with
   // the id that left), so recognising a reconnect can only mean remembering
@@ -122,9 +128,9 @@ public:
   // GLGame gates the pause menu on this (Overlay reads show_help directly
   // as a friend).
   bool showing_help() const { return show_help; }
-  bool is_my_controller_id(SDL_JoystickID id) const;
-  // Instance id of the bound pad, or -1 — the roster names pads by it.
-  SDL_JoystickID controller_id() const { return controller_instance_id; }
+  bool is_my_controller_id(PadId id) const;
+  // The bound pad's id, or PAD_NONE — the roster names pads by it.
+  PadId controller_id() const { return controller_id_; }
   void genForceShield();
   void genRepulsor();
   void genGodShield();
@@ -207,8 +213,7 @@ protected:
   float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
 
   int keymap_slot_ = -1;  // see keymap_slot()
-  SDL_GameController *controller = NULL;
-  SDL_JoystickID controller_instance_id = -1;
+  PadId controller_id_ = PAD_NONE;
   bool pad_lost_ = false;  // see awaiting_pad()
   bool r2_shoot_active = false;
   bool l2_shoot_active = false;

@@ -7,7 +7,9 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 
-#include "pad_style.h"
+#include "pad.h"
+#include "startup_trace.h"
+#include "steam_input.h"
 #include "state_manager.h"
 #include "asteroid.h"
 #include "typer.h"
@@ -46,29 +48,48 @@ extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 // GLX lets us retrieve the X11 Display/drawable so we can poll keyboard focus.
 #include <GL/glx.h>
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 // XInput2 for the direct touchscreen listener (Steam Deck) — see
 // touch_listener_init below.
 #include <X11/extensions/XInput2.h>
+static void activate_window_x11();
 #endif
 // On Windows, <windows.h> is already pulled in by gl_compat.h.
 
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
 
+// The SDL pad backend's table (pad.h): the opened handles and their
+// instance ids, which ARE the game's PadIds on this path. One -1 per slot:
+// 0 is a VALID SDL instance id. Beside the Steam Input backend
+// (steam_input.h) it holds only pads Steam does NOT present — Steam's own
+// virtual gamepads are skipped (pad_sdl_device_is_steam_virtual), so a
+// pad never arrives twice.
 SDL_GameController *controllers[MAX_PLAYERS] = {};
-SDL_JoystickID controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1}; // one -1 per slot: 0 is a VALID SDL instance id
+SDL_JoystickID controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1};
 bool ENABLE_AUDIO = true;
 
 int last_render_time;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
 static bool s_needs_activation = true;
 static int  s_activation_retries = 0;
+void activate_app_timer(int);
+// Bring our window to the front and give it keyboard focus: NSApp
+// activation on macOS, an EWMH activation request on Linux.
+static void activate_app() {
+#ifdef __APPLE__
+  activate_app_macos();
+#else
+  activate_window_x11();
+#endif
+}
+#endif
+#ifdef __APPLE__
 // Set when the game launches with fullscreen saved in preferences.  We defer
 // the native-fullscreen transition until the window is on screen (handled in
 // draw()), since toggleFullScreen: is unreliable before the app has finished
 // launching.
 static bool s_needs_fullscreen = false;
-void activate_app_timer(int);
 void hide_cursor_after_fullscreen(int);
 #endif
 
@@ -87,27 +108,33 @@ void draw() {
   glutSwapBuffers();
   // A Steam join accepted while the game is already running (steam://run into
   // an already-open game) does not bring us to the front. Drain the request
-  // each frame; on macOS re-run the activate/retry cycle so our window rises
-  // above Steam. (Windows/Linux Steam focuses the game itself, so the drained
-  // request is a harmless no-op there for now.)
+  // each frame; on macOS and Linux re-run the activate/retry cycle so our
+  // window rises above Steam. (Windows Steam focuses the game itself, so
+  // the drained request is a harmless no-op there.)
   if (Invites::take_focus_request()) {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     s_needs_activation = true;
 #endif
   }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
   // Activate after the first rendered frame so the window is on screen before
   // we request focus (a 0ms timer fires before the window is visible), then
-  // once more 200 ms later — twice total. activate_app_macos() re-raises the
-  // window every call (orderFrontRegardless), so hammering it for seconds
-  // yanks focus back if the user alt-tabs away right after launch; two quick
-  // attempts get us in front without fighting the user after that.
+  // once more 200 ms later — twice total. activate_app() re-raises the
+  // window every call, so hammering it for seconds yanks focus back if the
+  // user alt-tabs away right after launch; two quick attempts get us in
+  // front without fighting the user after that. Linux needs it at launch
+  // too: freeglut's bare X11 window carries no startup-notification id and
+  // no _NET_WM_USER_TIME, so a launch from Steam (another app active) hits
+  // the desktop's focus-stealing prevention and opened behind Steam,
+  // unfocused (field, 2026-09-07) — see activate_window_x11.
   if (s_needs_activation) {
     s_needs_activation = false;
     s_activation_retries = 0;
-    activate_app_macos();
+    activate_app();
     glutTimerFunc(200, activate_app_timer, 0);
   }
+#endif
+#ifdef __APPLE__
   // Enter the fullscreen Space once the window is actually on screen.
   if (s_needs_fullscreen) {
     s_needs_fullscreen = false;
@@ -236,7 +263,7 @@ void special_up(int key, int x, int y) {
 // is also logged to stdout (greppable in headless driver runs and
 // Desktop-Mode terminal launches).
 static bool s_tap_debug = false;
-// NEWTONIA_TRACE=1: one unbuffered stderr line per startup step (and one
+// NEWTONIA_TRACE=stderr: one unbuffered stderr line per startup step (and one
 // when the main loop returns), for a launch that dies before the first
 // stdout print — a Steam-launched process whose output Steam swallows, a
 // sandbox that ends it silently. stderr, not cout: it must survive an
@@ -244,21 +271,6 @@ static bool s_tap_debug = false;
 // NEWTONIA_TRACE=/absolute/path appends to that file instead — for a
 // launch whose stdio never reaches anything (Steam's runtime container
 // swallowed even unbuffered stderr, field 2026-09-05).
-static FILE *startup_trace_out() {
-  static FILE *out = NULL;
-  static bool decided = false;
-  if (!decided) {
-    decided = true;
-    const char *t = SDL_getenv("NEWTONIA_TRACE");
-    if (t && t[0] == '/') out = fopen(t, "a");
-    else if (t) out = stderr;
-  }
-  return out;
-}
-static void startup_trace(const char *step) {
-  FILE *out = startup_trace_out();
-  if (out) { fprintf(out, "trace: %s\n", step); fflush(out); }
-}
 static std::string s_tap_debug_line;
 
 static void tap_debug_note(const char *line) {
@@ -336,6 +348,70 @@ static int x_error_logger(Display *dpy, XErrorEvent *e) {
            e->request_code, e->minor_code);
   tap_debug_note(buf);
   return 0;
+}
+
+// A real X server timestamp for the requests below: both KWin and Mutter
+// refuse CurrentTime on an activation, and there is no event in hand to
+// read one from. Change a private property on our window with
+// PropertyChangeMask selected and take the time off the PropertyNotify —
+// the standard round-trip. The mask is restored afterwards; freeglut never
+// selects PropertyNotify, so nothing of its own is drained.
+static Time x11_server_time(Display *dpy, Window win) {
+  XWindowAttributes a;
+  if (!XGetWindowAttributes(dpy, win, &a)) return CurrentTime;
+  XSelectInput(dpy, win, a.your_event_mask | PropertyChangeMask);
+  Atom probe = XInternAtom(dpy, "NEWTONIA_TIMESTAMP", False);
+  long zero = 0;
+  XChangeProperty(dpy, win, probe, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&zero, 1);
+  XSync(dpy, False);
+  Time t = CurrentTime;
+  XEvent ev;
+  while (XCheckTypedWindowEvent(dpy, win, PropertyNotify, &ev))
+    if (ev.xproperty.atom == probe) t = ev.xproperty.time;
+  XSelectInput(dpy, win, a.your_event_mask);
+  return t;
+}
+
+// Ask the window manager to focus and raise our window. freeglut creates a
+// bare X11 window: no startup-notification id, no _NET_WM_USER_TIME. A
+// launch from Steam — another application active at the moment our window
+// maps — therefore hits the desktop's focus-stealing prevention, and the
+// game opened behind Steam with the keyboard still on Steam (field,
+// 2026-09-07, Steam beta on a Linux desktop). SDL windows set both and
+// never see it. _NET_ACTIVE_WINDOW with source 2 ("pager": a request on
+// the user's behalf) is what wmctrl sends and what KWin and Mutter honour
+// without a user-time contest, stamped with a real server time; the
+// _NET_WM_USER_TIME property is set beside it so the manager also counts
+// this as user interaction. Both are REQUESTS to a window manager and
+// nothing without one — deliberately: a direct XSetInputFocus/XRaiseWindow
+// for the manager-less case gave the newest instance real keyboard focus
+// on the e2e suite's bare Xvfb, where xdotool then switched from synthetic
+// events to XTEST for that window and the typed room code stopped
+// landing (seats-and-soak, 2026-09-07). A bare server is not a target.
+// x_error_logger is installed here as well as by the touch listener,
+// since either may run first and X errors exit the process by default.
+static void activate_window_x11() {
+  Display *dpy = glXGetCurrentDisplay();
+  Window win = dpy ? (Window)glXGetCurrentDrawable() : 0;
+  if (!win) return;
+  XSetErrorHandler(x_error_logger);
+  Time t = x11_server_time(dpy, win);
+  if (t != CurrentTime) {
+    long stamp = (long)t;
+    XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_USER_TIME", False), XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)&stamp, 1);
+  }
+  XEvent ev;
+  memset(&ev, 0, sizeof ev);
+  ev.xclient.type = ClientMessage;
+  ev.xclient.window = win;
+  ev.xclient.message_type = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+  ev.xclient.format = 32;
+  ev.xclient.data.l[0] = 2;         // source: pager / user request
+  ev.xclient.data.l[1] = (long)t;   // timestamp
+  ev.xclient.data.l[2] = 0;         // requestor's currently active window: none
+  XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+  XFlush(dpy);
 }
 
 static void touch_listener_init() {
@@ -465,21 +541,23 @@ void resize(int width, int height) {
 #endif
 }
 
-#ifdef __APPLE__
-void hide_cursor_after_fullscreen(int) {
-  if (is_fullscreen) {
-    cursor_hidden = false;
-    set_cursor_hidden(true);
-  }
-}
-
+#if defined(__APPLE__) || defined(__linux__)
 void activate_app_timer(int) {
-  activate_app_macos(); // No-op once [NSApp isActive].
+  activate_app(); // macOS: no-op once [NSApp isActive].
   // One retry only: this is the SECOND (and final) activation — the first ran
   // in draw() when the window first appeared. Two attempts then stop, so we
   // never fight the user for focus after launch.
   if (++s_activation_retries < 1) {
     glutTimerFunc(200, activate_app_timer, 0);
+  }
+}
+#endif
+
+#ifdef __APPLE__
+void hide_cursor_after_fullscreen(int) {
+  if (is_fullscreen) {
+    cursor_hidden = false;
+    set_cursor_hidden(true);
   }
 }
 
@@ -494,7 +572,112 @@ static void on_focus_gained() { if (game) game->focus_gained(); }
 #endif // __APPLE__
 
 
+// Probe an SDL device ONCE for the Steam Input handle behind it (SDL >= 2.30
+// reads it off Steam's virtual gamepad; 0 for a raw pad or an older SDL),
+// so pad_sdl_device_is_steam_virtual can tell "the pad the Steam backend
+// drives" from "a pad only SDL has" — by handle, live against the
+// backend's adoption. Open/close for the read is refcounted and cheap;
+// the note persists until DEVICEREMOVED.
+static void sdl_probe_steam_handle(int device_index) {
+  SDL_JoystickID inst = SDL_JoystickGetDeviceInstanceID(device_index);
+  if (pad_sdl_steam_handle_known(inst)) return;
+  Uint64 h = 0;
+#if SDL_VERSION_ATLEAST(2, 30, 0)
+  SDL_GameController *c = SDL_GameControllerOpen(device_index);
+  if (c) {
+    h = SDL_GameControllerGetSteamHandle(c);
+    SDL_GameControllerClose(c);
+  }
+#endif
+  pad_sdl_note_steam_handle(inst, (unsigned long long)h);
+  startup_tracef("controllers: device %d (instance %d) %s vid=%04x pid=%04x steam handle %llu", device_index,
+                 (int)inst, SDL_JoystickNameForIndex(device_index) ? SDL_JoystickNameForIndex(device_index) : "?",
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+                 (unsigned)SDL_JoystickGetDeviceVendor(device_index), (unsigned)SDL_JoystickGetDeviceProduct(device_index),
+#else
+                 0u, 0u,
+#endif
+                 (unsigned long long)h);
+}
+
+// Beside the Steam Input backend, ownership of a physical pad can change
+// while the game runs — the player switches its layout in the overlay
+// between a gamepad template (SDL's emulated pad drives it) and one that
+// uses the game's actions (the backend adopts it). Every ~250 ms: close an
+// opened SDL pad the backend now drives, and open an unopened SDL pad it
+// no longer does (or never did). DEVICEADDED/REMOVED still handle the
+// arrivals and departures themselves.
+// The unthrottled pass. The Steam backend calls it the moment it ADOPTS a
+// handle, before announcing the new pad: the SDL twin that has been
+// driving a seat must be closed first (the seat then waits for its next
+// pad, GLShip::awaiting_pad) so the Steam pad lands on that seat. With the
+// close left to the next throttled pass, the Steam pad arrived while the
+// seat was still taken, sat unassigned, and its A joined a phantom player
+// 2 — a layout switch on the Deck worked or not by which event won
+// (field, 2026-09-07).
+void sdl_pads_sync_now() {
+  if (!steam_input_active() || !game) return;
+  // Close first, open second: a seat whose pad is closed here waits for
+  // the next pad (GLShip::awaiting_pad), so the replacement opened below
+  // lands on the same seat instead of a new one.
+  int n = SDL_NumJoysticks();
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    if (!controllers[i]) continue;
+    SDL_JoystickID id = controller_ids[i];
+    int dev = -1;
+    for (int d = 0; d < n; d++)
+      if (SDL_JoystickGetDeviceInstanceID(d) == id) { dev = d; break; }
+    // pad.h's whole rule — an adopted handle's device, or the raw pad
+    // behind one Steam runs — not just the adopted case. Probe first: a
+    // pad opened while the action sets were still resolving (the retry
+    // window) was opened with no probe at all.
+    if (dev < 0) continue;
+    sdl_probe_steam_handle(dev);
+    if (!pad_sdl_device_is_steam_virtual(dev)) continue;
+    unsigned long long h = pad_sdl_steam_handle(id);
+    SDL_GameControllerClose(controllers[i]);
+    controllers[i] = NULL;
+    controller_ids[i] = -1;
+    pad_forget(id);
+    pad_sdl_note_steam_handle(id, h);  // keep the note, no re-probe
+    startup_tracef("controllers: SDL pad %d (instance %d) released — %s", i + 1, (int)id,
+                   h ? "the Steam backend drives its handle" : "the raw pad behind Steam's virtual gamepad");
+    game->controller_removed(id);
+  }
+  for (int d = 0; d < n; d++) {
+    if (!SDL_IsGameController(d)) continue;
+    SDL_JoystickID inst = SDL_JoystickGetDeviceInstanceID(d);
+    bool opened = false;
+    for (int i = 0; i < MAX_PLAYERS; i++)
+      if (controller_ids[i] == inst) opened = true;
+    if (opened) continue;
+    sdl_probe_steam_handle(d);
+    if (pad_sdl_device_is_steam_virtual(d)) continue;
+    for (int i = 0; i < LOCAL_PLAYER_CAP; i++) {
+      if (controllers[i] != NULL) continue;
+      controllers[i] = SDL_GameControllerOpen(d);
+      if (!controllers[i]) break;
+      controller_ids[i] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[i]));
+      startup_tracef("controllers: SDL pad %d (instance %d) opened: %s (%s glyphs)", i + 1,
+                     (int)controller_ids[i], SDL_GameControllerName(controllers[i]),
+                     pad_style_name(pad_style_for_id(controller_ids[i])));
+      game->controller_added(controller_ids[i]);
+      break;
+    }
+  }
+}
+
+static void sdl_pads_sync() {
+  if (!steam_input_active() || !game) return;
+  static Uint32 last = 0;
+  Uint32 now = SDL_GetTicks();
+  if (now - last < 250) return;
+  last = now;
+  sdl_pads_sync_now();
+}
+
 void check_controller() {
+  sdl_pads_sync();
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
     if(e.type == SDL_QUIT) {
@@ -519,31 +702,52 @@ void check_controller() {
       bool known = false;
       for(int i = 0; i < MAX_PLAYERS; i++)
         if(controller_ids[i] == added_id) known = true;
+      // Beside the Steam backend, arrivals go through sdl_pads_sync, which
+      // closes what the newcomer makes redundant BEFORE opening it (so a
+      // seat's pad is replaced, not doubled). Probe the handle now — the
+      // device's first sighting — and leave the open to the sync.
+      if(steam_input_active()) {
+        sdl_probe_steam_handle(e.cdevice.which);
+        known = true;
+      }
       if(!known) for(int i = 0; i < LOCAL_PLAYER_CAP; i++) {
         if(controllers[i] == NULL) {
           controllers[i] = SDL_GameControllerOpen(e.cdevice.which);
           if(controllers[i]) {
             controller_ids[i] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[i]));
             std::cout << "Controller " << i+1 << " connected: " << SDL_GameControllerName(controllers[i])
-                      << " (" << pad_style_name(pad_style_for(controllers[i])) << " glyphs)" << std::endl;
-            game->controller_added(controllers[i]);
+                      << " (" << pad_style_name(pad_style_for_id(controller_ids[i])) << " glyphs)" << std::endl;
+            game->controller_added(controller_ids[i]);
           }
           break;
         }
       }
     } else if(e.type == SDL_CONTROLLERDEVICEREMOVED) {
       SDL_JoystickID removed_id = e.cdevice.which;
+      // Whether we held it or skipped it, its handle note is stale now.
+      if(steam_input_active()) pad_forget(removed_id);
       for(int i = 0; i < MAX_PLAYERS; i++) {
         if(controller_ids[i] == removed_id) {
           SDL_GameControllerClose(controllers[i]);
           controllers[i] = NULL;
           controller_ids[i] = -1;
-          pad_style_forget(removed_id);
+          pad_forget(removed_id);
           std::cout << "Controller " << i+1 << " disconnected" << std::endl;
           game->controller_removed(removed_id);
           break;
         }
       }
+    }
+    // Under NEWTONIA_TRACE, every raw press: the SDL button SDL decoded and
+    // the joystick button index underneath it, so a pad whose bumper
+    // arrives as nothing (or as the wrong button) names itself.
+    if (startup_trace_enabled()) {
+      if (e.type == SDL_CONTROLLERBUTTONDOWN)
+        startup_tracef("pad event: instance %d controller button %d (%s)", (int)e.cbutton.which,
+                       (int)e.cbutton.button,
+                       SDL_GameControllerGetStringForButton((SDL_GameControllerButton)e.cbutton.button));
+      else if (e.type == SDL_JOYBUTTONDOWN)
+        startup_tracef("pad event: instance %d joystick button %d", (int)e.jbutton.which, (int)e.jbutton.button);
     }
     game->controller(e);
   }
@@ -628,6 +832,9 @@ void tick() {
   check_windows_focus();
 #endif
   steam_run_callbacks();
+  // Steam Input pads: RunFrame, hot-plug diff, action edges -> the same
+  // controller events check_controller() would have delivered.
+  steam_input_poll(game);
   game->tick(delta);
   glutPostRedisplay();
 }
@@ -643,6 +850,14 @@ void isVisible(int state) {
 void init_controllers_and_audio() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
+  // STEAMINPUT.md §5 rule 1 — a pad has exactly one owner — is kept per
+  // DEVICE, not per backend: SDL's controller subsystem comes up beside
+  // the Steam Input backend, and the scans below skip Steam's own virtual
+  // gamepads (the emulation of pads the API already presents), so a pad
+  // Steam presents arrives once and a pad Steam does NOT present (Steam
+  // Input disabled for it) still arrives through SDL. Silencing SDL
+  // wholesale left the second kind with no controller at all (field,
+  // 2026-09-06).
   Uint32 SDL_INIT_FLAGS = SDL_INIT_GAMECONTROLLER;
   if(ENABLE_AUDIO) {
     SDL_INIT_FLAGS |= SDL_INIT_AUDIO;
@@ -669,26 +884,52 @@ void init_controllers_and_audio() {
     SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
     for (int i = 0; i < SDL_NumJoysticks() && opened < LOCAL_PLAYER_CAP; ++i) {
-      if (SDL_IsGameController(i)) {
+      if (steam_input_active() && SDL_IsGameController(i)) sdl_probe_steam_handle(i);
+      if (SDL_IsGameController(i) && !pad_sdl_device_is_steam_virtual(i)) {
         controllers[opened] = SDL_GameControllerOpen(i);
         if (controllers[opened]) {
           controller_ids[opened] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[opened]));
           std::cout << "Controller " << opened+1 << ": " << SDL_GameControllerName(controllers[opened])
-                    << " (" << pad_style_name(pad_style_for(controllers[opened])) << " glyphs)" << std::endl;
+                    << " (" << pad_style_name(pad_style_for_id(controller_ids[opened])) << " glyphs)" << std::endl;
           opened++;
         } else {
           std::cout << "Could not open gamecontroller " << i << ": " << SDL_GetError() << std::endl;
         }
       }
     }
-    if(opened == 0) std::cout << "No controllers found" << std::endl;
+    if(opened == 0 && !steam_input_active()) std::cout << "No controllers found" << std::endl;
+    if(steam_input_active()) std::cout << "Controllers: Steam Input presents its pads; SDL keeps the rest" << std::endl;
+    // The mapping SDL chose for each opened pad — the whole button table
+    // in one line. On a Deck under the gamepad template, LB reached the
+    // game as nothing at all (field, 2026-09-07): the emulated device
+    // carries the Deck's own vid/pid, so whether SDL applied its Deck
+    // mapping or an Xbox one to Steam's virtual pad is the question.
+    for (int i = 0; i < opened; i++) {
+      char *map = SDL_GameControllerMapping(controllers[i]);
+      startup_tracef("controllers: pad %d mapping: %s", i + 1, map ? map : "(none)");
+      if (map) SDL_free(map);
+    }
     {
-      char line[160];
-      snprintf(line, sizeof(line), "controllers: SDL_NumJoysticks=%d opened=%d", SDL_NumJoysticks(), opened);
+      char line[200];
+      // Steam hides the physical pads behind its virtual ones from SDL games
+      // through this env var; whether it reached this process is the first
+      // question when a pad shows up twice.
+      const char *ign = SDL_getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES");
+      snprintf(line, sizeof(line), "controllers: SDL_GAMECONTROLLER_IGNORE_DEVICES=%s", ign ? ign : "(unset)");
+      startup_trace(line);
+      snprintf(line, sizeof(line), "controllers: SDL_NumJoysticks=%d opened=%d steam_input=%d", SDL_NumJoysticks(), opened,
+               (int)steam_input_active());
       startup_trace(line);
       for (int i = 0; i < SDL_NumJoysticks(); i++) {
-        snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d)", i,
-                 SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?", (int)SDL_IsGameController(i));
+        snprintf(line, sizeof(line), "  joystick %d: %s (gamecontroller=%d vid=%04x pid=%04x steam_handle=%llu steam_virtual=%d)", i,
+                 SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?", (int)SDL_IsGameController(i),
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+                 (unsigned)SDL_JoystickGetDeviceVendor(i), (unsigned)SDL_JoystickGetDeviceProduct(i),
+#else
+                 0u, 0u,
+#endif
+                 pad_sdl_steam_handle(SDL_JoystickGetDeviceInstanceID(i)),
+                 (int)pad_sdl_device_is_steam_virtual(i));
         startup_trace(line);
       }
     }
@@ -877,6 +1118,8 @@ int main(int argc, char* argv[]) {
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
+  else if (steam_input_init())
+    std::cout << "Steam Input owns the controllers (action sets)" << std::endl;
   startup_trace("steam_init done");
   // Must precede the first frame: the Steam backend registers its stat
   // callbacks here, and the SDK's automatic stats delivery is dispatched on
@@ -919,10 +1162,10 @@ int main(int argc, char* argv[]) {
   }
   init_controllers_and_audio();
   startup_trace("controllers + audio done");
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_shutdown(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_input_shutdown(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < MAX_PLAYERS; i++) {
-    if(controllers[i]) game->controller_added(controllers[i]);
+    if(controllers[i]) game->controller_added(controller_ids[i]);
   }
 #ifdef __APPLE__
   install_macos_focus_observer(on_focus_lost, on_focus_gained);

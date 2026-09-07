@@ -4,7 +4,7 @@
 #
 #   /home/<you>/newtonia/steam_run_local.sh %command%
 #
-# (env vars in front work as usual: NEWTONIA_TRACE=1 /path/steam_run_local.sh %command%)
+# (env vars in front work as usual: NEWTONIA_TRACE=/tmp/nt.txt /path/steam_run_local.sh %command%)
 #
 # Steam expands %command% to its whole launch line — the launch wrapper,
 # the reaper, the runtime container's entry point, and LAST the depot

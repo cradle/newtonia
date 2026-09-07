@@ -85,6 +85,10 @@ class Ship : public CompositeObject {
     void boost();
     bool boost_ready() const { return boost_cooldown_left <= 0.0f; }
     static const float BOOST_COOLDOWN_MS;
+    // Shared by keyboard, controller and host-applied netplay requests.
+    void teleport();
+    bool teleport_ready() const { return teleport_cooldown_left <= 0.0f; }
+    static const float TELEPORT_COOLDOWN_MS;
     int multiplier() const;
 
     float heading() const;
@@ -602,6 +606,7 @@ class Ship : public CompositeObject {
 
     float heat_rate, retro_heat_rate, cool_rate, boost_heat;
     float boost_cooldown_left = 0.0f;  // ms until boost() fires again
+    float teleport_cooldown_left = 0.0f;  // transient, like the boost cooldown
 
     // Forces
     float thrust_force, reverse_force, rotation_force, boost_force;

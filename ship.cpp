@@ -1,4 +1,5 @@
 #include "ship.h"
+#include "teleport.h"
 #include "achievements.h"
 #include "stats.h"
 #include "asset_path.h"
@@ -1461,6 +1462,14 @@ void Ship::update_missile_fly_volumes() {
 // See ship.h: the cooldown gates every path — key, pad bumper, touch
 // button, and the host's application of a net client's presses.
 const float Ship::BOOST_COOLDOWN_MS = 2000.0f;
+const float Ship::TELEPORT_COOLDOWN_MS = 5000.0f;
+
+void Ship::teleport() {
+  if (!teleport_ready()) return;
+  teleport_cooldown_left = TELEPORT_COOLDOWN_MS;
+  net_teleport_count++;
+  add_behaviour(new Teleport(this));
+}
 
 void Ship::boost() {
   if (!boost_ready()) return;
@@ -2992,6 +3001,7 @@ void Ship::step(float delta, const Grid &grid) {
     temperature += retro_heat_rate * delta;
 	}
   if(boost_cooldown_left > 0.0f) boost_cooldown_left -= delta;
+  if(teleport_cooldown_left > 0.0f) teleport_cooldown_left -= delta;
   temperature -= cool_rate * delta;
   if(temperature <= 0)
     temperature = 0;

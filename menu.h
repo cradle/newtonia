@@ -29,8 +29,8 @@ private:
   // State::nav_key_from_controller translation, so keyboard and pad behave
   // identically on every menu screen. src is the pad that produced a
   // confirm (bound to player 1), null for real keyboard input.
-  void nav_input(unsigned char key, SDL_GameController *src);
-  void confirm_selection(SDL_GameController *ctrl);
+  void nav_input(unsigned char key, PadId src);
+  void confirm_selection(PadId pad);
   int  max_menu_items() const;
   // RESUME HOSTING row (NETPLAY.md host process-death resume): shown at
   // the top when a fresh NetResume ticket + online save survived a killed

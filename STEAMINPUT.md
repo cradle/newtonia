@@ -1,11 +1,342 @@
 # Steam Input API — plan
 
-Status: **proposed, not started** (2026-09-05). Follows the pad-glyph work on
+Status: **field-verified on Linux with an Xbox Series X pad, a
+DualSense AND a Switch Pro Controller; portal registered and publishing
+official layouts** (2026-09-07; plan written 2026-09-05). With the app configuration
+published (PlayStation opted in, Custom Configuration →
+`steam_input_manifest.vdf`) and the manifest's `configurations` block in
+Valve's documented shape, a DualSense with no personal layout is handed
+"Official Layout for Newtonia - Newtonia Official (PlayStation)" and the
+client's layout page ticks every type the manifest names. Through the Steam library entry with a layout that binds the
+game's actions: the backend adopts the pad, every hint names the layout's
+position (shapes and OPTIONS/CREATE on the DualSense), the FIRE chip and
+the F1 card follow a remap, pause/menu/roster/lobby navigate on the Menu
+set. Four authored layouts ride in the manifest: `controller_xboxone.vdf`,
+`controller_ps5.vdf`, `controller_neptune.vdf` and
+`controller_switch_pro.vdf`. What the day's field runs corrected is in §10. Follows the pad-glyph work on
 `claude/steam-input-api-support-hk2jll`, which established the rendering
 layer (`pad_style.h`) and the one hard fact this plan is built on: the
 legacy Steam Input calls do not see the player's bindings. Valve's own
 recommendation is the same — use the Steam Input API for broad controller
-support. This is the plan for doing that properly.
+support. This is the plan for doing that properly; §10 records what
+landed against it.
+
+## 10. What landed (2026-09-06) and what is still open
+
+**Code (M1–M3, plus the M4 docs):**
+
+- `pad.h/cpp` — the seam of §1: `PadId`, `pad_attached/pad_name/pad_count/
+  pad_id_at/pad_number/pad_axis`, the style cache (folded in from
+  `pad_style.cpp`, which is gone), `pad_action_label` (§4) and the
+  `ShowBindingPanel` hooks. Every consumer of §1's list holds a `PadId`:
+  `GLShip::set_controller(PadId)`, `GLGame`'s constructors, hot-plug and
+  roster, `State::nav_key_from_controller(e, PadId*)`, `StateManager`,
+  `Intro`, `Menu::confirm_selection(PadId)`, `NetLobby`, `Overlay`,
+  `glut.cpp`, `xbox_main.cpp`, `shot_scene.cpp`. No SDL type in `pad.h`
+  beyond the button/axis enums the consumers already switch on.
+- `steam_input.h/cpp` — the backend of §3: `Init(true)`, `RunFrame` from
+  `glut.cpp`'s `tick`, hot-plug by diffing
+  `GetConnectedControllers` per tick (chosen over `EnableDeviceCallbacks`:
+  one mechanism for startup and later, nothing to keep in step with the
+  pump, and §9's flaky device callbacks don't apply), digital edges and
+  the stick → synthesized SDL events with ids from `PAD_STEAM_BASE`,
+  set switching from `State::pad_action_set()` with a release of the
+  outgoing set's held actions, total fallback (also `NEWTONIA_STEAM_INPUT=0`
+  as a dev kill switch, and — field, 2026-09-06 — action sets Steam does
+  not know: a 0 `GetActionSetHandle` means the In-Game Actions file is
+  registered nowhere, so `Init` is undone and SDL drives the pads exactly
+  as the shipped build's), every decision under `NEWTONIA_TRACE`
+  (`startup_trace.h`, shared with `glut.cpp` now). **§5 rule 1 landed per
+  DEVICE, not per backend** (first field run, 2026-09-06: with SDL's
+  controller subsystem silenced, "Steam Input off" left no controller at
+  all — Steam does NOT present such a pad through the API, contrary to the
+  §5 assumption). SDL stays up beside the backend; `glut.cpp` and
+  `pad.cpp` skip Steam's own virtual gamepad (vendor 0x28DE, product
+  0x11FF — `pad_sdl_device_is_steam_virtual`), which is its emulation of
+  the pads the API already presents, so a Steam pad arrives once and a pad
+  Steam does not present still arrives through SDL. `SetInputActionManifestFilePath`
+  was tried and dropped: it takes an "input manifest" (a file listing the
+  IGA and per-type configuration files), not the IGA, and REFUSED the IGA
+  (trace, 2026-09-06). Registration is the portal's job (or
+  `controller_config/` in development); the depot copy exists for the
+  portal's bundled-config path.
+- `steam/game_actions_4536720.vdf` — §2's manifest, staged by
+  `deploy-steam.yml` into all three depots (macOS also inside
+  `Contents/Resources`, ahead of signing) and by `make steam`.
+  `test/unit/pad_actions_test.cpp` pins it to `pad.h`'s table. Three
+  deviations from the §2 tables, all in the Menu set and all so that TODAY's
+  semantics survive the synthesis (the consumers tell B from Back and Start
+  from A): `start` (Start: attract dismiss, pause toggle, resume) and `exit`
+  (Back: exit-to-menu from the pause screen) are their own actions rather
+  than aliases of `confirm`/`back`, and `delete` is not separate from `back`
+  — B is both, contextually, in the lobby, and synthesizing the same SDL B
+  for both could not have told them apart anyway. `claim` is not an action:
+  press-to-claim reads any Menu-set edge, as planned.
+- §4: hint sites name ACTIONS (`GLShip::pad_hint(PadAction)`,
+  `pad_action_label_any`), the origin → position table covers the seven
+  families (Steam Controller, PS4, PS5, Xbox 360/One, Switch, Deck) for
+  face/bumpers/triggers/stick clicks and moves/d-pad/Start-Back, anything
+  else renders `GetStringForActionOrigin`; triggers and stick moves became
+  labelled pseudo-positions in `pad_style.h` (`RT`/`R2`, `LEFT STICK`).
+  CONTROLLER LAYOUT rows on the pause menu and the seat roster, Steam pads
+  only. `zoom_in`/`zoom_out` actions, synthesized as SDL PADDLE1/2 — which
+  also gives an Elite pad's paddles the zoom on the SDL path.
+
+The IGA file is pure KeyValues — no `//` header comment: Steam resolved
+the set handles from the commented version, but the layout editor
+offered no action sets (2026-09-06), and a comment-free file removes one
+variable while that is chased. What the file is and how it is registered
+is documented here and in the platform-builds skill instead.
+
+**Field-verified 2026-09-06 (Linux snap client, Xbox Series X pad, the
+sniper build through the library entry):** adoption on a layout that
+binds the actions, hints following the layout, play + pause + menus on
+the two sets, the raw-pad de-dup, Steam Input off (SDL path), a template
+remap (SDL path through Steam's emulated pad). Three more rules came out
+of it, all in `steam_input.cpp`: a digital action fires only after being
+SEEN RELEASED since its set was activated (Start is `pause` in Ship and
+`start` in Menu, and a pause switches the set — a held Start toggled the
+pause for as long as it was held); hints show the type's default position
+until the pad's bindings have loaded (Steam applies a layout on window
+focus, and reports every action in-set-but-unbound until then, which read
+as "PRESS -"); the F1 card lists only the rows the layout binds and never
+circles the "-" marker. And two things learned about the client: the
+layout editor on this client adds a duplicate activator per mouse click
+(harmless — Steam ORs them) and snaps back to the auto-generated
+"Official Layout" on launch in dev mode, so edit that one in place; and a
+NON-STEAM SHORTCUT to `steam_run_local.sh` is not the app — Steam's
+controller layer keys off the shortcut's id and has no actions for it,
+while the API side answers as the real app through `steam_appid.txt`, so
+everything looks half-registered. Launch Options on the real library
+entry, always.
+
+**Field-verified 2026-09-06, evening (same client, a DualSense):** the
+manifest path is honoured — `SetInputActionManifestFilePath` set, sets
+resolved at Init, the pad adopted with `ps5 glyphs` and every Menu action
+reporting its shape — but only once a configuration for the pad's TYPE
+existed. What the three traces on the way there taught: (1) with no
+`controller_ps5` entry in the manifest Steam did not manage the pad at
+all — SDL saw the raw 054c/0ce6 device with no Steam handle, and both set
+handles read 0, because Steam builds a game's actions only when it
+prepares a layout for a pad it manages; (2) with a SEEDED entry (the Xbox
+export retyped `controller_ps5`) Steam claimed the pad — SDL saw no
+joystick — yet still ran it on the plain Gamepad template ("this game
+has built in controller support for some controllers, but not yours":
+the portal declares native support for Xbox only, so a PlayStation pad
+is translated to Xbox by default) and the sets stayed 0; (3) the layout
+editor for the pad listed only a "Default" set until the IGA was back in
+`<Steam>/controller_config/` — the editor learns the actions from there
+or from the portal, never from the bundled manifest. So authoring a new
+type's layout in dev is: IGA copy in `controller_config/`, launch with
+`NEWTONIA_STEAM_INPUT_MANIFEST=0` (a new dev switch — the copy beside the
+bundled manifest hands out colliding handles), bind the sets in the
+editor, export as a template, copy the export over
+`steam/controller_<type>.vdf`, regenerate the manifest, remove the copy
+and the switch. Two backend changes came out of it: set handles that read
+0 at Init are retried per tick for ~5 s and then once a second for the
+life of the process (a pad Steam takes over later brings them), and the
+pending phase traces the presented handles with their input types.
+
+**2026-09-07, the manifest shape.** With the app configuration published
+the client still handed the Deck the generic template with no action
+sets in its editor, and `appinfo.vdf` proved the client HAD the config.
+Valve's Action Manifest Files page keys `configurations` BY CONTROLLER
+TYPE, then by load priority, each entry only a `path` relative to the
+manifest — `"controller_ps5" { "0" { "path" "controller_ps5.vdf" } }`.
+The generator had written the inverse (numeric keys carrying a
+`controller_type` field), which Steam parsed without complaint and read
+as no defaults at all; the actions block still parsed, which is why the
+API side resolved the sets whenever a personal layout supplied bindings.
+Regenerated in the documented shape, `pad_actions_test` pins it, and the
+DualSense picked up the official layout by itself — from the beta DEPOT,
+no local launcher, which is the path every player takes. Same day, the
+Xbox pad confirmed the live handover between the two backends after the
+SDL-twin-first fix (`sdl_pads_sync_now`: the backend closes the SDL
+device driving a seat BEFORE announcing the adopted Steam pad, so the pad
+lands on that seat instead of sitting unassigned with its A joining a
+phantom player 2 — a Deck layout switch had worked or gone inert by
+which event won).
+
+**A layout switch resets the active set (Deck, 2026-09-07, run 220).**
+Picking the official layout from the pause menu's CONTROLLER LAYOUT row
+left every input dead until a restart: the trace showed the layout load
+(`SteamInputConfigurationLoaded_t`, uses Steam Input API=1) followed by
+`current set 1 (want Menu=2), 0/11 actions active` for good. A loaded
+layout comes up in its own default set, and the game-side library
+collapses an `ActivateActionSet` for the set it was last asked for —
+Valve's "cheap to call repeatedly" is a cache, and a load on the client
+side changes the set in force without the cache hearing of it, so
+re-asking for Menu once or every tick (run 219) changed nothing. The fix
+is one event handler, not a poll: `steam_input.cpp`'s `ConfigLoaded`
+handler asks for the OTHER set — a request the cache cannot collapse —
+and clears the pad's `set_known`, so the next `sync_set` requests the
+wanted set afresh through its ordinary path (release, re-prime — the
+bindings may have changed with the layout). Verified on the Deck from
+run 220: the live switch adopts the pad without a restart. Two paths
+rejected on the way: a polled two-set bounce (a workaround stacked on a
+guess), and unpausing the game to meet Steam's set (only the pause
+screen has an unpause; the callback also fires per focus change, which
+would resume a game the player left paused). Note the number
+`GetCurrentActionSet` reports is ambiguous — Steam's handle (Ship=1, the
+IGA's order) or the layout's preset id (Menu=1, every export authored
+Menu-first) — so the un-adopted dump now counts active actions in BOTH
+sets, which says which set is live whatever the number means.
+
+**A dead button on the Deck's template is the template's personal copy
+(2026-09-07).** L1 did nothing on the Deck under "Gamepad With Joystick
+Trackpad" while R1 and both stick clicks worked. Nothing in the game or in
+SDL's mapping could drop one bumper alone, and it was neither: the copy of
+the template in the account's `Steam Controller Configs` folder carried a
+stray L1 binding, and resetting the template in the picker fixed it. Every
+template a player has ever touched is a personal copy, so a single dead
+button on a Steam pad starts there. `NEWTONIA_TRACE=1` now prints SDL's
+mapping string per opened pad at startup and a `pad event:` line per raw
+press (the SDL button decoded and the joystick index under it), so the next
+one names itself. The same pass found the bumpers REVERSED in three of the
+four official layouts — boost on the right, teleport on the left, an
+authoring slip in the Xbox seed that the Deck and Switch exports inherited;
+only the independently authored PS5 layout matched the game's convention
+(boost left bumper, teleport right — `pad.h`, the SDL path, the F1 card,
+the Deck announcement). Swapped in place, and the seed's Menu-set legacy
+left bumper (an XInput X) set to shoulder_left as in the PS5 export.
+
+**Steam Deck (2026-09-07).** `controller_neptune.vdf` is a genuine Deck
+export (authored on the device from the official layout's editor — the
+Deck's editor lists the action sets only for a layout that EMBEDS them,
+never from the manifest, so a seeded file was the bootstrap; Deck
+capability value 23117823; every Ship and Menu action bound, zoom grips
+still unbound). Verified on the Deck from the beta depot: sets resolved
+at Init, the layout offered in the picker, a manual pick adopting the
+pad and driving seat 1, switches in both directions clean. **The Deck
+did not apply it by default — and the reason was the account, not the
+client.** Deleting `Steam Controller Configs/<user>/config/4536720-beta/`
+and the `configset_<serial>.vdf` beside it changed nothing because that
+folder is Steam Cloud synced (`steam_autocloud.vdf`): every delete was
+undone before the next launch, and the restored `controller_neptune.vdf`
+was dated **July 26** — the generic-template autosave saved the first day
+the game ran on the Deck, months before a Deck layout existed. "Revert to
+shared configuration" reverts to exactly that file. A stored shared
+configuration always beats the manifest's default, so this account's
+Deck never made a first-launch choice; a player with no such file gets
+the official layout, as the DualSense did on the PC from the depot. Two
+fixes for a tester's own account: pick the official layout once (Steam
+overwrites the shared file with a copy of it), or Steam Cloud off, delete
+the folder, launch, Cloud on. The seed lesson still stands: a layout is
+only ever applied by default when it is that type's own export. Valve's own dev
+switch for testing bundled layouts before a publish: Big Picture →
+Settings → System → Dev mode, then "Steam Input Layout Dev Mode".
+
+**Nintendo Switch Pro Controller (2026-09-07).** Nintendo Switch opted in
+on the portal beside Xbox and PlayStation; `controller_switch_pro.vdf` is
+the pad's own export (capability value 76563455). Verified on the Linux
+desktop client from the beta depot: the official layout applied by
+default on first launch (like the DualSense, unlike the Deck), the pad
+adopted, hints in the Switch vocabulary (`PAD_STYLE_SWITCH` — the
+printed letters, L/R, ZL/ZR, PLUS/MINUS, HOME). Two corrections on the
+way there, both in the file, neither in code: the first Switch layout was
+an Xbox export retyped, and on that pad the triggers were dead — a
+Switch's ZL/ZR are digital BUTTONS, so the seed's analog trigger groups
+matched nothing, while the face buttons carried over; the real export
+then had the two trigger groups the wrong way round (fire on ZL), and
+the sources of groups 16/17 were swapped in place so ZR fires and ZL is
+the secondary, the game's convention on every pad (run 218). The lesson
+generalises the seed rule: a file authored on another pad type is not
+just never applied by default, it can silently lose whole input groups.
+
+**Open — needs the Steam client and a pad (the M2/M3/M4 field matrix):**
+
+1. **Portal — DONE 2026-09-07** (PlayStation opted in, manifest path
+   set, published): the Steam Input page (Workshop route deprecated,
+   2026-09-06) asks for ONE path relative to the install dir: the **action
+   manifest**, `steam_input_manifest.vdf` — the actions plus a
+   `configurations` block naming the bundled layouts per controller type.
+   `steam/make_input_manifest.py` generates it from the actions file and
+   whichever `steam/controller_<type>.vdf` exports exist (Valve's type
+   names: `controller_xboxone.vdf`, `controller_ps4.vdf`, `controller_ps5.vdf`,
+   `controller_neptune.vdf` for the Deck, `controller_switch_pro.vdf`,
+   `controller_steamcontroller_gordon.vdf`); a client export lands under
+   `userdata/<account>/ugc/referenced/<id>/…_controller_config.vdf` — copy
+   it in under that name, re-run the script, commit both. The deploy
+   workflow and `make steam` stage all three kinds at the depot root
+   (macOS also inside Contents/Resources), and `steam_input.cpp` hands
+   Steam the manifest's absolute path at Init (the call that refused the
+   actions file this morning wanted exactly this file), so a local build
+   through `steam_run_local.sh` gets its layouts without the portal or a
+   `controller_config/` copy. **Until a default layout
+   exists for a pad's type, that pad has no bindings under Steam Input** —
+   the backend hands it to SDL, so the game still plays, but without the
+   layout-aware hints — so this step gates the first beta push of this
+   branch, not just the polish.
+2. Field matrix from §7: Xbox + DS4 on the sniper build through the
+   library entry; pause/roster/lobby nav and code entry; hot-plug and
+   2 pads; a remap of A/B in the overlay followed by the F1 card and the
+   FIRE chip within a frame; a grip binding showing Steam's text; the
+   Deck (trackpad-as-stick feel, §8); macOS + Windows clients; the
+   Init-false and Steam-Input-disabled-per-pad paths.
+3. Two known seams to watch in that matrix: (a) with `fire` collapsing
+   RT into A, a FRESH trigger pull on the disconnect card now confirms it
+   (a held one still does not — edges only); (b) `SteamInputConfigurationLoaded_t`
+   is not consumed — a pad whose layout arrives late, or sits on a gamepad
+   template, reads `bActive == false` and is left to SDL until a layout
+   with the actions loads (then adopted within a tick).
+
+**Mixed mode (Steam Input + SDL pads at once) — landed 2026-09-06**, the
+same day it was filed as future work, because the first field runs showed
+the alternative does not exist. What the traces taught, in order:
+
+- With no official layout, Steam runs an Xbox pad on its **legacy gamepad
+  template**: the API still presents the handle, but every action reads
+  `bActive == false` (not in the configuration), and Steam emulates an
+  XInput pad that SDL sees as `Xbox Series X Controller` with the REAL
+  vendor/product (045e/0b12 — the 0x28DE/0x11FF "Steam Virtual Gamepad"
+  ids are a Windows thing). So the pad "worked" through SDL while every
+  hint read "-" from the bound-nothing Steam pad.
+- "Steam Input disabled" on the snap client still presented the handle
+  (no actions) AND still grabbed the physical device, so SDL's copy was
+  silent — the pad had no working path. Whether the shipped build behaves
+  the same there is the control run still owed.
+
+The rule as landed — **adoption by actions, ownership per device**:
+
+- `steam_input.cpp` tracks every connected handle but ADOPTS one (assigns
+  a `PadId`, announces `controller_added`, polls it) only while its
+  layout uses the game's actions — `any_action_active` on the wanted set
+  each tick. A handle on a gamepad template is left to SDL, whose
+  emulated device is the pad exactly as on the shipped build; an adopted
+  pad whose actions all go inactive for `INACTIVE_DROP_TICKS` is
+  released back (`controller_removed`). The switch is live, so picking a
+  layout in the overlay moves the pad between backends without a restart.
+- The SDL side de-dups by HANDLE, not vendor id: SDL ≥ 2.30's
+  `SDL_GameControllerGetSteamHandle` names the handle behind a Steam
+  virtual gamepad; `glut.cpp` probes each device once on first sight
+  (`sdl_probe_steam_handle` → `pad_sdl_note_steam_handle`) and
+  `pad_sdl_device_is_steam_virtual` checks that handle LIVE against the
+  backend's adoption (`steam_input_owns_handle`). A ~250 ms
+  `sdl_pads_sync` closes an opened SDL pad the backend now drives and
+  opens an unopened one it no longer does. Enumeration (`pad_count`/
+  `pad_id_at`) unions adopted Steam pads first, then the listed SDL pads.
+
+- Third run, same day: SDL DID enumerate the physical pad beside Steam's
+  virtual one — instance 0 (045e/0b12, no handle) from the startup scan,
+  then Steam's virtual gamepad recreated three times as it loaded configs
+  (instances 1→3, each carrying the handle) — and both delivered the same
+  input, so two seats played as one. Not a silent phantom: SDL's hidapi
+  path reads the raw pad regardless of Steam's evdev grab. The rule now
+  covers it: while Steam presents handles and every presented handle
+  already has a driver (adopted by the backend, or an SDL device carrying
+  that handle), a handle-less SDL device is the physical duplicate and is
+  skipped; while some handle has no driver yet it is kept (the pad must
+  work even if SDL cannot read the handle), and with no handles presented
+  at all (Steam Input off for the game — which now works, display and
+  buttons correct) the raw device is the pad. A mixed rig — one pad on
+  Steam Input, a second with it disabled — loses the second under this
+  rule; Steam's own `SDL_GAMECONTROLLER_IGNORE_DEVICES` mechanism makes
+  the same assumption, and the trace now prints whether that env var
+  reached the process at all.
+
+Still to field-verify in the §7 matrix: a layout that binds the actions
+(the adoption line in the trace, then FIRE/START chips following a
+remap); one Steam pad + one SDL pad in two seats; the control run above.
 
 ## 0. Why, and what already exists
 
@@ -190,12 +521,16 @@ would be the one non-vector element on screen.
    Steam owns every controller it reports, and the SDL controller subsystem
    must not also open them — otherwise a pad Steam still emulates (a
    layout with legacy gamepad output, a pad Steam Input is disabled for)
-   arrives twice. Rule: after `Init`, SDL is initialised WITHOUT
+   arrives twice. ~~Rule: after `Init`, SDL is initialised WITHOUT
    `SDL_INIT_GAMECONTROLLER`, and the SDL pad backend reports zero pads.
    A pad the player has disabled Steam Input for is then Steam's problem to
    present (it does: such pads still appear through the API with a default
-   layout). This is the one behavioural cliff of the whole plan and gets
-   its own field test.
+   layout).~~ **Falsified in the first field run (2026-09-06):** a pad with
+   Steam Input disabled is NOT presented through the API, so this version
+   of the rule left it with no controller at all. The rule as landed is
+   per DEVICE: SDL stays up, and the SDL side skips Steam's virtual
+   gamepad (the emulation of a pad the API presents), so each physical pad
+   arrives exactly once — see §10.
 2. **Fallback is total, never partial.** `Init` false (not launched by
    Steam, client too old, Steam absent) → the SDL backend exactly as today,
    Steam backend never consulted, `steam_appid.txt` terminal runs keep
@@ -254,3 +589,97 @@ other pad backend (the Xbox fork's GDK input is the other obvious one).
 - Hot-plug is flaky on the snap client even on the shipped build; keep a
   default-branch control run in the matrix so a regression is never
   mistaken for one.
+
+## 11. Steam Deck default layout — findings (2026-09-07)
+
+The one open item. What was established, what was ruled out, and why it
+could not be closed from the game's side.
+
+The one open item from the Steam Input API work (STEAMINPUT.md): on a Steam
+Deck the game's official layout is offered but not applied by default. This
+file records what was established, what was ruled out, and why it could not
+be closed from the game's side.
+
+### What works
+
+- The Steam Input backend (`steam_input.cpp`) on the Deck: sets resolve at
+  Init (`Init ok, sets Ship=1 Menu=2`), the Deck's handle is presented, and
+  once "Newtonia Official (Steam Deck)" is picked the pad is adopted, drives
+  seat 1, and every hint follows the layout. Switching layouts in either
+  direction mid-game hands the pad over cleanly (the SDL-twin-first fix,
+  `sdl_pads_sync_now`, and the set re-assert on the configuration-loaded
+  event — below).
+- `steam/controller_neptune.vdf` is a genuine Deck export: authored on the
+  device in the official layout's editor, `controller_caps` 23117823 (the
+  Deck's own value), every Ship and Menu action bound, both analog actions.
+- The same manifest applies its PlayStation layout to a DualSense on the
+  desktop client by default, from the beta depot, with no hand-picking.
+- The Deck's layout picker lists ours under Templates as **"Recommended
+  Template — Newtonia Official (Steam Deck)"** with the Steam Input API badge,
+  so the client has parsed the manifest, found the neptune configuration,
+  and recognises it as the developer's recommended layout.
+
+### What does not
+
+A first launch on the Deck lands on Valve's **"Gamepad With Joystick
+Trackpad"** template. The game then sees a handle with no active actions
+(SDL drives it through Steam's emulated device, exactly like the shipped
+build), so the layout-aware hints and the adopted-pad path are unused until
+the player opens the picker.
+
+### Ruled out, with the evidence
+
+| Hypothesis | Test | Result |
+|---|---|---|
+| Manifest shape | `configurations` rewritten to Valve's documented shape (keyed by controller type, then priority, each entry a `path`) | Desktop client started applying the PlayStation layout; Deck unchanged |
+| Seeded file (Xbox export retyped) | Replaced by a real Deck export; then the header stripped of the personal `workshop://` URL and given a real timestamp | Listed as Recommended Template; still not applied |
+| Stored per-app choice | `configset_<serial>.vdf` inspected: empty. "Revert to shared configuration" used | Unchanged |
+| Steam Cloud restoring an old shared configuration | `Steam Controller Configs/<user>/config/4536720-beta/` (a July 26 generic-template autosave inside) deleted with Wi-Fi off, client restarted offline | Still the generic template with nothing on disk |
+| Client channel | PC and Deck both on the Steam client beta | Same channel, different choice |
+| Steam Input Layout Dev Mode | Layout offered with it on and off | No effect on the default |
+| Portal opt-in ticks | Xbox and PlayStation ticked and published; "Generic (DirectInput)" and "Any Future Devices" ticked and published as a further test, then unticked | No change, still the generic template — the Deck's built-in controller is not in that list |
+| Trace-side | Game logs identical on every Deck launch: manifest set, sets resolved, handle presented, no actions active | The game is not the deciding party |
+
+### Why it could not be solved here
+
+The decision is made inside the Steam client before the game starts, and
+Valve documents the setup (Custom Configuration + manifest path + per-type
+opt-in) but not the selection rule. The portal's own text ties the Custom
+Configuration to "controllers opted into Steam Input", and the opt-in list
+has no entry for the Deck's built-in controller, so the Deck may be
+following that wording literally: it recognises the developer layout as
+*recommended* but keeps Valve's template as the *default* for its own
+hardware. Nothing the game does at runtime can change that choice, and no
+file we ship has been shown to influence it once it is a genuine Deck export.
+
+### What ships in the meantime
+
+- The CONTROLLER LAYOUT row on the pause menu and the seat roster now
+  appears for ANY pad Steam presents, adopted or not
+  (`pad_has_binding_panel_any`), and opens Steam's layout page for it. A
+  Deck player on the generic template reaches the picker from inside the
+  game and picks "Newtonia Official (Steam Deck)" once; Steam remembers it.
+- Diagnostics for the next round: `SteamInputConfigurationLoaded_t` is
+  traced on every layout Steam hands the game (creator, revision, whether
+  it uses the Steam Input API), and an un-adopted handle dumps its state
+  every ~5 s (`NEWTONIA_TRACE=1 %command%` writes
+  `$HOME/newtonia-trace.txt`).
+
+### How to close it
+
+1. **Steamworks support ticket** (the only route to the rule itself) —
+   FILED 2026-09-07 through the help site's Steamworks route,
+   `help.steampowered.com/en/wizard/HelpRequest/HT-5NYN-2PKM-3CVY`
+   (partner.steamgames.com/home/contact redirects there now). Content:
+   app 4536720, Steam Input API, action manifest published as the Custom
+   Configuration with `controller_xboxone`, `controller_ps5` and
+   `controller_neptune` configurations, each a client export on that type;
+   desktop applies the PlayStation layout by default, the Deck applies
+   "Gamepad With Joystick Trackpad" with ours shown as the Recommended
+   Template; reproduced with all stored configurations deleted, offline, on
+   the client beta. Attach the three layout files, the manifest and a trace.
+2. **Steam Deck compatibility review**: Valve's reviewers can pin a
+   recommended layout for the Deck, and the review is due anyway before the
+   store lists the game as Verified.
+3. **A fresh account on a Deck** (Family Sharing) for a true first-launch,
+   to rule out anything account-scoped that the offline test could not.

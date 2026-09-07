@@ -475,7 +475,7 @@ State *ShotScene::build_state() {
     snprintf(gen, sizeof(gen), "%d", s_scene.generation);
     set_env_both("NEWTONIA_START_GENERATION", gen);
   }
-  GLGame *g = new GLGame((SDL_GameController *)NULL,
+  GLGame *g = new GLGame(PAD_NONE,
                          /*allow_dev_players=*/false);  // scenes own the roster
   g->score_saved = true;    // save_progress() no-ops for the whole run
   g->save_deleted_ = true;  // the game-over savegame delete never fires
@@ -487,7 +487,7 @@ State *ShotScene::build_state() {
   // bypass_cap: composed 3-4P shots must work while the dark-launch gate
   // (LOCAL_PLAYER_CAP) still holds; the harness is sandboxed anyway.
   for (int i = 1; i < s_scene.num_players; i++)
-    g->add_local_player(NULL, /*with_keys=*/true, /*bypass_cap=*/true);
+    g->add_local_player(PAD_NONE, /*with_keys=*/true, /*bypass_cap=*/true);
 
   // Ships start alive and settled (a fresh game's player 1 opens dead in
   // the respawn countdown), with the camera snapped for determinism.

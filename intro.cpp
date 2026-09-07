@@ -428,10 +428,10 @@ void Intro::focus_gained() {
   if (music_channel >= 0 && !paused) Mix_Resume(music_channel);
 }
 
-void Intro::controller_added(SDL_GameController *ctrl) {
-  if (game != NULL) game->controller_added(ctrl);
+void Intro::controller_added(PadId id) {
+  if (game != NULL) game->controller_added(id);
 }
 
-void Intro::controller_removed(SDL_JoystickID id) {
+void Intro::controller_removed(PadId id) {
   if (game != NULL) game->controller_removed(id);
 }

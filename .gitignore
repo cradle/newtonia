@@ -14,6 +14,9 @@ build
 /newtonia-arm64
 /newtonia-x86_64
 /selftest.log
+/game_actions_*.vdf
+/controller_*.vdf
+/steam_input_manifest.vdf
 /sigtest.log
 /attempt.log
 /Newtonia-netplay.app/
