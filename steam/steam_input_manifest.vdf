@@ -1,25 +1,27 @@
 "Action Manifest"
 {
-	"version"	"1"
 	"configurations"
 	{
-		"0"
+		"controller_neptune"
 		{
-			"controller_type"	"controller_neptune"
-			"path"	"controller_neptune.vdf"
-			"enabled"	"1"
+			"0"
+			{
+				"path"	"controller_neptune.vdf"
+			}
 		}
-		"1"
+		"controller_ps5"
 		{
-			"controller_type"	"controller_ps5"
-			"path"	"controller_ps5.vdf"
-			"enabled"	"1"
+			"0"
+			{
+				"path"	"controller_ps5.vdf"
+			}
 		}
-		"2"
+		"controller_xboxone"
 		{
-			"controller_type"	"controller_xboxone"
-			"path"	"controller_xboxone.vdf"
-			"enabled"	"1"
+			"0"
+			{
+				"path"	"controller_xboxone.vdf"
+			}
 		}
 	}
 

@@ -202,6 +202,22 @@ int main() {
     std::string manifest = ms.str();
     CHECK(manifest.find("\"Action Manifest\"") == 0);
     CHECK(has_key(manifest, "configurations"));
+    // Valve's documented shape: configurations keyed by controller type,
+    // then priority, each entry a "path" — the inverse (numeric keys with
+    // a "controller_type" field) parsed and yielded no defaults (2026-09-07).
+    CHECK(!has_key(manifest, "controller_type"));
+    {
+      std::string cfg = kind_block(manifest, "configurations");
+      CHECK(!cfg.empty());
+      std::set<std::string> types = button_keys(cfg);
+      CHECKF(types.count("controller_xboxone") == 1, "configurations lacks controller_xboxone");
+      for (std::set<std::string>::iterator it = types.begin(); it != types.end(); ++it) {
+        if (*it == "0" || *it == "path") continue;
+        CHECKF(it->compare(0, 11, "controller_") == 0, "configurations key %s is not a controller type", it->c_str());
+        std::string entry = kind_block(cfg, it->c_str());
+        CHECKF(has_key(entry, "0") && has_key(entry, "path"), "%s entry lacks \"0\" { \"path\" }", it->c_str());
+      }
+    }
     for (int i = 0; i < PAD_ACT_COUNT; i++)
       CHECKF(has_key(manifest, pad_action_info((PadAction)i).name),
              "manifest lacks %s — re-run steam/make_input_manifest.py", pad_action_info((PadAction)i).name);

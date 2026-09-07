@@ -8,7 +8,9 @@ Three files, three jobs (STEAMINPUT.md §10):
   controller_<type>.vdf      one exported default layout per controller type
                              (from the client's layout editor)
   steam_input_manifest.vdf   THIS: the actions + a "configurations" block
-                             naming those layouts by depot-relative path.
+                             naming those layouts per controller type by
+                             a path relative to the manifest (the depot
+                             root, where all three ride together).
                              What the Steamworks Steam Input page asks for
                              ("path to your Steam Input action manifest file
                              relative to your game install directory") and
@@ -64,12 +66,19 @@ def main():
             sys.exit("unknown controller type in %s (known: %s)" % (name, ", ".join(sorted(TYPES))))
         configs.append((TYPES[kind], name))
 
-    out = ['"Action Manifest"', "{", '\t"version"\t"1"', '\t"configurations"', "\t{"]
-    for i, (ctype, name) in enumerate(configs):
-        out += ['\t\t"%d"' % i, "\t\t{",
-                '\t\t\t"controller_type"\t"%s"' % ctype,
-                '\t\t\t"path"\t"%s"' % name,
-                '\t\t\t"enabled"\t"1"',
+    # Valve's documented shape (Action Manifest Files): configurations are
+    # keyed BY CONTROLLER TYPE, then by load priority, each carrying only a
+    # "path" relative to the manifest's own location. The inverse shape —
+    # numeric keys carrying a "controller_type" field — parsed without
+    # complaint and yielded no defaults: every pad without a hand-picked
+    # layout sat on the generic template (field, Deck + DualSense,
+    # 2026-09-07).
+    out = ['"Action Manifest"', "{", '\t"configurations"', "\t{"]
+    for ctype, name in configs:
+        out += ['\t\t"%s"' % ctype, "\t\t{",
+                '\t\t\t"0"', "\t\t\t{",
+                '\t\t\t\t"path"\t"%s"' % name,
+                "\t\t\t}",
                 "\t\t}"]
     out += ["\t}", inner, "}", ""]
     with open(OUT, "w") as f:
