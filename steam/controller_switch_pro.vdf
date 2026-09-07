@@ -1287,8 +1287,8 @@
 		{
 			"14"		"switch active"
 			"15"		"button_diamond active"
-			"16"		"left_trigger active"
-			"17"		"right_trigger active"
+			"16"		"right_trigger active"
+			"17"		"left_trigger active"
 			"29"		"dpad active"
 			"30"		"dpad inactive"
 			"25"		"joystick active"
