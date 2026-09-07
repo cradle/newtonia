@@ -3161,7 +3161,7 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
     while (boosts--) remote->boost();
     while (weapons--) remote->next_weapon();
     while (secondaries--) remote->next_secondary_weapon();
-    while (teleports--) remote->add_behaviour(new Teleport(remote));
+    while (teleports--) remote->teleport();
   }
 
   // Dead-man switch: no INPUT for 1 s (loss burst, hung tab) — release the

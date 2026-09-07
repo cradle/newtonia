@@ -535,8 +535,7 @@ void GLShip::controller_input(SDL_Event event) {
   } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_Y && pressed) {
     ship->next_secondary_weapon();
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER && pressed) {
-    ship->net_teleport_count++;
-    ship->behaviours.push_back(new Teleport(ship));
+    ship->teleport();
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSTICK && pressed) {
     rotating_view = !rotating_view;
     if (rotate_view_pref_) *rotate_view_pref_ = rotating_view;
@@ -774,8 +773,7 @@ void GLShip::input(unsigned char key, bool pressed) {
   } else if(next_secondary_key.matches(key) && pressed) {
     ship->next_secondary_weapon();
   } else if (teleport_key.matches(key) && pressed) {
-    ship->net_teleport_count++;
-    ship->behaviours.push_back(new Teleport(ship));
+    ship->teleport();
   } else if (toggle_rotate_view_key.matches(key) && pressed) {
     rotating_view = !rotating_view;
     if (rotate_view_pref_) *rotate_view_pref_ = rotating_view;
