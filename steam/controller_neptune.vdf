@@ -1,18 +1,18 @@
 "controller_mappings"
 {
 	"version"		"3"
-	"revision"		"92"
-	"title"		"Newtonia Official (Steam Deck)"
-	"description"		"Left stick steers, A fires, B fires the secondary, X and Y cycle weapons, Start pauses. Menu and Ship action sets."
+	"revision"		"102"
+	"title"		"newtonia deck"
+	"description"		"Your modified layout for this game."
 	"creator"		"76561197962648570"
-	"progenitor"		"template://controller_neptune_gamepad_fps.vdf"
-	"url"		""
-	"export_type"		"template"
+	"progenitor"		""
+	"url"		"workshop://3797246305"
+	"export_type"		"personal_local"
 	"controller_type"		"controller_neptune"
 	"controller_caps"		"23117823"
 	"major_revision"		"0"
 	"minor_revision"		"0"
-	"Timestamp"		"1788689772"
+	"Timestamp"		"0"
 	"actions"
 	{
 		"Menu"
@@ -650,6 +650,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu confirm, Confirm, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
@@ -734,6 +754,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship secondary, Fire Secondary, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
@@ -744,6 +784,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship fire, Fire, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 	}
 	"group"
@@ -970,6 +1030,85 @@
 		"description"		""
 		"inputs"
 		{
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"34"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship thrust, Thrust, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship reverse, Reverse, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship turn_right, Turn Right, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship turn_left, Turn Left, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 		"settings"
 		{
@@ -1209,8 +1348,9 @@
 			"15"		"button_diamond active"
 			"16"		"left_trigger active"
 			"17"		"right_trigger active"
-			"29"		"dpad active"
+			"29"		"dpad inactive"
 			"30"		"dpad inactive"
+			"34"		"dpad active"
 			"25"		"joystick active"
 			"26"		"right_joystick active"
 		}
