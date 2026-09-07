@@ -3,8 +3,16 @@
 #include "preferences.h"  // MAX_PLAYERS bounds the save's player count
 #include <SDL.h>
 #include <cstdio>
+#include <cerrno>
 #include <cstring>
 #include <string>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -633,8 +641,15 @@ static bool save_game_in(const char *file, const Save::GameState &s) {
     std::string path = save_path(file);
     if (path.empty()) return false;
 
-    FILE *fp = fopen(path.c_str(), "wb");
-    if (!fp) return false;
+    // Write beside the destination so replacement stays on one filesystem.
+    // Never truncate the last good save before the new one is complete.
+    const std::string temporary = path + ".tmp";
+    FILE *fp = fopen(temporary.c_str(), "wb");
+    if (!fp) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "save: cannot create %s: %s (previous save kept)",
+                     temporary.c_str(), std::strerror(errno));
+        return false;
+    }
 
     Save::FileStream f(fp);
     bool ok = true;
@@ -644,7 +659,30 @@ static bool save_game_in(const char *file, const Save::GameState &s) {
     ok = ok && wv(f, version);
     ok = ok && Save::serialize_game(f, s);
 
-    fclose(fp);
+    // Buffered writes can succeed and only report a full disk on close.
+    // Always close, even when serialization has already failed.
+    if (fclose(fp) != 0) ok = false;
+
+    if (ok) {
+#ifdef _WIN32
+        // CRT rename cannot replace an existing file on Windows. Keep the
+        // destination in place on failure; paths from SDL are UTF-8.
+        wchar_t *from = reinterpret_cast<wchar_t *>(SDL_iconv_string(
+            "UTF-16LE", "UTF-8", temporary.c_str(), temporary.size() + 1));
+        wchar_t *to = reinterpret_cast<wchar_t *>(SDL_iconv_string(
+            "UTF-16LE", "UTF-8", path.c_str(), path.size() + 1));
+        ok = from && to && MoveFileExW(from, to, MOVEFILE_REPLACE_EXISTING);
+        SDL_free(from);
+        SDL_free(to);
+#else
+        ok = std::rename(temporary.c_str(), path.c_str()) == 0;
+#endif
+    }
+    if (!ok) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "save: write or replacement failed for %s (previous save kept)", path.c_str());
+        std::remove(temporary.c_str());
+        return false;
+    }
 
     web_fs_sync("savegame");
 

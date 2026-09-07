@@ -80,6 +80,19 @@ following a remap, hot-plug through `GetConnectedControllers` — is
 field-verified through the library entry (STEAMINPUT.md §7 M2/M3 matrix,
 `platform-builds` skill).
 
+### Save write failure regression test (Linux)
+
+```sh
+bash test/unit/savegame.sh
+```
+
+Links the real save serializer with GNU linker wrappers to inject open,
+write, close and replacement failures, plus buffered writes to `/dev/full`.
+For both solo and online saves it checks failure reporting, preservation of
+the previous save, temporary-file cleanup, and successful replacement after
+an interrupted attempt. Uses isolated temporary player data and runs in
+`linux.yml`; only SDL2 development headers and its library are needed.
+
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 
 ```sh

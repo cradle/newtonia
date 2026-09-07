@@ -1013,8 +1013,8 @@ void GLGame::save_progress() {
       // game-over delete below is not gated — a roster can only become
       // all-dead through a running tick, which sets the flag anyway.
       if (save_dirty_) {
-        Save::save_game(build_save_data());
-        save_dirty_ = false;
+        // A failed write still needs saving on the next pause/exit trigger.
+        save_dirty_ = !Save::save_game(build_save_data());
       }
       return;
     }

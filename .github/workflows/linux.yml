@@ -71,6 +71,9 @@ jobs:
           cmake --build SDL2_mixer/build --parallel
           sudo cmake --install SDL2_mixer/build
 
+      - name: Save failure regression test
+        run: bash test/unit/savegame.sh
+
       # Netplay (NETPLAY.md): the documented Linux recipe — libdatachannel
       # from source into ./netplay-libs (clone happens in a temp dir; the
       # prefix holds only headers and libs, so the source find below is safe).
