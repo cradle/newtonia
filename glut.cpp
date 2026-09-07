@@ -522,12 +522,16 @@ static void sdl_probe_steam_handle(int device_index) {
 // opened SDL pad the backend now drives, and open an unopened SDL pad it
 // no longer does (or never did). DEVICEADDED/REMOVED still handle the
 // arrivals and departures themselves.
-static void sdl_pads_sync() {
+// The unthrottled pass. The Steam backend calls it the moment it ADOPTS a
+// handle, before announcing the new pad: the SDL twin that has been
+// driving a seat must be closed first (the seat then waits for its next
+// pad, GLShip::awaiting_pad) so the Steam pad lands on that seat. With the
+// close left to the next throttled pass, the Steam pad arrived while the
+// seat was still taken, sat unassigned, and its A joined a phantom player
+// 2 — a layout switch on the Deck worked or not by which event won
+// (field, 2026-09-07).
+void sdl_pads_sync_now() {
   if (!steam_input_active() || !game) return;
-  static Uint32 last = 0;
-  Uint32 now = SDL_GetTicks();
-  if (now - last < 250) return;
-  last = now;
   // Close first, open second: a seat whose pad is closed here waits for
   // the next pad (GLShip::awaiting_pad), so the replacement opened below
   // lands on the same seat instead of a new one.
@@ -576,6 +580,15 @@ static void sdl_pads_sync() {
       break;
     }
   }
+}
+
+static void sdl_pads_sync() {
+  if (!steam_input_active() || !game) return;
+  static Uint32 last = 0;
+  Uint32 now = SDL_GetTicks();
+  if (now - last < 250) return;
+  last = now;
+  sdl_pads_sync_now();
 }
 
 void check_controller() {

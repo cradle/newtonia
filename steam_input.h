@@ -81,7 +81,14 @@ bool steam_input_show_binding_panel(PadId id);
 int steam_input_action_origin(PadId id, PadAction a, int *button,
                               const char **text);
 
-#ifndef STEAM_BUILD
+#ifdef STEAM_BUILD
+// Provided by the desktop entry point (glut.cpp): close every SDL device
+// that is a Steam pad this backend now drives, and open any it no longer
+// does — NOW, not on the entry point's own ~250 ms cadence. The backend
+// calls it between adopting a handle and announcing the pad, so the seat
+// the SDL twin held is waiting when the Steam pad arrives (glut.cpp).
+void sdl_pads_sync_now();
+#else
 inline bool steam_input_init() { return false; }
 inline bool steam_input_active() { return false; }
 inline void steam_input_poll(StateManager *) {}

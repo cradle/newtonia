@@ -695,6 +695,11 @@ void steam_input_poll(StateManager *game) {
                      p.id - PAD_STEAM_BASE, (unsigned long long)p.handle,
                      type_name(p.type), pad_style_name(pad_style_for_id(p.id)));
       trace_set(in, p, want);
+      // Close the SDL twin FIRST so its seat is waiting for this pad;
+      // announced while the twin still held the seat, the pad sat
+      // unassigned and its A joined a phantom player 2 (Deck layout
+      // switch, field 2026-09-07).
+      sdl_pads_sync_now();
       game->controller_added(p.id);
     } else if (!active) {
       if (++p.inactive_ticks < INACTIVE_DROP_TICKS) continue;
