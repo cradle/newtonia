@@ -1,139 +1,118 @@
 "controller_mappings"
 {
 	"version"		"3"
-	"revision"		"3"
-	"title"		"#Title"
-	"description"		"#SettingsController_AutosaveDescription"
+	"revision"		"92"
+	"title"		"Newtonia Official (Steam Deck)"
+	"description"		"Left stick steers, A fires, B fires the secondary, X and Y cycle weapons, Start pauses. Menu and Ship action sets."
 	"creator"		"76561197962648570"
 	"progenitor"		"template://controller_neptune_gamepad_fps.vdf"
-	"url"		"autosave:///home/deck/.local/share/Steam/steamapps/common/Steam Controller Configs/2382842/config/4536720-beta/controller_neptune.vdf"
-	"export_type"		"unknown"
+	"url"		""
+	"export_type"		"template"
 	"controller_type"		"controller_neptune"
 	"controller_caps"		"23117823"
 	"major_revision"		"0"
 	"minor_revision"		"0"
-	"Timestamp"		"-713324660"
+	"Timestamp"		"1788689772"
+	"actions"
+	{
+		"Menu"
+		{
+			"title"		"#Set_Menu"
+			"legacy_set"		"0"
+			"StickPadGyro"
+			{
+				"nav"
+				{
+					"title"		"#Action_Nav"
+					"input_mode"		"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"nav_up"		"#Action_NavUp"
+				"nav_down"		"#Action_NavDown"
+				"nav_left"		"#Action_NavLeft"
+				"nav_right"		"#Action_NavRight"
+				"confirm"		"#Action_Confirm"
+				"back"		"#Action_Back"
+				"START"		"#Action_Start"
+				"exit"		"#Action_Exit"
+				"paste"		"#Action_Paste"
+				"Keyboard"		"#Action_Keyboard"
+			}
+		}
+		"Ship"
+		{
+			"title"		"#Set_Ship"
+			"legacy_set"		"0"
+			"StickPadGyro"
+			{
+				"steer"
+				{
+					"title"		"#Action_Steer"
+					"input_mode"		"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"thrust"		"#Action_Thrust"
+				"reverse"		"#Action_Reverse"
+				"turn_left"		"#Action_TurnLeft"
+				"turn_right"		"#Action_TurnRight"
+				"fire"		"#Action_Fire"
+				"secondary"		"#Action_Secondary"
+				"next_weapon"		"#Action_NextWeapon"
+				"next_secondary"		"#Action_NextSecondary"
+				"boost"		"#Action_Boost"
+				"teleport"		"#Action_Teleport"
+				"rotate_view"		"#Action_RotateView"
+				"help"		"#Action_Help"
+				"pause"		"#Action_Pause"
+				"Menu"		"#Action_Menu"
+				"zoom_in"		"#Action_ZoomIn"
+				"zoom_out"		"#Action_ZoomOut"
+			}
+		}
+	}
+	"action_layers"
+	{
+	}
 	"localization"
 	{
 		"english"
 		{
-			"title"		"Gamepad With Joystick Trackpad"
-			"description"		"This template is for most games that already have built-in gamepad support and have a first or third person controlled camera.  FPS or Third Person Adventure games, etc."
-		}
-		"czech"
-		{
-			"title"		"Gamepad s ovládáním kamery"
-			"description"		"Tato šablona je pro většinu her podporujících gamepad a disponujících kamerou z pohledu první nebo třetí osoby. Mezi takové hry patří například akční hry z pohledu první nebo třetí osoby."
-		}
-		"danish"
-		{
-			"title"		"Gamepad med kamerastyring"
-			"description"		"Denne skabelon er til de fleste spil, der allerede har indbygget gamepad-understøttelse og har et første- eller tredjepersonskontrolleret kamera. FPS eller tredjepersons adventure-spil osv."
-		}
-		"dutch"
-		{
-			"title"		"Gamepad met camerabesturing"
-			"description"		"Deze template is voor de meeste spellen die reeds ingebouwde gamepadondersteuning hebben en die een camera hebben die wordt bestuurd in de eerste of derde persoon. FPS, third person-avontuurspellen, etc."
-		}
-		"finnish"
-		{
-			"title"		"Kameraa ohjaava peliohjain"
-			"description"		"Tämä malli on useimmille muita ohjaimia valmiiksi tukeville peleille, joissa on ensimmäisessä tai kolmannessa persoonassa ohjattava kamera. FPS-pelit, kolmannen persoonan seikkailupelit jne."
-		}
-		"french"
-		{
-			"title"		"Manette avec contrôles caméra"
-			"description"		"Ce modèle fonctionne pour la plupart des jeux ayant un support manette intégré et une caméra contrôlée à la première ou à la troisième personne. FPS, jeux d'aventure à la troisième personne, etc."
-		}
-		"german"
-		{
-			"title"		"Gamepad mit Kamerasteuerung"
-			"description"		"Diese Vorlage ist für die meisten Spiele konzipiert, die bereits volle Untersützung für Gamepads mit sich bringen und eine First- oder Third-Person-Kamerasteuerung haben. Gedacht für Ego-Shooter, Third-Person-Abenteuerspiele usw."
-		}
-		"hungarian"
-		{
-			"title"		"Gamepad kamerairányítással"
-			"description"		"Ez a sablon a legtöbb olyan játékhoz való, melyek már rendelkeznek beépített gamepad-támogatással, és van első vagy harmadik személyű kezelésű kamerájuk. Ilyenek az FPS vagy harmadik személyű kalandjátékok stb."
-		}
-		"italian"
-		{
-			"title"		"Gamepad con controlli della telecamera"
-			"description"		"Questo template è pensato per la maggior parte dei giochi che hanno già il supporto per gamepad integrato e hanno la visuale controllata in prima o terza persona. Giochi d'avventura in terza persona, FPS ecc."
-		}
-		"japanese"
-		{
-			"title"		"カメラコントロール機能を持つゲームパッド"
-			"description"		"FPS や、アドベンチャーゲームのような、一人称または三人称のカメラ操作を行うゲームパッドに標準対応したゲーム用のテンプレートです。"
-		}
-		"koreana"
-		{
-			"title"		"카메라 조작 기능이 있는 게임패드"
-			"description"		"이 템플릿은 이미 게임패드 지원이 내장되어 있으며 1인칭 또는 3인칭 시점 카메라 조작을 지원하는 대부분의 게임을 위한 것입니다. FPS, 3인칭 어드벤쳐 게임 및 기타."
-		}
-		"polish"
-		{
-			"title"		"Kontroler obsługujący kamerę"
-			"description"		"Ten szablon jest dla większości gier, które mają wbudowane wsparcie dla kontrolerów, a także kamerę kontrolowaną z perspektywy pierwszej lub trzeciej osoby, np. FPS-y bądź gry przygodowe."
-		}
-		"portuguese"
-		{
-			"title"		"Comando com controlos de câmara"
-			"description"		"Este modelo é indicado para jogos que já têm compatibilidade nativa com comando e têm uma câmara que pode ser controlada. Por exemplo, jogos em primeira ou terceira pessoa, do género de aventura, de tiros, etc."
-		}
-		"romanian"
-		{
-			"title"		"Gamepad cu controale pentru cameră"
-			"description"		"Acest șablon este pentru majoritatea jocurilor care au deja suport pentru gamepad implementat și au o cameră controlată din perspectivă first sau third person. FPS sau jocuri de aventură third person, etc."
-		}
-		"russian"
-		{
-			"title"		"Геймпад с управлением камерой"
-			"description"		"Этот шаблон предназначен для большинства игр от первого или третьего лица, в которых уже есть встроенная поддержка геймпада (например, для шутеров или экшенов)."
-		}
-		"spanish"
-		{
-			"title"		"Mando con controles de cámara"
-			"description"		"Esta plantilla es para la mayoría de juegos que ya incluyen de serie compatibilidad con mando y disponen de cámara controlada en primera o tercera persona: FPS, juegos de aventura en tercera persona, etc."
-		}
-		"swedish"
-		{
-			"title"		"Gamepad med kamerakontroller"
-			"description"		"Denna mall är för de flesta spel som redan har inbyggt stöd för spelkontroller och har en kamera som styrs i första- eller tredjeperson. FPS eller äventyrsspel etc."
-		}
-		"schinese"
-		{
-			"title"		"支持视角控制的手柄"
-			"description"		"该模板适用于已内置手柄支持，并且拥有第一或第三人称控制视角的大多数游戏。包括 FPS 或第三人称冒险游戏等。"
-		}
-		"thai"
-		{
-			"title"		"เกมแพดพร้อมการควบคุมมุมกล้อง"
-			"description"		"แม่แบบนี้ใช้สำหรับเกมส่วนมากที่มีการรองรับเกมแพดมาในตัวอยู่แล้ว และมีการควบคุมมุมกล้องในมุมมองบุคคลที่หนึ่งหรือสาม เช่น เกมยิงมุมมองบุคคลที่หนึ่ง หรือเกมผจญภัยมุมมองบุคคลที่สาม ฯลฯ"
-		}
-		"brazilian"
-		{
-			"title"		"Controle com controle de câmera"
-			"description"		"Este modelo é para jogos já compatíveis com controles que possuem uma câmera controlável, seja em primeira ou terceira pessoa, como jogos de tiro, aventura, etc."
-		}
-		"bulgarian"
-		{
-			"title"		"Геймпад с управление на камерата"
-			"description"		"Този шаблон е за повечето игри, които вече имат вградена поддръжка на геймпад и включват управление на камерата от първо или трето лице. Екшъни от първо лице, приключенски игри от трето лице и т.н."
-		}
-		"greek"
-		{
-			"title"		"Χειριστήριο με πλήκτρα κάμερας"
-			"description"		"Αυτό το πρότυπο είναι για τα περισσότερα παιχνίδια που έχουν ενσωματωμένη υποστήριξη χειριστηρίου και έχουν μια ελεγχόμενη κάμερα πρώτου ή τρίτου προσώπου. FPS ή παιχνίδια περιπέτειας τρίτου προσώπου κλπ."
-		}
-		"turkish"
-		{
-			"title"		"Kamera Kontrollü Oyun Kumandası"
-			"description"		"Bu şablon hali hazırda oyun içi oyun kumandası desteği ve birincil veya üçüncü kişi kontrollü kameraya sahip oyunlar içindir. FPS veya Üçüncü Kişi Macera oyunları vb."
-		}
-		"ukrainian"
-		{
-			"title"		"Ґеймпад з елементами керування камерою"
-			"description"		"Цей шаблон для більшості ігор, що вже мають вбудовану підтримку ґеймпада і у яких камера керується від першої або третьої особи. Шутери від першої особи чи пригодницькі ігри від третьої особи тощо."
+			"title"		"Newtonia"
+			"description"		"Official layout for Newtonia"
+			"Set_Ship"		"Ship"
+			"Action_Steer"		"Steer"
+			"Action_Thrust"		"Thrust"
+			"Action_Reverse"		"Reverse"
+			"Action_TurnLeft"		"Turn Left"
+			"Action_TurnRight"		"Turn Right"
+			"Action_Fire"		"Fire"
+			"Action_Secondary"		"Fire Secondary"
+			"Action_NextWeapon"		"Next Weapon"
+			"Action_NextSecondary"		"Next Secondary"
+			"Action_Boost"		"Boost"
+			"Action_Teleport"		"Teleport"
+			"Action_RotateView"		"Rotate View"
+			"Action_Help"		"Controls Card"
+			"Action_Pause"		"Pause / Join"
+			"Action_Menu"		"Menu"
+			"Action_ZoomIn"		"Zoom In"
+			"Action_ZoomOut"		"Zoom Out"
+			"Set_Menu"		"Menu"
+			"Action_Nav"		"Navigate"
+			"Action_NavUp"		"Up"
+			"Action_NavDown"		"Down"
+			"Action_NavLeft"		"Left"
+			"Action_NavRight"		"Right"
+			"Action_Confirm"		"Confirm"
+			"Action_Back"		"Back"
+			"Action_Start"		"Start / Resume"
+			"Action_Exit"		"Exit To Menu"
+			"Action_Paste"		"Paste Code"
+			"Action_Keyboard"		"Keyboard"
 		}
 	}
 	"group"
@@ -152,7 +131,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button A, , "
+							"binding"		"xinput_button B, , "
 						}
 					}
 				}
@@ -168,7 +147,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button B, , "
+							"binding"		"xinput_button A, , "
 						}
 					}
 				}
@@ -184,7 +163,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button X, , "
+							"binding"		"xinput_button SHOULDER_LEFT, , "
 						}
 					}
 				}
@@ -312,11 +291,15 @@
 			{
 				"activators"
 				{
-					"Soft_Press"
+					"Full_Press"
 					{
 						"bindings"
 						{
 							"binding"		"xinput_button JOYSTICK_RIGHT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
 						}
 					}
 				}
@@ -344,16 +327,16 @@
 						{
 							"binding"		"xinput_button JOYSTICK_LEFT, , "
 						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
 					}
 				}
 				"disabled_activators"
 				{
 				}
 			}
-		}
-		"settings"
-		{
-			"deadzone_inner_radius"		"7199"
 		}
 	}
 	"group"
@@ -364,6 +347,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button TRIGGER_LEFT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 		"settings"
 		{
@@ -378,6 +381,26 @@
 		"description"		""
 		"inputs"
 		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button TRIGGER_RIGHT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
 		}
 		"settings"
 		{
@@ -396,11 +419,15 @@
 			{
 				"activators"
 				{
-					"Soft_Press"
+					"Full_Press"
 					{
 						"bindings"
 						{
 							"binding"		"xinput_button JOYSTICK_RIGHT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
 						}
 					}
 				}
@@ -533,21 +560,21 @@
 	}
 	"group"
 	{
-		"id"		"10"
-		"mode"		"single_button"
+		"id"		"11"
+		"mode"		"four_buttons"
 		"name"		""
 		"description"		""
 		"inputs"
 		{
-			"click"
+			"button_a"
 			{
 				"activators"
 				{
-					"Soft_Press"
+					"Full_Press"
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button START, , "
+							"binding"		"game_action Menu confirm, Confirm, , "
 						}
 					}
 				}
@@ -555,25 +582,47 @@
 				{
 				}
 			}
-		}
-	}
-	"group"
-	{
-		"id"		"11"
-		"mode"		"single_button"
-		"name"		""
-		"description"		""
-		"inputs"
-		{
-			"click"
+			"button_b"
 			{
 				"activators"
 				{
-					"Soft_Press"
+					"Full_Press"
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button SELECT, , "
+							"binding"		"game_action Menu back, Back, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu paste, Paste Code, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu Keyboard, Keyboard, , "
 						}
 					}
 				}
@@ -586,90 +635,32 @@
 	"group"
 	{
 		"id"		"12"
-		"mode"		"mouse_joystick"
+		"mode"		"trigger"
 		"name"		""
 		"description"		""
 		"inputs"
 		{
-			"click"
-			{
-				"activators"
-				{
-					"Soft_Press"
-					{
-						"bindings"
-						{
-							"binding"		"xinput_button JOYSTICK_RIGHT, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
 		}
 	}
 	"group"
 	{
 		"id"		"13"
-		"mode"		"flickstick"
+		"mode"		"trigger"
 		"name"		""
 		"description"		""
 		"inputs"
 		{
-			"click"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"xinput_button JOYSTICK_RIGHT, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
-		}
-	}
-	"group"
-	{
-		"id"		"14"
-		"mode"		"flickstick"
-		"name"		""
-		"description"		""
-		"inputs"
-		{
-			"click"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"xinput_button JOYSTICK_LEFT, , "
-						}
-					}
-				}
-				"disabled_activators"
-				{
-				}
-			}
 		}
 	}
 	"group"
 	{
 		"id"		"15"
-		"mode"		"flickstick"
+		"mode"		"four_buttons"
 		"name"		""
 		"description"		""
 		"inputs"
 		{
-			"click"
+			"button_a"
 			{
 				"activators"
 				{
@@ -677,7 +668,55 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button JOYSTICK_RIGHT, , "
+							"binding"		"game_action Ship fire, Fire, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship secondary, Fire Secondary, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship next_weapon, Next Weapon, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship next_secondary, Next Secondary, , "
 						}
 					}
 				}
@@ -690,7 +729,60 @@
 	"group"
 	{
 		"id"		"16"
-		"mode"		"flickstick"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"17"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"21"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"24"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"Menu"		"nav"
+		}
+	}
+	"group"
+	{
+		"id"		"25"
+		"mode"		"joystick_move"
 		"name"		""
 		"description"		""
 		"inputs"
@@ -703,7 +795,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button JOYSTICK_LEFT, , "
+							"binding"		"game_action Ship rotate_view, Rotate View, , "
 						}
 					}
 				}
@@ -711,6 +803,178 @@
 				{
 				}
 			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"Ship"		"steer"
+		}
+	}
+	"group"
+	{
+		"id"		"26"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship help, Controls Card, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"Ship"		"steer"
+		}
+	}
+	"group"
+	{
+		"id"		"27"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"Menu"		"nav"
+		}
+	}
+	"group"
+	{
+		"id"		"28"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu nav_up, Up, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu nav_down, Down, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu nav_right, Right, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu nav_left, Left, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"29"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"Ship"		"steer"
+		}
+	}
+	"group"
+	{
+		"id"		"30"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
 		}
 	}
 	"group"
@@ -761,7 +1025,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button shoulder_left, , "
+							"binding"		"xinput_button X, , "
 						}
 					}
 				}
@@ -785,10 +1049,133 @@
 				{
 				}
 			}
-			"always_on_action"
+			"button_capture"
 			{
 				"activators"
 				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action SCREENSHOT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"10"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu START, Start / Resume, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_menu"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Menu exit, Exit To Menu, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"14"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship pause, Pause / Join, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_menu"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship Menu, Menu, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship teleport, Teleport, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action Ship boost, Boost, , "
+						}
+					}
 				}
 				"disabled_activators"
 				{
@@ -798,27 +1185,34 @@
 	}
 	"preset"
 	{
-		"id"		"0"
-		"name"		"Default"
+		"id"		"1"
+		"name"		"Menu"
 		"group_source_bindings"
 		{
-			"7"		"switch active"
-			"0"		"button_diamond active"
-			"1"		"left_trackpad active"
-			"11"		"left_trackpad inactive"
-			"16"		"left_trackpad inactive"
-			"2"		"right_trackpad inactive"
-			"6"		"right_trackpad inactive"
-			"10"		"right_trackpad inactive"
-			"12"		"right_trackpad active"
-			"15"		"right_trackpad inactive"
-			"3"		"joystick active"
-			"14"		"joystick inactive"
-			"4"		"left_trigger active"
-			"5"		"right_trigger active"
-			"8"		"right_joystick active"
-			"13"		"right_joystick inactive"
-			"9"		"dpad active"
+			"10"		"switch active"
+			"11"		"button_diamond active"
+			"12"		"left_trigger active"
+			"13"		"right_trigger active"
+			"21"		"dpad inactive"
+			"28"		"dpad active"
+			"24"		"joystick active"
+			"27"		"right_joystick active"
+		}
+	}
+	"preset"
+	{
+		"id"		"2"
+		"name"		"Ship"
+		"group_source_bindings"
+		{
+			"14"		"switch active"
+			"15"		"button_diamond active"
+			"16"		"left_trigger active"
+			"17"		"right_trigger active"
+			"29"		"dpad active"
+			"30"		"dpad inactive"
+			"25"		"joystick active"
+			"26"		"right_joystick active"
 		}
 	}
 	"settings"
