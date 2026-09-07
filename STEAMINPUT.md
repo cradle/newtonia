@@ -605,7 +605,10 @@ file we ship has been shown to influence it once it is a genuine Deck export.
 
 ### How to close it
 
-1. **Steamworks support ticket** (the only route to the rule itself):
+1. **Steamworks support ticket** (the only route to the rule itself) —
+   FILED 2026-09-07 through the help site's Steamworks route,
+   `help.steampowered.com/en/wizard/HelpRequest/HT-5NYN-2PKM-3CVY`
+   (partner.steamgames.com/home/contact redirects there now). Content:
    app 4536720, Steam Input API, action manifest published as the Custom
    Configuration with `controller_xboxone`, `controller_ps5` and
    `controller_neptune` configurations, each a client export on that type;
