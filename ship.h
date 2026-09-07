@@ -89,6 +89,8 @@ class Ship : public CompositeObject {
     void teleport();
     bool find_teleport_destination(const Grid &grid);
     static void play_teleport_sound(Point at);
+    static void play_boost_sound(Point at);
+    static std::vector<std::pair<uint8_t, Point>> boost_events;
     static std::vector<std::pair<uint8_t, Point>> teleport_events;
     void set_teleport_hazards(const std::list<class Hazard*> *h) { teleport_hazards = h; }
     bool teleport_ready() const { return teleport_cooldown_left <= 0.0f; }

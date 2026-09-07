@@ -33,6 +33,7 @@ std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
 std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
 std::vector<std::pair<uint8_t, Point>> Ship::teleport_events;
+std::vector<std::pair<uint8_t, Point>> Ship::boost_events;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::net_lance_reports;
@@ -1503,10 +1504,17 @@ void Ship::teleport() {
   teleport_pending = true;
 }
 
+void Ship::play_boost_sound(Point at) {
+  static Mix_Chunk *sound = Mix_LoadWAV(asset_path("audio/boost_burst.wav").c_str());
+  WorldSound::play(sound, at, 0.75f);
+}
+
 void Ship::boost() {
   if (!boost_ready()) return;
   boost_cooldown_left = BOOST_COOLDOWN_MS;
   net_boost_count++;
+  play_boost_sound(position);
+  boost_events.push_back(std::make_pair(net_seat, Point(position)));
   boosting = true;
 }
 

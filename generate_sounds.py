@@ -288,6 +288,22 @@ def make_boost():
         samples.append(s * 0.7)
     return samples
 
+def make_boost_burst():
+    """Boost ignition: thrust's 50/100/150Hz rumble, bigger and brief, 360ms."""
+    n = int(SAMPLE_RATE * 0.36)
+    rng = random.Random(124)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        engine = (0.45 * math.sin(2 * math.pi * 50 * t)
+                  + 0.22 * math.sin(2 * math.pi * 100 * t)
+                  + 0.12 * math.sin(2 * math.pi * 150 * t))
+        bass = 0.18 * math.sin(2 * math.pi * 35 * t)
+        roar = (rng.random() * 2 - 1) * 0.16
+        env = min(1.0, t / 0.008) * math.exp(-t * 7.0) * min(1.0, (0.36 - t) / 0.06)
+        samples.append(math.tanh((engine + bass + roar) * 1.5) * env * 0.92)
+    return samples
+
 def make_giga_mine_explode():
     """Giga-mine explosion: massive deep boom with rumble, 2s."""
     n = int(SAMPLE_RATE * 2.0)
@@ -839,6 +855,7 @@ if __name__ == '__main__':
         'tic_low.wav':         make_tic_low,
         'shield_hum.wav':      make_shield_hum,
         'boost.wav':           make_boost,
+        'boost_burst.wav':     make_boost_burst,
         'title.wav':           make_title,
         'intro.wav':           make_intro,
         'pause.wav':           make_pause,
