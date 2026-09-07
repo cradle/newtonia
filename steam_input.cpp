@@ -89,6 +89,32 @@ InputActionSetHandle_t g_set[PAD_SET_COUNT] = {0, 0};
 InputDigitalActionHandle_t g_digital[PAD_ACT_COUNT] = {};
 InputAnalogActionHandle_t g_analog[PAD_ACT_COUNT] = {};
 
+// Steam's own account of which layout it handed the game, per handle,
+// on every load and focus change (EnableDeviceCallbacks turns it on):
+// the creator, the revision, and whether the layout carries Steam Input
+// API actions at all. The one signal that separates "Steam delivered no
+// actions layout" from "the game read one as inactive" — a Deck switched
+// to the official layout twice with no adoption in the trace (2026-09-07).
+class ConfigLoadedTrace {
+ public:
+  ConfigLoadedTrace() : cb_(this, &ConfigLoadedTrace::on_loaded) {}
+  void on_loaded(SteamInputConfigurationLoaded_t *c) {
+    startup_tracef("steam input: configuration loaded for handle %llu: app %u creator %llu revision %u.%u "
+                   "uses Steam Input API=%d gamepad API=%d",
+                   (unsigned long long)c->m_ulDeviceHandle, (unsigned)c->m_unAppID,
+                   (unsigned long long)c->m_ulMappingCreator.ConvertToUint64(),
+                   (unsigned)c->m_unMajorRevision, (unsigned)c->m_unMinorRevision,
+                   (int)c->m_bUsesSteamInputAPI, (int)c->m_bUsesGamepadAPI);
+  }
+ private:
+  CCallback<ConfigLoadedTrace, SteamInputConfigurationLoaded_t> cb_;
+};
+ConfigLoadedTrace *g_config_trace = NULL;
+// While a handle sits un-adopted, a state line every UNADOPTED_DUMP_TICKS:
+// the set Steam reports active, the binding revision it holds, and how
+// many of the wanted set's actions read bActive.
+const int UNADOPTED_DUMP_TICKS = 300;  // ~5 s
+
 SteamPad *find_pad(PadId id) {
   if (id == PAD_NONE) return NULL;
   for (size_t i = 0; i < g_pads.size(); i++)
@@ -566,6 +592,8 @@ static bool steam_input_finish_init() {
       return false;
     }
   }
+  in->EnableDeviceCallbacks();
+  if (!g_config_trace) g_config_trace = new ConfigLoadedTrace();
   g_active = true;
   startup_tracef("steam input: Init ok, sets Ship=%llu Menu=%llu",
                  (unsigned long long)g_set[PAD_SET_SHIP],
@@ -675,7 +703,25 @@ void steam_input_poll(StateManager *game) {
         // causes: a gamepad template, or a layout Steam has not applied
         // yet (it applies one when the window has focus — a DualSense sat
         // inactive for a second and then adopted, field 2026-09-06).
-        if (!p.legacy_traced && ++p.inactive_ticks >= INACTIVE_DROP_TICKS) {
+        p.inactive_ticks++;
+        if (p.legacy_traced && p.inactive_ticks % UNADOPTED_DUMP_TICKS == 0) {
+          int maj = -1, mnr = -1;
+          bool rev = in->GetDeviceBindingRevision(p.handle, &maj, &mnr);
+          int on = 0, total = 0;
+          for (int a = 0; a < PAD_ACT_COUNT; a++) {
+            const PadActionInfo &info = pad_action_info((PadAction)a);
+            if (info.set != want) continue;
+            total++;
+            if (info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
+                            : in->GetDigitalActionData(p.handle, g_digital[a]).bActive) on++;
+          }
+          startup_tracef("steam input: handle %llu un-adopted: current set %llu (want %s=%llu) revision %s %d.%d, "
+                         "%d/%d actions active",
+                         (unsigned long long)p.handle, (unsigned long long)in->GetCurrentActionSet(p.handle),
+                         pad_action_set_name(want), (unsigned long long)g_set[want],
+                         rev ? "known" : "NONE", maj, mnr, on, total);
+        }
+        if (!p.legacy_traced && p.inactive_ticks >= INACTIVE_DROP_TICKS) {
           p.legacy_traced = true;
           startup_tracef("steam input: handle %llu: no %s-set actions active — a gamepad template, "
                          "or the layout not applied until the window has focus — SDL's emulated pad "

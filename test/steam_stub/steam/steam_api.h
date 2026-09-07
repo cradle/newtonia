@@ -155,6 +155,11 @@ enum ESteamInputType {
 };
 struct InputAnalogActionData_t { EInputSourceMode eMode; float x, y; bool bActive; };
 struct InputDigitalActionData_t { bool bState; bool bActive; };
+class CSteamID { public: uint64_t ConvertToUint64() const { return 0; } };
+struct SteamInputConfigurationLoaded_t {
+  uint32 m_unAppID; InputHandle_t m_ulDeviceHandle; CSteamID m_ulMappingCreator;
+  uint32 m_unMajorRevision, m_unMinorRevision; bool m_bUsesSteamInputAPI, m_bUsesGamepadAPI;
+};
 class ISteamInput {
 public:
   virtual bool Init( bool bExplicitlyCallRunFrame ) = 0;
@@ -174,6 +179,8 @@ public:
   virtual const char *GetStringForActionOrigin( EInputActionOrigin eOrigin ) = 0;
   virtual bool ShowBindingPanel( InputHandle_t inputHandle ) = 0;
   virtual ESteamInputType GetInputTypeForHandle( InputHandle_t inputHandle ) = 0;
+  virtual void EnableDeviceCallbacks() = 0;
+  virtual bool GetDeviceBindingRevision( InputHandle_t inputHandle, int *pMajor, int *pMinor ) = 0;
 };
 inline ISteamInput *SteamInput() { return nullptr; }
 inline bool SteamAPI_Init() { return false; }
