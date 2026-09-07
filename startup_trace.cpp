@@ -15,6 +15,15 @@ static FILE *startup_trace_out() {
     // tests can link it without an SDL runtime.
     const char *t = std::getenv("NEWTONIA_TRACE");
     if (t && t[0] == '/') out = fopen(t, "a");
+    else if (t && t[0] == '1' && t[1] == '\0') {
+      // NEWTONIA_TRACE=1: $HOME/newtonia-trace.txt — the least typing on a
+      // Steam Deck's on-screen keyboard, and a path Dolphin can open.
+      const char *home = std::getenv("HOME");
+      static char path[512];
+      snprintf(path, sizeof(path), "%s/newtonia-trace.txt", home && *home ? home : ".");
+      out = fopen(path, "a");
+      if (!out) out = stderr;
+    }
     else if (t) out = stderr;
   }
   return out;

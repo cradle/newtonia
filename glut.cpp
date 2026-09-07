@@ -244,7 +244,7 @@ void special_up(int key, int x, int y) {
 // is also logged to stdout (greppable in headless driver runs and
 // Desktop-Mode terminal launches).
 static bool s_tap_debug = false;
-// NEWTONIA_TRACE=1: one unbuffered stderr line per startup step (and one
+// NEWTONIA_TRACE=stderr: one unbuffered stderr line per startup step (and one
 // when the main loop returns), for a launch that dies before the first
 // stdout print — a Steam-launched process whose output Steam swallows, a
 // sandbox that ends it silently. stderr, not cout: it must survive an

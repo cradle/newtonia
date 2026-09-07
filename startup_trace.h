@@ -2,7 +2,9 @@
 #define STARTUP_TRACE_H
 
 // NEWTONIA_TRACE: a step-by-step startup/backend trace for launches whose
-// stdio reaches nothing. NEWTONIA_TRACE=1 writes to stderr (survives an
+// stdio reaches nothing. NEWTONIA_TRACE=1 appends to $HOME/newtonia-trace.txt
+// (the least typing on a Steam Deck's on-screen keyboard); any other
+// non-path value writes to stderr (survives an
 // exit that never flushes); NEWTONIA_TRACE=/absolute/path appends to that
 // file instead — Steam's runtime container swallowed even unbuffered
 // stderr (field, 2026-09-05), so a file of its own is the only channel
