@@ -653,6 +653,17 @@ void check_controller() {
         }
       }
     }
+    // Under NEWTONIA_TRACE, every raw press: the SDL button SDL decoded and
+    // the joystick button index underneath it, so a pad whose bumper
+    // arrives as nothing (or as the wrong button) names itself.
+    if (startup_trace_enabled()) {
+      if (e.type == SDL_CONTROLLERBUTTONDOWN)
+        startup_tracef("pad event: instance %d controller button %d (%s)", (int)e.cbutton.which,
+                       (int)e.cbutton.button,
+                       SDL_GameControllerGetStringForButton((SDL_GameControllerButton)e.cbutton.button));
+      else if (e.type == SDL_JOYBUTTONDOWN)
+        startup_tracef("pad event: instance %d joystick button %d", (int)e.jbutton.which, (int)e.jbutton.button);
+    }
     game->controller(e);
   }
 }
@@ -803,6 +814,16 @@ void init_controllers_and_audio() {
     }
     if(opened == 0 && !steam_input_active()) std::cout << "No controllers found" << std::endl;
     if(steam_input_active()) std::cout << "Controllers: Steam Input presents its pads; SDL keeps the rest" << std::endl;
+    // The mapping SDL chose for each opened pad — the whole button table
+    // in one line. On a Deck under the gamepad template, LB reached the
+    // game as nothing at all (field, 2026-09-07): the emulated device
+    // carries the Deck's own vid/pid, so whether SDL applied its Deck
+    // mapping or an Xbox one to Steam's virtual pad is the question.
+    for (int i = 0; i < opened; i++) {
+      char *map = SDL_GameControllerMapping(controllers[i]);
+      startup_tracef("controllers: pad %d mapping: %s", i + 1, map ? map : "(none)");
+      if (map) SDL_free(map);
+    }
     {
       char line[200];
       // Steam hides the physical pads behind its virtual ones from SDL games

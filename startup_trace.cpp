@@ -45,3 +45,5 @@ void startup_tracef(const char *fmt, ...) {
   fprintf(out, "trace: %s\n", line);
   fflush(out);
 }
+
+bool startup_trace_enabled() { return startup_trace_out() != NULL; }

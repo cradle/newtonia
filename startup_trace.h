@@ -18,5 +18,8 @@
 void startup_trace(const char *step);
 // printf-style convenience for the same channel.
 void startup_tracef(const char *fmt, ...);
+// Whether the channel is open — for per-event lines whose formatting
+// should not run when nobody is listening.
+bool startup_trace_enabled();
 
 #endif
