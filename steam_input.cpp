@@ -769,6 +769,16 @@ void steam_input_poll(StateManager *game) {
 
 int steam_input_handle_count() { return g_active ? (int)g_pads.size() : 0; }
 
+bool steam_input_show_binding_panel_any() {
+  ISteamInput *in = SteamInput();
+  if (!g_active || !in) return false;
+  // An adopted pad first, else whatever Steam presents.
+  for (size_t i = 0; i < g_pads.size(); i++)
+    if (g_pads[i].adopted) return in->ShowBindingPanel(g_pads[i].handle);
+  if (g_pads.empty()) return false;
+  return in->ShowBindingPanel(g_pads[0].handle);
+}
+
 bool steam_input_owns_handle(unsigned long long handle) {
   if (!g_active || handle == 0) return false;
   for (size_t i = 0; i < g_pads.size(); i++)

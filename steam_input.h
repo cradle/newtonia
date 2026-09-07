@@ -70,6 +70,11 @@ const char *steam_input_name(PadId id);
 // Style from ESteamInputType (PlayStation types -> shapes, else letters).
 PadStyle steam_input_style(PadId id);
 bool steam_input_show_binding_panel(PadId id);
+// The layout page for ANY handle Steam presents, adopted or not — a pad
+// Steam holds on a gamepad template is exactly the one whose player
+// needs the picker (a Deck on its generic template, 2026-09-07). False
+// when Steam presents nothing.
+bool steam_input_show_binding_panel_any();
 // The layout's origin for an action: *button receives an
 // SDL_GameControllerButton / PadPseudoButton when the first origin is a
 // standard position, else -1 with *text naming it in Steam's words
@@ -101,6 +106,7 @@ inline PadId steam_input_id_at(int) { return PAD_NONE; }
 inline const char *steam_input_name(PadId) { return "Steam pad"; }
 inline PadStyle steam_input_style(PadId) { return PAD_STYLE_XBOX; }
 inline bool steam_input_show_binding_panel(PadId) { return false; }
+inline bool steam_input_show_binding_panel_any() { return false; }
 inline int steam_input_action_origin(PadId, PadAction, int *button,
                                      const char **text) {
   if (button) *button = -1;

@@ -302,3 +302,7 @@ bool pad_show_binding_panel(PadId id) {
   if (!pad_has_binding_panel(id)) return false;
   return steam_input_show_binding_panel(id);
 }
+
+bool pad_has_binding_panel_any() { return steam_input_handle_count() > 0; }
+
+bool pad_show_binding_panel_any() { return steam_input_show_binding_panel_any(); }

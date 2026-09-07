@@ -1425,9 +1425,9 @@ bool GLGame::pause_menu_active() const {
 
 bool GLGame::pause_layout_offered() const {
   if (is_touch_mode()) return false;
-  for (auto *gs : *players)
-    if (pad_has_binding_panel(gs->controller_id())) return true;
-  return false;
+  // Any pad Steam presents, seated or not, adopted or on a template: the
+  // player on the generic template is the one who needs the picker.
+  return pad_has_binding_panel_any();
 }
 
 void GLGame::show_pad_layout(PadId src) {
@@ -1449,6 +1449,8 @@ void GLGame::show_pad_layout(PadId src) {
       return;
     }
   }
+  // No adopted pad at all: the one Steam holds on a gamepad template.
+  pad_show_binding_panel_any();
 }
 
 void GLGame::pause_nav(unsigned char key, PadId src) {
@@ -1619,9 +1621,7 @@ int GLGame::roster_row_count() const {
 // configurator before they claim a seat). Drawn just above BACK.
 bool GLGame::roster_layout_offered() const {
   if (net_mode_ != NetOff || is_touch_mode()) return false;
-  for (int i = 0; i < pad_count(); i++)
-    if (pad_has_binding_panel(pad_id_at(i))) return true;
-  return false;
+  return pad_has_binding_panel_any();
 }
 
 bool GLGame::roster_row_is_layout(int row) const {

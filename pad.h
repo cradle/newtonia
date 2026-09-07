@@ -213,5 +213,11 @@ PadAction pad_action_or(PadId id, PadAction a, PadAction fallback);
 // ShowBindingPanel). Only a Steam pad has one; false otherwise.
 bool pad_has_binding_panel(PadId id);
 bool pad_show_binding_panel(PadId id);
+// Any pad Steam presents at all — adopted by the backend or held on a
+// gamepad template and driven through SDL. The CONTROLLER LAYOUT rows
+// key on this: the player whose pad sits on a template is the one who
+// needs the picker (a Steam Deck on its generic template, 2026-09-07).
+bool pad_has_binding_panel_any();
+bool pad_show_binding_panel_any();
 
 #endif
