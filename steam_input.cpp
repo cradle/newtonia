@@ -42,10 +42,8 @@ struct SteamPad {
   bool adopted;               // its layout uses the game's actions (see steam_input.h)
   bool legacy_traced;         // the "left to SDL" line, once per handle
   int inactive_ticks;         // adopted but every action inactive, consecutive
-  bool set_known;
+  bool set_known;             // `set` has been requested; a configuration load clears it
   PadActionSet set;
-  bool set_nudged;            // a bounce has been traced this divergence episode
-  int diverged_ticks;         // consecutive ticks Steam reported a set other than `set`
   bool held[PAD_ACT_COUNT];   // last state sent for each digital action
   // A digital action fires only after it has been SEEN RELEASED since its
   // set was activated. The same physical button is `pause` in the Ship
@@ -94,12 +92,27 @@ InputAnalogActionHandle_t g_analog[PAD_ACT_COUNT] = {};
 // Steam's own account of which layout it handed the game, per handle,
 // on every load and focus change (EnableDeviceCallbacks turns it on):
 // the creator, the revision, and whether the layout carries Steam Input
-// API actions at all. The one signal that separates "Steam delivered no
-// actions layout" from "the game read one as inactive" — a Deck switched
-// to the official layout twice with no adoption in the trace (2026-09-07).
-class ConfigLoadedTrace {
+// API actions at all — the one signal that separates "Steam delivered no
+// actions layout" from "the game read one as inactive".
+//
+// It is also the moment the pad's active set has to be re-asserted. A
+// loaded layout comes up in ITS OWN default set (the first in the file,
+// Ship), and the game-side library collapses an ActivateActionSet for
+// the set it was last asked for — Valve's "cheap to call repeatedly" is
+// a cache, and a load on the client side changes the set in force
+// without the cache hearing of it. A Deck switched from the gamepad
+// template to the official layout mid-game came up in Ship while the
+// game had last asked for Menu; asking for Menu again, once or every
+// tick, was dropped, the Menu-set probe read 0/11 actions active for
+// good, and every input stayed dead until a restart (runs 218–219,
+// 2026-09-07). So the load handler asks for the OTHER set — a request
+// the cache cannot collapse — and marks the pad's set unknown, so the
+// next sync_set requests the wanted one afresh, releasing whatever the
+// old layout still held and re-priming, since the bindings may have
+// changed with the layout. Two requests, ordered, once per load.
+class ConfigLoaded {
  public:
-  ConfigLoadedTrace() : cb_(this, &ConfigLoadedTrace::on_loaded) {}
+  ConfigLoaded() : cb_(this, &ConfigLoaded::on_loaded) {}
   void on_loaded(SteamInputConfigurationLoaded_t *c) {
     startup_tracef("steam input: configuration loaded for handle %llu: app %u creator %llu revision %u.%u "
                    "uses Steam Input API=%d gamepad API=%d",
@@ -107,18 +120,26 @@ class ConfigLoadedTrace {
                    (unsigned long long)c->m_ulMappingCreator.ConvertToUint64(),
                    (unsigned)c->m_unMajorRevision, (unsigned)c->m_unMinorRevision,
                    (int)c->m_bUsesSteamInputAPI, (int)c->m_bUsesGamepadAPI);
+    for (size_t i = 0; i < g_pads.size(); i++) {
+      SteamPad &p = g_pads[i];
+      if (p.handle != c->m_ulDeviceHandle || !p.set_known) continue;
+      PadActionSet other = p.set == PAD_SET_SHIP ? PAD_SET_MENU : PAD_SET_SHIP;
+      SteamInput()->ActivateActionSet(p.handle, g_set[other]);
+      p.set_known = false;
+      startup_tracef("steam input: handle %llu: layout loaded in Steam's set %llu, re-asserting %s via %s",
+                     (unsigned long long)p.handle,
+                     (unsigned long long)SteamInput()->GetCurrentActionSet(p.handle),
+                     pad_action_set_name(p.set), pad_action_set_name(other));
+    }
   }
  private:
-  CCallback<ConfigLoadedTrace, SteamInputConfigurationLoaded_t> cb_;
+  CCallback<ConfigLoaded, SteamInputConfigurationLoaded_t> cb_;
 };
-ConfigLoadedTrace *g_config_trace = NULL;
+ConfigLoaded *g_config_loaded = NULL;
 // While a handle sits un-adopted, a state line every UNADOPTED_DUMP_TICKS:
 // the set Steam reports active, the binding revision it holds, and how
 // many of the wanted set's actions read bActive.
 const int UNADOPTED_DUMP_TICKS = 300;  // ~5 s
-// A set request lands a frame late; a divergence older than this is Steam
-// not taking the request, and gets the two-set bounce (sync_set).
-const int SET_BOUNCE_TICKS = 30;       // ~0.5 s
 
 SteamPad *find_pad(PadId id) {
   if (id == PAD_NONE) return NULL;
@@ -427,56 +448,16 @@ bool any_action_active(ISteamInput *in, const SteamPad &p, PadActionSet set) {
 // Keep the pad's active set in step with the screen. Every handle gets
 // this, adopted or not: bActive is only meaningful for the ACTIVE set, so
 // an un-adopted handle must sit in the wanted set for the probe to see a
-// layout that binds it.
-//
-// The activation is judged against STEAM'S state, not this cache: a
-// layout change resets the handle's active set to the new layout's own
-// default (a Deck switched from the gamepad template to the official
-// layout came up in Ship while the game's cache still said Menu, so the
-// Menu-set probe read 0/11 actions active forever and the pad never
-// adopted — field, 2026-09-07). ActivateActionSet is cheap to repeat, so
-// while GetCurrentActionSet disagrees it is re-issued every tick, with no
-// release/re-prime — from the game's side the set never changed.
+// layout that binds it. Requested once per change of `want` (or after a
+// configuration load clears set_known — see ConfigLoaded): the library
+// collapses a repeat, so repeating is not a fallback.
 void sync_set(StateManager *game, SteamPad &p, PadActionSet want) {
   ISteamInput *in = SteamInput();
-  if (p.set_known && p.set == want) {
-    InputActionSetHandle_t cur = in->GetCurrentActionSet(p.handle);
-    if (cur != g_set[want]) {
-      // Steam ignored the plain repeat: a Deck's layout loaded in Ship
-      // while the game had last asked for Menu, and re-asking for Menu
-      // every tick left it reporting Ship for good (run 219, 2026-09-07)
-      // — the client dedupes against the set last REQUESTED, not the one
-      // in force. So once the one-frame settling window has passed, go
-      // through the other set first: two requests Steam cannot collapse.
-      p.diverged_ticks++;
-      if (p.diverged_ticks == 1) {
-        in->ActivateActionSet(p.handle, g_set[want]);
-      } else if (p.diverged_ticks % SET_BOUNCE_TICKS == 0) {
-        PadActionSet other = want == PAD_SET_SHIP ? PAD_SET_MENU : PAD_SET_SHIP;
-        in->ActivateActionSet(p.handle, g_set[other]);
-        in->ActivateActionSet(p.handle, g_set[want]);
-        if (!p.set_nudged || p.diverged_ticks % UNADOPTED_DUMP_TICKS == 0)
-          startup_tracef("steam input: handle %llu reports set %llu after %d ticks, bouncing %s=%llu -> %s=%llu",
-                         (unsigned long long)p.handle, (unsigned long long)cur, p.diverged_ticks,
-                         pad_action_set_name(other), (unsigned long long)g_set[other],
-                         pad_action_set_name(want), (unsigned long long)g_set[want]);
-        p.set_nudged = true;
-      }
-    } else {
-      if (p.set_nudged)
-        startup_tracef("steam input: handle %llu reports %s after %d diverged ticks",
-                       (unsigned long long)p.handle, pad_action_set_name(want), p.diverged_ticks);
-      p.set_nudged = false;
-      p.diverged_ticks = 0;
-    }
-    return;
-  }
+  if (p.set_known && p.set == want) return;
   if (p.adopted) release_all(game, p);
   in->ActivateActionSet(p.handle, g_set[want]);
   p.set = want;
   p.set_known = true;
-  p.set_nudged = false;
-  p.diverged_ticks = 0;
   for (int a = 0; a < PAD_ACT_COUNT; a++) p.primed[a] = false;
   // One line, no per-action dump: the activation lands a frame late, so
   // a dump here reads every action inactive whatever the layout. The
@@ -640,7 +621,7 @@ static bool steam_input_finish_init() {
     }
   }
   in->EnableDeviceCallbacks();
-  if (!g_config_trace) g_config_trace = new ConfigLoadedTrace();
+  if (!g_config_loaded) g_config_loaded = new ConfigLoaded();
   g_active = true;
   startup_tracef("steam input: Init ok, sets Ship=%llu Menu=%llu",
                  (unsigned long long)g_set[PAD_SET_SHIP],
