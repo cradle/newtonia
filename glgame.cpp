@@ -8772,6 +8772,7 @@ void GLGame::tick(int delta) {
     g_touch_controls.mine_available = has_secondary;
     // Boost button feedback: dimmed while Ship's cooldown runs.
     g_touch_controls.boost_ready = lp && lp->ship->boost_ready();
+    g_touch_controls.teleport_ready = lp && lp->ship->teleport_ready();
     // Active-weapon icons for the shoot/mine circles (Save kind values).
     if (lp && !lp->ship->primary_weapons.empty()) {
       int idx_unused;
@@ -8814,6 +8815,13 @@ void GLGame::tick(int delta) {
       web_boost_last = g_touch_controls.boost_ready;
       EM_ASM({ if (window.setBoostReady) window.setBoostReady($0); },
              g_touch_controls.boost_ready ? 1 : 0);
+    }
+    static bool web_teleport_pushed = false, web_teleport_last = false;
+    if (!web_teleport_pushed || web_teleport_last != g_touch_controls.teleport_ready) {
+      web_teleport_pushed = true;
+      web_teleport_last = g_touch_controls.teleport_ready;
+      EM_ASM({ if (window.setTeleportReady) window.setTeleportReady($0); },
+             g_touch_controls.teleport_ready ? 1 : 0);
     }
     // One-hand tap-fire gate for the HTML OSD's gesture layer, on change
     // only like the flags above. No push from ~GLGame: back in the menu

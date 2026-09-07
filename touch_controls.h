@@ -74,6 +74,11 @@ struct TouchControlsState {
     bool  boost_ready;
     SDL_FingerID boost_finger;
 
+    // ---- Teleport: bottom point of the action diamond ----
+    float teleport_cx, teleport_cy, teleport_radius, teleport_hit_radius;
+    bool teleport_pressed, teleport_ready;
+    SDL_FingerID teleport_finger;
+
     // ---- Shared hit-test radius for shoot & mine ----
     // Half the distance between the two button centres so the touch regions are
     // as large as possible without overlapping each other.

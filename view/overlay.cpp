@@ -688,6 +688,7 @@ void Overlay::touch_help(const GLGame *glgame) {
     {"RED",        "FIRE"},
     {"BLUE",       "SECONDARY"},
     {"AMBER",      "BOOST"},
+    {"PURPLE",     "TELEPORT"},
     {"+ / -",      "ZOOM"},
     {"TOP CIRCLE", "PAUSE"},
   };
@@ -1735,6 +1736,19 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   }
 
   // ---- Boost button ----
+  // Teleport: two portal rings, dimmed and inert during cooldown.
+  if (!touch_one_handed()) {
+    float bx = ox(tc.teleport_cx), by = oy(tc.teleport_cy);
+    float br = sr(tc.teleport_radius);
+    float dim = tc.teleport_ready ? 1.0f : 0.25f;
+    bool pressed = tc.teleport_pressed && tc.teleport_ready;
+    float outline = (pressed ? 0.95f : 0.70f) * dim;
+    draw_circle(bx, by, br, 28, true, 0.75f, 0.4f, 1.0f, (pressed ? 0.55f : 0.25f) * dim);
+    draw_circle(bx, by, br, 28, false, 0.75f, 0.4f, 1.0f, outline);
+    draw_circle(bx - br * 0.22f, by, br * 0.30f, 20, false, 0.75f, 0.4f, 1.0f, outline);
+    draw_circle(bx + br * 0.22f, by, br * 0.30f, 20, false, 0.75f, 0.4f, 1.0f, outline);
+  }
+
   // Above and between the shoot/mine pair. Amber; dimmed while Ship's
   // cooldown runs (boost_ready, mirrored by GLGame::tick). The icon is a
   // double up-chevron — "more speed" in one glyph.

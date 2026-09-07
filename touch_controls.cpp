@@ -8,6 +8,7 @@
 #include "view/tap_band.h"
 #include <algorithm>
 #include <math.h>
+#include <cmath>
 
 TouchControlsState g_touch_controls = {};
 
@@ -76,7 +77,7 @@ void touch_controls_resize(int w, int h) {
     // Shoot (inner): always at least this far to the LEFT of the mine centre so
     // the two circles keep a visible gap (2.5*btnR centres => ~0.5*btnR apart).
     float shoot_cx = std::min((float)w * 0.75f, mine_cx - 2.5f * btnR);
-    float btn_cy   = (float)h * 0.80f;
+    float btn_cy   = std::min((float)h * 0.80f, (float)h - 3.6f * btnR);
 
     g_touch_controls.shoot_cx     = shoot_cx;
     g_touch_controls.shoot_cy     = btn_cy;
@@ -93,14 +94,24 @@ void touch_controls_resize(int w, int h) {
     float mineEdge  = (float)w - g_touch_controls.mine_cx;
     g_touch_controls.btn_hit_radius = (halfGap < mineEdge) ? halfGap : mineEdge;
 
-    // Boost: above and between the shoot/mine pair — the thumb triangle,
+    // Boost: top point of the action diamond, above the shoot/mine pair,
     // at the pair's full size; hit radius capped by the vertical gap to
-    // the pair's row so the three regions never overlap.
+    // the pair's row so adjacent regions never overlap.
     g_touch_controls.boost_cx     = (shoot_cx + mine_cx) * 0.5f;
     g_touch_controls.boost_cy     = btn_cy - 2.2f * btnR;
     g_touch_controls.boost_radius = btnR;
     g_touch_controls.boost_hit_radius =
         std::min(g_touch_controls.btn_hit_radius, 1.3f * btnR);
+
+    g_touch_controls.teleport_cx = g_touch_controls.boost_cx;
+    g_touch_controls.teleport_cy = btn_cy + 2.2f * btnR;
+    g_touch_controls.teleport_radius = btnR;
+    // Partition adjacent circles at half their centre distance.
+    float actionHit = 0.5f * std::hypot(halfGap, 2.2f * btnR);
+    g_touch_controls.btn_hit_radius = std::min(g_touch_controls.btn_hit_radius, actionHit);
+    g_touch_controls.boost_hit_radius = std::min(g_touch_controls.boost_hit_radius, actionHit);
+    g_touch_controls.teleport_hit_radius = std::min(g_touch_controls.boost_hit_radius,
+        (float)h - g_touch_controls.teleport_cy);
 
     // HANDEDNESS LEFT mirrors the whole TWO-HAND layout: the stick's home
     // crosses to the right, the shoot/mine/boost circles to the left.
@@ -114,6 +125,7 @@ void touch_controls_resize(int w, int h) {
         g_touch_controls.joy_hint_cx = (float)w - g_touch_controls.joy_hint_cx;
         g_touch_controls.shoot_cx    = (float)w - g_touch_controls.shoot_cx;
         g_touch_controls.mine_cx     = (float)w - g_touch_controls.mine_cx;
+        g_touch_controls.teleport_cx = (float)w - g_touch_controls.teleport_cx;
         g_touch_controls.boost_cx    = (float)w - g_touch_controls.boost_cx;
     }
 
@@ -167,6 +179,10 @@ void touch_controls_reset(StateManager *game) {
     if(g_touch_controls.boost_pressed) {
         g_touch_controls.boost_pressed = false;
         game->keyboard_up('e', 0, 0);
+    }
+    if(g_touch_controls.teleport_pressed) {
+        g_touch_controls.teleport_pressed = false;
+        game->keyboard_up('t', 0, 0);
     }
     if(g_touch_controls.pause_active) {
         g_touch_controls.pause_active = false;
