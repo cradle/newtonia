@@ -48,9 +48,11 @@ extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 // GLX lets us retrieve the X11 Display/drawable so we can poll keyboard focus.
 #include <GL/glx.h>
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 // XInput2 for the direct touchscreen listener (Steam Deck) — see
 // touch_listener_init below.
 #include <X11/extensions/XInput2.h>
+static void activate_window_x11();
 #endif
 // On Windows, <windows.h> is already pulled in by gl_compat.h.
 
@@ -68,15 +70,26 @@ SDL_JoystickID controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1};
 bool ENABLE_AUDIO = true;
 
 int last_render_time;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
 static bool s_needs_activation = true;
 static int  s_activation_retries = 0;
+void activate_app_timer(int);
+// Bring our window to the front and give it keyboard focus: NSApp
+// activation on macOS, an EWMH activation request on Linux.
+static void activate_app() {
+#ifdef __APPLE__
+  activate_app_macos();
+#else
+  activate_window_x11();
+#endif
+}
+#endif
+#ifdef __APPLE__
 // Set when the game launches with fullscreen saved in preferences.  We defer
 // the native-fullscreen transition until the window is on screen (handled in
 // draw()), since toggleFullScreen: is unreliable before the app has finished
 // launching.
 static bool s_needs_fullscreen = false;
-void activate_app_timer(int);
 void hide_cursor_after_fullscreen(int);
 #endif
 
@@ -95,27 +108,33 @@ void draw() {
   glutSwapBuffers();
   // A Steam join accepted while the game is already running (steam://run into
   // an already-open game) does not bring us to the front. Drain the request
-  // each frame; on macOS re-run the activate/retry cycle so our window rises
-  // above Steam. (Windows/Linux Steam focuses the game itself, so the drained
-  // request is a harmless no-op there for now.)
+  // each frame; on macOS and Linux re-run the activate/retry cycle so our
+  // window rises above Steam. (Windows Steam focuses the game itself, so
+  // the drained request is a harmless no-op there.)
   if (Invites::take_focus_request()) {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     s_needs_activation = true;
 #endif
   }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
   // Activate after the first rendered frame so the window is on screen before
   // we request focus (a 0ms timer fires before the window is visible), then
-  // once more 200 ms later — twice total. activate_app_macos() re-raises the
-  // window every call (orderFrontRegardless), so hammering it for seconds
-  // yanks focus back if the user alt-tabs away right after launch; two quick
-  // attempts get us in front without fighting the user after that.
+  // once more 200 ms later — twice total. activate_app() re-raises the
+  // window every call, so hammering it for seconds yanks focus back if the
+  // user alt-tabs away right after launch; two quick attempts get us in
+  // front without fighting the user after that. Linux needs it at launch
+  // too: freeglut's bare X11 window carries no startup-notification id and
+  // no _NET_WM_USER_TIME, so a launch from Steam (another app active) hits
+  // the desktop's focus-stealing prevention and opened behind Steam,
+  // unfocused (field, 2026-09-07) — see activate_window_x11.
   if (s_needs_activation) {
     s_needs_activation = false;
     s_activation_retries = 0;
-    activate_app_macos();
+    activate_app();
     glutTimerFunc(200, activate_app_timer, 0);
   }
+#endif
+#ifdef __APPLE__
   // Enter the fullscreen Space once the window is actually on screen.
   if (s_needs_fullscreen) {
     s_needs_fullscreen = false;
@@ -331,6 +350,71 @@ static int x_error_logger(Display *dpy, XErrorEvent *e) {
   return 0;
 }
 
+// A real X server timestamp for the requests below: both KWin and Mutter
+// refuse CurrentTime on an activation, and there is no event in hand to
+// read one from. Change a private property on our window with
+// PropertyChangeMask selected and take the time off the PropertyNotify —
+// the standard round-trip. The mask is restored afterwards; freeglut never
+// selects PropertyNotify, so nothing of its own is drained.
+static Time x11_server_time(Display *dpy, Window win) {
+  XWindowAttributes a;
+  if (!XGetWindowAttributes(dpy, win, &a)) return CurrentTime;
+  XSelectInput(dpy, win, a.your_event_mask | PropertyChangeMask);
+  Atom probe = XInternAtom(dpy, "NEWTONIA_TIMESTAMP", False);
+  long zero = 0;
+  XChangeProperty(dpy, win, probe, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&zero, 1);
+  XSync(dpy, False);
+  Time t = CurrentTime;
+  XEvent ev;
+  while (XCheckTypedWindowEvent(dpy, win, PropertyNotify, &ev))
+    if (ev.xproperty.atom == probe) t = ev.xproperty.time;
+  XSelectInput(dpy, win, a.your_event_mask);
+  return t;
+}
+
+// Ask the window manager to focus and raise our window. freeglut creates a
+// bare X11 window: no startup-notification id, no _NET_WM_USER_TIME. A
+// launch from Steam — another application active at the moment our window
+// maps — therefore hits the desktop's focus-stealing prevention, and the
+// game opened behind Steam with the keyboard still on Steam (field,
+// 2026-09-07, Steam beta on a Linux desktop). SDL windows set both and
+// never see it. _NET_ACTIVE_WINDOW with source 2 ("pager": a request on
+// the user's behalf) is what wmctrl sends and what KWin and Mutter honour
+// without a user-time contest, stamped with a real server time; the
+// _NET_WM_USER_TIME property is set beside it so the manager also counts
+// this as user interaction. The direct XSetInputFocus covers a bare X
+// server with no manager, guarded on the window being viewable — on an
+// unmapped window it is a BadMatch, and X errors exit the process
+// unless x_error_logger is in (installed here as well as by the touch
+// listener, since either may run first).
+static void activate_window_x11() {
+  Display *dpy = glXGetCurrentDisplay();
+  Window win = dpy ? (Window)glXGetCurrentDrawable() : 0;
+  if (!win) return;
+  XSetErrorHandler(x_error_logger);
+  Time t = x11_server_time(dpy, win);
+  if (t != CurrentTime) {
+    long stamp = (long)t;
+    XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_USER_TIME", False), XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)&stamp, 1);
+  }
+  XEvent ev;
+  memset(&ev, 0, sizeof ev);
+  ev.xclient.type = ClientMessage;
+  ev.xclient.window = win;
+  ev.xclient.message_type = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+  ev.xclient.format = 32;
+  ev.xclient.data.l[0] = 2;         // source: pager / user request
+  ev.xclient.data.l[1] = (long)t;   // timestamp
+  ev.xclient.data.l[2] = 0;         // requestor's currently active window: none
+  XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+  XRaiseWindow(dpy, win);
+  XWindowAttributes a;
+  if (XGetWindowAttributes(dpy, win, &a) && a.map_state == IsViewable)
+    XSetInputFocus(dpy, win, RevertToParent, t);
+  XFlush(dpy);
+}
+
 static void touch_listener_init() {
   Display *glut_dpy = glXGetCurrentDisplay();
   Window win = glut_dpy ? (Window)glXGetCurrentDrawable() : 0;
@@ -458,21 +542,23 @@ void resize(int width, int height) {
 #endif
 }
 
-#ifdef __APPLE__
-void hide_cursor_after_fullscreen(int) {
-  if (is_fullscreen) {
-    cursor_hidden = false;
-    set_cursor_hidden(true);
-  }
-}
-
+#if defined(__APPLE__) || defined(__linux__)
 void activate_app_timer(int) {
-  activate_app_macos(); // No-op once [NSApp isActive].
+  activate_app(); // macOS: no-op once [NSApp isActive].
   // One retry only: this is the SECOND (and final) activation — the first ran
   // in draw() when the window first appeared. Two attempts then stop, so we
   // never fight the user for focus after launch.
   if (++s_activation_retries < 1) {
     glutTimerFunc(200, activate_app_timer, 0);
+  }
+}
+#endif
+
+#ifdef __APPLE__
+void hide_cursor_after_fullscreen(int) {
+  if (is_fullscreen) {
+    cursor_hidden = false;
+    set_cursor_hidden(true);
   }
 }
 
