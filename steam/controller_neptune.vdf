@@ -1164,7 +1164,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"xinput_button X, , "
+							"binding"		"xinput_button shoulder_left, , "
 						}
 					}
 				}
@@ -1296,7 +1296,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"game_action Ship teleport, Teleport, , "
+							"binding"		"game_action Ship boost, Boost, , "
 						}
 					}
 				}
@@ -1312,7 +1312,7 @@
 					{
 						"bindings"
 						{
-							"binding"		"game_action Ship boost, Boost, , "
+							"binding"		"game_action Ship teleport, Teleport, , "
 						}
 					}
 				}
