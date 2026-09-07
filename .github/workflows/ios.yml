@@ -162,10 +162,15 @@ jobs:
 
       - name: Collect game sources
         run: |
+          # test/ holds standalone binaries with their own main() — the
+          # unit tests (TESTING.md) — which this recursive find would link
+          # into the app as duplicate SDL_main symbols; ios/project.yml
+          # excludes the directory the same way.
           find newtonia -name "*.cpp" \
             -not -name "glut.cpp" \
             -not -name "android_main.cpp" \
             -not -path "*/android/*" \
+            -not -path "*/test/*" \
             -not -path "*/.git/*" \
             -not -path "*/CMakeFiles/*" \
             | sed 's|^newtonia/||' \
