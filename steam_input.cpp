@@ -735,19 +735,24 @@ void steam_input_poll(StateManager *game) {
         if (p.legacy_traced && p.inactive_ticks % UNADOPTED_DUMP_TICKS == 0) {
           int maj = -1, mnr = -1;
           bool rev = in->GetDeviceBindingRevision(p.handle, &maj, &mnr);
-          int on = 0, total = 0;
+          // Both sets counted, not just the wanted one: the number
+          // GetCurrentActionSet reports is either Steam's handle (Ship=1,
+          // the IGA's order) or the layout's preset id (Menu=1 in every
+          // export, authored Menu-first), and only the live set's actions
+          // read active — so the counts say which set Steam is in.
+          int on[PAD_SET_COUNT] = {0, 0}, total[PAD_SET_COUNT] = {0, 0};
           for (int a = 0; a < PAD_ACT_COUNT; a++) {
             const PadActionInfo &info = pad_action_info((PadAction)a);
-            if (info.set != want) continue;
-            total++;
+            total[info.set]++;
             if (info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
-                            : in->GetDigitalActionData(p.handle, g_digital[a]).bActive) on++;
+                            : in->GetDigitalActionData(p.handle, g_digital[a]).bActive) on[info.set]++;
           }
           startup_tracef("steam input: handle %llu un-adopted: current set %llu (want %s=%llu) revision %s %d.%d, "
-                         "%d/%d actions active",
+                         "actions active Ship %d/%d Menu %d/%d",
                          (unsigned long long)p.handle, (unsigned long long)in->GetCurrentActionSet(p.handle),
                          pad_action_set_name(want), (unsigned long long)g_set[want],
-                         rev ? "known" : "NONE", maj, mnr, on, total);
+                         rev ? "known" : "NONE", maj, mnr,
+                         on[PAD_SET_SHIP], total[PAD_SET_SHIP], on[PAD_SET_MENU], total[PAD_SET_MENU]);
         }
         if (!p.legacy_traced && p.inactive_ticks >= INACTIVE_DROP_TICKS) {
           p.legacy_traced = true;
