@@ -157,6 +157,31 @@ lands on that seat instead of sitting unassigned with its A joining a
 phantom player 2 — a Deck layout switch had worked or gone inert by
 which event won).
 
+**A layout switch resets the active set (Deck, 2026-09-07, run 220).**
+Picking the official layout from the pause menu's CONTROLLER LAYOUT row
+left every input dead until a restart: the trace showed the layout load
+(`SteamInputConfigurationLoaded_t`, uses Steam Input API=1) followed by
+`current set 1 (want Menu=2), 0/11 actions active` for good. A loaded
+layout comes up in its own default set, and the game-side library
+collapses an `ActivateActionSet` for the set it was last asked for —
+Valve's "cheap to call repeatedly" is a cache, and a load on the client
+side changes the set in force without the cache hearing of it, so
+re-asking for Menu once or every tick (run 219) changed nothing. The fix
+is one event handler, not a poll: `steam_input.cpp`'s `ConfigLoaded`
+handler asks for the OTHER set — a request the cache cannot collapse —
+and clears the pad's `set_known`, so the next `sync_set` requests the
+wanted set afresh through its ordinary path (release, re-prime — the
+bindings may have changed with the layout). Verified on the Deck from
+run 220: the live switch adopts the pad without a restart. Two paths
+rejected on the way: a polled two-set bounce (a workaround stacked on a
+guess), and unpausing the game to meet Steam's set (only the pause
+screen has an unpause; the callback also fires per focus change, which
+would resume a game the player left paused). Note the number
+`GetCurrentActionSet` reports is ambiguous — Steam's handle (Ship=1, the
+IGA's order) or the layout's preset id (Menu=1, every export authored
+Menu-first) — so the un-adopted dump now counts active actions in BOTH
+sets, which says which set is live whatever the number means.
+
 **Steam Deck (2026-09-07).** `controller_neptune.vdf` is a genuine Deck
 export (authored on the device from the official layout's editor — the
 Deck's editor lists the action sets only for a layout that EMBEDS them,
@@ -564,7 +589,8 @@ be closed from the game's side.
   once "Newtonia Official (Steam Deck)" is picked the pad is adopted, drives
   seat 1, and every hint follows the layout. Switching layouts in either
   direction mid-game hands the pad over cleanly (the SDL-twin-first fix,
-  `sdl_pads_sync_now`).
+  `sdl_pads_sync_now`, and the set re-assert on the configuration-loaded
+  event — below).
 - `steam/controller_neptune.vdf` is a genuine Deck export: authored on the
   device in the official layout's editor, `controller_caps` 23117823 (the
   Deck's own value), every Ship and Menu action bound, both analog actions.
