@@ -1125,6 +1125,18 @@ hibernation sockets, storage + alarm) — the wrangler suites cannot reach a
   `mint_ban_key` digest on both write paths); a mismatch discards the
   result.
 
+Beside the unit test, two protocol tests prove the same rules on workerd's
+real sockets in `deploy-signal.yml`'s wrangler step: `frame_bounds_test.mjs`
+(F4 — an offer/answer arrives at the peer as exactly the allowlisted fields,
+mids are bounded, an oversized frame is dropped whole with the sender left
+open, a 320-candidate flood and a 70×16 KB byte flood each close the
+flooder with 1008 while the peer keeps its socket and exactly 300 relayed
+candidates) and `reclaim_chain_test.mjs` (the round-2 closing-socket case —
+H2 reclaims, drops at once, J hears host-lost, H3 reclaims on the same
+token and its offer relays; a deliberate close still refuses the next
+reclaim). Not scriptable there: F3's 24 h room (the unit test's clock) and
+F9's same-code reuse (codes are random) stay unit-only.
+
 ## Verification checklist (M1 done =)
 
 Two newtonia.exe on one machine: paste-connect, both ships controllable, remote one-shots work, host kills explode on client, pickups reflect, pause syncs, generation rollover on both, kill-process → CONNECTION LOST → Menu, solo save intact afterward. Then native↔web (Chrome+Firefox clipboard, chunking). CI: all three workflows green each phase.

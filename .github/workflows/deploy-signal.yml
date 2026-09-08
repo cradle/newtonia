@@ -102,6 +102,8 @@ jobs:
           node test/grace_broadcast_test.mjs
           node test/host_close_broadcast_test.mjs
           node test/offer_pv_test.mjs
+          node test/frame_bounds_test.mjs
+          node test/reclaim_chain_test.mjs
           kill $DEV_PID
 
   deploy:
