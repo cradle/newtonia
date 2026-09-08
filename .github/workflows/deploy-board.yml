@@ -74,6 +74,7 @@ jobs:
           node test/budget_test.mjs
           node test/snapshot_guard_test.mjs
           node test/submit_race_test.mjs
+          node test/submit_storage_test.mjs
 
       # Protocol test against the real worker code under miniflare — no
       # Cloudflare account involved (local D1/R2 simulators). FAKE_VERIFY
@@ -118,12 +119,18 @@ jobs:
       # /play/?replay= watch link): snapshot build/staleness/cron-refresh
       # and the replay blob GET. Runs with the production-default season
       # whitelist (the test submits canonical seasons); --test-scheduled
-      # exposes the /__scheduled hook the test uses to drive the cron.
+      # exposes the /__scheduled hook the tests use to drive the cron.
+      # The same boot then runs the retention DEMOTE pass end to end
+      # (demote_test: 102 accounts fill one board, the cron strips the
+      # two rows past the top 100 of their replays, deletes their objects
+      # and republishes the snapshot) — that fill needs the widened
+      # SUBMIT_LIMIT/CONN_LIMIT windows the protocol boot already uses.
       - name: Site endpoints test
         run: |
           npx wrangler@4 dev --local --test-scheduled --port 8790 \
             --persist-to .wrangler-site \
-            --var FAKE_VERIFY:1 > wrangler-site.log 2>&1 &
+            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500 \
+            > wrangler-site.log 2>&1 &
           DEV_PID=$!
           for i in $(seq 1 60); do
             curl -s http://127.0.0.1:8790/ | grep -q newtonia-board && break
@@ -131,6 +138,7 @@ jobs:
             sleep 1
           done
           node test/site_test.mjs
+          node test/demote_test.mjs
           kill $DEV_PID
 
   deploy:

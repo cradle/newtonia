@@ -52,6 +52,7 @@ jobs:
           node test/steam_verify_test.mjs
           node test/play_games_verify_test.mjs
           node test/game_center_verify_test.mjs
+          node test/room_unit_test.mjs
 
       - name: Signal protocol tests (wrangler dev --local)
         working-directory: signal
@@ -84,6 +85,8 @@ jobs:
           node test/grace_broadcast_test.mjs
           node test/host_close_broadcast_test.mjs
           node test/offer_pv_test.mjs
+          node test/frame_bounds_test.mjs
+          node test/reclaim_chain_test.mjs
           kill $DEV_PID
 
       - name: Board unit tests
@@ -94,6 +97,8 @@ jobs:
           node test/retention_test.mjs
           node test/budget_test.mjs
           node test/snapshot_guard_test.mjs
+          node test/submit_race_test.mjs
+          node test/submit_storage_test.mjs
 
       - name: Board protocol test (wrangler dev --local)
         working-directory: board
@@ -108,6 +113,26 @@ jobs:
             sleep 1
           done
           node test/board_test.mjs
+          kill $DEV_PID
+
+      # deploy-board.yml's site boot, mirrored: the read endpoints and the
+      # retention DEMOTE pass (site_test + demote_test) on one boot with the
+      # production season whitelist and the /__scheduled cron hook.
+      - name: Board site + retention test (wrangler dev --local)
+        working-directory: board
+        run: |
+          npx wrangler@4 dev --local --test-scheduled --port 8790 \
+            --persist-to .wrangler-site \
+            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500 \
+            > wrangler-site.log 2>&1 &
+          DEV_PID=$!
+          for i in $(seq 1 60); do
+            curl -s http://127.0.0.1:8790/ | grep -q newtonia-board && break
+            kill -0 $DEV_PID 2>/dev/null || { echo "wrangler dev died:"; cat wrangler-site.log; exit 1; }
+            sleep 1
+          done
+          node test/site_test.mjs
+          node test/demote_test.mjs
           kill $DEV_PID
 
   # One build for every shard. Same recipe as linux.yml, plus a cache for the

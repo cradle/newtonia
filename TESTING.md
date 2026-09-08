@@ -386,6 +386,15 @@ node test/steam_verify_test.mjs          # V1 Steam verifier, mocked Valve (unit
 node test/play_games_verify_test.mjs     # V2 Play Games verifier, mocked Google (unit)
 node test/game_center_verify_test.mjs    # V3 Game Center verifier, real RSA + synthetic
                                          #   Apple cert, mocked fetch (unit)
+node test/room_unit_test.mjs             # Room DO: alarm deadlines, frame bounds/budget,
+                                         #   verify bound to the room generation (unit, no wrangler)
+node test/frame_bounds_test.mjs          # the same bounds on workerd's sockets: allowlisted
+                                         #   offer/answer rebuild, mid cap, oversized frame
+                                         #   dropped (socket stays open), count + byte
+                                         #   floods close 1008 with the peer untouched
+node test/reclaim_chain_test.mjs         # reclaim CHAIN: H2 takes over, drops while H1 may
+                                         #   still be closing -> grace, H3 reclaims, relay
+                                         #   intact; a deliberate close still ends the room
 # The identity protocol test needs the FAKE_VERIFY dev flag set on the relay:
 #   npx wrangler dev --local --port 8787 --var FAKE_VERIFY:1
 node test/identity_test.js               # V0 identity attest/broadcast/replay
@@ -407,15 +416,42 @@ see `board/README.md`:
 cd board
 node test/validate_test.mjs        # .nrp header/record-framing validation (unit)
 node test/identity_gate_test.mjs   # attestation admission gate (unit)
+node test/retention_test.mjs       # retention cron + snapshot publish (real SQLite via test/d1_sqlite.mjs)
+node test/snapshot_guard_test.mjs  # site snapshot single-flight / backoff / watermark
 node test/submit_race_test.mjs     # same-run upload race: row/blob consistency (unit)
+node test/submit_storage_test.mjs  # submission storage ownership on real SQLite: racing uploads, commit-safe cleanup
+node test/budget_test.mjs          # per-IP limiter fail-closed + per-connection budgets
+# (the three SQL-driven units run the worker's real statements on node:sqlite —
+#  Node 22.13+; the ExperimentalWarning it prints is expected)
 # Protocol test against the real worker under miniflare (local D1/R2):
 npx wrangler@4 dev --local --port 8788 --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 &
 node test/board_test.mjs           # submit/supersede/dedup/fetch round-trip
+# Site read endpoints + the retention DEMOTE pass, one boot (production
+# season whitelist; --test-scheduled exposes /__scheduled for the cron):
+npx wrangler@4 dev --local --test-scheduled --port 8790 --persist-to .wrangler-site \
+    --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500 &
+node test/site_test.mjs            # snapshot build/staleness/cron refresh, replay GET
+node test/demote_test.mjs          # 102 accounts fill one board; the cron strips the two
+                                   #   rows past the top 100 (WS no-replay, site 404) and
+                                   #   deletes their objects (bucket listed via wrangler's
+                                   #   local explorer API), keeps ranks 1..100 and their
+                                   #   objects, republishes with rev advanced
 ```
 
-Both suites gate `deploy-board.yml`. `SUBMIT_LIMIT` widens the per-IP
-submit window for the test's burst; like `FAKE_VERIFY`, never set it in
+Both suites gate `deploy-board.yml`. `SUBMIT_LIMIT`/`CONN_LIMIT` widen the
+per-IP windows for the tests' bursts; like `FAKE_VERIFY`, never set them in
 production.
+
+`board/test/manual_resubmit.mjs` is a hand tool, not a gate: it submits ONE
+run repeatedly at scores you choose (default 500 → 300 → 700; a real `.nrp`
+path patches the score into a copy of its header) and prints the reply, the
+site snapshot's revision + rows and the bucket's object keys after each step,
+so the worker-side resubmission rules (LEADERBOARD.md "Workers review
+2026-09-08": a lower score refused before any write, a higher one placed under
+a fresh key with the old object deleted and the snapshot current on the next
+view) can be watched directly — the game client never produces a lower
+resubmission itself. Same `wrangler dev --local` boot as above, port 8788
+(`BOARD_PORT`), `BOARD_NAME=OTHER` for a cross-account collision.
 
 ## 4. End-to-end drivers (`test/e2e/`)
 

@@ -68,6 +68,28 @@ const MAX_SDP_LEN = 16384;
 // produces a handful — the caps bound a flooding peer.
 const MAX_CAND_LEN = 512;
 const MAX_CANDS = 32;
+// Whole-frame bound, checked on the raw text BEFORE JSON.parse. The
+// per-field caps above bound what gets STORED or RELAYED, but the parse
+// itself ran on whatever arrived (the platform accepts 32 MiB WebSocket
+// messages), and an offer/answer used to be forwarded as the parsed OBJECT
+// — so an extra field of any size rode through to the peer untouched
+// (Workers review 2026-09-08, F4). The largest legitimate frame is an offer
+// at MAX_SDP_LEN plus a few short fields; identity creds cap at 8 KB.
+const MAX_FRAME_LEN = 24 * 1024;
+// `mid` is persisted inside buffered host candidates (host_cands), and the
+// room record is one storage value with a 2 MB cap — an unbounded mid was a
+// way to push the record past it and brick every later save() of the room.
+// Real mids are "0"/"1" or a short media-section id.
+const MAX_MID_LEN = 64;
+// Per-socket frame budget (fixed window). Connection limits bound NEW
+// sockets; nothing bounded the frame COUNT or byte volume on an established
+// one. A 4P host at game start legitimately sends ~3 offers + a few dozen
+// candidates + identity within seconds, so the ceilings sit well above
+// that. In-memory per socket (a hibernation eviction resets it — a
+// flooder keeps the object awake, so it never gets that reset).
+const FRAME_WINDOW_MS = 10 * 1000;
+const FRAME_LIMIT = 300;
+const FRAME_BYTES_LIMIT = 1024 * 1024;
 
 // Peer identity attestation (NETPLAY.md V0/V1). Each side announces its
 // claimed platform + display name (and, on Steam, a Web-API auth ticket) with
@@ -501,6 +523,29 @@ export class Limiter {
   }
 }
 
+// Is this socket still OPEN? Hibernation-API sockets report readyState
+// (1 = OPEN); a socket whose close() is in flight reads CLOSING and must
+// not count as a present peer. A socket that reports no readyState at all
+// (a test fake) is taken as open.
+function ws_open(ws) {
+  const rs = ws && ws.readyState;
+  return rs === undefined || rs === null || rs === 1;
+}
+
+// Bounded `mid` for a relayed/buffered candidate frame (see MAX_MID_LEN).
+// Numbers are accepted (some stacks send the media-section index bare);
+// anything else, or an over-long string, collapses to "0".
+function mid_of(msg) {
+  const m = msg.mid;
+  if (typeof m === "number" && Number.isFinite(m)) return String(m);
+  if (typeof m === "string" && m.length > 0 && m.length <= MAX_MID_LEN) return m;
+  return "0";
+}
+
+// Per-socket frame budget state (Room.over_budget). Keyed by the socket
+// object, so it dies with the socket.
+const frame_budget = new WeakMap();
+
 // One Durable Object per room code. Uses the WebSocket HIBERNATION API:
 // after the handshake burst the signaling socket sits idle for the whole
 // game session (traffic is peer-to-peer over WebRTC), so the DO evicts
@@ -546,10 +591,19 @@ export class Room {
   // Live sockets by tag (hibernation-safe — survives DO eviction). Every
   // joiner carries BOTH the generic "joiner" tag (dispatch) and its own
   // "j:<n>" tag (addressing).
-  hostWs()   { return this.state.getWebSockets("host")[0]   || null; }
-  joinerWss() { return this.state.getWebSockets("joiner"); }
+  //
+  // getWebSockets() can still return a socket in CLOSING state after
+  // ws.close() (Cloudflare docs) — so every liveness read filters on
+  // readyState (ws_open), and alive() additionally requires the ROOM to be
+  // live (host_token set). Without both, the alarm's TTL cleanup left a
+  // window (the close completing) where the closing host still counted as
+  // present, `created` was already 0 (so the lazy TTL check was off),
+  // /exists reported a host and /join seated a player into an expired room
+  // with no usable host or offer (review of PR #527).
+  hostWs()   { return this.state.getWebSockets("host").find(ws_open) || null; }
+  joinerWss() { return this.state.getWebSockets("joiner").filter(ws_open); }
   joinerWsById(jid) {
-    return this.state.getWebSockets("j:" + jid)[0] || null;
+    return this.state.getWebSockets("j:" + jid).find(ws_open) || null;
   }
   // The oldest connected joiner — the unaddressed-frame target (legacy 2P
   // hosts know only one peer). Jids are monotonic, so oldest = smallest; a
@@ -575,9 +629,13 @@ export class Room {
   // The room is "held" while a disconnected host may still reclaim it.
   in_grace(now) {
     return !this.hostWs() && this.r.host_token &&
-           this.r.host_lost_at && now - this.r.host_lost_at <= HOST_GRACE_MS;
+           this.r.host_lost_at && now - this.r.host_lost_at < HOST_GRACE_MS;
   }
-  alive(now) { return !!this.hostWs() || this.in_grace(now); }
+  // A room is alive only while it HAS a host token (accept_host mints it,
+  // expiry clears it) — a lingering closing socket never revives a room.
+  alive(now) {
+    return !!this.r.host_token && (!!this.hostWs() || this.in_grace(now));
+  }
 
   async fetch(request) {
     const url = new URL(request.url);
@@ -586,7 +644,8 @@ export class Room {
     try { ice = JSON.parse(url.searchParams.get("ice") || "[]"); } catch (e) {}
     const now = Date.now();
 
-    if (this.alive(now) && this.r.created && now - this.r.created > ROOM_TTL_MS)
+    // Same boundary rule as alarm(): the room is over AT the deadline.
+    if (this.alive(now) && this.r.created && now - this.r.created >= ROOM_TTL_MS)
       await this.expire();
     // Grace elapsed with no reclaim: the room is finished.
     if (!this.hostWs() && this.r.host_token && !this.in_grace(now))
@@ -598,7 +657,8 @@ export class Room {
       // reads `full` since multi-join.
       const n = this.joinerWss().length;
       return new Response(
-          JSON.stringify({ host: !!this.hostWs(), joiner: n > 0,
+          JSON.stringify({ host: !!this.r.host_token && !!this.hostWs(),
+                           joiner: n > 0,
                            joiners: n, full: n >= MAX_JOINERS }),
           { headers: { "Content-Type": "application/json" } });
     }
@@ -606,7 +666,7 @@ export class Room {
     if (url.pathname === "/host") {
       // In-grace rooms still own their code — a fresh host must not
       // squat a room whose original host may return.
-      if (this.hostWs() || this.in_grace(now))
+      if (this.alive(now))
         return new Response("room in use", { status: 409 });
       const pair = new WebSocketPair();
       await this.accept_host(pair[1], code, now, ice);
@@ -811,11 +871,20 @@ export class Room {
         // field-hit fast-ICE case, 2026-08-07). Store the attestation (a
         // host reclaim replays it) and push it to the peers now.
         const epoch = jent ? jent.epoch : this.r.host_id_epoch || 0;
+        // Room GENERATION, captured beside the epoch: host_token is minted
+        // once per accept_host and cleared by expire, so it names this room
+        // lifetime exactly. Without it a verify outstanding across an
+        // expiry + a fresh host on the SAME code (jids restart at 1) would
+        // land the old pilot's attestation on the new room's joiner 1 —
+        // the epoch alone cannot tell the two rooms apart (Workers review
+        // 2026-09-08, F9). Re-checked after EVERY non-storage await below.
+        const gen = this.r.host_token;
         const v = await verify();
         // The room can be torn down (host `close`, TTL/grace expiry) while the
         // verify fetch is in flight — the input gate is open across a non-storage
-        // await. Don't write identity back onto a dead/tombstoned room.
-        if (this.r.closed || !this.r.host_token) return;
+        // await. Don't write identity back onto a dead/tombstoned room, and
+        // never onto a DIFFERENT room that took the code since.
+        if (this.r.closed || !this.r.host_token || this.r.host_token !== gen) return;
         const jent2 = role === "joiner" ? this.r.jids[jid] : null;
         const epoch_now = role === "joiner" ? (jent2 ? jent2.epoch : -1)
                                             : this.r.host_id_epoch || 0;
@@ -825,10 +894,14 @@ export class Room {
                         `mid-verify)`);
             return;
           }
-          jent2.identity = { platform, name: v.name || "", verified: true };
+          const late = { platform, name: v.name || "", verified: true };
           const lkey = await mint_ban_key(this.r.ban_salt, platform,
                                           v.acct || "");
-          if (lkey) jent2.identity.key = lkey;
+          if (lkey) late.key = lkey;
+          // The digest is a non-storage await too: re-check the generation
+          // before writing, and write to the entry as it is NOW.
+          if (this.r.host_token !== gen || !this.r.jids[jid]) return;
+          this.r.jids[jid].identity = late;
           await this.save();
           this.broadcast_identity(role, jid);
           console.log(`identity joiner j:${jid} late verify attested after ` +
@@ -889,8 +962,11 @@ export class Room {
     // Mint the ban token from the proven account (attested only — a bare
     // claim proves no account, so it gets none and stays unbannable-by-id).
     if (attested.verified) {
+      const gen = this.r.host_token;
       const key = await mint_ban_key(this.r.ban_salt, platform, acct);
       if (key) attested.key = key;
+      // Non-storage await (F9): the room may have been replaced meanwhile.
+      if (this.r.host_token !== gen) return;
     }
     if (ent) ent.identity = attested; else this.r.host_identity = attested;
     await this.save();
@@ -1043,8 +1119,31 @@ export class Room {
 
   // ---- hibernation event handlers ----------------------------------------
 
+  // Per-socket frame budget (see FRAME_LIMIT). Returns true when the
+  // socket just blew its budget — it has been closed, drop the frame.
+  over_budget(ws, bytes) {
+    const now = Date.now();
+    let b = frame_budget.get(ws);
+    if (!b || now - b.start >= FRAME_WINDOW_MS) {
+      b = { start: now, n: 0, bytes: 0 };
+      frame_budget.set(ws, b);
+    }
+    b.n++;
+    b.bytes += bytes;
+    if (b.n <= FRAME_LIMIT && b.bytes <= FRAME_BYTES_LIMIT) return false;
+    console.log(`frame budget exceeded (${b.n} frames, ${b.bytes} bytes) — closing`);
+    try { ws.close(1008, "flood"); } catch (e) {}
+    return true;
+  }
+
   async webSocketMessage(ws, message) {
+    const bytes = typeof message === "string"
+        ? message.length : (message && message.byteLength) || 0;
+    if (this.over_budget(ws, bytes)) return;
     if (typeof message !== "string") return;  // frames are JSON text
+    // Bound the WHOLE frame before parsing it (F4): the field caps below
+    // only ever looked at the fields they relay or store.
+    if (message.length > MAX_FRAME_LEN) return;
     let msg;
     try { msg = JSON.parse(message); } catch (e) { return; }
     // A valid-JSON but non-object frame ("null", "5", "\"x\"") would make the
@@ -1082,6 +1181,11 @@ export class Room {
       // late-arriving joiner carries it too — the game fails fast on a
       // mismatch before ICE. Old games send no pv.
       const pv = typeof msg.pv === "string" && msg.pv.length <= 8 ? msg.pv : null;
+      // Forward a frame REBUILT from the allowlisted fields, never the
+      // parsed object: anything else the host put in the frame (any size
+      // up to the frame cap) used to ride through to the joiner verbatim.
+      const fwd = { t: "offer", sdp: msg.sdp };
+      if (pv) fwd.pv = pv;
       if (to !== null) {
         // Addressed (per-jid) offer: relay-only. A jid's socket is
         // connected for its whole life (the host can only learn a jid
@@ -1090,14 +1194,14 @@ export class Room {
         // would only grow the room record (a host re-offers to the
         // REPLACEMENT jid on its join event).
         const j = this.joinerWsById(to);
-        if (j) this.safeSend(j, msg);
+        if (j) this.safeSend(j, fwd);
       } else {
         // Legacy unaddressed offer (2P hosts): to the oldest connected
         // joiner NOW — consumed, not stored, since an SDP is single-use —
         // or stored for a one-shot replay to the next arrival.
         const j = this.oldestJoinerWs();
         if (j) {
-          this.safeSend(j, msg);
+          this.safeSend(j, fwd);
           if (this.r.offer) {
             this.r.offer = null;
             this.r.offer_pv = null;
@@ -1120,7 +1224,7 @@ export class Room {
     // candidate). Candidates after the target arrives don't touch storage.
     if (msg.t === "cand" && typeof msg.cand === "string" &&
         msg.cand.length <= MAX_CAND_LEN) {
-      const frame = { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand };
+      const frame = { t: "cand", mid: mid_of(msg), cand: msg.cand };
       if (to !== null) {
         // Relay-only, like the addressed offer above.
         const j = this.joinerWsById(to);
@@ -1152,7 +1256,13 @@ export class Room {
     if (msg.t === "answer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
       const h = this.hostWs();
-      if (h) this.safeSend(h, jid === null ? msg : { ...msg, from: String(jid) });
+      if (h) {
+        // Rebuilt from the allowlisted fields, like the host's offer (F4).
+        const fwd = { t: "answer", sdp: msg.sdp };
+        if (typeof msg.pv === "string" && msg.pv.length <= 8) fwd.pv = msg.pv;
+        if (jid !== null) fwd.from = String(jid);
+        this.safeSend(h, fwd);
+      }
     }
     if (msg.t === "cand" && typeof msg.cand === "string" &&
         msg.cand.length <= MAX_CAND_LEN) {
@@ -1160,7 +1270,7 @@ export class Room {
       // in grace, when its dead transport couldn't use them anyway).
       const h = this.hostWs();
       if (h) {
-        const frame = { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand };
+        const frame = { t: "cand", mid: mid_of(msg), cand: msg.cand };
         if (jid !== null) frame.from = String(jid);
         this.safeSend(h, frame);
       }
@@ -1171,7 +1281,14 @@ export class Room {
   // the room. Idempotent — webSocketError then webSocketClose may both fire.
   async drop_host(ws) {
     if (this.r.host_lost_at && !this.hostWs()) return;   // already in grace
-    if (this.state.getWebSockets("host").some((w) => w !== ws)) return; // superseded
+    // Superseded only by an OPEN replacement. A reclaim leaves the old
+    // socket registered in CLOSING for a beat; if the NEW host drops
+    // inside that beat, the closing old one must not read as "someone
+    // else holds the room" — that skipped the grace stamp, so the next
+    // reclaim found no grace and expired the room on the rightful token
+    // (review of PR #527, round 2).
+    if (this.state.getWebSockets("host").some((w) => w !== ws && ws_open(w)))
+      return; // superseded
     // Every stored offer belonged to the dead socket's transports.
     this.r.offer = null;
     this.r.offer_pv = null;
@@ -1255,11 +1372,29 @@ export class Room {
   // elapsed, or a host-closed tombstone past its window) so their DO
   // storage doesn't linger. Lazy expiry in fetch() covers correctness;
   // this is just cleanup, and re-arms while the room is still live.
+  //
+  // Deadlines are evaluated in this order (Workers review 2026-09-08, F3):
+  // TTL first — a LIVE host past ROOM_TTL_MS used to count as alive, so the
+  // alarm re-armed itself at created + TTL, a time already in the past,
+  // which fires again immediately: a hot loop for as long as the socket
+  // stayed up, spending Durable Object invocations against the free plan's
+  // daily budget with no HTTP request ever arriving to run fetch()'s lazy
+  // expiry. Then grace, then the earliest FUTURE deadline. The boundary is
+  // `now >= deadline` everywhere (in_grace, fetch, here).
   async alarm() {
     const now = Date.now();
-    if (this.alive(now)) {
-      if (this.r.created)
-        await this.state.storage.setAlarm(this.r.created + ROOM_TTL_MS);
+    const ttl_at = this.r.created ? this.r.created + ROOM_TTL_MS : 0;
+    const expired = ttl_at && now >= ttl_at;
+    if (!expired && this.hostWs()) {
+      // Live room: wake again at its TTL (never a past time — a room with
+      // no creation stamp gets a full TTL from now).
+      await this.state.storage.setAlarm(ttl_at || now + ROOM_TTL_MS);
+      return;
+    }
+    if (!expired && this.in_grace(now)) {
+      const grace_at = this.r.host_lost_at + HOST_GRACE_MS;
+      await this.state.storage.setAlarm(
+          ttl_at ? Math.min(grace_at, ttl_at) : grace_at);
       return;
     }
     for (const ws of this.state.getWebSockets()) {
