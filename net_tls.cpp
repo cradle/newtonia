@@ -141,15 +141,31 @@ void net_tls_log_state() {
     // shipped macOS universal, iOS, Android) has nothing to fall back to
     // and fails closed.
 #ifdef _WIN32
-    SDL_Log("net: tls - no CA bundle on disk; on Windows connections proceed "
-            "UNVERIFIED without one (credentials on this connection are "
-            "exposed to any on-path attacker)");
+    SDL_Log("net: tls - no CA bundle on disk; on Windows libdatachannel "
+            "would connect UNVERIFIED without one, so the connect is REFUSED "
+            "(no online play until the bundle can be written)");
 #else
     SDL_Log("net: tls - no CA bundle on disk; OpenSSL builds fall back to "
             "the system trust store, MbedTLS builds fail closed (no online "
             "play)");
 #endif
   }
+}
+
+bool net_tls_ws_policy(NetTlsWsPolicy &out) {
+  out.disable_verification = net_tls_insecure();
+  const std::string &ca = net_ca_bundle_path();
+  out.ca_file = ca.empty() ? NULL : ca.c_str();
+  if (out.disable_verification || out.ca_file) return true;
+#ifdef _WIN32
+  // No bundle and no explicit opt-out: the only remaining outcome on this
+  // platform is an unverified socket, and that must never be the quiet one.
+  SDL_Log("net: tls - REFUSING to connect: no CA bundle on disk, and this "
+          "build cannot verify the server without one");
+  return false;
+#else
+  return true;
+#endif
 }
 
 bool net_tls_insecure() {

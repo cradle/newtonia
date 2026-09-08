@@ -30,12 +30,34 @@
 
 // Absolute path to the CA bundle on disk, materialized from the embedded
 // copy on first call (SDL pref path, "cacert.pem"). Empty when it could not
-// be written — the caller then passes no CA, which on a system-store
-// platform still verifies and on an MbedTLS one fails closed.
+// be written — on a system-store platform the socket then still verifies,
+// on an MbedTLS one the handshake fails closed, and on Windows the connect
+// is REFUSED by net_tls_ws_policy below rather than made unverified.
 //
 // Main thread only (both call sites are connect(), a main-thread op); the
 // result is cached for the process lifetime and stays valid forever.
 const std::string &net_ca_bundle_path();
+
+// The verification policy both credential-carrying sockets apply — ONE
+// function, two call sites, so neither can drift from the other. Fills the
+// two rtcWsConfiguration fields (the C struct is an anonymous typedef and
+// cannot be forward-declared here, so the caller copies them across).
+//
+// Returns false when this build would otherwise connect UNVERIFIED — Windows
+// with no bundle on disk, where libdatachannel drops verification whenever
+// no CA is supplied — and the caller MUST then refuse to connect: no online
+// play beats a socket that looks like success while handing the platform
+// credential to any on-path attacker (security review 2026-09-08, F3). The
+// other platforms never refuse here because they never need to: MbedTLS
+// fails closed at the handshake with no roots to verify against, and
+// OpenSSL on Linux / plain macOS verifies against the system store it has
+// already loaded. NEWTONIA_NET_TLS_INSECURE=1 is the only way through
+// without a bundle, and it announces itself in the log.
+struct NetTlsWsPolicy {
+  bool disable_verification;
+  const char *ca_file;   // NULL when no bundle is on disk
+};
+bool net_tls_ws_policy(NetTlsWsPolicy &out);
 
 // Log what this process will actually do — once, on the first socket that
 // asks. Without it there is NO steady-state evidence either way: the bundle

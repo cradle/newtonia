@@ -700,8 +700,14 @@ Windows (2026-08-03/04). The Windows run doubles as the field proof of the
 patch's second hunk, since upstream refuses to verify there at all. Residual:
 the patch is a fork until upstream takes it, so a libdatachannel bump must
 re-check the three hunks still apply — and Windows is the row to re-run
-first, being the only one that degrades to UNVERIFIED silently instead of
-failing closed.
+first, being the only one where the library degrades to UNVERIFIED silently
+instead of failing closed. Since 2026-09-08 (security review, F3) the game
+closes that gap itself: both sockets take their TLS fields from one
+`net_tls_ws_policy()`, which on Windows REFUSES the connect when no bundle
+is on disk (a Closed event, like a failed MbedTLS handshake) unless
+`NEWTONIA_NET_TLS_INSECURE=1` asked for an unverified socket explicitly; the
+materialization also keeps a stale-but-good bundle on every refresh failure,
+where the temporary's create failure used to discard it.
 
 **S2 — a failed INSERT orphans the R2 blob forever (`board/src/worker.js`
 `finish_submit`).** ✅ FIXED (2026-08-03, below) `REPLAYS.put` ran BEFORE the

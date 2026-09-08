@@ -161,10 +161,11 @@ They differ in two ways worth knowing:
   room per run, reclaimed by the relay's TTL, is the cheaper trade.
 - **Whether a PASS is sufficient.** On the MbedTLS rows it is: they fail
   CLOSED, so a completed handshake proves the bundle wrote, parsed and
-  verified. Windows does NOT fail closed — libdatachannel falls back to
-  UNVERIFIED when no CA is supplied — so `windows.yml` additionally greps
-  for the `verifying server certificates against` line, which is the only
-  tell there. That grep needs `2>&1`: the PASS line is `std::cout` but the
+  verified. On Windows libdatachannel itself falls back to UNVERIFIED when
+  no CA is supplied, so the game refuses to connect there without a bundle
+  (`net_tls_ws_policy`, 2026-09-08) — a PASS now proves the bundle too, but
+  `windows.yml` still greps for the `verifying server certificates against`
+  line as the belt-and-braces tell. That grep needs `2>&1`: the PASS line is `std::cout` but the
   TLS line is `SDL_Log`, i.e. stderr. macOS cannot grep it at all — SDL
   routes through NSLog on Apple, which reaches a terminal, not a CI pipe.
 
@@ -305,7 +306,8 @@ Two things to confirm either way:
 1. **The log line** — `net: tls - verifying server certificates against
    <path>`, emitted once by the first socket that opens. Anything else is a
    finding: `no CA bundle on disk` means the write failed (fatal on the
-   MbedTLS rows above, silently UNVERIFIED on Windows), and `VERIFICATION
+   MbedTLS rows above; on Windows the connect is REFUSED, `net_tls_ws_policy`,
+   since libdatachannel would otherwise go unverified), and `VERIFICATION
    DISABLED` means `NEWTONIA_NET_TLS_INSECURE` leaked into the environment.
 2. **The connection actually completes** — a selftest PASS on desktop, a
    room code (or board rows) on mobile. Either way it is a real round trip
@@ -314,9 +316,10 @@ Two things to confirm either way:
    socket that never opens.
 
 What a failure means, by platform: on MbedTLS builds the handshake fails
-CLOSED (no online play at all — loud); on Windows libdatachannel falls back
-to unverified when no CA is supplied, so a failed bundle write is SILENT
-there and the log line is the only tell. MbedTLS is also the likelier place
+CLOSED (no online play at all — loud); on Windows libdatachannel would fall
+back to unverified when no CA is supplied, so since 2026-09-08 the game
+refuses the connect there instead (`net_tls_ws_policy`) — also loud, with a
+`REFUSING to connect` log line beside the `no CA bundle` one. MbedTLS is also the likelier place
 for a surprise: it parses the bundle itself, and `mbedtls_x509_crt_parse_file`
 SKIPS certificates it dislikes rather than failing (libdatachannel throws
 only on a negative return), so a root could go missing with no error at all.
@@ -339,9 +342,11 @@ libdatachannel refuses to verify on at all, so that run is the field proof
 of the patch's SECOND hunk — and the proof is two-sided: the game compiles
 only if `caCertificatePemFile` exists, and `git apply` is atomic, so a
 Windows build that exists at all carries the `#ifdef _WIN32` relaxation too.
-It is also the only row that falls back to UNVERIFIED rather than failing
-closed, which is why the log line is the thing to re-check there after any
-libdatachannel bump: a silent regression looks exactly like success.
+It is also the one row where the LIBRARY falls back to UNVERIFIED rather
+than failing closed — the game refuses the connect itself on that path
+(`net_tls_ws_policy`) — which is why the log line is still the thing to
+re-check there after any libdatachannel bump: a regression in the patch's
+second hunk would look exactly like success.
 
 Xbox shares the MbedTLS trust path proven three times above, and console
 runtime work belongs to the private repo (CLAUDE.md) — the canaries here
