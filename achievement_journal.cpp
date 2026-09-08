@@ -1,4 +1,5 @@
 #include "achievement_journal.h"
+#include "atomic_file.h"
 #include <SDL.h>
 #include <cstdio>
 #include <cstdint>
@@ -54,10 +55,10 @@ bool read_string(FILE *f, std::string &out) {
   return true;
 }
 
-void write_string(FILE *f, const std::string &s) {
+bool write_string(FILE *f, const std::string &s) {
   uint8_t len = (uint8_t)(s.size() > 255 ? 255 : s.size());
-  fwrite(&len, sizeof(len), 1, f);
-  fwrite(s.data(), 1, len, f);
+  return fwrite(&len, sizeof(len), 1, f) == 1
+      && fwrite(s.data(), 1, len, f) == len;
 }
 
 void load() {
@@ -93,20 +94,27 @@ void load() {
 void save() {
   std::string path = journal_path();
   if (path.empty()) return;
-  FILE *f = fopen(path.c_str(), "wb");
-  if (!f) return;
-  uint32_t count = (uint32_t)entries.size();
-  fwrite(&AJ_MAGIC, sizeof(AJ_MAGIC), 1, f);
-  fwrite(&AJ_VERSION, sizeof(AJ_VERSION), 1, f);
-  write_string(f, last_owner);
-  fwrite(&count, sizeof(count), 1, f);
-  for (const AchievementJournal::Entry &e : entries) {
-    write_string(f, e.id);
-    uint8_t pct = (uint8_t)e.pct;
-    fwrite(&pct, sizeof(pct), 1, f);
-    write_string(f, e.owner);
-  }
-  fclose(f);
+  // AtomicFile: this journal is the ONLY record of an earn the platform
+  // has not confirmed yet (ACHIEVEMENTS.md §2), so a write that truncates
+  // the file first and never checks its own result could lose exactly the
+  // entries it exists to protect. Complete or untouched; `dirty` stays set
+  // on failure so the next flush retries.
+  bool ok = AtomicFile::write(path, [](FILE *f) {
+    uint32_t count = (uint32_t)entries.size();
+    bool ok = fwrite(&AJ_MAGIC, sizeof(AJ_MAGIC), 1, f) == 1
+           && fwrite(&AJ_VERSION, sizeof(AJ_VERSION), 1, f) == 1
+           && write_string(f, last_owner)
+           && fwrite(&count, sizeof(count), 1, f) == 1;
+    for (const AchievementJournal::Entry &e : entries) {
+      if (!ok) break;
+      uint8_t pct = (uint8_t)e.pct;
+      ok = write_string(f, e.id)
+        && fwrite(&pct, sizeof(pct), 1, f) == 1
+        && write_string(f, e.owner);
+    }
+    return ok;
+  }, "achievements");
+  if (!ok) return;
   dirty = false;
 }
 

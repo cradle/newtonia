@@ -1,248 +1,165 @@
-// Submission storage-ownership test (Workers review 2026-09-08, F1/F2):
-// drives the real Session.finish_submit against a real SQLite
-// (d1_sqlite.mjs) and an in-memory R2 fake whose hooks let two sessions be
-// interleaved DETERMINISTICALLY at chosen statements. The properties:
-//
-//   F1  Every upload gets its own immutable object key, the row names the
-//       key it was written with, and the surviving row's score and blob
-//       always agree — for two versions of ONE run racing under one
-//       account (the higher score must win the slot AND the object), and
-//       for two accounts colliding on a run_id (the loser's constraint
-//       abort must delete only its own object).
-//   F2  Only a DEFINITE non-commit deletes the uploaded object. A failure
-//       AFTER the upsert committed (the survivor read) leaves the object:
-//       the committed row points at it, and the client cannot resubmit.
-//   plus the ordinary same-account improvement paths: a new run and a
-//       resumed same-run improvement each replace the previous object.
-//
+// Unit test for the row/blob consistency of a submission (security review
+// 2026-09-08, F4): two uploads of the SAME run racing each other must leave
+// the charting row pointing at the upload that actually won it, the loser
+// must delete only its own object, and a same-run resubmission must
+// release the superseded object now that every upload has its own key.
+// Drives Session.place_row against an in-memory D1 + R2 with the exact
+// SQL shapes the worker uses; the interleaving (both upserts before either
+// survivor check — the race) is the natural microtask order of two
+// concurrent calls, and asserted, not assumed. Pure node.
 // Run: node test/submit_race_test.mjs
-import { Session, ensure_schema } from "../src/worker.js";
-import { d1_sqlite, clear_rows, sql_get, sql_all } from "./d1_sqlite.mjs";
-import { build_nrp } from "./nrp_fixture.mjs";
+import { Session } from "../src/worker.js";
 
 let failures = 0;
-function check(name, cond, detail) {
-  console.log((cond ? "PASS " : "FAIL ") + name +
-              (cond || detail === undefined ? "" : `  (${detail})`));
-  if (!cond) failures++;
+function check(name, ok, detail) {
+  console.log((ok ? "PASS " : "FAIL ") + name + (ok || !detail ? "" : "  " + detail));
+  if (!ok) failures++;
 }
 
-await ensure_schema(d1_sqlite());
-
-function deferred() {
-  let resolve;
-  const promise = new Promise((r) => { resolve = r; });
-  return { promise, resolve };
-}
-
-// One bucket shared by every session, with per-session hooks.
-function bucket() {
-  return { objects: new Map(), deleted: [] };
-}
-function r2_view(store, hooks = {}) {
+// D1 fake: the scores table as an array, answering the two statements
+// place_row issues. The upsert mirrors the real one's semantics — update
+// the player's slot only on a strictly higher score, and abort on the
+// (season, run_id) PRIMARY KEY when the collision is with a row on the
+// OTHER board (the ON CONFLICT target does not cover it).
+function fake_db(rows, log) {
   return {
-    async put(key, body) {
-      store.objects.set(key, new Uint8Array(body));
-      if (hooks.after_put) await hooks.after_put(key);
+    prepare(sql) {
+      return {
+        bind(...a) {
+          return {
+            async run() {
+              if (!sql.includes("INSERT INTO scores")) throw new Error("unexpected run(): " + sql);
+              const [season, players, run_id, score, , , , , , , key, blob_key] = a;
+              log.push(`upsert ${blob_key}`);
+              const slot = rows.find((r) => r.season === season &&
+                  r.players === players && r.platform_key === key);
+              if (slot) {
+                if (score > slot.score)
+                  Object.assign(slot, { run_id, score, blob_key });
+                return {};
+              }
+              if (rows.find((r) => r.season === season && r.run_id === run_id))
+                throw new Error("D1_ERROR: UNIQUE constraint failed: scores.season, scores.run_id");
+              rows.push({ season, players, run_id, score, platform_key: key, blob_key });
+              return {};
+            },
+            async first() {
+              if (!sql.includes("SELECT blob_key FROM scores")) throw new Error("unexpected first(): " + sql);
+              const [season, players, key] = a;
+              log.push(`survivor ${key}`);
+              const r = rows.find((r) => r.season === season &&
+                  r.players === players && r.platform_key === key);
+              return r ? { blob_key: r.blob_key } : null;
+            },
+          };
+        },
+      };
     },
-    async delete(k) {
-      for (const key of Array.isArray(k) ? k : [k]) {
-        store.objects.delete(key);
-        store.deleted.push(key);
-      }
-    },
-    async get(key) {
-      const b = store.objects.get(key);
-      return b ? { arrayBuffer: async () => b.buffer.slice(0) } : null;
-    },
-    async list() { return { objects: [], truncated: false }; },
   };
 }
 
-function fake_ws() {
-  return { sent: [], send(s) { this.sent.push(JSON.parse(s)); }, close() {} };
+function fake_r2() {
+  const deleted = [];
+  return { deleted, async delete(k) { deleted.push(k); } };
 }
 
-function identity(name) {
-  return { platform: 2, name, verified: true, account: `fake:${name}` };
-}
+const hd = (score, run_id = "7") =>
+  ({ season: "s1", run_id, score, generation: 3, duration_ms: 1000,
+     format_version: 1, save_version: 23 });
+const identity = { name: "A", platform: 2, verified: true };
 
-function session(store, db_hooks = {}, r2_hooks = {}) {
-  const s = new Session({}, { DB: d1_sqlite(db_hooks),
-                              REPLAYS: r2_view(store, r2_hooks) });
-  s.hydrated = true;
-  s.dev = true;
-  return s;
-}
-
-// The score a stored object's header carries (fixture layout, LE u32 @52).
-function blob_score(bytes) {
-  return new DataView(bytes.buffer, bytes.byteOffset).getUint32(52, true);
-}
-
-const SEASON = "s1";
-const RUN = 777n;
-
-// 1. F1 — the same run, one account, two uploads racing: both pass the
-// pre-checks before either row lands; the LOWER score's object is written
-// LAST. Under the old shared key the row said 300 and the object said 200,
-// and both sessions answered placed.
-{
-  clear_rows();
-  const store = bucket();
-  const g0 = deferred(), g1 = deferred(), g2 = deferred();
-  const A = session(store,
-      { before: async (sql) => { if (sql.startsWith("INSERT")) await g1.promise; },
-        after:  async (sql) => { if (sql.startsWith("INSERT")) g2.resolve(); } },
-      { after_put: async () => g0.resolve() });
-  const B = session(store,
-      { before: async (sql) => {
-          if (sql.includes("SELECT score, platform_key")) await g0.promise;
-          if (sql.startsWith("INSERT")) await g2.promise;
-        } },
-      { after_put: async () => g1.resolve() });
-  const wsA = fake_ws(), wsB = fake_ws();
-  const hi = build_nrp({ game_version: SEASON, run_id: RUN, score: 300 });
-  const lo = build_nrp({ game_version: SEASON, run_id: RUN, score: 200 });
-  await Promise.all([
-    A.finish_submit(wsA, hi, identity("ALICE")),
-    B.finish_submit(wsB, lo, identity("ALICE")),
+// Both scenarios: an existing personal best (score 100, object K0) for run
+// 7, then two uploads of run 7 — 300 under KA and 200 under KB — racing.
+async function race(first, second) {
+  const rows = [{ season: "s1", players: 1, run_id: "7", score: 100,
+                  platform_key: "acct", blob_key: "s1/7-K0.nrp" }];
+  const prev = { ...rows[0] };
+  const log = [];
+  const r2 = fake_r2();
+  const s = new Session({}, { REPLAYS: r2 });
+  const db = fake_db(rows, log);
+  const [won_first, won_second] = await Promise.all([
+    s.place_row(db, hd(first.score), 1, "acct", first.key, identity, prev),
+    s.place_row(db, hd(second.score), 1, "acct", second.key, identity, prev),
   ]);
-  const row = sql_get(`SELECT score, blob_key FROM scores WHERE run_id = '777'`);
-  check("same-run race: the higher score holds the row", row && row.score === 300,
-        JSON.stringify(row));
-  const obj = row && store.objects.get(row.blob_key);
-  check("same-run race: the row's object IS the higher score's blob",
-        !!obj && blob_score(obj) === 300, obj && `${blob_score(obj)}`);
-  check("same-run race: exactly one object survives", store.objects.size === 1,
-        `${store.objects.size}`);
-  check("same-run race: higher score answered placed",
-        wsA.sent.some((f) => f.t === "placed"), JSON.stringify(wsA.sent));
-  check("same-run race: lower score was NOT told placed",
-        !wsB.sent.some((f) => f.t === "placed") &&
-        wsB.sent.some((f) => f.t === "err" && f.reason === "not-best"),
-        JSON.stringify(wsB.sent));
+  return { rows, log, r2, won_first, won_second };
 }
 
-// 2. F1 — two ACCOUNTS colliding on one run_id (a copied file), racing
-// past the pre-checks: the loser's INSERT aborts on the (season, run_id)
-// primary key. Under the shared key its cleanup deleted the WINNER's
-// object; now it deletes only its own and answers already-submitted.
+const KA = "s1/7-KA.nrp", KB = "s1/7-KB.nrp", K0 = "s1/7-K0.nrp";
+
+// Higher score's upsert lands first.
 {
-  clear_rows();
-  const store = bucket();
-  const g0 = deferred(), g1 = deferred(), g2 = deferred();
-  const A = session(store,
-      { before: async (sql) => { if (sql.startsWith("INSERT")) await g1.promise; },
-        after:  async (sql) => { if (sql.startsWith("INSERT")) g2.resolve(); } },
-      { after_put: async () => g0.resolve() });
-  const B = session(store,
-      { before: async (sql) => {
-          if (sql.includes("SELECT score, platform_key")) await g0.promise;
-          if (sql.startsWith("INSERT")) await g2.promise;
-        } },
-      { after_put: async () => g1.resolve() });
-  const wsA = fake_ws(), wsB = fake_ws();
-  const a = build_nrp({ game_version: SEASON, run_id: RUN, score: 300 });
-  const b = build_nrp({ game_version: SEASON, run_id: RUN, score: 200 });
-  await Promise.all([
-    A.finish_submit(wsA, a, identity("ALICE")),
-    B.finish_submit(wsB, b, identity("BOB")),
-  ]);
-  const row = sql_get(`SELECT score, blob_key, name FROM scores WHERE run_id = '777'`);
-  check("cross-account race: the first committer holds the row",
-        row && row.name === "ALICE" && row.score === 300, JSON.stringify(row));
-  check("cross-account race: the winner's object survives",
-        !!row && store.objects.has(row.blob_key), JSON.stringify([...store.objects.keys()]));
-  check("cross-account race: the loser's object is deleted",
-        store.objects.size === 1 && store.deleted.length === 1,
-        JSON.stringify({ objects: [...store.objects.keys()], deleted: store.deleted }));
-  check("cross-account race: the loser is told already-submitted",
-        wsB.sent.some((f) => f.t === "err" && f.reason === "already-submitted"),
-        JSON.stringify(wsB.sent));
-  check("cross-account race: the winner is told placed",
-        wsA.sent.some((f) => f.t === "placed"), JSON.stringify(wsA.sent));
+  const t = await race({ score: 300, key: KA }, { score: 200, key: KB });
+  check("race interleaves both upserts before either survivor check",
+        t.log.join(",") === `upsert ${KA},upsert ${KB},survivor acct,survivor acct`,
+        t.log.join(","));
+  check("row keeps the winning score", t.rows[0].score === 300);
+  check("row points at the WINNING upload's object", t.rows[0].blob_key === KA,
+        t.rows[0].blob_key);
+  check("winner reports placed", t.won_first === true);
+  check("loser reports not-best (same run_id no longer fools it)",
+        t.won_second === false);
+  check("loser deleted only its own object", t.r2.deleted.includes(KB) &&
+        !t.r2.deleted.includes(KA), JSON.stringify(t.r2.deleted));
+  check("superseded best released by the winner", t.r2.deleted.includes(K0));
 }
 
-// 3. F2 — the survivor read fails AFTER the upsert committed. The object
-// must stay: the row points at it, and a retry meets already-submitted.
+// Lower score's upsert lands first, then the higher one replaces it.
 {
-  clear_rows();
-  const store = bucket();
-  const S = session(store, {
-    before: async (sql) => {
-      if (sql.includes("SELECT blob_key FROM scores") &&
-          sql.includes("platform_key = ?3"))
-        throw new Error("D1 unavailable");
-    },
-  });
-  const ws = fake_ws();
-  const blob = build_nrp({ game_version: SEASON, run_id: RUN, score: 500 });
-  let threw = false;
-  try { await S.finish_submit(ws, blob, identity("ALICE")); }
-  catch (e) { threw = true; }
-  check("post-commit read failure surfaces as an error", threw);
-  const row = sql_get(`SELECT score, blob_key FROM scores WHERE run_id = '777'`);
-  check("post-commit read failure: the score committed",
-        row && row.score === 500, JSON.stringify(row));
-  check("post-commit read failure: the committed row's object is NOT deleted",
-        !!row && store.objects.has(row.blob_key) && store.deleted.length === 0,
-        JSON.stringify({ row, deleted: store.deleted }));
+  const t = await race({ score: 200, key: KB }, { score: 300, key: KA });
+  check("reverse order: row ends at the higher score", t.rows[0].score === 300);
+  check("reverse order: row points at the final winner", t.rows[0].blob_key === KA);
+  check("reverse order: the first, overtaken upload lost", t.won_first === false);
+  check("reverse order: the overtaking upload won", t.won_second === true);
+  check("reverse order: overtaken object deleted, winner's kept",
+        t.r2.deleted.includes(KB) && !t.r2.deleted.includes(KA),
+        JSON.stringify(t.r2.deleted));
+  check("reverse order: superseded best released", t.r2.deleted.includes(K0));
 }
 
-// 4. F2 — a failure BEFORE anything could commit (the upsert itself, not
-// a constraint) also leaves the object: the outcome is uncertain from the
-// worker's side, and the orphan sweep reclaims it if no row claims it.
+// A plain same-run resubmission: the earlier upload's object is released.
 {
-  clear_rows();
-  const store = bucket();
-  const S = session(store, {
-    before: async (sql) => { if (sql.startsWith("INSERT")) throw new Error("D1 timeout"); },
-  });
-  let threw = false;
-  try { await S.finish_submit(fake_ws(), build_nrp({ game_version: SEASON,
-        run_id: RUN, score: 500 }), identity("ALICE")); }
-  catch (e) { threw = true; }
-  check("uncertain upsert failure surfaces", threw);
-  check("uncertain upsert failure: object left for the orphan sweep",
-        store.objects.size === 1 && store.deleted.length === 0);
+  const rows = [{ season: "s1", players: 1, run_id: "7", score: 100,
+                  platform_key: "acct", blob_key: K0 }];
+  const r2 = fake_r2();
+  const s = new Session({}, { REPLAYS: r2 });
+  const won = await s.place_row(fake_db(rows, []), hd(150), 1, "acct", KA,
+                                identity, { ...rows[0] });
+  check("resubmit wins", won === true);
+  check("resubmit releases the run's previous object", r2.deleted.includes(K0));
+  check("resubmit row references the new object", rows[0].blob_key === KA);
 }
 
-// 5. Ordinary improvements: a NEW run replaces the account's previous
-// object, and a RESUMED same-run improvement replaces the earlier upload
-// of that run (each upload has its own key now, so nothing overwrites in
-// place — the winner must delete the superseded object explicitly).
+// A worse resubmission loses and cleans up after itself only.
 {
-  clear_rows();
-  const store = bucket();
-  const S = session(store);
-  const ws = fake_ws();
-  await S.finish_submit(ws, build_nrp({ game_version: SEASON, run_id: 1n,
-                                        score: 100 }), identity("ALICE"));
-  const k1 = sql_get(`SELECT blob_key FROM scores WHERE run_id = '1'`).blob_key;
-  await S.finish_submit(ws, build_nrp({ game_version: SEASON, run_id: 1n,
-                                        score: 150 }), identity("ALICE"));
-  const k1b = sql_get(`SELECT blob_key, score FROM scores WHERE run_id = '1'`);
-  check("same-run improvement: new key, new score",
-        k1b.score === 150 && k1b.blob_key !== k1, JSON.stringify(k1b));
-  check("same-run improvement: earlier upload's object deleted",
-        store.deleted.includes(k1) && store.objects.has(k1b.blob_key) &&
-        store.objects.size === 1);
-  await S.finish_submit(ws, build_nrp({ game_version: SEASON, run_id: 2n,
-                                        score: 200 }), identity("ALICE"));
-  check("new-run improvement: previous run's object deleted",
-        store.deleted.includes(k1b.blob_key) && store.objects.size === 1);
-  check("new-run improvement: one row per account",
-        sql_all(`SELECT run_id FROM scores`).length === 1);
-  await S.finish_submit(ws, build_nrp({ game_version: SEASON, run_id: 2n,
-                                        score: 120 }), identity("ALICE"));
-  check("same-run regression refused as already-submitted",
-        ws.sent.at(-1).t === "err" && ws.sent.at(-1).reason === "already-submitted",
-        JSON.stringify(ws.sent.at(-1)));
-  check("keys carry season/run_id and are unique per upload",
-        /^s1\/2\.[0-9a-z]+\.nrp$/.test([...store.objects.keys()][0]),
-        [...store.objects.keys()][0]);
+  const rows = [{ season: "s1", players: 1, run_id: "7", score: 100,
+                  platform_key: "acct", blob_key: K0 }];
+  const r2 = fake_r2();
+  const s = new Session({}, { REPLAYS: r2 });
+  const won = await s.place_row(fake_db(rows, []), hd(50), 1, "acct", KA,
+                                identity, { ...rows[0] });
+  check("worse resubmit loses", won === false);
+  check("worse resubmit keeps the charting object",
+        rows[0].blob_key === K0 && !r2.deleted.includes(K0));
+  check("worse resubmit deletes its own object", r2.deleted.includes(KA));
 }
 
-console.log(failures ? `${failures} FAILURE(S)` : "ALL PASS");
+// The other board's PRIMARY KEY abort propagates (finish_submit maps it to
+// already-submitted and deletes only the aborted upload's own object).
+{
+  const rows = [{ season: "s1", players: 1, run_id: "7", score: 100,
+                  platform_key: "acct", blob_key: K0 }];
+  const r2 = fake_r2();
+  const s = new Session({}, { REPLAYS: r2 });
+  let threw = null;
+  try {
+    await s.place_row(fake_db(rows, []), hd(500), 2, "acct", KA, identity, null);
+  } catch (e) { threw = e; }
+  check("cross-board run_id collision aborts", threw !== null &&
+        /constraint/i.test(threw.message));
+  check("abort leaves the charting row's object alone",
+        rows[0].blob_key === K0 && r2.deleted.length === 0);
+}
+
+console.log(failures ? `${failures} FAILED` : "submit_race_test: all passed");
 process.exit(failures ? 1 : 0);

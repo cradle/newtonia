@@ -702,8 +702,14 @@ Windows (2026-08-03/04). The Windows run doubles as the field proof of the
 patch's second hunk, since upstream refuses to verify there at all. Residual:
 the patch is a fork until upstream takes it, so a libdatachannel bump must
 re-check the three hunks still apply — and Windows is the row to re-run
-first, being the only one that degrades to UNVERIFIED silently instead of
-failing closed.
+first, being the only one where the library degrades to UNVERIFIED silently
+instead of failing closed. Since 2026-09-08 (security review, F3) the game
+closes that gap itself: both sockets take their TLS fields from one
+`net_tls_ws_policy()`, which on Windows REFUSES the connect when no bundle
+is on disk (a Closed event, like a failed MbedTLS handshake) unless
+`NEWTONIA_NET_TLS_INSECURE=1` asked for an unverified socket explicitly; the
+materialization also keeps a stale-but-good bundle on every refresh failure,
+where the temporary's create failure used to discard it.
 
 **S2 — a failed INSERT orphans the R2 blob forever (`board/src/worker.js`
 `finish_submit`).** ✅ FIXED (2026-08-03, below) `REPLAYS.put` ran BEFORE the
@@ -752,6 +758,31 @@ confirmed to FAIL against the pre-fix worker with exactly the reported
 cases (stale orphan deleted, in-flight upload spared, undated object spared,
 referenced blob untouched). Full board suite green: units,
 `board_test.mjs`, and `whitelist_test.mjs` against `wrangler dev --local`.
+
+*Addendum (2026-09-08 security review, F4) — the row and the blob could
+still describe different uploads.* The blob key was `<season>/<run_id>.nrp`,
+so a resubmission of the same run overwrote the object the charting row
+pointed at BEFORE the row decided anything, and `place_row` judged "did we
+win" by `run_id` — which two uploads of the same run share. Two sessions
+improving one run concurrently (a copied `current.nrp`, or one attested
+account driving two sockets on purpose) left the row at one score and the
+object at the other, both answered `placed`, and the catch handler's delete
+took out the previous row's replay; fix 1 above also assumed serialization
+the DO layout does not provide (`SESSIONS.newUniqueId()` — one instance per
+SOCKET, nothing keyed per account), so the "unreachable" PK abort was
+reachable again as a same-`run_id`/different-`players` race. Fixed: **every
+upload gets its own immutable object** (`<season>/<run_id>-<nonce>.nrp`,
+`blob_key_for` + `upload_nonce`), the winner is recognised by that KEY
+(`survivor.blob_key === blob_key`), the winner releases the superseded row's
+object (the previous best OR this run's earlier upload — `prev`), a loser
+deletes only its own, and the catch handler's delete can now only ever hit
+the aborted upload's own object; a constraint abort answers
+`already-submitted` like the procedural refusal it races. The site's
+`/replay/<season>/<run_id>.nrp` URL is unchanged (it resolves the row's
+`blob_key`). Verified by `submit_race_test.mjs` (both interleavings of the
+same-run race, the same-run resubmit release, a losing resubmit, and the
+cross-board abort), which drives `Session.place_row` against an in-memory
+D1/R2 with the worker's exact SQL shapes.
 
 **S3 — the header's score is never cross-checked against the recording
 (`board/src/validate.js` `validate_submission`).** ✅ CLOSED (2026-08-03,
@@ -993,8 +1024,10 @@ so the retention/snapshot/submission tests run the worker's actual SQL
 instead of the pattern-matched fakes they used to (which answered the
 query SHAPES the code issued and could not have caught a wrong query).
 
-**F1 — one R2 key per UPLOAD** (`blob_key_for(season, run_id, stamp)` →
-`season/run_id.<stamp>.nrp`). The key used to be shared by every version of
+**F1 — one R2 key per UPLOAD** (`blob_key_for(season, run_id, nonce)` →
+`season/run_id-<nonce>.nrp` — landed in parallel by the same day's security
+review as its F4, see the S2 addendum above; this pass keeps that shape and
+adds the F2 rule and the real-SQL race test). The key used to be shared by every version of
 a run, so two uploads of one run racing (a resumed run finishing on two
 devices; two accounts colliding on a run_id past the pre-checks) left SQL
 holding the higher score and R2 holding whichever blob landed last, both
@@ -1003,7 +1036,7 @@ upload's object. Now the row's `blob_key` names the exact object it was
 written with, `place_row` decides the win by comparing the survivor's
 `blob_key` (not `run_id`), every reader resolves through the row, and a
 winner deletes the superseded object explicitly (the previous run's, or the
-earlier upload of the same run — `prev_key`). Objects under the old key
+earlier upload of the same run — `prev`). Objects under the old key
 shape keep working: rows still reference them.
 
 **F2 — only a DEFINITE non-commit deletes the uploaded object.** The
@@ -1048,10 +1081,11 @@ miss whose rebuild fails answers 503 with `Retry-After` for the backoff
 window instead of re-running the failing build per request (it used to
 apply only when a stale body existed).
 
-Regressions: `board/test/submit_race_test.mjs` (F1 same-account and
+Regressions: `board/test/submit_storage_test.mjs` (F1 same-account and
 cross-account interleavings driven deterministically through the adapter's
-statement hooks, F2 post-commit and uncertain failures, the improvement
-paths), `retention_test.mjs` cases 7–10 (F5 improvement + ordering under
+statement hooks against `finish_submit`, F2 post-commit and uncertain
+failures, the improvement paths — beside `submit_race_test.mjs`, which
+drives `place_row` alone against a fake), `retention_test.mjs` cases 7–10 (F5 improvement + ordering under
 R2/D1 failure, F7 budget + cap), `snapshot_guard_test.mjs` cases 7–9 (F8
 cold-miss backoff, F6 mid-build submission, legacy snapshot self-heal).
 The wrangler protocol suites (`board_test`, `whitelist_test`, `site_test`)

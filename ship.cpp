@@ -1031,8 +1031,8 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
 
     primary = primary_weapons.begin();
     if (!primary_weapons.empty())
-      std::advance(primary, std::min(p.selected_primary_idx,
-                                     (int)primary_weapons.size() - 1));
+      std::advance(primary, std::max(0, std::min(p.selected_primary_idx,
+                                     (int)primary_weapons.size() - 1)));
     if (p.selected_secondary_idx >= 0 && !secondary_weapons.empty()) {
       secondary = secondary_weapons.begin();
       std::advance(secondary, std::min(p.selected_secondary_idx,
@@ -1090,7 +1090,11 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
     }
   }
   if (!primary_weapons.empty()) {
-    int clamp = std::min(p.selected_primary_idx, (int)primary_weapons.size() - 1);
+    // Clamped from BOTH ends: a negative index walks the list backwards
+    // off begin() (net_state_sane refuses it at the door; this is the
+    // restore-side guard the secondary selection always had).
+    int clamp = std::max(0, std::min(p.selected_primary_idx,
+                                     (int)primary_weapons.size() - 1));
     primary = primary_weapons.begin();
     std::advance(primary, clamp);
   }

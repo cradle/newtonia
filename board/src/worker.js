@@ -392,31 +392,33 @@ async function cutline(db, season, players) {
   return r ? Number(r.score) : null;
 }
 
-// One IMMUTABLE key per upload (Workers review 2026-09-08, F1/F2/F5).
-// The key used to be season/run_id.nrp — shared by every version of a run,
-// so two uploads of one run (a resumed run finishing on two devices, or an
-// account collision on the run_id) raced on the same object: SQL kept the
-// higher score while R2 kept whichever blob landed last, and any cleanup
-// path that deleted "our" key could delete the other upload's object. Now
-// the row's blob_key column names the exact object the row was written
-// with, every reader resolves through the row, and a key is only ever
-// deleted by a path that knows no row can still point at it. Objects
-// written under the old shape keep working: rows still reference them.
-function blob_key_for(season, run_id, stamp) {
-  return `${season}/${run_id}.${stamp}.nrp`;
+// One object per UPLOAD, never per run. The key used to be
+// `${season}/${run_id}.nrp`, so a resubmission of the same run (or two
+// concurrent ones) overwrote the object the charting row still pointed at
+// BEFORE the row decided anything: with two uploads racing, the row could
+// land at one score and the blob at the other, and the failure path's
+// delete took out the previous row's replay (security review 2026-09-08,
+// F4). A per-upload nonce makes every object immutable: the row references
+// exactly the upload that won it, the winner is recognised by that key
+// (place_row) instead of by run_id, and a delete can only ever hit the
+// deleter's own object or one the row just stopped referencing. The site
+// URL `/replay/<season>/<run_id>.nrp` is unaffected — it resolves the row's
+// blob_key, whatever its shape.
+function blob_key_for(season, run_id, upload) {
+  return `${season}/${run_id}-${upload}.nrp`;
 }
 
-function upload_stamp() {
-  const rnd = new Uint8Array(6);
-  crypto.getRandomValues(rnd);
-  return Date.now().toString(36) +
-         Array.from(rnd, (b) => b.toString(16).padStart(2, "0")).join("");
+function upload_nonce() {
+  const b = new Uint8Array(8);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
 
 // Did D1 refuse the statement outright (a PRIMARY KEY / UNIQUE abort)?
 // That is a DEFINITE non-commit — the one failure after which our blob is
 // known to be orphaned. Anything else (a D1 outage, a lost response) may
-// have committed, and its object must be left for the orphan sweep.
+// have committed, and its object must be left for the orphan sweep
+// (Workers review 2026-09-08, F2).
 function is_constraint_error(e) {
   return /constraint/i.test(String(e && e.message || e));
 }
@@ -817,7 +819,7 @@ async function sweep_orphans(env) {
       // this skip the sweep would delete it a day after every publish.
       // Matched EXACTLY, not by prefix: `site` is a legal season key
       // (season_ok allows it), so blob_key_for can put a submitted replay
-      // at site/<run_id>.<stamp>.nrp — a prefix skip would exempt that whole
+      // at site/<run_id>-<upload>.nrp — a prefix skip would exempt that whole
       // namespace from the orphan backstop, letting anything leaked there
       // grow R2 forever, invisible to every reaper (security review
       // 2026-08-04, F2; confirmed reachable on an env with no season
@@ -1304,14 +1306,8 @@ export class Session {
         .bind(hd.season, players, key, hd.run_id).first();
     if (mine && Number(mine.score) >= hd.score)
       return this.err(ws, "not-best");
-    // The object this account's current row points at — a different run's
-    // (mine) or an earlier upload of THIS run (run_row; the two are
-    // exclusive, one row per account per board). It is superseded if we
-    // win, and with per-upload keys nothing overwrites it in place any
-    // more, so the winner deletes it explicitly.
-    const prev_key = (mine && mine.blob_key) || (run_row && run_row.blob_key) || "";
 
-    const blob_key = blob_key_for(hd.season, hd.run_id, upload_stamp());
+    const blob_key = blob_key_for(hd.season, hd.run_id, upload_nonce());
     await this.env.REPLAYS.put(blob_key, blob);
     // From here the blob EXISTS, so every exit has to account for it — but
     // only a DEFINITE non-commit may delete it (Workers review 2026-09-08,
@@ -1320,14 +1316,19 @@ export class Session {
     // committed deleted the object the committed row pointed at, and the
     // client could not even retry (the score was in, so a resubmit met
     // already-submitted). So: a constraint abort is definite — nothing
-    // committed, the key is ours alone, delete it and answer cleanly (the
-    // cross-account (season, run_id) race the pre-checks cannot close).
-    // Anything else is uncertain and the object stays; if no row claims
-    // it, the orphan sweep in scheduled() reclaims it after a day.
+    // committed, the key is ours alone (per-upload), delete it and answer
+    // cleanly (the concurrent twin of the run_row refusal above — the same
+    // run_id landing between that check and the INSERT). Anything else is
+    // uncertain and the object stays; if no row claims it, the orphan sweep
+    // in scheduled() reclaims it after a day (S2).
+    // The row this upload replaces if it wins — the player's slot holds at
+    // most one: a different run (`mine`) or an earlier upload of this same
+    // run (`run_row`, now under its own key). Its blob is released on a win.
+    const prev = mine || run_row;
     let won;
     try {
       won = await this.place_row(db, hd, players, key, blob_key, identity,
-                                 prev_key);
+                                 prev);
     } catch (e) {
       if (is_constraint_error(e)) {
         try { await this.env.REPLAYS.delete(blob_key); } catch (e2) {}
@@ -1347,10 +1348,9 @@ export class Session {
   // The row half of a submission: upsert, decide whether this UPLOAD won the
   // player's slot, and delete whichever blob lost. Returns false when OUR
   // blob was the loser (already deleted here), so the caller answers
-  // not-best instead of placed. The decision keys on blob_key, not run_id
-  // (F1): two uploads of the SAME run both matched on run_id, so both
-  // answered placed while the row carried one score and R2 the other blob.
-  async place_row(db, hd, players, key, blob_key, identity, prev_key) {
+  // not-best instead of placed. `prev` is the row this upload would replace
+  // (the caller's `mine` or `run_row`), whose blob is released on a win.
+  async place_row(db, hd, players, key, blob_key, identity, prev) {
     await db.prepare(
         `INSERT INTO scores(season, players, run_id, score,
            generation, duration_ms, submitted_at, name, platform, verified,
@@ -1368,18 +1368,24 @@ export class Session {
               hd.duration_ms, Date.now(), identity.name, identity.platform,
               identity.verified ? 1 : 0, key, blob_key,
               hd.format_version, hd.save_version).run();
-    // Did this run win the slot? The surviving row for this player tells
-    // us unambiguously (covers the lost-the-WHERE race too).
+    // Did this UPLOAD win the slot? The surviving row for this player tells
+    // us unambiguously (covers the lost-the-WHERE race too) — judged by the
+    // per-upload blob_key, never by run_id: two uploads of the same run
+    // racing each other share the run_id, and the loser used to read the
+    // winner's row as its own, answer "placed" with the wrong rank, and
+    // leave the row and the object describing different submissions.
     const survivor = await db.prepare(
         `SELECT blob_key FROM scores
          WHERE season = ?1 AND players = ?2 AND platform_key = ?3`)
         .bind(hd.season, players, key).first();
     const won = !!survivor && survivor.blob_key === blob_key;
     if (won) {
-      // The superseded personal best's blob is now orphaned (its row was
-      // replaced by the upsert) — delete it.
-      if (prev_key && prev_key !== blob_key)
-        try { await this.env.REPLAYS.delete(prev_key); } catch (e) {}
+      // The superseded blob (the previous personal best, or this run's
+      // earlier upload) is now orphaned — its row was replaced — delete
+      // it. A blob a concurrent winner orphans between our read of `prev`
+      // and its own upsert is the orphan sweep's (sweep_orphans).
+      if (prev && prev.blob_key && prev.blob_key !== blob_key)
+        try { await this.env.REPLAYS.delete(prev.blob_key); } catch (e) {}
       return true;
     }
     // A concurrent better submission won; our blob is orphaned.

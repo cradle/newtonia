@@ -74,6 +74,7 @@ jobs:
           node test/budget_test.mjs
           node test/snapshot_guard_test.mjs
           node test/submit_race_test.mjs
+          node test/submit_storage_test.mjs
 
       # Protocol test against the real worker code under miniflare — no
       # Cloudflare account involved (local D1/R2 simulators). FAKE_VERIFY
