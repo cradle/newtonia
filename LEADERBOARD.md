@@ -1071,7 +1071,13 @@ watermark had the same hole one step removed (review of PR #527): the
 stamp is `Date.now()` taken BEFORE the async write, so an older stamp
 committing after the read — or two commits in one millisecond — left the
 maximum unmoved. `snapshot_guard_test.mjs` case 10 drives that
-interleaving through two real `finish_submit` calls.
+interleaving through two real `finish_submit` calls. Round 2 of the same
+review: the EMPTY board read its revision in a second statement, and the
+first submission could commit between the two — an empty snapshot
+carrying that submission's revision, served as current. The read is now
+driven FROM the revision row, LEFT JOINed to the ranked scores, so an
+empty board yields one sentinel row carrying the revision and the two
+always come from one statement (case 11).
 
 **F7 — one statement each for the snapshot and the retention candidates**
 (window functions: `ROW_NUMBER() OVER (PARTITION BY season, players …)`,

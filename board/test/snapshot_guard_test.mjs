@@ -64,6 +64,9 @@ function submit(ms, score) {
   sql_run(`UPDATE meta SET v = v + 1 WHERE k = 'rev'`);
 }
 const rev_now = () => sql_get(`SELECT v FROM meta WHERE k = 'rev'`).v;
+// A mutation that removes rows (a test clearing the table) — bump so the
+// probe notices, as the worker's own mutations do.
+function submit_none() { sql_run(`UPDATE meta SET v = v + 1 WHERE k = 'rev'`); }
 
 // Hooks count full builds (the ranked read is once per build) and probes,
 // and inject failures on demand.
@@ -73,6 +76,7 @@ function fake_db(state) {
       if (sql.includes("ROW_NUMBER() OVER") && sql.includes("AS rev")) {
         state.builds++;
         if (state.fail_builds) throw new Error("D1 unavailable");
+        if (state.before_read) { const f = state.before_read; state.before_read = null; await f(); }
       }
       if (sql.startsWith("SELECT v FROM meta")) state.probes++;
     },
@@ -81,7 +85,7 @@ function fake_db(state) {
           state.after_read) {
         const f = state.after_read;
         state.after_read = null;
-        f();
+        await f();
       }
     },
   });
@@ -127,7 +131,7 @@ function fresh_state(over = {}) {
   advance(120_000);  // past any backoff an earlier case armed
   reset_rows();
   return { objects: {}, builds: 0, probes: 0, after_read: null,
-           fail_builds: false, fail_puts: false, ...over };
+           before_read: null, fail_builds: false, fail_puts: false, ...over };
 }
 
 // 1. Cold miss builds once and stores with its build time + revision in
@@ -361,6 +365,50 @@ function fresh_state(over = {}) {
   check("older-stamp race: the rebuilt snapshot carries both rows",
         next.boards[0].rows.length === 2 &&
         next.boards[0].rows[0].score === 700, JSON.stringify(next.boards));
+}
+
+// 11. Review of PR #527, round 2 — the EMPTY board. The revision must come
+// from the same statement as the (absent) rows: with a second statement
+// for the empty case, the FIRST submission could commit between the two
+// and the snapshot carried its revision with no boards, served as current
+// until the next mutation. Here the first upload commits right AFTER the
+// build's single read; the snapshot is empty at the revision it read, and
+// the next view rebuilds with the row.
+{
+  const state = fresh_state();
+  const env = fake_env(state);
+  clear_rows();
+  const r2 = { async put() {}, async delete() {}, async get() { return null; },
+               async list() { return { objects: [], truncated: false }; } };
+  const first = async () => {
+    const s = new Session({}, { DB: d1_sqlite(), REPLAYS: r2 });
+    s.hydrated = true; s.dev = true;
+    const w = { sent: [], send(x) { this.sent.push(JSON.parse(x)); }, close() {} };
+    await s.finish_submit(w, build_nrp({ game_version: "s1", run_id: 21n, score: 400 }),
+                          { platform: 2, name: "FIRST", verified: true, account: "fake:FIRST" });
+    return w.sent.some((f) => f.t === "placed");
+  };
+  let placed = false;
+  state.after_read = async () => { placed = await first(); };
+  const empty = await (await view(env)).json();
+  check("empty board: the first upload landed after the build's read", placed);
+  check("empty board: that build is empty (by construction)",
+        empty.boards.length === 0, JSON.stringify(empty.boards));
+  check("empty board: its revision is the one BEFORE the first upload",
+        empty.rev === rev_now() - 1, `${empty.rev} vs ${rev_now()}`);
+  const builds = state.builds;
+  const next = await (await view(env)).json();
+  check("empty board: the next view rebuilds", state.builds === builds + 1,
+        `${state.builds - builds}`);
+  check("empty board: the rebuilt snapshot carries the first row",
+        next.boards.length === 1 && next.boards[0].rows[0].score === 400,
+        JSON.stringify(next.boards));
+  // And a truly empty board is served as such, at the current revision.
+  clear_rows();
+  submit_none();
+  const again = await (await view(env)).json();
+  check("empty board: served empty at the live revision",
+        again.boards.length === 0 && again.rev === rev_now(), JSON.stringify(again));
 }
 
 Date.now = real_now;

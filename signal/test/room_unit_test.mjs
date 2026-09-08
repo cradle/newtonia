@@ -213,6 +213,35 @@ const frame = (o) => JSON.stringify(o);
         ex.host === false && ex.joiner === false, JSON.stringify(ex));
 }
 
+{
+  // Round 2: a RECLAIMED host drops while the superseded socket is still
+  // CLOSING. The disconnect guard must not read the closing old socket as
+  // "someone else holds the room" — that skipped the grace stamp, and the
+  // next reclaim found no grace and expired the room on the rightful token.
+  const { room, state } = await make_room();
+  const h1 = await host(room);
+  const token = room.r.host_token;
+  const h2 = new FakeWs();
+  await room.reclaim_host(h2, "ABCDE", []);
+  check("reclaim: old socket is CLOSING and still listed, new one is the host",
+        h1.readyState === 2 && state.getWebSockets("host").length === 2 &&
+        room.hostWs() === h2);
+  h2.drop();
+  await room.drop_host(h2);
+  check("reclaimed host drops while old is closing: grace starts",
+        room.r.host_lost_at > 0 && state.alarm === room.r.host_lost_at + 2 * 60 * 1000,
+        JSON.stringify({ lost: room.r.host_lost_at, alarm: state.alarm }));
+  const rc = await (await room.fetch(new Request(
+      `https://room/reclaim-check?token=${token}`))).json();
+  check("...and the rightful token can still reclaim", rc.ok === true, JSON.stringify(rc));
+  check("...and the room is alive (in grace)", room.alive(Date.now()) === true);
+  // The old socket's own close finally completing changes nothing.
+  h1.finish_close();
+  await room.drop_host(h1);
+  check("old socket's late close leaves the grace window as it was",
+        room.r.host_lost_at > 0 && room.alive(Date.now()) === true);
+}
+
 // ---- F4: frame bounds ---------------------------------------------------
 {
   // Oversized whole frame: dropped before parse, nothing relayed — and a

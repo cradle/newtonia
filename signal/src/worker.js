@@ -1281,7 +1281,14 @@ export class Room {
   // the room. Idempotent — webSocketError then webSocketClose may both fire.
   async drop_host(ws) {
     if (this.r.host_lost_at && !this.hostWs()) return;   // already in grace
-    if (this.state.getWebSockets("host").some((w) => w !== ws)) return; // superseded
+    // Superseded only by an OPEN replacement. A reclaim leaves the old
+    // socket registered in CLOSING for a beat; if the NEW host drops
+    // inside that beat, the closing old one must not read as "someone
+    // else holds the room" — that skipped the grace stamp, so the next
+    // reclaim found no grace and expired the room on the rightful token
+    // (review of PR #527, round 2).
+    if (this.state.getWebSockets("host").some((w) => w !== ws && ws_open(w)))
+      return; // superseded
     // Every stored offer belonged to the dead socket's transports.
     this.r.offer = null;
     this.r.offer_pv = null;

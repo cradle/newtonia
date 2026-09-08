@@ -1093,7 +1093,12 @@ hibernation sockets, storage + alarm) — the wrangler suites cannot reach a
   `alive()` additionally requires the room to HAVE a host token (minted by
   `accept_host`, cleared by expiry), so a closing socket never revives a
   room; `room_unit_test.mjs` keeps its fake sockets registered in CLOSING
-  after `close()` for exactly this case.
+  after `close()` for exactly this case. Round 2: `drop_host`'s
+  superseded-socket guard needed the same filter — a reclaim leaves the
+  old socket CLOSING for a beat, and a new host dropping inside that beat
+  read the old one as "someone else holds the room", skipped the grace
+  stamp, and the next reclaim expired the room on the rightful token. The
+  guard now counts only an OPEN replacement.
 - **F4 — whole-frame bounds.** The per-field caps (`MAX_SDP_LEN`,
   `MAX_CAND_LEN`) bounded what was stored or relayed, but `JSON.parse` ran
   on whatever arrived (the platform accepts 32 MiB messages), offers and

@@ -488,30 +488,36 @@ function site_rows(results) {
 // an older stamp committing after the read leaves the maximum unmoved.
 export async function build_site_snapshot(env) {
   await ensure_schema(env.DB);
+  // Driven FROM the revision row, LEFT JOINed to the ranked scores: an
+  // empty board still yields one row (all score columns NULL) carrying the
+  // revision, so the revision and the rows always come from ONE statement.
+  // A second statement for the empty case let the first submission commit
+  // between the two — a snapshot with no boards carrying that
+  // submission's revision, served as current until the next mutation
+  // (review of PR #527, round 2).
   const ranked = await env.DB.prepare(
-      `SELECT season, players, run_id, score, generation, duration_ms,
-              submitted_at, name, platform, verified, blob_key, format,
-              save_format, season_newest,
-              (SELECT v FROM meta WHERE k = 'rev') AS rev
-       FROM (SELECT season, players, run_id, score, generation, duration_ms,
-                    submitted_at, name, platform, verified, blob_key, format,
-                    save_format,
-                    ROW_NUMBER() OVER (PARTITION BY season, players
-                                       ORDER BY score DESC, submitted_at ASC)
-                        AS rn,
-                    MAX(submitted_at) OVER (PARTITION BY season) AS season_newest
-             FROM scores)
-       WHERE rn <= ?1
-       ORDER BY season_newest DESC, season ASC, players ASC, rn ASC`)
+      `SELECT r.season, r.players, r.run_id, r.score, r.generation,
+              r.duration_ms, r.submitted_at, r.name, r.platform, r.verified,
+              r.blob_key, r.format, r.save_format, r.season_newest,
+              m.v AS rev
+       FROM meta m
+       LEFT JOIN (SELECT season, players, run_id, score, generation,
+                         duration_ms, submitted_at, name, platform, verified,
+                         blob_key, format, save_format,
+                         ROW_NUMBER() OVER (PARTITION BY season, players
+                                            ORDER BY score DESC,
+                                                     submitted_at ASC) AS rn,
+                         MAX(submitted_at) OVER (PARTITION BY season)
+                             AS season_newest
+                  FROM scores) r
+         ON r.rn <= ?1
+       WHERE m.k = 'rev'
+       ORDER BY r.season_newest DESC, r.season ASC, r.players ASC, r.rn ASC`)
       .bind(KEEP_N).all();
-  const rows = ranked.results || [];
-  // The revision rides every row; an EMPTY table has none to carry it, so
-  // read it on its own then (rows are never deleted, so this is the fresh
-  // deploy case and costs one query once).
-  const rev = rows.length
-      ? Number(rows[0].rev) || 0
-      : Number(((await env.DB.prepare(`SELECT v FROM meta WHERE k = 'rev'`)
-                 .first()) || {}).v) || 0;
+  const all = ranked.results || [];
+  const rev = all.length ? Number(all[0].rev) || 0 : 0;
+  // The empty board's sentinel row has no season.
+  const rows = all.filter((r) => r.season !== null && r.season !== undefined);
   // Group into boards, canonical seasons only, at most 50 seasons
   // (newest-first — the rows arrive in that order).
   const boards = [];
