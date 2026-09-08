@@ -1064,6 +1064,53 @@ DDoS protection, holds only ephemeral per-room Durable Object state, and never
 touches gameplay packets — a volumetric attack there is Cloudflare's problem,
 not the game binary's.
 
+### Workers review (2026-09-08) — the signal Worker's three findings
+An outside source review of both Workers (the board's six findings are in
+LEADERBOARD.md under the same heading). All fixed; unit-tested without
+wrangler by `signal/test/room_unit_test.mjs`, which drives the real `Room`
+class against a fake DurableObjectState (controlled clock, tagged
+hibernation sockets, storage + alarm) — the wrangler suites cannot reach a
+24 h-old room or a verify paused across a re-host.
+
+- **F3 — alarm deadline order.** `Room.alarm()` re-armed itself at
+  `created + ROOM_TTL_MS` whenever the room was "alive", and a LIVE host
+  past the TTL still counted as alive — so it re-armed at a time already
+  in the past, which fires again immediately: a hot loop for as long as
+  the socket stayed up, spending Durable Object invocations against the
+  Free plan's daily budget with no HTTP request ever arriving to run
+  `fetch()`'s lazy expiry (room creation needs no attestation, so a held
+  socket could do this on purpose). Now TTL is evaluated FIRST, then host
+  liveness (re-arm at the TTL, always a future time), then grace (re-arm at
+  the earlier of grace end and TTL), else clean up. One boundary rule
+  everywhere — `now >= deadline` — so `in_grace` is strict `<` and at
+  exactly the grace deadline the room is finished, not re-armed for the
+  TTL.
+- **F4 — whole-frame bounds.** The per-field caps (`MAX_SDP_LEN`,
+  `MAX_CAND_LEN`) bounded what was stored or relayed, but `JSON.parse` ran
+  on whatever arrived (the platform accepts 32 MiB messages), offers and
+  answers were forwarded as the parsed OBJECT (an extra field of any size
+  rode through to the peer), and `mid` was unbounded and persisted into
+  `host_cands` — the room record is one storage value with a 2 MB cap, so
+  a huge mid bricked every later `save()` of that room. Now:
+  `MAX_FRAME_LEN` (24 KB) is checked on the raw text before parsing;
+  offer/answer/cand frames are REBUILT from allowlisted fields (`t`, `sdp`,
+  `pv`, `from`; `mid` via `mid_of`, ≤ `MAX_MID_LEN` = 64, numbers accepted,
+  anything else "0"); and a per-socket fixed-window budget (`FRAME_LIMIT`
+  300 frames / `FRAME_BYTES_LIMIT` 1 MiB per 10 s, in-memory per socket)
+  closes a flooding socket with 1008. The ceilings sit well above a 4P
+  host's game-start burst (~3 offers + a few dozen candidates + identity).
+  Game-side parsers read exactly the allowlisted fields (`net_signal.cpp`).
+- **F9 — verify bound to the room generation.** `attest_identity` checked
+  the joiner's occupancy epoch after the platform round-trip, but epochs
+  and jids reset with the room: a verify outstanding across an expiry + a
+  fresh host on the SAME code landed the old pilot's attestation on the
+  new room's joiner 1. Rare (random 5-char codes, and the verify has to
+  outlast host-close + grace), cheap to close: `host_token` — minted once
+  per `accept_host`, cleared by `expire` — is captured beside the epoch and
+  re-checked after EVERY non-storage await (the verify, and the
+  `mint_ban_key` digest on both write paths); a mismatch discards the
+  result.
+
 ## Verification checklist (M1 done =)
 
 Two newtonia.exe on one machine: paste-connect, both ships controllable, remote one-shots work, host kills explode on client, pickups reflect, pause syncs, generation rollover on both, kill-process → CONNECTION LOST → Menu, solo save intact afterward. Then native↔web (Chrome+Firefox clipboard, chunking). CI: all three workflows green each phase.

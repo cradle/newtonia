@@ -65,6 +65,14 @@ const KEEP_N = 100;
 // except the live season (newest submission per players count), which is
 // never dormancy-stripped; see scheduled().
 const SCORE_ONLY_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
+// Demotions per cron run. The Free plan allows 50 D1 queries per invocation
+// (D1 limits page); the demote pass spends one UPDATE per UPDATE_CHUNK keys
+// and one R2 batch delete, so this keeps a big day's backlog inside the
+// budget — the candidate query is recomputed every run, so whatever is
+// left over is simply next night's work (Workers review 2026-09-08, F7).
+const MAX_DEMOTIONS_PER_RUN = 180;
+// Bound parameters per statement cap at 100.
+const UPDATE_CHUNK = 90;
 
 // Replay-download chunk size (server -> client). Kept well under 16 KB to
 // mirror the client's upload chunks: field evidence showed a ~60 KB binary
@@ -297,7 +305,7 @@ async function platform_key(account) {
 // ---- D1 ------------------------------------------------------------------
 
 let schema_ready = false; // per-isolate; CREATE IF NOT EXISTS is idempotent
-async function ensure_schema(db) {
+export async function ensure_schema(db) {
   if (schema_ready) return;
   await db.batch([
     db.prepare(
@@ -384,8 +392,33 @@ async function cutline(db, season, players) {
   return r ? Number(r.score) : null;
 }
 
-function blob_key_for(season, run_id) {
-  return `${season}/${run_id}.nrp`;
+// One IMMUTABLE key per upload (Workers review 2026-09-08, F1/F2/F5).
+// The key used to be season/run_id.nrp — shared by every version of a run,
+// so two uploads of one run (a resumed run finishing on two devices, or an
+// account collision on the run_id) raced on the same object: SQL kept the
+// higher score while R2 kept whichever blob landed last, and any cleanup
+// path that deleted "our" key could delete the other upload's object. Now
+// the row's blob_key column names the exact object the row was written
+// with, every reader resolves through the row, and a key is only ever
+// deleted by a path that knows no row can still point at it. Objects
+// written under the old shape keep working: rows still reference them.
+function blob_key_for(season, run_id, stamp) {
+  return `${season}/${run_id}.${stamp}.nrp`;
+}
+
+function upload_stamp() {
+  const rnd = new Uint8Array(6);
+  crypto.getRandomValues(rnd);
+  return Date.now().toString(36) +
+         Array.from(rnd, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Did D1 refuse the statement outright (a PRIMARY KEY / UNIQUE abort)?
+// That is a DEFINITE non-commit — the one failure after which our blob is
+// known to be orphaned. Anything else (a D1 outage, a lost response) may
+// have committed, and its object must be left for the orphan sweep.
+function is_constraint_error(e) {
+  return /constraint/i.test(String(e && e.message || e));
 }
 
 // ---- site endpoints ------------------------------------------------------
@@ -401,8 +434,8 @@ const SNAPSHOT_KEY = "site/leaderboard.json";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
-function site_error(status, text) {
-  return new Response(text, { status, headers: CORS });
+function site_error(status, text, extra) {
+  return new Response(text, { status, headers: { ...CORS, ...(extra || {}) } });
 }
 
 // One board's rows, in the exact shape the WS `top` reply uses — the page
@@ -420,32 +453,61 @@ function site_rows(results) {
 
 // The whole site snapshot: top KEEP_N of BOTH boards for every canonical
 // season (the WS seasons listing's filter), newest-first, with the live
-// season per players count flagged. Bounded work: <= 50 seasons x 2 boards
-// x KEEP_N rows, run once a day by the cron (and once on a cold miss).
+// season per players count flagged. ONE statement (Workers review
+// 2026-09-08, F6/F7): a window-ranked read of the table, instead of a
+// seasons list plus two queries per season — that fan-out crossed the Free
+// plan's 50-queries-per-invocation cap at 25 seasons. Being one statement
+// also makes the read a consistent point in time, which is what the
+// WATERMARK needs: the newest submitted_at the read SAW, carried in the
+// snapshot's metadata and compared by the freshness probe. A completion
+// TIMESTAMP was not that — a score committed after its board was read but
+// before the build finished was absent from the snapshot yet older than
+// generated_at, so the probe called the snapshot current until the next
+// submission or the daily cron.
 export async function build_site_snapshot(env) {
   await ensure_schema(env.DB);
-  const seasons = await env.DB.prepare(
-      `SELECT season, MAX(submitted_at) AS newest, COUNT(*) AS n
-       FROM scores GROUP BY season ORDER BY newest DESC LIMIT 200`).all();
-  const canonical = (seasons.results || [])
-      .filter((r) => season_canonical(r.season)).slice(0, 50);
+  const ranked = await env.DB.prepare(
+      `SELECT season, players, run_id, score, generation, duration_ms,
+              submitted_at, name, platform, verified, blob_key, format,
+              save_format, season_newest, watermark
+       FROM (SELECT season, players, run_id, score, generation, duration_ms,
+                    submitted_at, name, platform, verified, blob_key, format,
+                    save_format,
+                    ROW_NUMBER() OVER (PARTITION BY season, players
+                                       ORDER BY score DESC, submitted_at ASC)
+                        AS rn,
+                    MAX(submitted_at) OVER (PARTITION BY season) AS season_newest,
+                    MAX(submitted_at) OVER () AS watermark
+             FROM scores)
+       WHERE rn <= ?1
+       ORDER BY season_newest DESC, season ASC, players ASC, rn ASC`)
+      .bind(KEEP_N).all();
+  const rows = ranked.results || [];
+  const watermark = rows.length ? Number(rows[0].watermark) || 0 : 0;
+  // Group into boards, canonical seasons only, at most 50 seasons
+  // (newest-first — the rows arrive in that order).
   const boards = [];
-  for (const players of [1, 2]) {
-    for (const s of canonical) {
-      const rows = await env.DB.prepare(
-          `SELECT run_id, score, generation, duration_ms, submitted_at,
-                  name, platform, verified, blob_key, format, save_format
-           FROM scores WHERE season = ?1 AND players = ?2
-           ORDER BY score DESC, submitted_at ASC LIMIT ?3`)
-          .bind(s.season, players, KEEP_N).all();
-      const list = site_rows(rows.results);
-      if (!list.length) continue; // a season can be solo- or co-op-only
-      boards.push({ season: s.season, players, live: false, rows: list });
+  const seasons = new Set();
+  let board = null;
+  for (const r of rows) {
+    if (!season_canonical(r.season)) continue;
+    if (!seasons.has(r.season)) {
+      if (seasons.size >= 50) break;
+      seasons.add(r.season);
     }
-    // The live board per players count = the listed board with the newest
-    // submission — computed over the LISTED (canonical) boards, not the
-    // whole table, so a dev-season submission on beta can't leave the site
-    // with no live board to open on.
+    if (!board || board.season !== r.season || board.players !== Number(r.players)) {
+      board = { season: r.season, players: Number(r.players), live: false,
+                rows: [] };
+      boards.push(board);
+    }
+    board.rows.push(r);
+  }
+  for (const b of boards) b.rows = site_rows(b.rows);
+  // The live board per players count = the listed board with the newest
+  // submission — computed over the LISTED (canonical) boards, not the
+  // whole table, so a dev-season submission on beta can't leave the site
+  // with no live board to open on.
+  for (const players of [1, 2]) {
     let newest = null;
     for (const b of boards) {
       if (b.players !== players) continue;
@@ -455,14 +517,16 @@ export async function build_site_snapshot(env) {
     for (const b of boards)
       if (b.players === players) { b.live = b === newest; delete b.newest_; }
   }
-  return { generated_at: Date.now(), boards };
+  return { generated_at: Date.now(), watermark, boards };
 }
 
-// Store the snapshot with its build time in R2 metadata, so the freshness
-// probe below can read it without parsing the (potentially large) body.
+// Store the snapshot with its build time AND data watermark in R2 metadata,
+// so the freshness probe below can read them without parsing the
+// (potentially large) body.
 async function store_snapshot(env, snap) {
   await env.REPLAYS.put(SNAPSHOT_KEY, JSON.stringify(snap), {
-    customMetadata: { generated_at: String(snap.generated_at) },
+    customMetadata: { generated_at: String(snap.generated_at),
+                      watermark: String(snap.watermark) },
   });
 }
 
@@ -505,16 +569,19 @@ function rebuild_snapshot(env) {
   return done;
 }
 
-// Has a submission landed since this snapshot was built? One indexed
-// head-read (scores_submitted makes it a seek, not a scan). A snapshot with
-// no build time is a pre-metadata object from an older deploy: treat it as
-// stale once — store_snapshot always writes the field, so it self-heals.
-async function snapshot_stale(env, built) {
-  if (!built) return true;
+// Has a submission landed since this snapshot was READ? One indexed
+// head-read (scores_submitted makes it a seek, not a scan), compared with
+// the watermark the build carried (build_site_snapshot) — two D1 values,
+// no clock involved. A snapshot with no watermark is one an older deploy
+// wrote: treat it as stale once — store_snapshot always writes the field,
+// so it self-heals.
+async function snapshot_stale(env, watermark) {
+  if (watermark === undefined || watermark === null || watermark === "")
+    return true;
   await ensure_schema(env.DB);
   const r = await env.DB.prepare(
       `SELECT MAX(submitted_at) AS newest FROM scores`).first();
-  return !!(r && Number(r.newest) > built);
+  return !!(r && Number(r.newest) > Number(watermark));
 }
 
 async function serve_snapshot(request, env, dev) {
@@ -523,19 +590,28 @@ async function serve_snapshot(request, env, dev) {
     return site_error(429, "rate limited");
   const obj = await env.REPLAYS.get(SNAPSHOT_KEY);
   let body = obj ? await obj.text() : null;
-  const built = obj ? Number((obj.customMetadata || {}).generated_at) || 0 : 0;
+  const watermark = obj ? (obj.customMetadata || {}).watermark : undefined;
   // `!body` short-circuits the probe, so a cold miss costs no D1 read.
-  if (!body || await snapshot_stale(env, built)) {
-    if (body && Date.now() < rebuild_blocked_until) {
+  if (!body || await snapshot_stale(env, watermark)) {
+    const cooling = rebuild_blocked_until - Date.now();
+    if (cooling > 0) {
       // A recent rebuild failed. Serve what we have rather than hammering
-      // the failing path once per view.
+      // the failing path once per view — and with NOTHING stored, answer
+      // 503 at once instead of re-running the failing build per request
+      // (Workers review 2026-09-08, F8: the cooldown used to apply only
+      // when a stale body existed, so a cold miss retried every time).
+      if (!body)
+        return site_error(503, "leaderboard unavailable",
+                          { "Retry-After": String(Math.ceil(cooling / 1000)) });
     } else {
       try {
         body = JSON.stringify(await rebuild_snapshot(env));
       } catch (e) {
         console.log(`site: snapshot rebuild failed: ${log_str(e && e.message)}`);
         // Stale beats nothing; with no stored body there is nothing to serve.
-        if (!body) return site_error(503, "leaderboard unavailable");
+        if (!body)
+          return site_error(503, "leaderboard unavailable",
+                            { "Retry-After": String(REBUILD_BACKOFF_MS / 1000) });
       }
     }
   }
@@ -627,54 +703,61 @@ export default {
   // exists to reclaim R2 from seasons a release has left BEHIND, not to
   // age out the board still on screen. The live season still gets the
   // ordinary below-KEEP_N trim.
+  //
+  // ONE candidate query (Workers review 2026-09-08, F5/F7): every
+  // blob-bearing row ranked past KEEP_N on its board, plus every blob row of
+  // a dormant board that is not the live one — ranked among ALL rows of the
+  // board, not just blob-bearing ones (a blob row whose true rank is past
+  // KEEP_N must go even when score-only rows sit above it). The old shape
+  // spent two queries per board and one UPDATE per row, which meets the
+  // Free plan's 50-queries-per-invocation cap on a busy day.
+  //
+  // Then rows are DEMOTED FIRST and the objects deleted AFTER, in one R2
+  // batch: the old order deleted the object and then ran the UPDATE, so a
+  // failure between the two (the query cap, a D1 hiccup) left a row whose
+  // has_replay pointed at nothing. The UPDATE is conditional on the row
+  // still holding the SELECTED key (keys are unique per upload), so a
+  // submission that improved the run between selection and demotion keeps
+  // its new replay; the key we selected is then unreferenced either way
+  // (the improving upload deleted it as the superseded personal best, or
+  // the orphan sweep reclaims it), so deleting it is always safe.
   async scheduled(event, env) {
     await ensure_schema(env.DB);
-    const boards = await env.DB.prepare(
-        `SELECT DISTINCT season, players FROM scores`).all();
-    // The live season for each players count.
-    const live = new Map();
-    for (const players of [1, 2]) {
-      const r = await env.DB.prepare(
-          `SELECT season FROM scores WHERE players = ?1
-           ORDER BY submitted_at DESC LIMIT 1`).bind(players).first();
-      if (r) live.set(players, r.season);
-    }
+    const cand = await env.DB.prepare(
+        `SELECT season, players, run_id, blob_key FROM (
+           SELECT season, players, run_id, blob_key,
+                  ROW_NUMBER() OVER (PARTITION BY season, players
+                                     ORDER BY score DESC, submitted_at ASC)
+                      AS rn,
+                  MAX(submitted_at) OVER (PARTITION BY season, players)
+                      AS newest,
+                  MAX(submitted_at) OVER (PARTITION BY players) AS live_newest
+           FROM scores)
+         WHERE blob_key != ''
+           AND (rn > ?1 OR (newest < ?2 AND newest < live_newest))
+         LIMIT ?3`)
+        .bind(KEEP_N, Date.now() - SCORE_ONLY_AFTER_MS, MAX_DEMOTIONS_PER_RUN)
+        .all();
+    const keys = (cand.results || []).map((r) => r.blob_key).filter(Boolean);
     let demoted = 0;
-    for (const b of boards.results || []) {
-      const stale = live.get(b.players) === b.season
-          ? null
-          : await env.DB.prepare(
-          `SELECT newest FROM (SELECT MAX(submitted_at) AS newest FROM scores
-             WHERE season = ?1 AND players = ?2)
-           WHERE newest < ?3`)
-          .bind(b.season, b.players, Date.now() - SCORE_ONLY_AFTER_MS).first();
-      const rows = stale
-          ? await env.DB.prepare(
-              `SELECT run_id, blob_key FROM scores
-               WHERE season = ?1 AND players = ?2 AND blob_key != ''`)
-              .bind(b.season, b.players).all()
-          : await env.DB.prepare(
-              // Rank among ALL rows, not just blob-bearing ones: the OFFSET
-              // must skip the top KEEP_N of the FULL board, otherwise a
-              // blob row whose true rank is > KEEP_N keeps its blob whenever
-              // score-only rows sit above it. Filter blob_key in JS after
-              // the offset (a WHERE blob_key != '' before OFFSET would
-              // reintroduce the bug it replaces).
-              `SELECT run_id, blob_key FROM scores
-               WHERE season = ?1 AND players = ?2
-               ORDER BY score DESC, submitted_at ASC LIMIT -1 OFFSET ?3`)
-              .bind(b.season, b.players, KEEP_N).all();
-      for (const row of rows.results || []) {
-        if (!row.blob_key) continue;  // already score-only
-        try { await env.REPLAYS.delete(row.blob_key); } catch (e) {}
-        await env.DB.prepare(
-            `UPDATE scores SET blob_key = ''
-             WHERE season = ?1 AND run_id = ?2`)
-            .bind(b.season, row.run_id).run();
-        demoted++;
+    for (let i = 0; i < keys.length; i += UPDATE_CHUNK) {
+      const chunk = keys.slice(i, i + UPDATE_CHUNK);
+      const marks = chunk.map((_, j) => `?${j + 1}`).join(", ");
+      const r = await env.DB.prepare(
+          `UPDATE scores SET blob_key = '' WHERE blob_key IN (${marks})`)
+          .bind(...chunk).run();
+      const changed = r && r.meta && typeof r.meta.changes === "number"
+          ? r.meta.changes : chunk.length;
+      demoted += changed;
+      // Every selected key is unreferenced now (see above): delete the lot.
+      try { await env.REPLAYS.delete(chunk); } catch (e) {
+        console.log(`retention: blob delete failed: ${log_str(e && e.message)}`);
       }
     }
     if (demoted) console.log(`retention: demoted ${demoted} row(s) to score-only`);
+    if (keys.length >= MAX_DEMOTIONS_PER_RUN)
+      console.log(`retention: hit ${MAX_DEMOTIONS_PER_RUN}/run cap; ` +
+                  `the rest is tomorrow's`);
     // Best-effort: the demote pass above has already committed its work, and
     // an R2 hiccup in the sweep must not fail the whole cron invocation (or
     // hide the demote count behind an exception). The next run picks up
@@ -724,14 +807,17 @@ async function sweep_orphans(env) {
   const cutoff = Date.now() - ORPHAN_GRACE_MS;
   let cursor;
   let swept = 0;
+  // Collected and deleted in ONE batch per page: every binding call is a
+  // subrequest, and an object-at-a-time loop spent one per orphan.
   do {
+    const orphans = [];
     const page = await env.REPLAYS.list({ cursor, limit: 1000 });
     for (const obj of page.objects || []) {
       // The snapshot is not a replay — no row ever points at it, so without
       // this skip the sweep would delete it a day after every publish.
       // Matched EXACTLY, not by prefix: `site` is a legal season key
       // (season_ok allows it), so blob_key_for can put a submitted replay
-      // at site/<run_id>.nrp — a prefix skip would exempt that whole
+      // at site/<run_id>.<stamp>.nrp — a prefix skip would exempt that whole
       // namespace from the orphan backstop, letting anything leaked there
       // grow R2 forever, invisible to every reaper (security review
       // 2026-08-04, F2; confirmed reachable on an env with no season
@@ -740,7 +826,11 @@ async function sweep_orphans(env) {
       if (known.has(obj.key)) continue;
       const uploaded = obj.uploaded ? new Date(obj.uploaded).getTime() : 0;
       if (!(uploaded && uploaded < cutoff)) continue;  // in flight, or unknown
-      try { await env.REPLAYS.delete(obj.key); swept++; } catch (e) {}
+      orphans.push(obj.key);
+    }
+    if (orphans.length) {
+      try { await env.REPLAYS.delete(orphans); swept += orphans.length; }
+      catch (e) {}
     }
     cursor = page.truncated ? page.cursor : null;
   } while (cursor);
@@ -1188,7 +1278,7 @@ export class Session {
     // this it slipped past the score check and died on the (season,
     // run_id) primary key as a raw "internal" error.
     const run_row = await db.prepare(
-        `SELECT score, platform_key, players FROM scores
+        `SELECT score, platform_key, players, blob_key FROM scores
          WHERE season = ?1 AND run_id = ?2`)
         .bind(hd.season, hd.run_id).first();
     if (run_row && (Number(run_row.score) >= hd.score ||
@@ -1214,23 +1304,37 @@ export class Session {
         .bind(hd.season, players, key, hd.run_id).first();
     if (mine && Number(mine.score) >= hd.score)
       return this.err(ws, "not-best");
+    // The object this account's current row points at — a different run's
+    // (mine) or an earlier upload of THIS run (run_row; the two are
+    // exclusive, one row per account per board). It is superseded if we
+    // win, and with per-upload keys nothing overwrites it in place any
+    // more, so the winner deletes it explicitly.
+    const prev_key = (mine && mine.blob_key) || (run_row && run_row.blob_key) || "";
 
-    const blob_key = blob_key_for(hd.season, hd.run_id);
+    const blob_key = blob_key_for(hd.season, hd.run_id, upload_stamp());
     await this.env.REPLAYS.put(blob_key, blob);
-    // From here the blob EXISTS, so every exit has to account for it. The
-    // refusal paths below delete it explicitly; this catch covers the rest
-    // (a D1 outage, a constraint nobody predicted) — without it a throw
-    // unwound to webSocketMessage's generic handler and left an object no
-    // row points at, which the retention cron never looks at because it
-    // walks rows. That is a leak that only ever grows (S2). The orphan
-    // sweep in scheduled() is the backstop for whatever still slips
-    // through; this is the fix for what we can see.
+    // From here the blob EXISTS, so every exit has to account for it — but
+    // only a DEFINITE non-commit may delete it (Workers review 2026-09-08,
+    // F2). This used to delete on every throw, and place_row is a write
+    // followed by a read: a survivor SELECT failing after the upsert had
+    // committed deleted the object the committed row pointed at, and the
+    // client could not even retry (the score was in, so a resubmit met
+    // already-submitted). So: a constraint abort is definite — nothing
+    // committed, the key is ours alone, delete it and answer cleanly (the
+    // cross-account (season, run_id) race the pre-checks cannot close).
+    // Anything else is uncertain and the object stays; if no row claims
+    // it, the orphan sweep in scheduled() reclaims it after a day.
     let won;
     try {
       won = await this.place_row(db, hd, players, key, blob_key, identity,
-                                 mine);
+                                 prev_key);
     } catch (e) {
-      try { await this.env.REPLAYS.delete(blob_key); } catch (e2) {}
+      if (is_constraint_error(e)) {
+        try { await this.env.REPLAYS.delete(blob_key); } catch (e2) {}
+        console.log(`submit refused: constraint (season=${hd.season} ` +
+                    `run=${hd.run_id})`);
+        return this.err(ws, "already-submitted");
+      }
       throw e;
     }
     if (!won) return this.err(ws, "not-best");
@@ -1240,11 +1344,13 @@ export class Session {
     this.send(ws, { t: "placed", rank });
   }
 
-  // The row half of a submission: upsert, decide whether this run won the
+  // The row half of a submission: upsert, decide whether this UPLOAD won the
   // player's slot, and delete whichever blob lost. Returns false when OUR
   // blob was the loser (already deleted here), so the caller answers
-  // not-best instead of placed.
-  async place_row(db, hd, players, key, blob_key, identity, mine) {
+  // not-best instead of placed. The decision keys on blob_key, not run_id
+  // (F1): two uploads of the SAME run both matched on run_id, so both
+  // answered placed while the row carried one score and R2 the other blob.
+  async place_row(db, hd, players, key, blob_key, identity, prev_key) {
     await db.prepare(
         `INSERT INTO scores(season, players, run_id, score,
            generation, duration_ms, submitted_at, name, platform, verified,
@@ -1265,15 +1371,15 @@ export class Session {
     // Did this run win the slot? The surviving row for this player tells
     // us unambiguously (covers the lost-the-WHERE race too).
     const survivor = await db.prepare(
-        `SELECT run_id FROM scores
+        `SELECT blob_key FROM scores
          WHERE season = ?1 AND players = ?2 AND platform_key = ?3`)
         .bind(hd.season, players, key).first();
-    const won = survivor && survivor.run_id === hd.run_id;
+    const won = !!survivor && survivor.blob_key === blob_key;
     if (won) {
       // The superseded personal best's blob is now orphaned (its row was
       // replaced by the upsert) — delete it.
-      if (mine && mine.blob_key && mine.blob_key !== blob_key)
-        try { await this.env.REPLAYS.delete(mine.blob_key); } catch (e) {}
+      if (prev_key && prev_key !== blob_key)
+        try { await this.env.REPLAYS.delete(prev_key); } catch (e) {}
       return true;
     }
     // A concurrent better submission won; our blob is orphaned.

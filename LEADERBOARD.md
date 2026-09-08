@@ -337,10 +337,12 @@ submit (admission is unchanged, WS + platform attestation only).
   (the data is what the WS protocol already serves any native client):
   `GET /site/leaderboard.json` (serves the snapshot; a cold miss builds
   and stores it, so a fresh deploy never 404s, and a **freshness probe**
-  — one indexed `MAX(submitted_at)` head-read per view against the build
-  time in the object's R2 metadata — rebuilds it whenever a submission
-  is newer, so new scores appear on the next page view instead of hiding
-  until the cron; field report 2026-08-04. The rebuild is ~10,000x a
+  — one indexed `MAX(submitted_at)` head-read per view against the DATA
+  WATERMARK in the object's R2 metadata (the newest `submitted_at` the
+  build's own read saw, not a completion timestamp — Workers review
+  2026-09-08 F6) — rebuilds it whenever a submission is newer, so new
+  scores appear on the next page view instead of hiding until the cron;
+  field report 2026-08-04. The rebuild is ~10,000x a
   view and reachable from an unauthenticated GET, so it is
   **single-flighted** — concurrent stale views share one rebuild, making
   the steady-state ceiling one rebuild per *submission*, itself the most
@@ -981,6 +983,81 @@ downloaded replay lands in the hardened reader — `Reader` caps file size
 and record bounds and `deserialize_game` bounds every container count
 before resizing, which is what makes "the worker does not validate
 payloads" a defensible split rather than a hole.
+
+### Workers review (2026-09-08) — storage ownership, snapshot freshness, query budget
+An outside source review of both Workers (eleven reproductions against the
+real handler code; the report is not in the repo). Six of its nine findings
+were the board's; all fixed in one pass, unit-tested against a REAL SQLite
+now — `board/test/d1_sqlite.mjs` is a D1-shaped adapter over `node:sqlite`,
+so the retention/snapshot/submission tests run the worker's actual SQL
+instead of the pattern-matched fakes they used to (which answered the
+query SHAPES the code issued and could not have caught a wrong query).
+
+**F1 — one R2 key per UPLOAD** (`blob_key_for(season, run_id, stamp)` →
+`season/run_id.<stamp>.nrp`). The key used to be shared by every version of
+a run, so two uploads of one run racing (a resumed run finishing on two
+devices; two accounts colliding on a run_id past the pre-checks) left SQL
+holding the higher score and R2 holding whichever blob landed last, both
+answering `placed`; and a losing upload's cleanup could delete the other
+upload's object. Now the row's `blob_key` names the exact object it was
+written with, `place_row` decides the win by comparing the survivor's
+`blob_key` (not `run_id`), every reader resolves through the row, and a
+winner deletes the superseded object explicitly (the previous run's, or the
+earlier upload of the same run — `prev_key`). Objects under the old key
+shape keep working: rows still reference them.
+
+**F2 — only a DEFINITE non-commit deletes the uploaded object.** The
+post-put catch deleted on every throw, and `place_row` is a write then a
+read: a survivor SELECT failing after the upsert had committed deleted the
+object the committed row pointed at, unrecoverably (a resubmit met
+`already-submitted`). Now a constraint abort (the cross-account PK race) is
+the one definite case — delete and answer `already-submitted`; anything
+else leaves the object for the orphan sweep, which reclaims it after a day
+if no row claims it.
+
+**F5 — retention demotes rows BEFORE deleting objects, in one batch**, with
+the UPDATE conditional on the row still holding the selected key. The old
+loop deleted the object and then updated the row (a failure between the two
+left `has_replay` pointing at nothing), and a run that improved between
+candidate selection and demotion lost its new replay. With per-upload keys
+the selected key is unreferenced either way after the UPDATE (the improving
+upload deleted it as the superseded personal best, or the sweep will), so
+the batch delete is always safe.
+
+**F6 — snapshot freshness is a data watermark**, carried in the snapshot's
+R2 metadata (`watermark` beside `generated_at`): the newest `submitted_at`
+the build's read saw, read in the SAME statement as the rows. The probe
+compares `MAX(submitted_at)` with that. A completion timestamp hid a score
+committed mid-build until the next submission or the daily cron.
+
+**F7 — one statement each for the snapshot and the retention candidates**
+(window functions: `ROW_NUMBER() OVER (PARTITION BY season, players …)`,
+`MAX(submitted_at) OVER (…)`), a per-run demotion cap
+(`MAX_DEMOTIONS_PER_RUN` = 180, 90-key IN-list UPDATE chunks, one R2 batch
+delete; the candidate query is recomputed nightly so a backlog is next
+night's work), and batched orphan-sweep deletes. The Free plan allows
+**50 D1 queries per invocation** (documented on the D1 limits page); the
+old snapshot fan-out (1 + 2 per season) crossed it at 25 canonical seasons,
+and the old retention spent one UPDATE per demoted row — a busy night after
+a launch would have failed mid-loop, in the delete-then-update order that
+F5 describes. `retention_test.mjs` case 9 counts the whole invocation
+(retention + sweep + snapshot) under 50 with 30 seasons and 150 demotions.
+
+**F8 — the rebuild cooldown holds with NO stored snapshot too**: a cold
+miss whose rebuild fails answers 503 with `Retry-After` for the backoff
+window instead of re-running the failing build per request (it used to
+apply only when a stale body existed).
+
+Regressions: `board/test/submit_race_test.mjs` (F1 same-account and
+cross-account interleavings driven deterministically through the adapter's
+statement hooks, F2 post-commit and uncertain failures, the improvement
+paths), `retention_test.mjs` cases 7–10 (F5 improvement + ordering under
+R2/D1 failure, F7 budget + cap), `snapshot_guard_test.mjs` cases 7–9 (F8
+cold-miss backoff, F6 mid-build submission, legacy snapshot self-heal).
+The wrangler protocol suites (`board_test`, `whitelist_test`, `site_test`)
+were re-run green against workerd's D1, which is where the window-function
+SQL is proven on the real engine. The review's three signal findings are in
+NETPLAY.md under the same heading.
 
 ### L5 — deferred: verification
 R5's input-log re-simulation, arriving through the reserved `verify`

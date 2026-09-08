@@ -379,6 +379,8 @@ node test/steam_verify_test.mjs          # V1 Steam verifier, mocked Valve (unit
 node test/play_games_verify_test.mjs     # V2 Play Games verifier, mocked Google (unit)
 node test/game_center_verify_test.mjs    # V3 Game Center verifier, real RSA + synthetic
                                          #   Apple cert, mocked fetch (unit)
+node test/room_unit_test.mjs             # Room DO: alarm deadlines, frame bounds/budget,
+                                         #   verify bound to the room generation (unit, no wrangler)
 # The identity protocol test needs the FAKE_VERIFY dev flag set on the relay:
 #   npx wrangler dev --local --port 8787 --var FAKE_VERIFY:1
 node test/identity_test.js               # V0 identity attest/broadcast/replay
@@ -400,6 +402,12 @@ see `board/README.md`:
 cd board
 node test/validate_test.mjs        # .nrp header/record-framing validation (unit)
 node test/identity_gate_test.mjs   # attestation admission gate (unit)
+node test/retention_test.mjs       # retention cron + snapshot publish (real SQLite via test/d1_sqlite.mjs)
+node test/snapshot_guard_test.mjs  # site snapshot single-flight / backoff / watermark
+node test/submit_race_test.mjs     # submission storage ownership: racing uploads, commit-safe cleanup
+node test/budget_test.mjs          # per-IP limiter fail-closed + per-connection budgets
+# (the three SQL-driven units run the worker's real statements on node:sqlite —
+#  Node 22.13+; the ExperimentalWarning it prints is expected)
 # Protocol test against the real worker under miniflare (local D1/R2):
 npx wrangler@4 dev --local --port 8788 --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 &
 node test/board_test.mjs           # submit/supersede/dedup/fetch round-trip
