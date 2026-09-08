@@ -15,11 +15,12 @@
 //      snapshot: a failing rebuild answers 503 once and then 503 without
 //      re-running the failing build until the cooldown lapses. It used to
 //      retry on every request.
-//   4. DATA WATERMARK (F6) — freshness compares the newest submission with
-//      the newest the build's read SAW, not with the time the build
-//      finished: a score committed mid-build was absent from the snapshot
-//      yet older than generated_at, so it stayed hidden until the next
-//      submission or the daily cron.
+//   4. COMMIT-ORDERED REVISION (F6, tightened by the review of PR #527) —
+//      freshness compares the board's revision (meta.rev, bumped in the
+//      same D1 batch as every score mutation) with the revision the build's
+//      read SAW — never a timestamp. A completion time hid a score
+//      committed mid-build; MAX(submitted_at) hid a score whose Date.now()
+//      stamp was taken BEFORE its write and committed after the read.
 //
 // None of this is reachable from the protocol test: `wrangler dev --local`
 // serialises requests, so concurrency cannot be observed there. This drives
@@ -27,8 +28,9 @@
 // in-memory R2 fake instead.
 //
 // Run: node test/snapshot_guard_test.mjs
-import worker, { ensure_schema } from "../src/worker.js";
-import { d1_sqlite, seed, clear_rows, sql_run } from "./d1_sqlite.mjs";
+import worker, { ensure_schema, Session } from "../src/worker.js";
+import { d1_sqlite, seed, clear_rows, sql_run, sql_get } from "./d1_sqlite.mjs";
+import { build_nrp } from "./nrp_fixture.mjs";
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -48,28 +50,34 @@ const NOW = Date.now();
 
 await ensure_schema(d1_sqlite());
 
-// One row on the s1 solo board; `set_newest` moves its submission time,
-// which is what a fresh submission looks like to the freshness probe.
+// One row on the s1 solo board; `submit()` is what a fresh submission
+// looks like to the freshness probe: a row change plus the revision bump
+// the worker batches with every score mutation.
 function reset_rows(newest = NOW, score = 500) {
   clear_rows();
   seed([{ season: "s1", players: 1, run_id: "1", score, submitted_at: newest,
           blob_key: "s1/1.k1.nrp", format: 2, save_format: 17 }]);
 }
-function set_newest(ms) { sql_run(`UPDATE scores SET submitted_at = ?1`, ms); }
+function submit(ms, score) {
+  sql_run(`UPDATE scores SET submitted_at = ?1` +
+          (score !== undefined ? `, score = ${Number(score)}` : ``), ms);
+  sql_run(`UPDATE meta SET v = v + 1 WHERE k = 'rev'`);
+}
+const rev_now = () => sql_get(`SELECT v FROM meta WHERE k = 'rev'`).v;
 
 // Hooks count full builds (the ranked read is once per build) and probes,
 // and inject failures on demand.
 function fake_db(state) {
   return d1_sqlite({
     before: async (sql) => {
-      if (sql.includes("ROW_NUMBER() OVER") && sql.includes("watermark")) {
+      if (sql.includes("ROW_NUMBER() OVER") && sql.includes("AS rev")) {
         state.builds++;
         if (state.fail_builds) throw new Error("D1 unavailable");
       }
-      if (sql.includes("MAX(submitted_at) AS newest FROM scores")) state.probes++;
+      if (sql.startsWith("SELECT v FROM meta")) state.probes++;
     },
     after: async (sql) => {
-      if (sql.includes("ROW_NUMBER() OVER") && sql.includes("watermark") &&
+      if (sql.includes("ROW_NUMBER() OVER") && sql.includes("AS rev") &&
           state.after_read) {
         const f = state.after_read;
         state.after_read = null;
@@ -122,7 +130,7 @@ function fresh_state(over = {}) {
            fail_builds: false, fail_puts: false, ...over };
 }
 
-// 1. Cold miss builds once and stores with its build time + watermark in
+// 1. Cold miss builds once and stores with its build time + revision in
 // metadata.
 {
   const state = fresh_state();
@@ -135,8 +143,8 @@ function fresh_state(over = {}) {
         `${state.probes}`);
   const meta = (state.objects["site/leaderboard.json"] || {}).customMetadata || {};
   check("snapshot stored with build time", !!meta.generated_at);
-  check("snapshot stored with the data watermark", meta.watermark === String(NOW),
-        meta.watermark);
+  check("snapshot stored with the board revision", meta.rev === String(rev_now()),
+        `${meta.rev} vs ${rev_now()}`);
   check("snapshot has the season's rows",
         snap.boards.length === 1 && snap.boards[0].rows.length === 1,
         JSON.stringify(snap.boards));
@@ -159,7 +167,7 @@ function fresh_state(over = {}) {
   const state = fresh_state();
   const env = fake_env(state);
   await view(env);                    // seed a stored snapshot
-  set_newest(NOW + 60_000);           // a submission lands -> stale
+  submit(NOW + 60_000);               // a submission lands -> stale
   const before = state.builds;
   const rs = await Promise.all(Array.from({ length: 25 }, () => view(env)));
   check("all concurrent views answered 200",
@@ -168,7 +176,7 @@ function fresh_state(over = {}) {
         state.builds - before === 1, `${state.builds - before} rebuilds`);
   const bodies = await Promise.all(rs.map((r) => r.json()));
   check("every concurrent view got the REBUILT snapshot",
-        bodies.every((b) => b.watermark === NOW + 60_000));
+        bodies.every((b) => b.rev === rev_now()));
 }
 
 // 4. A later submission still rebuilds immediately — the guard must not
@@ -177,10 +185,10 @@ function fresh_state(over = {}) {
   const state = fresh_state();
   const env = fake_env(state);
   await view(env);
-  set_newest(NOW + 1000);
+  submit(NOW + 1000);
   await view(env);
   const after_first = state.builds;
-  set_newest(NOW + 2000);             // another submission, moments later
+  submit(NOW + 2000);                 // another submission, moments later
   await view(env);
   check("a new submission rebuilds again with no cooldown",
         state.builds === after_first + 1, `${state.builds}`);
@@ -193,7 +201,7 @@ function fresh_state(over = {}) {
   const env = fake_env(state);
   await view(env);                    // store a good snapshot
   const good = await (await view(env)).json();
-  set_newest(NOW + 60_000);           // stale
+  submit(NOW + 60_000);               // stale
   state.fail_builds = true;           // ...and rebuilding now throws
   const r = await view(env);
   check("failed rebuild still serves 200", r.status === 200, `HTTP ${r.status}`);
@@ -215,7 +223,7 @@ function fresh_state(over = {}) {
   const state = fresh_state();
   const env = fake_env(state);
   await view(env);
-  set_newest(NOW + 60_000);
+  submit(NOW + 60_000);
   state.fail_puts = true;
   const r = await view(env);
   check("failed STORE still serves the stale body", r.status === 200,
@@ -255,19 +263,18 @@ function fresh_state(over = {}) {
         `HTTP ${r4.status}, ${state.builds - attempted} attempts`);
 }
 
-// 8. F6 — DATA WATERMARK: a submission that commits AFTER the build's read
-// but BEFORE the build finishes is missing from that snapshot; the very
-// next view must notice (newest > watermark) and rebuild with it, instead
-// of trusting a completion timestamp that post-dates the submission.
+// 8. F6 — a submission that commits AFTER the build's read but BEFORE the
+// build finishes is missing from that snapshot; the very next view must
+// notice (rev advanced past the one the build read) and rebuild with it,
+// instead of trusting a completion timestamp that post-dates the
+// submission.
 {
   const state = fresh_state();
   const env = fake_env(state);
-  await view(env);                     // a stored snapshot at watermark NOW
-  set_newest(NOW + 1000);              // stale -> the next view rebuilds
+  await view(env);                     // a stored snapshot at the current rev
+  submit(NOW + 1000);                  // stale -> the next view rebuilds
   // ...and DURING that rebuild (right after its read) a better score lands.
-  state.after_read = () => {
-    sql_run(`UPDATE scores SET score = 999, submitted_at = ?1`, NOW + 1500);
-  };
+  state.after_read = () => submit(NOW + 1500, 999);
   const mid = await (await view(env)).json();
   check("mid-build submission is absent from that build (by construction)",
         mid.boards[0].rows[0].score === 500, JSON.stringify(mid.boards));
@@ -277,28 +284,83 @@ function fresh_state(over = {}) {
         state.builds === builds + 1, `${state.builds - builds} rebuilds`);
   check("the rebuilt snapshot carries the mid-build score",
         next.boards[0].rows[0].score === 999, JSON.stringify(next.boards));
-  check("watermark advanced to the newest submission read",
-        next.watermark === NOW + 1500, `${next.watermark}`);
+  check("revision advanced to the one the rebuild read",
+        next.rev === rev_now(), `${next.rev} vs ${rev_now()}`);
   const again = state.builds;
   await view(env);
   check("and then the snapshot is current again (no rebuild)",
         state.builds === again, `${state.builds - again}`);
 }
 
-// 9. A snapshot from a deploy that wrote no watermark is stale ONCE and
-// self-heals (store_snapshot always writes the field).
+// 9. A snapshot from a deploy that wrote no revision (or only the earlier
+// submitted_at watermark) is stale ONCE and self-heals (store_snapshot
+// always writes the field).
 {
   const state = fresh_state();
   const env = fake_env(state);
   await view(env);
   const key = "site/leaderboard.json";
-  state.objects[key].customMetadata = { generated_at: String(NOW) };
+  state.objects[key].customMetadata = { generated_at: String(NOW),
+                                        watermark: String(NOW) };
   const before = state.builds;
   await view(env);
-  check("legacy snapshot without a watermark rebuilds once",
+  check("legacy snapshot without a revision rebuilds once",
         state.builds === before + 1, `${state.builds - before}`);
   await view(env);
   check("...and is then current", state.builds === before + 1);
+}
+
+// 10. Review of PR #527 — an OLDER timestamp committing AFTER the read. Two
+// real submissions through Session.finish_submit: A takes its Date.now()
+// stamp, is paused right before its INSERT; the clock moves on; B commits
+// and a view builds the snapshot (B only); A is released and commits with
+// its older stamp. MAX(submitted_at) is unchanged by A's commit, so a
+// timestamp watermark called the snapshot current forever; the revision
+// advanced with A's commit, so the next view rebuilds with both rows.
+{
+  const state = fresh_state();
+  const env = fake_env(state);
+  clear_rows();
+  const gate = { promise: null, resolve: null };
+  gate.promise = new Promise((r) => { gate.resolve = r; });
+  const r2 = { async put() {}, async delete() {}, async get() { return null; },
+               async list() { return { objects: [], truncated: false }; } };
+  const session = (hooks) => {
+    const s = new Session({}, { DB: d1_sqlite(hooks), REPLAYS: r2 });
+    s.hydrated = true; s.dev = true; return s;
+  };
+  const ws = () => ({ sent: [], send(x) { this.sent.push(JSON.parse(x)); }, close() {} });
+  const ident = (n) => ({ platform: 2, name: n, verified: true, account: `fake:${n}` });
+  const A = session({ before: async (sql) => {
+    if (sql.startsWith("INSERT")) await gate.promise; } });
+  const B = session();
+  const wsA = ws(), wsB = ws();
+  const pA = A.finish_submit(wsA, build_nrp({ game_version: "s1", run_id: 11n,
+                                              score: 700 }), ident("ALICE"));
+  await new Promise((r) => setTimeout(r, 20));   // A is parked at its INSERT
+  advance(100);                                  // ...and time moves on
+  await B.finish_submit(wsB, build_nrp({ game_version: "s1", run_id: 12n,
+                                         score: 600 }), ident("BOB"));
+  const mid = await (await view(env)).json();
+  check("older-stamp race: snapshot built between the two commits shows B only",
+        mid.boards[0].rows.length === 1 && mid.boards[0].rows[0].score === 600,
+        JSON.stringify(mid.boards));
+  gate.resolve();
+  await pA;
+  check("older-stamp race: A committed with the OLDER stamp",
+        wsA.sent.some((f) => f.t === "placed") &&
+        sql_get(`SELECT MAX(submitted_at) AS m FROM scores`).m <
+            sql_get(`SELECT submitted_at FROM scores WHERE run_id = '12'`).submitted_at + 1 &&
+        sql_get(`SELECT submitted_at FROM scores WHERE run_id = '11'`).submitted_at <
+            sql_get(`SELECT submitted_at FROM scores WHERE run_id = '12'`).submitted_at,
+        JSON.stringify(wsA.sent));
+  const builds = state.builds;
+  const next = await (await view(env)).json();
+  check("older-stamp race: the next view rebuilds anyway",
+        state.builds === builds + 1, `${state.builds - builds} rebuilds`);
+  check("older-stamp race: the rebuilt snapshot carries both rows",
+        next.boards[0].rows.length === 2 &&
+        next.boards[0].rows[0].score === 700, JSON.stringify(next.boards));
 }
 
 Date.now = real_now;

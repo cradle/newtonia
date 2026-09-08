@@ -15,6 +15,11 @@
 //   F9  An identity verify still in flight when the room expires and a NEW
 //       host takes the same code must not attest the new room's joiner 1
 //       (jids restart per room).
+//   Review of PR #527: getWebSockets() can still return a CLOSING socket
+//       after close(), so an expired room must stay unavailable (/exists,
+//       /join, alive()) while its host's close is completing. The fake
+//       socket therefore stays REGISTERED in CLOSING after close(), like
+//       the platform's, and is only dropped by an explicit finish_close().
 //
 // Run: node test/room_unit_test.mjs
 import { Room } from "../src/worker.js";
@@ -32,11 +37,43 @@ let clock = real_now();
 Date.now = () => clock;
 
 class FakeWs {
-  constructor() { this.sent = []; this.open = true; this.closed = null; }
+  constructor() {
+    this.sent = []; this.open = true; this.closed = null;
+    this.readyState = 1;   // OPEN, like the platform's
+    this.gone = false;     // dropped from getWebSockets() — the close completed
+  }
   send(s) { if (!this.open) throw new Error("closed"); this.sent.push(JSON.parse(s)); }
-  close(code, reason) { this.open = false; this.closed = { code, reason }; }
+  // close() is async on the platform: the socket reads CLOSING (2) and
+  // getWebSockets() may still return it until the close completes.
+  close(code, reason) {
+    this.open = false; this.readyState = 2; this.closed = { code, reason };
+  }
+  finish_close() { this.readyState = 3; this.gone = true; }
+  // A socket that DROPPED (the peer went away): closed and already gone
+  // from the listing, the case drop_host/drop_joiner see.
+  drop() { this.open = false; this.readyState = 3; this.gone = true; }
+  accept() {}   // reject_ws accepts the ephemeral server end before sending
   of(t) { return this.sent.filter((f) => f.t === t); }
 }
+
+// Room.fetch answers WebSocket upgrades with a 101 Response carrying the
+// client end of a WebSocketPair — neither exists in Node. Stand-ins: a
+// Response that records a 101 as such (Node refuses the status itself),
+// and a pair of FakeWs whose SERVER end (the one the room sends on) is
+// kept on `last_pair` for the test to read.
+let last_pair = null;
+globalThis.WebSocketPair = class {
+  constructor() { this[0] = new FakeWs(); this[1] = new FakeWs(); last_pair = this; }
+};
+const RealResponse = globalThis.Response;
+globalThis.Response = class extends RealResponse {
+  constructor(body, init) {
+    if (init && init.status === 101) {
+      super(body, { ...init, status: 200 });
+      this.upgraded = true;
+    } else super(body, init);
+  }
+};
 
 class FakeState {
   constructor() {
@@ -53,8 +90,10 @@ class FakeState {
   }
   blockConcurrencyWhile(fn) { return fn(); }
   acceptWebSocket(ws, tags) { ws.tags = tags; this.sockets.push(ws); }
+  // Like the platform's: a CLOSING socket is still listed until its close
+  // completes (finish_close).
   getWebSockets(tag) {
-    return this.sockets.filter((w) => w.open && (!tag || w.tags.includes(tag)));
+    return this.sockets.filter((w) => !w.gone && (!tag || w.tags.includes(tag)));
   }
   getTags(ws) { return ws.tags || []; }
 }
@@ -109,7 +148,7 @@ const frame = (o) => JSON.stringify(o);
   // Host drops; at EXACTLY the grace deadline the room is finished.
   const { room, state } = await make_room();
   const h = await host(room);
-  h.open = false;
+  h.drop();
   await room.drop_host(h);
   const lost = room.r.host_lost_at;
   check("F3: drop armed the grace deadline", state.alarm === lost + 2 * 60 * 1000);
@@ -123,13 +162,55 @@ const frame = (o) => JSON.stringify(o);
   // In grace with time left: re-armed at the grace end, not the TTL.
   const { room, state } = await make_room();
   const h = await host(room);
-  h.open = false;
+  h.drop();
   await room.drop_host(h);
   const lost = room.r.host_lost_at;
   clock = lost + 30 * 1000;
   await room.alarm();
   check("F3: mid-grace alarm re-arms at the grace end",
         state.alarm === lost + 2 * 60 * 1000, `${state.alarm - clock}`);
+}
+
+// ---- Review of PR #527: an expired room stays closed while its sockets
+// ---- are still CLOSING ------------------------------------------------------
+{
+  const { room, state } = await make_room();
+  const h = await host(room, Date.now() - 25 * HOUR);
+  await room.alarm();                  // TTL cleanup: h.close() called...
+  check("closing host: socket is CLOSING and still listed",
+        h.readyState === 2 && state.getWebSockets("host").length === 1);
+  check("closing host: the room is not alive", room.alive(Date.now()) === false);
+  const ex = await (await room.fetch(new Request("https://room/exists"))).json();
+  check("closing host: /exists reports no host", ex.host === false, JSON.stringify(ex));
+  const jr = await room.fetch(new Request("https://room/join?code=ABCDE&ice=%5B%5D"));
+  const server_end = last_pair && last_pair[1];
+  check("closing host: /join is refused with no-such-room",
+        jr.upgraded && server_end && !server_end.open &&
+        server_end.of("err").some((f) => f.reason === "no-such-room") &&
+        server_end.of("joined").length === 0,
+        JSON.stringify(server_end && server_end.sent));
+  // A NEW host may take the code at once — the closing socket does not
+  // squat it — and it, not the closing one, is the host from then on.
+  const hr = await room.fetch(new Request("https://room/host?code=ABCDE&ice=%5B%5D"));
+  check("closing host: a fresh host is accepted on the code", hr.upgraded && hr.status !== 409,
+        `${hr.status}`);
+  check("closing host: the new socket is the host, not the closing one",
+        room.hostWs() === last_pair[1] && room.hostWs() !== h);
+  h.finish_close();
+  check("closing host: once the close completes nothing changes",
+        room.hostWs() === last_pair[1] && room.alive(Date.now()) === true);
+}
+{
+  // The same window on the plain expire() path (host `close`, grace end).
+  const { room } = await make_room();
+  const h = await host(room);
+  const j = await joiner(room);
+  await room.expire();
+  check("expire: closing sockets keep the room dead",
+        h.readyState === 2 && j.readyState === 2 && room.alive(Date.now()) === false);
+  const ex = await (await room.fetch(new Request("https://room/exists"))).json();
+  check("expire: /exists reports no host and no joiner",
+        ex.host === false && ex.joiner === false, JSON.stringify(ex));
 }
 
 // ---- F4: frame bounds ---------------------------------------------------

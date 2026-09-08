@@ -334,6 +334,16 @@ export async function ensure_schema(db) {
     // rows scanned).
     db.prepare(`CREATE INDEX IF NOT EXISTS scores_submitted
                 ON scores(submitted_at DESC)`),
+    // The board's COMMIT-ORDERED revision (review of PR #527): one row,
+    // bumped in the same D1 batch (a transaction) as every score
+    // mutation, so it advances for every commit in commit order — unlike
+    // submitted_at, a Date.now() taken BEFORE the async write, whose
+    // maximum need not move when an older stamp commits later (or two
+    // commits share a millisecond). The site snapshot reads it in the same
+    // statement as the rows and the freshness probe compares against it.
+    db.prepare(`CREATE TABLE IF NOT EXISTS meta(
+           k TEXT PRIMARY KEY, v INTEGER NOT NULL)`),
+    db.prepare(`INSERT OR IGNORE INTO meta(k, v) VALUES ('rev', 0)`),
   ]);
   // Append-only migrations for tables that predate a column (fresh CREATEs
   // above already carry them): ADD COLUMN throws when the column exists,
@@ -404,6 +414,13 @@ async function cutline(db, season, players) {
 // deleter's own object or one the row just stopped referencing. The site
 // URL `/replay/<season>/<run_id>.nrp` is unaffected — it resolves the row's
 // blob_key, whatever its shape.
+// The revision bump every score mutation batches with itself (see
+// ensure_schema's meta table). D1 batches are transactions, so the bump
+// commits with the mutation or not at all.
+function bump_rev(db) {
+  return db.prepare(`UPDATE meta SET v = v + 1 WHERE k = 'rev'`);
+}
+
 function blob_key_for(season, run_id, upload) {
   return `${season}/${run_id}-${upload}.nrp`;
 }
@@ -460,32 +477,41 @@ function site_rows(results) {
 // seasons list plus two queries per season — that fan-out crossed the Free
 // plan's 50-queries-per-invocation cap at 25 seasons. Being one statement
 // also makes the read a consistent point in time, which is what the
-// WATERMARK needs: the newest submitted_at the read SAW, carried in the
+// freshness WATERMARK needs: the board's commit-ordered REVISION
+// (meta.rev, see ensure_schema) as the read SAW it, carried in the
 // snapshot's metadata and compared by the freshness probe. A completion
 // TIMESTAMP was not that — a score committed after its board was read but
 // before the build finished was absent from the snapshot yet older than
 // generated_at, so the probe called the snapshot current until the next
-// submission or the daily cron.
+// submission or the daily cron. MAX(submitted_at) was not that either
+// (review of PR #527): submitted_at is stamped before the async write, so
+// an older stamp committing after the read leaves the maximum unmoved.
 export async function build_site_snapshot(env) {
   await ensure_schema(env.DB);
   const ranked = await env.DB.prepare(
       `SELECT season, players, run_id, score, generation, duration_ms,
               submitted_at, name, platform, verified, blob_key, format,
-              save_format, season_newest, watermark
+              save_format, season_newest,
+              (SELECT v FROM meta WHERE k = 'rev') AS rev
        FROM (SELECT season, players, run_id, score, generation, duration_ms,
                     submitted_at, name, platform, verified, blob_key, format,
                     save_format,
                     ROW_NUMBER() OVER (PARTITION BY season, players
                                        ORDER BY score DESC, submitted_at ASC)
                         AS rn,
-                    MAX(submitted_at) OVER (PARTITION BY season) AS season_newest,
-                    MAX(submitted_at) OVER () AS watermark
+                    MAX(submitted_at) OVER (PARTITION BY season) AS season_newest
              FROM scores)
        WHERE rn <= ?1
        ORDER BY season_newest DESC, season ASC, players ASC, rn ASC`)
       .bind(KEEP_N).all();
   const rows = ranked.results || [];
-  const watermark = rows.length ? Number(rows[0].watermark) || 0 : 0;
+  // The revision rides every row; an EMPTY table has none to carry it, so
+  // read it on its own then (rows are never deleted, so this is the fresh
+  // deploy case and costs one query once).
+  const rev = rows.length
+      ? Number(rows[0].rev) || 0
+      : Number(((await env.DB.prepare(`SELECT v FROM meta WHERE k = 'rev'`)
+                 .first()) || {}).v) || 0;
   // Group into boards, canonical seasons only, at most 50 seasons
   // (newest-first — the rows arrive in that order).
   const boards = [];
@@ -519,16 +545,19 @@ export async function build_site_snapshot(env) {
     for (const b of boards)
       if (b.players === players) { b.live = b === newest; delete b.newest_; }
   }
-  return { generated_at: Date.now(), watermark, boards };
+  return { generated_at: Date.now(), rev, boards };
 }
 
-// Store the snapshot with its build time AND data watermark in R2 metadata,
-// so the freshness probe below can read them without parsing the
-// (potentially large) body.
+// Store the snapshot with its build time AND the revision it read in R2
+// metadata, so the freshness probe below can read them without parsing
+// the (potentially large) body. `rev` is a NEW metadata key on purpose: an
+// older deploy's `watermark` (a submitted_at, ~1e12) must not be compared
+// against a revision (a small integer), so the probe ignores it and
+// treats that snapshot as stale once.
 async function store_snapshot(env, snap) {
   await env.REPLAYS.put(SNAPSHOT_KEY, JSON.stringify(snap), {
     customMetadata: { generated_at: String(snap.generated_at),
-                      watermark: String(snap.watermark) },
+                      rev: String(snap.rev) },
   });
 }
 
@@ -571,19 +600,17 @@ function rebuild_snapshot(env) {
   return done;
 }
 
-// Has a submission landed since this snapshot was READ? One indexed
-// head-read (scores_submitted makes it a seek, not a scan), compared with
-// the watermark the build carried (build_site_snapshot) — two D1 values,
-// no clock involved. A snapshot with no watermark is one an older deploy
-// wrote: treat it as stale once — store_snapshot always writes the field,
-// so it self-heals.
-async function snapshot_stale(env, watermark) {
-  if (watermark === undefined || watermark === null || watermark === "")
-    return true;
+// Has a score mutation COMMITTED since this snapshot was read? One
+// primary-key read of the revision row, compared with the revision the
+// build carried (build_site_snapshot) — two D1 values, no clock involved,
+// and commit-ordered by construction (see ensure_schema). A snapshot with
+// no revision is one an older deploy wrote: treat it as stale once —
+// store_snapshot always writes the field, so it self-heals.
+async function snapshot_stale(env, rev) {
+  if (rev === undefined || rev === null || rev === "") return true;
   await ensure_schema(env.DB);
-  const r = await env.DB.prepare(
-      `SELECT MAX(submitted_at) AS newest FROM scores`).first();
-  return !!(r && Number(r.newest) > Number(watermark));
+  const r = await env.DB.prepare(`SELECT v FROM meta WHERE k = 'rev'`).first();
+  return !!(r && Number(r.v) > Number(rev));
 }
 
 async function serve_snapshot(request, env, dev) {
@@ -592,9 +619,9 @@ async function serve_snapshot(request, env, dev) {
     return site_error(429, "rate limited");
   const obj = await env.REPLAYS.get(SNAPSHOT_KEY);
   let body = obj ? await obj.text() : null;
-  const watermark = obj ? (obj.customMetadata || {}).watermark : undefined;
+  const rev = obj ? (obj.customMetadata || {}).rev : undefined;
   // `!body` short-circuits the probe, so a cold miss costs no D1 read.
-  if (!body || await snapshot_stale(env, watermark)) {
+  if (!body || await snapshot_stale(env, rev)) {
     const cooling = rebuild_blocked_until - Date.now();
     if (cooling > 0) {
       // A recent rebuild failed. Serve what we have rather than hammering
@@ -745,9 +772,14 @@ export default {
     for (let i = 0; i < keys.length; i += UPDATE_CHUNK) {
       const chunk = keys.slice(i, i + UPDATE_CHUNK);
       const marks = chunk.map((_, j) => `?${j + 1}`).join(", ");
-      const r = await env.DB.prepare(
-          `UPDATE scores SET blob_key = '' WHERE blob_key IN (${marks})`)
-          .bind(...chunk).run();
+      // Batched with the revision bump (a transaction): a demotion changes
+      // what the snapshot shows (has_replay), so a view after a FAILED
+      // republish below still knows to rebuild.
+      const [r] = await env.DB.batch([
+        env.DB.prepare(
+            `UPDATE scores SET blob_key = '' WHERE blob_key IN (${marks})`)
+            .bind(...chunk),
+        bump_rev(env.DB)]);
       const changed = r && r.meta && typeof r.meta.changes === "number"
           ? r.meta.changes : chunk.length;
       demoted += changed;
@@ -1351,7 +1383,9 @@ export class Session {
   // not-best instead of placed. `prev` is the row this upload would replace
   // (the caller's `mine` or `run_row`), whose blob is released on a win.
   async place_row(db, hd, players, key, blob_key, identity, prev) {
-    await db.prepare(
+    // One BATCH — a D1 transaction — so the revision bump commits with the
+    // row (or, on a constraint abort, neither does).
+    await db.batch([db.prepare(
         `INSERT INTO scores(season, players, run_id, score,
            generation, duration_ms, submitted_at, name, platform, verified,
            platform_key, blob_key, format, save_format)
@@ -1367,7 +1401,8 @@ export class Session {
         .bind(hd.season, players, hd.run_id, hd.score, hd.generation,
               hd.duration_ms, Date.now(), identity.name, identity.platform,
               identity.verified ? 1 : 0, key, blob_key,
-              hd.format_version, hd.save_version).run();
+              hd.format_version, hd.save_version),
+      bump_rev(db)]);
     // Did this UPLOAD win the slot? The surviving row for this player tells
     // us unambiguously (covers the lost-the-WHERE race too) — judged by the
     // per-upload blob_key, never by run_id: two uploads of the same run

@@ -523,6 +523,15 @@ export class Limiter {
   }
 }
 
+// Is this socket still OPEN? Hibernation-API sockets report readyState
+// (1 = OPEN); a socket whose close() is in flight reads CLOSING and must
+// not count as a present peer. A socket that reports no readyState at all
+// (a test fake) is taken as open.
+function ws_open(ws) {
+  const rs = ws && ws.readyState;
+  return rs === undefined || rs === null || rs === 1;
+}
+
 // Bounded `mid` for a relayed/buffered candidate frame (see MAX_MID_LEN).
 // Numbers are accepted (some stacks send the media-section index bare);
 // anything else, or an over-long string, collapses to "0".
@@ -582,10 +591,19 @@ export class Room {
   // Live sockets by tag (hibernation-safe — survives DO eviction). Every
   // joiner carries BOTH the generic "joiner" tag (dispatch) and its own
   // "j:<n>" tag (addressing).
-  hostWs()   { return this.state.getWebSockets("host")[0]   || null; }
-  joinerWss() { return this.state.getWebSockets("joiner"); }
+  //
+  // getWebSockets() can still return a socket in CLOSING state after
+  // ws.close() (Cloudflare docs) — so every liveness read filters on
+  // readyState (ws_open), and alive() additionally requires the ROOM to be
+  // live (host_token set). Without both, the alarm's TTL cleanup left a
+  // window (the close completing) where the closing host still counted as
+  // present, `created` was already 0 (so the lazy TTL check was off),
+  // /exists reported a host and /join seated a player into an expired room
+  // with no usable host or offer (review of PR #527).
+  hostWs()   { return this.state.getWebSockets("host").find(ws_open) || null; }
+  joinerWss() { return this.state.getWebSockets("joiner").filter(ws_open); }
   joinerWsById(jid) {
-    return this.state.getWebSockets("j:" + jid)[0] || null;
+    return this.state.getWebSockets("j:" + jid).find(ws_open) || null;
   }
   // The oldest connected joiner — the unaddressed-frame target (legacy 2P
   // hosts know only one peer). Jids are monotonic, so oldest = smallest; a
@@ -613,7 +631,11 @@ export class Room {
     return !this.hostWs() && this.r.host_token &&
            this.r.host_lost_at && now - this.r.host_lost_at < HOST_GRACE_MS;
   }
-  alive(now) { return !!this.hostWs() || this.in_grace(now); }
+  // A room is alive only while it HAS a host token (accept_host mints it,
+  // expiry clears it) — a lingering closing socket never revives a room.
+  alive(now) {
+    return !!this.r.host_token && (!!this.hostWs() || this.in_grace(now));
+  }
 
   async fetch(request) {
     const url = new URL(request.url);
@@ -635,7 +657,8 @@ export class Room {
       // reads `full` since multi-join.
       const n = this.joinerWss().length;
       return new Response(
-          JSON.stringify({ host: !!this.hostWs(), joiner: n > 0,
+          JSON.stringify({ host: !!this.r.host_token && !!this.hostWs(),
+                           joiner: n > 0,
                            joiners: n, full: n >= MAX_JOINERS }),
           { headers: { "Content-Type": "application/json" } });
     }
@@ -643,7 +666,7 @@ export class Room {
     if (url.pathname === "/host") {
       // In-grace rooms still own their code — a fresh host must not
       // squat a room whose original host may return.
-      if (this.hostWs() || this.in_grace(now))
+      if (this.alive(now))
         return new Response("room in use", { status: 409 });
       const pair = new WebSocketPair();
       await this.accept_host(pair[1], code, now, ice);

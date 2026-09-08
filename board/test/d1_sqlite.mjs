@@ -51,6 +51,13 @@ export function d1_sqlite(hooks = {}) {
   }
   return {
     prepare: stmt,
+    // D1 batches are transactions. This runs the statements in order and
+    // STOPS at the first failure, which is what the worker's two-statement
+    // batches (mutation, then the revision bump) need: no bump without its
+    // mutation. It does not wrap them in a real BEGIN/COMMIT, because the
+    // hooks may pause one session's statement while another session runs
+    // on the same connection — a real transaction would swallow the other
+    // session's work into the paused one's.
     async batch(stmts) {
       const out = [];
       for (const s of stmts) out.push(await s.run());

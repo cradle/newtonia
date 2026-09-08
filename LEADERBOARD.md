@@ -337,12 +337,15 @@ submit (admission is unchanged, WS + platform attestation only).
   (the data is what the WS protocol already serves any native client):
   `GET /site/leaderboard.json` (serves the snapshot; a cold miss builds
   and stores it, so a fresh deploy never 404s, and a **freshness probe**
-  — one indexed `MAX(submitted_at)` head-read per view against the DATA
-  WATERMARK in the object's R2 metadata (the newest `submitted_at` the
-  build's own read saw, not a completion timestamp — Workers review
-  2026-09-08 F6) — rebuilds it whenever a submission is newer, so new
-  scores appear on the next page view instead of hiding until the cron;
-  field report 2026-08-04. The rebuild is ~10,000x a
+  — one primary-key read of the board's commit-ordered REVISION
+  (`meta.rev`, bumped in the same D1 batch as every score mutation) per
+  view against the revision in the object's R2 metadata (the one the
+  build's own read saw, never a timestamp — Workers review 2026-09-08 F6,
+  tightened by the review of PR #527: `submitted_at` is stamped BEFORE the
+  async write, so an older stamp committing after the read left
+  `MAX(submitted_at)` unmoved) — rebuilds it whenever a mutation has
+  committed since, so new scores appear on the next page view instead of
+  hiding until the cron; field report 2026-08-04. The rebuild is ~10,000x a
   view and reachable from an unauthenticated GET, so it is
   **single-flighted** — concurrent stale views share one rebuild, making
   the steady-state ceiling one rebuild per *submission*, itself the most
@@ -1057,11 +1060,18 @@ the selected key is unreferenced either way after the UPDATE (the improving
 upload deleted it as the superseded personal best, or the sweep will), so
 the batch delete is always safe.
 
-**F6 — snapshot freshness is a data watermark**, carried in the snapshot's
-R2 metadata (`watermark` beside `generated_at`): the newest `submitted_at`
-the build's read saw, read in the SAME statement as the rows. The probe
-compares `MAX(submitted_at)` with that. A completion timestamp hid a score
-committed mid-build until the next submission or the daily cron.
+**F6 — snapshot freshness is a commit-ordered revision**, carried in the
+snapshot's R2 metadata (`rev` beside `generated_at`): `meta.rev`, a single
+row bumped in the SAME D1 batch (a transaction) as every score mutation —
+the upsert in `place_row`, each demote chunk in the cron — and read in the
+same statement as the snapshot rows. The probe compares the live row with
+that. A completion timestamp hid a score committed mid-build until the
+next submission or the daily cron; the first fix's `MAX(submitted_at)`
+watermark had the same hole one step removed (review of PR #527): the
+stamp is `Date.now()` taken BEFORE the async write, so an older stamp
+committing after the read — or two commits in one millisecond — left the
+maximum unmoved. `snapshot_guard_test.mjs` case 10 drives that
+interleaving through two real `finish_submit` calls.
 
 **F7 — one statement each for the snapshot and the retention candidates**
 (window functions: `ROW_NUMBER() OVER (PARTITION BY season, players …)`,

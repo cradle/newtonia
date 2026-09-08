@@ -23,11 +23,19 @@ function check(name, ok, detail) {
 // OTHER board (the ON CONFLICT target does not cover it).
 function fake_db(rows, log) {
   return {
+    // place_row batches the upsert with the revision bump (a D1
+    // transaction); run them in order, stopping at the first failure.
+    async batch(stmts) {
+      const out = [];
+      for (const s of stmts) out.push(await s.run());
+      return out;
+    },
     prepare(sql) {
-      return {
+      const stmt = {
         bind(...a) {
           return {
             async run() {
+              if (sql.includes("UPDATE meta SET v = v + 1")) return {};
               if (!sql.includes("INSERT INTO scores")) throw new Error("unexpected run(): " + sql);
               const [season, players, run_id, score, , , , , , , key, blob_key] = a;
               log.push(`upsert ${blob_key}`);
@@ -54,6 +62,9 @@ function fake_db(rows, log) {
           };
         },
       };
+      // An unbound statement (the revision bump) runs like a bound one.
+      stmt.run = () => stmt.bind().run();
+      return stmt;
     },
   };
 }

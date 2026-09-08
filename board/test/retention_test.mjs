@@ -196,8 +196,8 @@ function blobs(season, players) {
         typeof s1.rows[0].date === "number");
   check("seasons ordered newest-first",
         snap.boards[0].season === "s2", JSON.stringify(snap.boards.map(key)));
-  check("snapshot carries the data watermark",
-        snap.watermark === FRESH + 2 * DAY, `${snap.watermark}`);
+  check("snapshot carries the board revision",
+        typeof snap.rev === "number" && snap.rev >= 0, `${snap.rev}`);
 }
 
 // 7. F5 — a run that IMPROVES between candidate selection and demotion

@@ -1084,7 +1084,16 @@ hibernation sockets, storage + alarm) — the wrangler suites cannot reach a
   the earlier of grace end and TTL), else clean up. One boundary rule
   everywhere — `now >= deadline` — so `in_grace` is strict `<` and at
   exactly the grace deadline the room is finished, not re-armed for the
-  TTL.
+  TTL. The review of PR #527 caught the close window that left: the
+  platform's `getWebSockets()` can still return a socket in CLOSING state
+  after `close()`, so for that interval the expired room's host still
+  counted as present while `created` was already 0 (the lazy TTL check
+  off) — `/exists` reported a host and `/join` seated a player into a dead
+  room. Now every liveness read filters on `readyState` (`ws_open`), and
+  `alive()` additionally requires the room to HAVE a host token (minted by
+  `accept_host`, cleared by expiry), so a closing socket never revives a
+  room; `room_unit_test.mjs` keeps its fake sockets registered in CLOSING
+  after `close()` for exactly this case.
 - **F4 — whole-frame bounds.** The per-field caps (`MAX_SDP_LEN`,
   `MAX_CAND_LEN`) bounded what was stored or relayed, but `JSON.parse` ran
   on whatever arrived (the platform accepts 32 MiB messages), offers and
