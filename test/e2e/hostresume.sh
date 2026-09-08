@@ -7,7 +7,19 @@
 # Co-Op" — generation survived via the online save), the client's
 # auto-rejoin reconnects ("player 2 rejoined"), and a clean quit deletes
 # both resume files. Per-instance XDG_DATA_HOME — the relaunched host
-# must find ITS ticket, and the joiner must never see one. Prints
+# must find ITS ticket, and the joiner must never see one.
+#
+# Then the RECLAIM CHAIN (Workers review 2026-09-08, NETPLAY.md): the
+# resumed host is SIGKILLed again the moment its reclaim is confirmed and
+# a third instance drives RESUME HOSTING once more. The relay keeps a
+# superseded host socket in CLOSING for a beat after a reclaim, and a
+# reclaimed host dropping inside that beat used to read as "someone else
+# holds the room" — no grace stamp, and the next reclaim on the rightful
+# token was refused as no-such-room. Whether this run lands inside that
+# beat is timing the driver does not control (signal/test/
+# reclaim_chain_test.mjs pins the race itself); what the driver proves is
+# the whole chain end to end on a real relay: reclaim, drop, reclaim, the
+# client rejoining both times, generation intact throughout. Prints
 # HOSTRESUME-E2E-OK on success. See TESTING.md.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
@@ -68,13 +80,36 @@ grep -aq "net: player 2 rejoined" "$OUT/host2.log" || fail "client never rejoine
 grep -aq "Presence: Level 2 Co-Op" "$OUT/host2.log" || fail "generation did not survive the resume"
 shot $A hostresume-host; shot $B hostresume-joiner
 
+# The reclaim chain: kill the RESUMED host straight away — no unpause, no
+# settling — and resume a third time on the same ticket. The ticket was
+# rewritten by the reclaim (a resumed host is a host like any other), so
+# it must still be there for the third instance.
+echo "== SIGKILL the RESUMED host at once (reclaim chain)"
+kill -9 $PA; sleep 3
+alive $PB joiner
+[ -f "$PREF_A/netplay_resume.dat" ] || fail "ticket lost with the resumed process"
+
+echo "== relaunch host again, drive RESUME HOSTING $CODE a second time"
+PA=$(launch_with "$XDG_A" host3)
+sleep 4
+for w in $(newtonia_windows); do [ "$w" != "$B" ] && A=$w; done
+key $A Return; sleep 1
+key $A Return
+echo "== waiting for the second reclaim + client auto-rejoin"; sleep 20
+alive $PA host3; alive $PB joiner
+grep -aq "net: resuming hosted room $CODE" "$OUT/host3.log" || fail "second resume constructor never ran"
+grep -aq "room $CODE reclaimed" "$OUT/host3.log" || fail "room never reclaimed the second time (chain broken)"
+grep -aq "net: player 2 rejoined" "$OUT/host3.log" || fail "client never rejoined the second time"
+grep -aq "Presence: Level 2 Co-Op" "$OUT/host3.log" || fail "generation did not survive the second resume"
+shot $A hostresume-host3; shot $B hostresume-joiner3
+
 # The resumed host auto-paused awaiting the rejoin and stays paused
 # through it (rejoin.sh semantics): unpause and verify both play on. The
 # long paused window before this unpause is also the RX-watchdog
 # regression case — a stale input baseline used to kill the session here.
 key $A p; sleep 3
-alive $PA host2; alive $PB joiner
-grep -aq "RX watchdog" "$OUT/host2.log" && fail "spurious RX watchdog after paused resume"
+alive $PA host3; alive $PB joiner
+grep -aq "RX watchdog" "$OUT/host3.log" && fail "spurious RX watchdog after paused resume"
 
 # Quit to menu = deliberate teardown: the room is closed and both resume
 # files deleted (a bare app exit deliberately KEEPS them — an accidental
@@ -87,5 +122,5 @@ key $A s; key $A s; key $A s; key $A Return; sleep 3
 [ ! -f "$PREF_A/online_savegame.dat" ] || fail "online save survived quit-to-menu"
 
 kill_pair $PA $PB
-assert_clean "$OUT"/host.log "$OUT"/host2.log "$OUT"/joiner.log
+assert_clean "$OUT"/host.log "$OUT"/host2.log "$OUT"/host3.log "$OUT"/joiner.log
 echo "HOSTRESUME-E2E-OK"
