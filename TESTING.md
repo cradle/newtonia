@@ -432,8 +432,10 @@ npx wrangler@4 dev --local --test-scheduled --port 8790 --persist-to .wrangler-s
     --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500 &
 node test/site_test.mjs            # snapshot build/staleness/cron refresh, replay GET
 node test/demote_test.mjs          # 102 accounts fill one board; the cron strips the two
-                                   #   rows past the top 100 (WS no-replay, site 404),
-                                   #   keeps ranks 1..100, republishes with rev advanced
+                                   #   rows past the top 100 (WS no-replay, site 404) and
+                                   #   deletes their objects (bucket listed via wrangler's
+                                   #   local explorer API), keeps ranks 1..100 and their
+                                   #   objects, republishes with rev advanced
 ```
 
 Both suites gate `deploy-board.yml`. `SUBMIT_LIMIT`/`CONN_LIMIT` widen the

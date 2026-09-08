@@ -1110,9 +1110,10 @@ SQL is proven on the real engine, and `demote_test.mjs` now runs on the
 site boot in `deploy-board.yml`: 102 attested accounts fill one canonical
 board, the cron fires through `--test-scheduled`, and the two rows past the
 top 100 lose their replay on both read paths (WS fetch `no-replay`, site
-GET 404) while ranks 1..100 keep theirs, the object deletes having followed
-the row demotion, and the site snapshot republishes with the revision
-advanced — F5's ordering and F7's one-statement candidate query on the real
+GET 404) and their objects are gone from the bucket (listed through
+wrangler's local explorer API — both read paths refuse on the cleared
+`blob_key` alone), while ranks 1..100 keep rows and objects both, and the
+site snapshot republishes with the revision advanced — F5's ordering and F7's one-statement candidate query on the real
 engine. The hand tool `board/test/manual_resubmit.mjs` (TESTING.md §3)
 watches the resubmission rules step by step. The review's three signal
 findings are in NETPLAY.md under the same heading.

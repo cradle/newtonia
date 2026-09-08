@@ -8,7 +8,11 @@
 //   one-row-per-player index) -> every row still carries its replay
 //   the cron fires             -> the two rows ranked past KEEP_N (100)
 //                                 lose their replay (WS fetch: no-replay,
-//                                 site GET: 404), the top 100 keep theirs,
+//                                 site GET: 404) AND their objects are gone
+//                                 from the bucket (both read paths refuse
+//                                 on the cleared blob_key alone, so the
+//                                 bucket is listed through wrangler's local
+//                                 explorer API), the top 100 keep theirs,
 //                                 and the site snapshot is republished
 //                                 with the revision advanced (a demotion
 //                                 is a score mutation)
@@ -76,6 +80,24 @@ async function replay_status(run_id) {
 async function site() {
   return (await fetch(`${HTTP_BASE}/site/leaderboard.json`)).json();
 }
+// The bucket's keys under this season, via wrangler dev's local explorer
+// API (`wrangler dev --local` only). Objects are keyed per upload
+// (season/run_id-<nonce>.nrp), so a run's key is found by its prefix.
+async function season_keys() {
+  const keys = [];
+  let cursor = "";
+  for (;;) {
+    const url = `${HTTP_BASE}/cdn-cgi/local/explorer/api/r2/buckets/newtonia-replays/objects` +
+                `?prefix=${SEASON}/` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+    const j = await (await fetch(url)).json();
+    for (const o of j.result || []) if (o.key.startsWith(`${SEASON}/`)) keys.push(o.key);
+    const info = j.result_info || {};
+    if (String(info.is_truncated) !== "true") return keys;
+    if (!info.cursor) throw new Error("bucket listing truncated with no cursor");
+    cursor = info.cursor;
+  }
+}
+const key_of = (keys, run_id) => keys.filter((k) => k.startsWith(`${SEASON}/${run_id}-`));
 
 // ---- fill: 102 accounts, scores 1000..899, two submits per socket -------------
 let placed = 0;
@@ -101,6 +123,15 @@ const board_before = before.boards.find((b) => b.season === SEASON && b.players 
 check("before cron: site lists the board's top 100",
       !!board_before && board_before.rows.length === 100,
       board_before && `${board_before.rows.length}`);
+const keys_before = await season_keys();
+check(`before cron: the bucket holds one object per row (${N})`,
+      keys_before.length === N, `${keys_before.length}`);
+const [k_lowest] = key_of(keys_before, lowest);
+const [k_second] = key_of(keys_before, second_lowest);
+const [k_cut] = key_of(keys_before, cut);
+check("before cron: the three probed rows each have exactly one object",
+      key_of(keys_before, lowest).length === 1 && key_of(keys_before, second_lowest).length === 1 &&
+      key_of(keys_before, cut).length === 1);
 
 // ---- the cron ---------------------------------------------------------------------
 const r = await fetch(`${HTTP_BASE}/__scheduled?cron=17+4+*+*+*`);
@@ -114,6 +145,14 @@ check("after cron: rank-102 row lost its replay (site 404)",
 check("after cron: rank-100 row keeps its replay (site 200)",
       await replay_status(cut) === 200);
 check("after cron: rank-1 row keeps its replay (WS)", await has_replay_ws(RUN0));
+const keys_after = await season_keys();
+check("after cron: the demoted rows' objects are deleted from the bucket",
+      !keys_after.includes(k_lowest) && !keys_after.includes(k_second),
+      `${k_lowest}: ${keys_after.includes(k_lowest)}, ${k_second}: ${keys_after.includes(k_second)}`);
+check("after cron: the rank-100 row's object is still in the bucket",
+      keys_after.includes(k_cut), k_cut);
+check("after cron: the bucket holds exactly the top 100 objects",
+      keys_after.length === N - 2, `${keys_after.length}`);
 const after = await site();
 const board_after = after.boards.find((b) => b.season === SEASON && b.players === 1);
 check("after cron: site still lists the top 100, all with replays",
