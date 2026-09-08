@@ -283,10 +283,15 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     for (size_t ai = 0; ai < verts.size(); ++ai) {
       AsteroidVerts const &v = verts[ai];
       if (!v.tough || v.invisible) continue;
+      // Both bounds clamped here as well as screened at ingest
+      // (net_asteroid_sane): the crack arrays hold five entries and the
+      // outline nine, and an index off either end is a wild heap read.
       int hits_taken = 6 - v.health;
+      if (hits_taken > 5) hits_taken = 5;
       for (int k = 0; k < hits_taken; k++) {
         int vi = v.crack_vertex[k];
         if (vi >= v.segs) vi = v.segs - 1;
+        if (vi < 0) vi = 0;
         float vx = v.dvx[vi], vy = v.dvy[vi];
         float len = sqrtf(vx * vx + vy * vy);
         if (len < 1e-6f) continue;

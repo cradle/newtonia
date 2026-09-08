@@ -49,11 +49,18 @@ class RtcBoard : public NetBoard {
     // and spends that credential against the real worker places a score
     // under this player's attested identity. Same call shape as
     // net_signal_rtc.cpp — one policy, two sockets.
+    NetTlsWsPolicy tls;
+    if (!net_tls_ws_policy(tls)) {
+      // This build cannot verify (Windows, no bundle): refuse, exactly as
+      // a failed handshake reads on the MbedTLS platforms — a Closed event
+      // and no online play — rather than an unverified socket.
+      closed_flag_ = true;
+      return;
+    }
     rtcWsConfiguration cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.disableTlsVerification = net_tls_insecure();
-    const std::string &ca = net_ca_bundle_path();
-    if (!ca.empty()) cfg.caCertificatePemFile = ca.c_str();
+    cfg.disableTlsVerification = tls.disable_verification;
+    cfg.caCertificatePemFile = tls.ca_file;
     ws_ = rtcCreateWebSocketEx(url.c_str(), &cfg);
     if (ws_ < 0) {
       closed_flag_ = true;

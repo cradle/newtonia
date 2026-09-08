@@ -11,6 +11,7 @@
 #include "net_lobby.h"
 #include "net_policy.h"
 #include "net_resume.h"
+#include "net_session.h"  // net_state_sane: the local save is ingest too
 #include "pad.h"
 #include "net_transport.h"
 #include "preferences.h"
@@ -2360,7 +2361,17 @@ void Menu::confirm_selection(PadId pad) {
     std::string code, token;
     long long age_ms = 0;
     Save::GameState s;
-    if (NetResume::read(code, token, age_ms) && Save::online_load_game(s)) {
+    // The semantic check every OTHER ingest of this format runs (snapshots,
+    // replays): a save that parses but carries a NaN world or no players
+    // reaches Grid() and the seat tables before anything could recover it.
+    // A failure moves the file aside (kept for recovery) and drops the row.
+    bool resume_ok = NetResume::read(code, token, age_ms) &&
+                     Save::online_load_game(s);
+    if (resume_ok && !net_state_sane(s)) {
+      Save::quarantine_online_save();
+      resume_ok = false;
+    }
+    if (resume_ok) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
@@ -2384,7 +2395,14 @@ void Menu::confirm_selection(PadId pad) {
   }
   if (has_save_ && menu_selection == continue_row_index()) {
     Save::GameState s;
-    if (Save::load_game(s)) {
+    bool save_ok = Save::load_game(s);
+    if (save_ok && !net_state_sane(s)) {
+      // Same shared validator as RESUME HOSTING above; the file is moved
+      // aside rather than silently overwritten by the next NEW GAME.
+      Save::quarantine_save();
+      save_ok = false;
+    }
+    if (save_ok) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif

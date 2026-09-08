@@ -257,6 +257,41 @@ int net_seat_cap() {
   return cap;
 }
 
+bool net_asteroid_sane(const Save::Asteroid &a) {
+  if (!net_coord_sane(a.pos_x) || !net_coord_sane(a.pos_y)) return false;
+  if (!net_vel_sane(a.vel_x) || !net_vel_sane(a.vel_y)) return false;
+  // Radius feeds the grid's cell span and every collision test. Only the
+  // dangerous shapes are rejected (NaN, negative, absurd — the real cap is
+  // Asteroid::max_radius, 240, so 10000 is 40x any legal value): a
+  // rejection drops the WHOLE snapshot, so anything a legitimate breakup
+  // chain could produce has to pass.
+  if (!std::isfinite(a.radius) || a.radius < 0.0f || a.radius > 10000.0f)
+    return false;
+  if (!std::isfinite(a.rotation) || !std::isfinite(a.rotation_speed))
+    return false;
+  if (!std::isfinite(a.max_vertex_offset)) return false;
+  for (int v = 0; v < 9; v++)
+    if (!std::isfinite(a.vertex_offsets[v])) return false;
+  // Integers the renderer indexes with. A tough asteroid draws
+  // 6 - health crack lines out of five (health runs 5 -> 1; the fifth hit
+  // kills, so 0 never survives a tick on the host), each starting at
+  // crack_vertex[k], an index into a nine-vertex outline that the drawer
+  // clamps from above only. Both are attacker-chosen on the wire and in a
+  // downloaded replay; either out of range reads off the end of a heap
+  // array. Checked only where they are USED — a plain asteroid never
+  // initialises its crack geometry, so its bytes are whatever the
+  // constructor left there.
+  if (a.tough) {
+    if (a.health < 1 || a.health > 5) return false;
+    for (int k = 0; k < 5; k++) {
+      if (a.crack_vertex[k] < 0 || a.crack_vertex[k] >= 9) return false;
+      if (!std::isfinite(a.crack_t[k]) || !std::isfinite(a.crack_perp[k]))
+        return false;
+    }
+  }
+  return true;
+}
+
 bool net_state_sane(const Save::GameState &s) {
   // NaN/Inf must be rejected explicitly: every comparison against a NaN is
   // false, so a NaN world dimension would slip past the range checks below
@@ -294,6 +329,11 @@ bool net_state_sane(const Save::GameState &s) {
   for (size_t i = 0; i < s.players.size(); i++) {
     if (s.players[i].primary_weapons.size() > 64) return false;
     if (s.players[i].secondary_weapons.size() > 64) return false;
+    // The selections walk a std::list from begin(): a negative primary
+    // (the capture default is 0; -1 is the SECONDARY's "none" sentinel)
+    // steps before the beginning. The upper bound is clamped on restore.
+    if (s.players[i].selected_primary_idx < 0) return false;
+    if (s.players[i].selected_secondary_idx < -1) return false;
   }
   // Every OTHER float in the state, for the same reason the world dimensions
   // are checked above: a NaN slips past every range comparison, and these
@@ -314,23 +354,8 @@ bool net_state_sane(const Save::GameState &s) {
     if (!net_vel_sane(p.vel_x) || !net_vel_sane(p.vel_y)) return false;
     if (!std::isfinite(p.facing_x) || !std::isfinite(p.facing_y)) return false;
   }
-  for (size_t i = 0; i < s.asteroids.size(); i++) {
-    const Save::Asteroid &a = s.asteroids[i];
-    if (!net_coord_sane(a.pos_x) || !net_coord_sane(a.pos_y)) return false;
-    if (!net_vel_sane(a.vel_x) || !net_vel_sane(a.vel_y)) return false;
-    // Radius feeds the grid's cell span and every collision test. Only the
-    // dangerous shapes are rejected (NaN, negative, absurd — the real cap is
-    // Asteroid::max_radius, 240, so 10000 is 40x any legal value): a
-    // rejection drops the WHOLE snapshot, so anything a legitimate breakup
-    // chain could produce has to pass.
-    if (!std::isfinite(a.radius) || a.radius < 0.0f || a.radius > 10000.0f)
-      return false;
-    if (!std::isfinite(a.rotation) || !std::isfinite(a.rotation_speed))
-      return false;
-    if (!std::isfinite(a.max_vertex_offset)) return false;
-    for (int v = 0; v < 9; v++)
-      if (!std::isfinite(a.vertex_offsets[v])) return false;
-  }
+  for (size_t i = 0; i < s.asteroids.size(); i++)
+    if (!net_asteroid_sane(s.asteroids[i])) return false;
   for (size_t i = 0; i < s.pickups.size(); i++)
     if (!net_coord_sane(s.pickups[i].pos_x) ||
         !net_coord_sane(s.pickups[i].pos_y)) return false;
