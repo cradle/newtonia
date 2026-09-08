@@ -10,8 +10,8 @@
 # must find ITS ticket, and the joiner must never see one.
 #
 # Then the RECLAIM CHAIN (Workers review 2026-09-08, NETPLAY.md): the
-# resumed host is SIGKILLed again the moment its reclaim is confirmed and
-# a third instance drives RESUME HOSTING once more. The relay keeps a
+# resumed host is SIGKILLed again as soon as play has resumed and a third
+# instance drives RESUME HOSTING once more. The relay keeps a
 # superseded host socket in CLOSING for a beat after a reclaim, and a
 # reclaimed host dropping inside that beat used to read as "someone else
 # holds the room" — no grace stamp, and the next reclaim on the rightful
@@ -80,11 +80,23 @@ grep -aq "net: player 2 rejoined" "$OUT/host2.log" || fail "client never rejoine
 grep -aq "Presence: Level 2 Co-Op" "$OUT/host2.log" || fail "generation did not survive the resume"
 shot $A hostresume-host; shot $B hostresume-joiner
 
-# The reclaim chain: kill the RESUMED host straight away — no unpause, no
-# settling — and resume a third time on the same ticket. The ticket was
-# rewritten by the reclaim (a resumed host is a host like any other), so
-# it must still be there for the third instance.
-echo "== SIGKILL the RESUMED host at once (reclaim chain)"
+# The resumed host auto-paused awaiting the rejoin and stays paused
+# through it (rejoin.sh semantics): unpause and verify both play on. The
+# long paused window before this unpause is also the RX-watchdog
+# regression case — a stale input baseline used to kill the session here.
+key $A p; sleep 3
+alive $PA host2; alive $PB joiner
+grep -aq "RX watchdog" "$OUT/host2.log" && fail "spurious RX watchdog after paused resume"
+
+# The reclaim chain: kill the RESUMED host now that play is back on and
+# resume a third time on the same ticket. The unpause above is load-
+# bearing, not just the watchdog check — a PAUSED client refreshes its
+# RX watchdog every tick (paused peers legitimately go quiet), so a host
+# killed while both sides still sat in the post-resume pause was never
+# noticed and no second rejoin ever started. The ticket was rewritten by
+# the reclaim (a resumed host is a host like any other), so it must still
+# be there for the third instance.
+echo "== SIGKILL the RESUMED host (reclaim chain)"
 kill -9 $PA; sleep 3
 alive $PB joiner
 [ -f "$PREF_A/netplay_resume.dat" ] || fail "ticket lost with the resumed process"
@@ -103,13 +115,10 @@ grep -aq "net: player 2 rejoined" "$OUT/host3.log" || fail "client never rejoine
 grep -aq "Presence: Level 2 Co-Op" "$OUT/host3.log" || fail "generation did not survive the second resume"
 shot $A hostresume-host3; shot $B hostresume-joiner3
 
-# The resumed host auto-paused awaiting the rejoin and stays paused
-# through it (rejoin.sh semantics): unpause and verify both play on. The
-# long paused window before this unpause is also the RX-watchdog
-# regression case — a stale input baseline used to kill the session here.
+# Same paused-resume unpause on the third instance.
 key $A p; sleep 3
 alive $PA host3; alive $PB joiner
-grep -aq "RX watchdog" "$OUT/host3.log" && fail "spurious RX watchdog after paused resume"
+grep -aq "RX watchdog" "$OUT/host3.log" && fail "spurious RX watchdog after the second paused resume"
 
 # Quit to menu = deliberate teardown: the room is closed and both resume
 # files deleted (a bare app exit deliberately KEEPS them — an accidental
