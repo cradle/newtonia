@@ -524,10 +524,20 @@ test/e2e/hostresume.sh # host process-death resume: SIGKILL the HOST mid-game,
                      # relaunch within the reclaim grace, drive the menu's
                      # RESUME HOSTING row -> room reclaimed, client auto-rejoin
                      # reconnects, generation survives via the online save;
-                     # also guards the paused-unpause RX-watchdog fix and
-                     # asserts quit-to-menu deletes the ticket + online save.
-                     # Per-instance XDG_DATA_HOME (the relaunched host must
-                     # find ITS ticket; the joiner must never see one).
+                     # then the RECLAIM CHAIN: SIGKILL the resumed host the
+                     # moment its reclaim is confirmed and resume a THIRD
+                     # instance on the same ticket -> reclaimed + rejoined
+                     # again (the relay used to refuse the second reclaim
+                     # while the superseded socket was still closing —
+                     # Workers review 2026-09-08; the race itself is pinned
+                     # by signal/test/reclaim_chain_test.mjs, this proves the
+                     # chain end to end on a real relay); also guards the
+                     # paused-unpause RX-watchdog fix and asserts quit-to-menu
+                     # deletes the ticket + online save. Per-instance
+                     # XDG_DATA_HOME (the relaunched host must find ITS
+                     # ticket; the joiner must never see one). Point
+                     # NEWTONIA_SIGNAL_URL at the beta relay to run the chain
+                     # against real Durable Objects.
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
 test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH
