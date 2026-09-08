@@ -10,18 +10,30 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include <process.h>   // _getpid
-#define atomic_file_pid _getpid
 #else
 #include <unistd.h>    // getpid
-#define atomic_file_pid getpid
 #endif
+
+namespace {
+
+// GetCurrentProcessId, not _getpid: the CRT call is absent under
+// WINAPI_FAMILY_GAMES (the Xbox console smoke build), and the Win32 one is
+// what net_resume.cpp already uses for the same purpose.
+long process_id() {
+#ifdef _WIN32
+  return (long)GetCurrentProcessId();
+#else
+  return (long)getpid();
+#endif
+}
+
+}  // namespace
 
 namespace AtomicFile {
 
 std::string temp_sibling(const std::string &path) {
   char suffix[32];
-  snprintf(suffix, sizeof(suffix), ".%ld.tmp", (long)atomic_file_pid());
+  snprintf(suffix, sizeof(suffix), ".%ld.tmp", process_id());
   return path + suffix;
 }
 
