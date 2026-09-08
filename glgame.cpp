@@ -7716,6 +7716,9 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
     uint32_t id = 0;
     Save::Asteroid sa;
     if (!nx_read(in, id) || !Save::read_asteroid(in, sa)) return;
+    // Same bound the keyframe's wholesale apply runs (net_state_sane):
+    // these records never pass through it, and they restore verbatim.
+    if (!net_asteroid_sane(sa)) return;  // hostile/corrupt
     if (by_id.find(id) != by_id.end()) continue;  // already known
     Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
                                sa.teleporting, sa.quantum, sa.tough,
@@ -7755,6 +7758,9 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
     std::unordered_map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
     if (f == by_id.end()) continue;  // unknown id — next keyframe reconciles
     Asteroid *a = f->second;
+    // A tough asteroid's health is a crack-array bound in the drawer
+    // (6 - health lines of five); the host never sends 0 or > 5 for one.
+    if (a->tough && (health < 1 || health > 5)) continue;  // hostile/corrupt
     // Teleporting asteroid relocated on the host this instant (the
     // vulnerable window opens on arrival): play the warp locally.
     bool was_vulnerable = a->teleport_vulnerable;

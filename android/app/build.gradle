@@ -66,7 +66,27 @@ android {
         }
     }
 
+    // BuildConfig.DEBUG_EXTRAS gates NewtoniaActivity's intent-extra ->
+    // environment bridge (the adb `--es NEWTONIA_*` debug knobs). The
+    // activity is exported (it must be: it carries the launcher and App
+    // Links filters), so ANY installed app can start it with extras, and
+    // the bridge honoured every one — including NEWTONIA_SIGNAL_URL,
+    // NEWTONIA_BOARD_URL and NEWTONIA_NET_TLS_INSECURE, which redirect the
+    // credential-carrying sockets or strip their verification (security
+    // review 2026-09-08, F1). True for debug builds and for the
+    // -PdebugSign release CI/tester APK (android.yml's emulator selftest
+    // is driven through the bridge); FALSE for the store build.
+    buildFeatures {
+        buildConfig true
+    }
+    defaultConfig {
+        buildConfigField "boolean", "DEBUG_EXTRAS", "false"
+    }
+
     buildTypes {
+        debug {
+            buildConfigField "boolean", "DEBUG_EXTRAS", "true"
+        }
         release {
             // R8 on (PLAYQUALITY.md): shrinks the DEX and satisfies the Play
             // Console's per-upload optimization insights ahead of the Feb 2027
@@ -89,6 +109,7 @@ android {
             // keeps injecting the real release keystore untouched.
             if (project.hasProperty('debugSign')) {
                 signingConfig signingConfigs.debug
+                buildConfigField "boolean", "DEBUG_EXTRAS", "true"
             }
         }
     }

@@ -1,5 +1,6 @@
 #include "web_fs.h"
 #include "preferences.h"
+#include "atomic_file.h"
 #include "audio_volume.h"
 #include <SDL.h>
 #include <cstdio>
@@ -332,8 +333,12 @@ void save_preferences() {
     std::string fp = pref_filepath();
     if (fp.empty()) return;
 
-    FILE *f = fopen(fp.c_str(), "w");
-    if (!f) return;
+    // AtomicFile: the INI is written complete or not at all — a truncated
+    // file still parses (the reader is line-oriented and tolerant), which
+    // is exactly how a full disk used to silently reset half the bindings.
+    // The fprintf results are folded into ferror() at the end of the body;
+    // the helper checks the close.
+    bool ok = AtomicFile::write(fp, [](FILE *f) {
 
     // Scalar preferences
     fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen         ? 1 : 0);
@@ -414,10 +419,11 @@ void save_preferences() {
 #undef WRITE_KEY
 #undef WRITE_PLAYER_BINDING
 
-    fclose(f);
+    return !ferror(f);
+    }, "preferences");
 
     // Persist to IndexedDB so preferences survive a page refresh.
-    web_fs_sync("preferences");
+    if (ok) web_fs_sync("preferences");
 }
 
 const float CAMERA_ZOOM_VALUES[CAMERA_ZOOM_STEPS] = {0.8f, 0.9f, 1.0f, 1.1f, 1.2f};

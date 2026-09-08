@@ -1,5 +1,6 @@
 #include "web_fs.h"
 #include "highscore.h"
+#include "atomic_file.h"
 #include <SDL.h>
 #include <string>
 #include <cstdio>
@@ -32,11 +33,9 @@ void save_high_score(int score) {
   if (!path) return;
   std::string filepath = std::string(path) + HS_FILE;
   SDL_free(path);
-  FILE *f = fopen(filepath.c_str(), "wb");
-  if (f) {
-    fwrite(&score, sizeof(int), 1, f);
-    fclose(f);
-    // Persist to IndexedDB so the score survives a page refresh.
-    web_fs_sync("highscore");
-  }
+  bool ok = AtomicFile::write(filepath, [&](FILE *f) {
+    return fwrite(&score, sizeof(int), 1, f) == 1;
+  }, "highscore");
+  // Persist to IndexedDB so the score survives a page refresh.
+  if (ok) web_fs_sync("highscore");
 }

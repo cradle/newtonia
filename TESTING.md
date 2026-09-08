@@ -86,8 +86,10 @@ field-verified through the library entry (STEAMINPUT.md §7 M2/M3 matrix,
 bash test/unit/savegame.sh
 ```
 
-Links the real save serializer with GNU linker wrappers to inject open,
-write, close and replacement failures, plus buffered writes to `/dev/full`.
+Links the real save serializer (over `atomic_file.cpp`, the shared
+checked-write primitive every pref-path data file goes through) with GNU
+linker wrappers to inject open, write, close and replacement failures, plus
+buffered writes to `/dev/full`.
 For both solo and online saves it checks failure reporting, preservation of
 the previous save, temporary-file cleanup, and successful replacement after
 an interrupted attempt. Uses isolated temporary player data and runs in
@@ -400,6 +402,7 @@ see `board/README.md`:
 cd board
 node test/validate_test.mjs        # .nrp header/record-framing validation (unit)
 node test/identity_gate_test.mjs   # attestation admission gate (unit)
+node test/submit_race_test.mjs     # same-run upload race: row/blob consistency (unit)
 # Protocol test against the real worker under miniflare (local D1/R2):
 npx wrangler@4 dev --local --port 8788 --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 &
 node test/board_test.mjs           # submit/supersede/dedup/fetch round-trip

@@ -1,5 +1,6 @@
 // Linux fault-injection test: GNU ld wrappers exercise real serialization
 // without adding test switches to the game's persistence code.
+#include "atomic_file.h"
 #include "savegame.h"
 #include <SDL.h>
 #include <cassert>
@@ -81,18 +82,22 @@ int main() {
             assert(syncs == before_sync);
             assert(closes == before_close + (injected == Open ? 0 : 1));
             assert(contents(path) == original);
-            assert(access((path + ".tmp").c_str(), F_OK) != 0);
+            assert(access(AtomicFile::temp_sibling(path).c_str(), F_OK) != 0);
             Save::GameState restored{};
             assert(load(restored) && restored.generation == 3);
         }
         // An interrupted attempt may leave a partial temporary file.
-        { std::ofstream partial(path + ".tmp"); partial << "partial save"; }
+        { std::ofstream partial(AtomicFile::temp_sibling(path)); partial << "partial save"; }
         const int before_sync = syncs;
         assert(save(state));
         assert(syncs == before_sync + 1);
         Save::GameState restored{};
         assert(load(restored) && restored.generation == 4);
-        assert(access((path + ".tmp").c_str(), F_OK) != 0);
+        assert(access(AtomicFile::temp_sibling(path).c_str(), F_OK) != 0);
+        // Two writers must never share a temporary (F6): the name is
+        // per-process, so a sibling instance's temporary is a different file.
+        assert(AtomicFile::temp_sibling(path) != path + ".tmp");
+        assert(AtomicFile::temp_sibling(path).find(path + ".") == 0);
         assert(unlink(path.c_str()) == 0);
     }
     assert(rmdir(dir.c_str()) == 0);

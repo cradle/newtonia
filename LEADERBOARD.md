@@ -751,6 +751,31 @@ cases (stale orphan deleted, in-flight upload spared, undated object spared,
 referenced blob untouched). Full board suite green: units,
 `board_test.mjs`, and `whitelist_test.mjs` against `wrangler dev --local`.
 
+*Addendum (2026-09-08 security review, F4) — the row and the blob could
+still describe different uploads.* The blob key was `<season>/<run_id>.nrp`,
+so a resubmission of the same run overwrote the object the charting row
+pointed at BEFORE the row decided anything, and `place_row` judged "did we
+win" by `run_id` — which two uploads of the same run share. Two sessions
+improving one run concurrently (a copied `current.nrp`, or one attested
+account driving two sockets on purpose) left the row at one score and the
+object at the other, both answered `placed`, and the catch handler's delete
+took out the previous row's replay; fix 1 above also assumed serialization
+the DO layout does not provide (`SESSIONS.newUniqueId()` — one instance per
+SOCKET, nothing keyed per account), so the "unreachable" PK abort was
+reachable again as a same-`run_id`/different-`players` race. Fixed: **every
+upload gets its own immutable object** (`<season>/<run_id>-<nonce>.nrp`,
+`blob_key_for` + `upload_nonce`), the winner is recognised by that KEY
+(`survivor.blob_key === blob_key`), the winner releases the superseded row's
+object (the previous best OR this run's earlier upload — `prev`), a loser
+deletes only its own, and the catch handler's delete can now only ever hit
+the aborted upload's own object; a constraint abort answers
+`already-submitted` like the procedural refusal it races. The site's
+`/replay/<season>/<run_id>.nrp` URL is unchanged (it resolves the row's
+`blob_key`). Verified by `submit_race_test.mjs` (both interleavings of the
+same-run race, the same-run resubmit release, a losing resubmit, and the
+cross-board abort), which drives `Session.place_row` against an in-memory
+D1/R2 with the worker's exact SQL shapes.
+
 **S3 — the header's score is never cross-checked against the recording
 (`board/src/validate.js` `validate_submission`).** ✅ CLOSED (2026-08-03,
 below — as an observation, deliberately not a gate) (bounded by L5/L6 —
