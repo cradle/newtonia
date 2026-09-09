@@ -102,14 +102,15 @@ for (const horizontal of [-.6, .6]) for (const sign of [-1, 1]) {
     h.send('touchstart'); h.expect(horizontal, sign*.7);
     assert.equal(h.context._joyPlaceholderEls[1].style.left, `${500+horizontal*r}px`);
     h.advance(40);
-    h.send('touchend'); h.expect(horizontal, sign*.7); h.advance(100);
+    h.send('touchend'); h.expect(0, 0); h.advance(100);
   }
   assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 3);
-  h.advance(5000); h.expect(horizontal, sign*.7);
-  h.send('touchstart'); h.expect(horizontal, sign*.7);
-  assert.equal(h.context._joyPlaceholderEls[1].style.left, `${500+horizontal*r}px`);
-  h.advance(40);
-  h.send('touchend'); h.advance(1000); h.expect(horizontal, sign*.7);
+  h.advance(399); h.expect(0, 0); // 499 ms after the final tap release
+  assert.ok(h.context._joyPlaceholderEls[1].style.cssText.includes(`left:${500+horizontal*r}px`));
+  h.advance(1); h.expect(0, 0);
+  assert.match(h.context._joyPlaceholderEls[1].style.cssText, /left:500px;top:400px/);
+  h.send('touchstart'); h.expect(0, 0); h.advance(40);
+  h.send('touchend'); h.advance(5000); h.expect(0, 0);
   h.send('touchstart'); h.send('touchmove', 500, 400-.4*r);
   h.send('touchmove', 500, 400); h.send('touchend'); h.expect(0, 0);
   h.advance(100); h.send('touchstart'); h.expect(0, 0);
@@ -149,17 +150,17 @@ for (const x of [-.5, .5]) {
   h.advance(100); h.send('touchstart'); h.expect(x, 0);
   h.send('touchmove', 500+.11*r, 400); h.expect(x, 0);
   h.send('touchend');
-  h.advance(5000); h.expect(x, 0);
+  h.advance(5000); h.expect(0, 0);
   assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 1);
 }
 
 // Backgrounding online never drops _tapFire. No finger is down to emit a
-// touchcancel once the stick is latched, so the page lifecycle must stop it.
+// touchcancel after release, so the page lifecycle must clear the snapshot.
 for (const event of ['visibilitychange', 'pagehide']) {
   for (const heldFinger of [false, true]) {
     const h = harness(); steer(h); h.send('touchend'); h.advance(100);
     h.send('touchstart'); h.advance(40); h.send('touchend');
-    h.advance(1000); h.expect(0, -.4);
+    h.advance(100); h.expect(0, 0);
     if (heldFinger) h.send('touchstart', 500, 400, 7);
     if (event === 'visibilitychange') {
       h.context.document.hidden = true;
@@ -190,7 +191,7 @@ for (const event of ['visibilitychange', 'pagehide']) {
   assert.equal(h.keys.length, at); // no stale fire-hold on the fresh press
 }
 
-// Repositioning the idle UI must keep showing the input that is still flying.
+// Repositioning the idle UI preserves the saved-direction preview.
 {
   const h = harness(); steer(h); h.send('touchend'); h.advance(100);
   h.send('touchstart'); h.advance(40); h.send('touchend');

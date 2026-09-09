@@ -619,15 +619,13 @@ declare const NewtoniaStore: undefined | {
     let spaceUpTimer: number | null = null;
     let secondaryUpTimer: number | null = null;
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
-    // A steering release stops and remembers both axes for 500 ms. A press
-    // inside that window resumes the same full joystick direction. Its
-    // un-wandered release latches that input until live steering or reset
-    // takes over. Only the initial
-    // lift-to-tap opportunity expires, never input resumed by a tap.
+    // Every release stops input and remembers both axes for 500 ms.
+    // A quick rehold resumes the full direction while the finger is down;
+    // releasing again renews the window, never an unattended input latch.
     const OH_HOLD_MS = 500;
     let holdValid = false, holdEngaged = false;
     let holdNx = 0, holdNy = 0;
-    let holdTimer: number | null = null;   // the window; null = latched input or no memory
+    let holdTimer: number | null = null;   // the window; null = held by a finger or no memory
     let liveNx = 0, liveNy = 0;            // the stick's last applied deflection
     // Fingers deliberately left to the canvas-tap path (the zoom zones).
     const passFingers = new Set<number>();
@@ -742,7 +740,7 @@ declare const NewtoniaStore: undefined | {
       if (holdTimer !== null) { window.clearTimeout(holdTimer); holdTimer = null; }
     }
     function holdArmed(): boolean { return holdValid && (holdEngaged || holdTimer !== null); }
-    // Forget an initial lift that was never followed by a tap.
+    // Forget a release that was not followed by a quick rehold.
     function holdArmWindow(): void {
       if (holdTimer !== null) window.clearTimeout(holdTimer);
       holdTimer = window.setTimeout(() => {
@@ -763,17 +761,15 @@ declare const NewtoniaStore: undefined | {
       if (wasEngaged) {
         liveNx = 0; liveNy = 0;
         callTouchJoystick(0, 0);
-        if (joyFinger === null) positionJoyPlaceholder();
-        else {
+        if (joyFinger !== null) {
           joyNub.style.left = `${joyCX}px`;
           joyNub.style.top = `${joyCY}px`;
         }
       }
+      if (joyFinger === null) positionJoyPlaceholder();
     };
-    // The coasting stick: the resting ring with the active nub at the
-    // remembered deflection, a shade dimmer than under a finger, so the
-    // pilot can see the ship is still flying the stick they let go of
-    // (mirrors the overlay's one-hand draw).
+    // Dim preview of the saved direction during the release-to-rehold
+    // window; the preview does not apply input to the ship.
     function showHeldStick(): void {
       if (_inMenuMode) return;
       const r = canvas.getBoundingClientRect();
@@ -814,7 +810,7 @@ declare const NewtoniaStore: undefined | {
       positionJoyPlaceholder();
     }
 
-    // A hidden page need not deliver touchcancel (and a latched stick has
+    // A hidden page need not deliver touchcancel (and a released stick has
     // no finger to cancel). Online play keeps its gate open in the
     // background, so clear gesture ownership directly, before any resume.
     _resetTouchGestures = () => {
@@ -1034,8 +1030,7 @@ declare const NewtoniaStore: undefined | {
     // gesture, a tab switch), so the press is over with no intent behind
     // its end. The stick stops at once and NOTHING is remembered: the
     // held deflection is a bridge the pilot builds with a lift-and-tap,
-    // and a cancelled press is neither (it used to coast for another
-    // window on the fliesOn branch — review, 2026-09-09).
+    // and a cancelled press is neither.
     const onJoyEnd = (e: TouchEvent, cancelled = false) => {
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
@@ -1044,33 +1039,18 @@ declare const NewtoniaStore: undefined | {
         if (id === joyFinger) {
           const wasTap = _oneHand && !joyFireHold && !joySteered &&
                          !joyFired && Date.now() - joyDownMs < OH_LONG_PRESS_MS;
-          // Held deflection: an un-wandered release under an engaged
-          // memory is a fire gesture's end — the input stays latched.
-          // Anything else stops the ship NOW, and a
-          // STEERING release outside the deadzone becomes the memory a
-          // tap inside the window picks back up.
-          const fliesOn = _oneHand && holdEngaged && !joySteered && !cancelled;
-          // Capture both axes of the last live direction before clearing it.
-          // Quick adjustments must not jump back to an older sample.
-          const releaseNx = liveNx;
-          const releaseNy = liveNy;
-          if (fliesOn) {
-            joyFinger = null;
+          // Every lift releases input, including a firing tap/fire-hold.
+          // Remember both axes briefly so a quick rehold still resumes them.
+          const remember = joySteered || holdEngaged;
+          const releaseNx = liveNx, releaseNy = liveNy;
+          holdClear();
+          hideJoystick();
+          if (_oneHand && _tapFire && remember && !cancelled &&
+              (Math.abs(releaseNx) > 0.10 || Math.abs(releaseNy) > 0.10)) {
+            holdValid = true;
+            holdNx = releaseNx; holdNy = releaseNy;
+            holdArmWindow();
             showHeldStick();
-            // A completed tap latches input until the pilot steers again.
-            // The 500 ms timer only applies before the first tap.
-          } else {
-            holdClear();
-            hideJoystick();
-            if (_oneHand && _tapFire && joySteered && !cancelled &&
-                (Math.abs(releaseNx) > 0.10 || Math.abs(releaseNy) > 0.10)) {
-              holdValid = true; holdEngaged = false;
-              holdNx = releaseNx; holdNy = releaseNy;
-              holdArmWindow();
-              showHeldStick();
-            } else {
-              holdClear();
-            }
           }
           if (_oneHand) {
             if (!cancelled) forwardTap(t);

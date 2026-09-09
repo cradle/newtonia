@@ -154,88 +154,46 @@ static void steer_up(SDL_FingerID id, float px, float py, float *nx, float *ny) 
 
 // ---- Scenarios ------------------------------------------------------
 
-// The headline: steer, lift, tap, tap, tap — every tap one shot, the ship
-// flying the remembered deflection from the first tap on.
+// Every lift releases input; quick taps/reholds resume the saved direction.
 static void test_lift_tap_tap() {
   reset_layer();
   float nx, ny;
   steer_up(1, 500, 500, &nx, &ny);
-
-  // The lift: a stick let go stops the ship NOW, and the memory arms.
-  size_t at = s_log.size();
   CHECK(up(1));
-  CHECK(any_joy_zero(at));
   CHECK(g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
-  CHECK(near(g_touch_controls.oh_hold_ny, -0.6f));
-  frame(16);
-  frame(16);
-  // Armed, not engaged: nothing drives the ship while it waits.
-  CHECK(!any_joy_nonzero(at));
-
-  // A slower tap at 450 ms still resumes, without moving the visual base.
   const float bx = g_touch_controls.boost_cx, by = g_touch_controls.boost_cy;
-  s_now += 418;
-  at = s_log.size();
-  down(1, 700, 520);
-  CHECK(near(g_touch_controls.joy_cx, 500) && near(g_touch_controls.joy_cy, 500));
-  CHECK(near(g_touch_controls.boost_cx, bx) && near(g_touch_controls.boost_cy, by));
-  CHECK(g_touch_controls.oh_hold_engaged);
-  CHECK(near(g_touch_controls.joy_nx, nx) && near(g_touch_controls.joy_ny, ny));
-  frame(16);  // the entry point's apply carries the nub = the memory
-  float jx, jy;
-  CHECK(last_joy(at, &jx, &jy) && near(jy, -0.6f));
-  s_now += 40;
-  CHECK(up(1));
-  CHECK(count_key(at, 'd', ' ') == 1);  // one shot
-  CHECK(!any_joy_zero(at));             // and no stop
-  CHECK(g_touch_controls.oh_hold_engaged && g_touch_controls.oh_hold_until == 0);
-
-  // Coasting between taps: the tick keeps the ship on the memory.
-  at = s_log.size();
-  frame(16);
-  CHECK(last_joy(at, &jx, &jy) && near(jy, -0.6f));
-  frame(60);  // the deferred ' ' release lands
-  CHECK(count_key(at, 'u', ' ') == 1);
-
-  // Taps 2 and 3, 150 ms apart (fire-hold territory, still one shot each).
-  for (int i = 0; i < 2; i++) {
-    s_now += 100;
-    at = s_log.size();
-    down(1, 650 + 30 * i, 540);
+  for (int i = 0; i < 3; ++i) {
+    frame(i == 0 ? 450 : 100);
+    size_t at = s_log.size();
+    down(1, 650 + 20*i, 520);
+    CHECK(g_touch_controls.oh_hold_engaged);
     CHECK(near(g_touch_controls.joy_cx, 500) && near(g_touch_controls.joy_cy, 500));
     CHECK(near(g_touch_controls.boost_cx, bx) && near(g_touch_controls.boost_cy, by));
-    CHECK(g_touch_controls.oh_hold_engaged);
-    frame(16);
-    s_now += 40;
+    frame(40);
+    float jx, jy;
+    CHECK(last_joy(at, &jx, &jy) && near(jx, nx) && near(jy, ny));
+    at = s_log.size();
     CHECK(up(1));
-    CHECK(count_key(at, 'd', ' ') == 1);
-    CHECK(!any_joy_zero(at));
-    frame(16);
-    CHECK(last_joy(at, &jx, &jy) && near(jy, -0.6f));
-    frame(60);
+    CHECK(any_joy_zero(at));
+    CHECK(g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
+    CHECK(g_touch_controls.oh_hold_until == s_now + 500);
+    frame(70);
+    CHECK(!any_joy_nonzero(at));
+    CHECK(count_key(at, 'u', ' ') == 1);
   }
-
-  // A completed tap resumes the input until the pilot steers again,
-  // including long gaps before the next tap.
-  at = s_log.size();
-  frame(5000);
-  CHECK(!any_joy_zero(at));
-  CHECK(g_touch_controls.oh_hold_valid && g_touch_controls.oh_hold_engaged);
-  CHECK(last_joy(at, &jx, &jy) && near(jy, -0.6f));
-  down(1, 600, 400);
-  CHECK(g_touch_controls.oh_hold_engaged);
-  frame(40);
-  CHECK(up(1));
-  frame(1000);
-  CHECK(!any_joy_zero(at));
-  // Take over and return to centre to stop.
-  down(1, 600, 400);
-  motion(1, 600, 400 - 0.4f*g_touch_controls.joy_radius);
-  motion(1, 600, 400);
-  frame(16);
-  CHECK(up(1));
-  CHECK(any_joy_zero(at));
+  size_t at = s_log.size();
+  frame(429); // 499 ms since the last release
+  CHECK(g_touch_controls.oh_hold_valid);
+  CHECK(!any_joy_nonzero(at));
+  frame(1);
   CHECK(!g_touch_controls.oh_hold_valid);
+  down(1, 600, 400);
+  frame(40);
+  CHECK(!g_touch_controls.oh_hold_engaged);
+  CHECK(!any_joy_nonzero(at));
+  CHECK(up(1));
+  frame(5000);
+  CHECK(!any_joy_nonzero(at));
 }
 
 // A lift the pilot never follows up: the memory is forgotten, and the
@@ -302,7 +260,8 @@ static void test_reland_and_steer() {
   frame(16);
   CHECK(up(1));
   frame(1000);
-  CHECK(last_joy(at, &jx, &jy) && near(jx, 0.5f) && near(jy, 0.0f));
+  CHECK(last_joy(at, &jx, &jy) && near(jx, 0.0f) && near(jy, 0.0f));
+  CHECK(!g_touch_controls.oh_hold_valid);
   CHECK(count_key(at, 'd', ' ') == 1);
 }
 
@@ -319,8 +278,8 @@ static void test_centre_release_forgets() {
 }
 
 // The live-play gate dropping (pause, roster, help card, game over) stops
-// a coasting ship and forgets the memory.
-static void test_gate_off_stops_coast() {
+// remembered input and forgets the released snapshot.
+static void test_gate_off_clears_released_memory() {
   reset_layer();
   float nx, ny;
   steer_up(1, 500, 500, &nx, &ny);
@@ -329,12 +288,12 @@ static void test_gate_off_stops_coast() {
   down(1, 600, 500);
   s_now += 40;
   CHECK(up(1));
-  CHECK(g_touch_controls.oh_hold_engaged);
+  CHECK(g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
   frame(16);
   g_touch_controls.one_hand_ingame = false;
   size_t at = s_log.size();
   frame(16);
-  CHECK(any_joy_zero(at));
+  CHECK(!any_joy_nonzero(at));
   CHECK(!g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
 }
 
@@ -357,8 +316,8 @@ static void test_gate_off_zeroes_held_nub() {
   CHECK(!g_touch_controls.oh_hold_valid);
 }
 
-// touch_controls_reset (backgrounding, rotation) stops a coasting ship.
-static void test_reset_stops_coast() {
+// Reset clears the released snapshot before it can be resumed.
+static void test_reset_clears_released_memory() {
   reset_layer();
   float nx, ny;
   steer_up(1, 500, 500, &nx, &ny);
@@ -367,10 +326,10 @@ static void test_reset_stops_coast() {
   down(1, 600, 500);
   s_now += 40;
   CHECK(up(1));
-  CHECK(g_touch_controls.oh_hold_engaged);
+  CHECK(g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
   size_t at = s_log.size();
   touch_controls_reset(SM);
-  CHECK(any_joy_zero(at));
+  CHECK(!any_joy_nonzero(at));
   CHECK(!g_touch_controls.oh_hold_valid);
 }
 
@@ -396,7 +355,7 @@ static void test_second_finger_tap_unchanged() {
 
 // A cold long press that lands inside the window fires the secondary
 // (unchanged grammar) with the ship flying the memory throughout, and
-// its un-wandered release keeps the ship flying.
+// its un-wandered release stops input and starts a fresh memory window.
 static void test_long_press_under_memory() {
   reset_layer();
   g_touch_controls.mine_available = true;
@@ -414,8 +373,10 @@ static void test_long_press_under_memory() {
   CHECK(last_joy(at, &jx, &jy) && near(jy, -0.6f));
   at = s_log.size();
   CHECK(up(1));
-  CHECK(!any_joy_zero(at));
-  CHECK(g_touch_controls.oh_hold_engaged);
+  CHECK(any_joy_zero(at));
+  CHECK(g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
+  frame(500);
+  CHECK(!g_touch_controls.oh_hold_valid);
 }
 
 // Remember both axes of the latest live direction, including top-left.
@@ -439,7 +400,8 @@ static void test_last_live_thrust() {
     CHECK(last_joy(0, &x, &y) && near(x, horizontal) && near(y, sign*0.7f));
     CHECK(up(1));
     frame(16);
-    CHECK(last_joy(0, &x, &y) && near(x, horizontal) && near(y, sign*0.7f));
+    CHECK(last_joy(0, &x, &y) && near(x, 0) && near(y, 0));
+    CHECK(g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
   }
 }
 
@@ -549,9 +511,9 @@ int main() {
   test_armed_memory_lapses();
   test_reland_and_steer();
   test_centre_release_forgets();
-  test_gate_off_stops_coast();
+  test_gate_off_clears_released_memory();
   test_gate_off_zeroes_held_nub();
-  test_reset_stops_coast();
+  test_reset_clears_released_memory();
   test_second_finger_tap_unchanged();
   test_long_press_under_memory();
   test_active_action_buttons();
