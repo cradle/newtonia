@@ -678,6 +678,7 @@ void Overlay::touch_help(const GLGame *glgame) {
   static const Row ONE_HAND[] = {
     {"DRAG",           "STEER + THRUST"},
     {"TAP",            "FIRE"},
+    {"TAP MID-DRAG",   "FIRE, KEEP MOVING"},
     {"TAP, THEN HOLD", "KEEP FIRING"},
     {"HOLD",           "SECONDARY (SHIELD: ON/OFF)"},
     {"SECOND FINGER",  "FIRE WHILE STEERING"},
@@ -699,11 +700,14 @@ void Overlay::touch_help(const GLGame *glgame) {
   const Row *rows = one_hand ? ONE_HAND : TWO_HANDS;
   int n = (int)(one_hand ? sizeof(ONE_HAND) / sizeof(ONE_HAND[0])
                          : sizeof(TWO_HANDS) / sizeof(TWO_HANDS[0]));
-  // The one-hand list runs to nine rows (gestures + the action arc's
+  // The one-hand list runs to ten rows (gestures — the held-deflection
+  // "TAP MID-DRAG" among them, touch_controls.h — plus the action arc's
   // three colours): start it higher and step tighter so the last row
   // (glyphs extend 26 below the anchor) still clears the prompt at -290
-  // on a 16:9 half-height of 450.
-  int y0 = n > 7 ? 210 : 190, gap = n > 7 ? 54 : 64;
+  // on a 16:9 half-height of 450 (ten rows at 50: last anchor -240, its
+  // glyphs to -266; the first row's top at 236 clears the title's glyphs
+  // above 250).
+  int y0 = n > 7 ? 210 : 190, gap = n > 9 ? 50 : n > 7 ? 54 : 64;
   for (int i = 0; i < n; i++) {
     int y = y0 - i * gap;
     const char *gesture = rows[i].gesture;
@@ -1704,6 +1708,15 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float nx_off =  tc.joy_nx * jr;
     float ny_off = -tc.joy_ny * jr;
     draw_circle(bx + nx_off, by + ny_off, jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f, 0.90f);
+  } else if (touch_one_handed() && tc.oh_hold_engaged) {
+    // One-hand held deflection with no finger down (touch_controls.h):
+    // the ship is still flying the stick the thumb let go of to tap, so
+    // the resting ring shows that stick — the active nub, at the
+    // remembered deflection, a shade dimmer than under a finger — until
+    // the window lapses or the thumb re-takes it.
+    draw_circle(jox, joy, jr, 32, false, 0.5f, 0.65f, 1.0f, 0.55f);
+    draw_circle(jox + tc.oh_hold_nx * jr, joy - tc.oh_hold_ny * jr,
+                jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f, 0.60f);
   } else {
     draw_circle(jox, joy, jr, 32, false, 0.4f, 0.55f, 1.0f, 0.55f);
     draw_circle(jox, joy, jr * 0.25f, 20, true, 0.4f, 0.55f, 1.0f, 0.40f);

@@ -352,9 +352,16 @@ declare const NewtoniaStore: undefined | {
   }
   (window as any).setOneHandMode = setOneHandMode;
 
+  // The one-hand held deflection's off-gate release (assigned by
+  // buildTouchControls): a remembered manoeuvre must not outlive live
+  // play — the native layer clears it with the gate in
+  // touch_one_hand_tick.
+  let _holdRelease: (() => void) | null = null;
+
   // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
   function setTapFire(active: number | boolean): void {
     _tapFire = !!active;
+    if (!_tapFire) _holdRelease?.();
   }
   (window as any).setTapFire = setTapFire;
 
@@ -603,6 +610,20 @@ declare const NewtoniaStore: undefined | {
     let tapFireHold = false;
     let lastTapMs = 0;
     let spaceUpTimer: number | null = null;
+    // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
+    // The one thumb has to come off the stick to tap, which used to stop
+    // the ship (and re-base the stick at zero on the re-land). A STEERING
+    // release still stops the ship at once but REMEMBERS its deflection
+    // for OH_HOLD_MS; a press inside that window engages it — the ship
+    // flies the memory while the finger stays still, an un-wandered
+    // release (the tap: one shot) keeps it flying and re-arms the window,
+    // a wander takes the stick back live from the landing point, and a
+    // lapsed window with no finger down stops the ship.
+    const OH_HOLD_MS = 300;
+    let holdValid = false, holdEngaged = false;
+    let holdNx = 0, holdNy = 0;
+    let holdTimer: number | null = null;   // the window; null = held by a finger or no memory
+    let liveNx = 0, liveNy = 0;            // the stick's last applied deflection
     // Fingers deliberately left to the canvas-tap path (the zoom zones).
     const passFingers = new Set<number>();
 
@@ -706,6 +727,52 @@ declare const NewtoniaStore: undefined | {
       }, OH_LONG_PRESS_MS);
     }
 
+    function holdClear(): void {
+      holdValid = false; holdEngaged = false;
+      holdNx = 0; holdNy = 0;
+      if (holdTimer !== null) { window.clearTimeout(holdTimer); holdTimer = null; }
+    }
+    function holdArmed(): boolean { return holdValid && holdTimer !== null; }
+    // The window: when it lapses with no finger on the stick, an ENGAGED
+    // memory stops the ship (the pilot stopped tapping and never re-took
+    // the stick) and an armed one is simply forgotten.
+    function holdArmWindow(): void {
+      if (holdTimer !== null) window.clearTimeout(holdTimer);
+      holdTimer = window.setTimeout(() => {
+        holdTimer = null;
+        if (joyFinger !== null) return;
+        const wasEngaged = holdEngaged;
+        holdClear();
+        if (wasEngaged) {
+          callTouchJoystick(0, 0);
+          positionJoyPlaceholder();
+        }
+      }, OH_HOLD_MS);
+    }
+    // Off the live-play gate (setTapFire false): stop a ship still flying
+    // the memory and forget it, exactly like the native layer's tick.
+    _holdRelease = () => {
+      const wasEngaged = holdEngaged;
+      holdClear();
+      if (wasEngaged && joyFinger === null) {
+        callTouchJoystick(0, 0);
+        positionJoyPlaceholder();
+      }
+    };
+    // The coasting stick: the resting ring with the active nub at the
+    // remembered deflection, a shade dimmer than under a finger, so the
+    // pilot can see the ship is still flying the stick they let go of
+    // (mirrors the overlay's one-hand draw).
+    function showHeldStick(): void {
+      if (_inMenuMode) return;
+      const r = canvas.getBoundingClientRect();
+      if (r.width === 0) return;
+      const { px, py, rad } = ringHome(r);
+      const baseSize = rad * 2, nubSize = rad * 0.62;
+      joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.55;`;
+      joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px + holdNx * rad}px;top:${py + holdNy * rad}px;opacity:0.7;`;
+    }
+
     // Radius is captured at touchstart and reused for the whole drag — avoids
     // a getBoundingClientRect() call on every touchmove.
     function showJoystick(x: number, y: number, rad: number): void {
@@ -725,11 +792,13 @@ declare const NewtoniaStore: undefined | {
       joyNub.style.top  = `${joyCY + ny * joyRad}px`;
       // C++ touch_joystick_input: ny < 0 = thrust, ny > 0 = reverse.
       // Screen dy is already negative when pushing up, so pass ny directly.
+      liveNx = nx; liveNy = ny;
       callTouchJoystick(nx, ny);
     }
 
     function hideJoystick(): void {
       joyFinger = null;
+      liveNx = 0; liveNy = 0;
       callTouchJoystick(0, 0);
       positionJoyPlaceholder();
     }
@@ -853,6 +922,23 @@ declare const NewtoniaStore: undefined | {
             joyDownX = t.clientX; joyDownY = t.clientY;
             joyDownMs = Date.now();
             joySteered = false; joyFired = false;
+            liveNx = 0; liveNy = 0;
+            // Held deflection: a press inside the window picks the
+            // manoeuvre back up — the nub sits at the remembered
+            // deflection and the ship flies it while this finger stays
+            // still; its wander takes over in touchmove. Outside the
+            // window the press is cold and the memory is spent.
+            if (_tapFire && holdArmed()) {
+              holdEngaged = true;
+              window.clearTimeout(holdTimer!);
+              holdTimer = null;  // this finger holds it now
+              joyNub.style.left = `${joyCX + holdNx * joyRad}px`;
+              joyNub.style.top  = `${joyCY + holdNy * joyRad}px`;
+              liveNx = holdNx; liveNy = holdNy;
+              callTouchJoystick(holdNx, holdNy);
+            } else {
+              holdClear();
+            }
             joyFireHold = startFireHold();
             armLongPress("joy", ++joyPressSeq);
           } else {
@@ -881,6 +967,12 @@ declare const NewtoniaStore: undefined | {
               Math.hypot(t.clientX - joyDownX, t.clientY - joyDownY) >
                   joyRad * 0.12)
             joySteered = true;
+          // Under an engaged memory the nub is the REMEMBERED deflection
+          // until the finger wanders (sub-slop jitter must not overwrite
+          // it with a near-centre reading); past the slop the stick is
+          // the finger's own again, live from the landing point.
+          if (_oneHand && holdEngaged && !joySteered) continue;
+          holdEngaged = false;
           moveJoystick(t.clientX, t.clientY);
           if (!_oneHand) break;
         } else if (_oneHand && t.identifier === tapFinger && !tapSteered) {
@@ -899,7 +991,28 @@ declare const NewtoniaStore: undefined | {
         if (id === joyFinger) {
           const wasTap = _oneHand && !joyFireHold && !joySteered &&
                          !joyFired && Date.now() - joyDownMs < OH_LONG_PRESS_MS;
-          hideJoystick();
+          // Held deflection: an un-wandered release under an engaged
+          // memory is a fire gesture's end — the ship flies on and the
+          // window re-arms. Anything else stops the ship NOW, and a
+          // STEERING release outside the deadzone becomes the memory a
+          // tap inside the window picks back up.
+          const fliesOn = _oneHand && holdEngaged && !joySteered;
+          const relNx = liveNx, relNy = liveNy;
+          if (fliesOn) {
+            joyFinger = null;
+            showHeldStick();
+            holdArmWindow();
+          } else {
+            hideJoystick();
+            if (_oneHand && _tapFire && joySteered &&
+                (Math.abs(relNx) > 0.10 || Math.abs(relNy) > 0.10)) {
+              holdValid = true; holdEngaged = false;
+              holdNx = relNx; holdNy = relNy;
+              holdArmWindow();
+            } else {
+              holdClear();
+            }
+          }
           if (_oneHand) {
             forwardTap(t);
             if (joyFireHold) {

@@ -95,6 +95,26 @@ the previous save, temporary-file cleanup, and successful replacement after
 an interrupted attempt. Uses isolated temporary player data and runs in
 `linux.yml`; only SDL2 development headers and its library are needed.
 
+### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
+
+```sh
+bash test/unit/touch_one_hand.sh
+```
+
+Links the real `touch_controls.cpp` against link-time stubs for the three
+`StateManager` entry points it drives (recorded as an event log), the
+`Preferences` global, the zoom-zone lookups and the safe inset, with
+`SDL_GetTicks` `--wrap`ped to a fake clock so a 300 ms window is stepped in
+one line. Each scenario runs the mobile entry points' loop (events, the
+per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
+deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
+tap with the ship flying the remembered stick throughout and stopping when
+the window lapses; an un-followed lift is forgotten; a re-land that steers
+takes the stick back live from its landing point; a centred release
+remembers nothing; the live-play gate, `touch_controls_reset` and a still
+finger under a dropped gate all stop the coast; the second-finger tap and
+the cold long press are unchanged. Runs in `linux.yml`.
+
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 
 ```sh

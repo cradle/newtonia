@@ -156,6 +156,30 @@ struct TouchControlsState {
     Uint32 oh_last_tap_ms;  // when the last tap fired / fire-hold released
     bool  oh_joy_firehold;
     bool  oh_tap_firehold;
+    // ---- Held deflection: the stick survives a lift-and-tap ----
+    // A one-handed pilot has ONE thumb, and it is on the stick: to tap
+    // the primary mid-manoeuvre it has to come off, which used to zero
+    // the stick (the ship stopped) and re-base it at zero deflection on
+    // the re-land (the ship stayed stopped until the thumb wandered).
+    // So a STEERING release now REMEMBERS its deflection for OH_HOLD_MS
+    // (touch_controls.cpp) — the ship still stops on the lift, since a
+    // stick let go must stop the ship at once (aiming is rotation), but a
+    // press landing inside that window ENGAGES the memory: the ship flies
+    // the remembered deflection again while that finger stays still, its
+    // un-wandered release (a tap: one shot, the same tap-fire as ever)
+    // keeps the ship flying and re-arms the window, so tap, tap, tap
+    // shoots three times through one unbroken manoeuvre. A wander hands
+    // the stick back to the finger live (floating base at the landing
+    // point, exactly as always — the memory is a bridge over the lift,
+    // never an offset base), and a window that lapses with no finger down
+    // stops the ship. Nothing here is a new gesture: the tap is a tap and
+    // the long press / fire-hold rules are unchanged; only what the ship
+    // does UNDER the finger's absence changed. Cleared with the tap-fire
+    // gate, so a pause or a screen change never leaves a ship coasting.
+    bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
+    bool   oh_hold_engaged;  // the ship is flying the remembered deflection now
+    float  oh_hold_nx, oh_hold_ny;
+    Uint32 oh_hold_until;    // window deadline while no finger drives it (0 = held by a finger)
 };
 
 extern TouchControlsState g_touch_controls;
