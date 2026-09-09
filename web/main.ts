@@ -780,7 +780,7 @@ declare const NewtoniaStore: undefined | {
       const { px: cx, py: cy, rad: R } = ringHome(r);
       const minDim = Math.min(r.width, r.height);
       const DEG = Math.PI / 180;
-      const orbit = R + 0.02 * minDim + btnR;
+      const orbit = R + 0.045 * minDim + btnR;
       const hit = Math.min(1.4 * btnR, orbit - R);
       const pivotX = _hand === 0 ? cx : _hand < 0 ? r.left : r.left + r.width;
       const away = Math.atan2(r.top + r.height - cy, cx - pivotX);

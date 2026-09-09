@@ -156,7 +156,7 @@ void touch_controls_resize(int w, int h) {
         g_touch_controls.pause_cx = (float)w - g_touch_controls.pause_cx;
     // ONE HAND: the action arc. SECONDARY / BOOST / TELEPORT HUG the
     // resting ring on its FAR side — the side away from the thumb's
-    // pivot — a hair off the ring's stroke, so each is one short flick
+    // pivot — a small gap off the ring's stroke, so each is one short flick
     // from wherever the stick rests and none sits where the stick's own
     // throw begins. Bearings use the math convention (0 = right, +90 =
     // up), and "away" is the real bearing from the pivot to the ring:
@@ -186,7 +186,7 @@ void touch_controls_resize(int w, int h) {
         float R  = tc.joy_radius;
         float cx = tc.joy_hint_cx, cy = tc.joy_hint_cy;
         int side = touch_handedness_side();
-        float orbit = R + 0.02f * minDim + btnR;
+        float orbit = R + 0.045f * minDim + btnR;  // gap: a finger's breathing room
         // Hit radius: generous, but tangent to the ring at most — a press
         // that starts inside the resting ring is always the stick.
         float hit = std::min(1.4f * btnR, orbit - R);
