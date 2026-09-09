@@ -571,9 +571,9 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         // a tap inside the window picks back up. touch_one_hand_tick
         // applies the remembered deflection while no finger is down.
         bool flies_on = tc.oh_hold_engaged && !tc.oh_joy_steered;
-        // Capture exactly the last applied live thrust, before clearing the
+        // Capture exactly the last applied live direction, before clearing the
         // nub. An older sample makes quick adjustments jump back on a tap.
-        // Rotation belongs to the live drag and is never resumed by firing.
+        float release_nx = tc.joy_nx;
         float release_ny = tc.joy_ny;
         tc.joy_active = false;
         tc.joy_nx     = 0.0f;
@@ -583,10 +583,10 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         } else {
             game->touch_joystick(0.0f, 0.0f);
             if (tc.one_hand_ingame && tc.oh_joy_steered &&
-                std::fabs(release_ny) > 0.10f) {
+                (std::fabs(release_nx) > 0.10f || std::fabs(release_ny) > 0.10f)) {
                 tc.oh_hold_valid   = true;
                 tc.oh_hold_engaged = false;
-                tc.oh_hold_nx      = 0.0f;
+                tc.oh_hold_nx      = release_nx;
                 tc.oh_hold_ny      = release_ny;
                 tc.oh_hold_until   = now + OH_HOLD_MS;
             } else {

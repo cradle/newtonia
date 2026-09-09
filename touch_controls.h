@@ -160,17 +160,17 @@ struct TouchControlsState {
     bool  oh_tap_firehold;
     // ---- Held deflection: the stick survives a lift-and-tap ----
     // A steering release stops immediately and remembers the previous
-    // thrust/reverse input for 500 ms. A press inside that window resumes
-    // thrust/reverse; rotation is released with the drag. An un-wandered
+    // full joystick input for 500 ms. A press inside that window resumes
+    // both axes exactly as they were at release. An un-wandered
     // release (tap/fire-hold/long press) keeps that input latched without a
-    // timeout. Further taps preserve thrust while keeping the aim straight.
+    // timeout. Further taps preserve the same joystick direction.
     // A wander takes over live from the new landing point; steer back to
     // centre to stop. Pause, reset and screen changes clear the memory.
-    // Remember the last applied live thrust, including a last-moment
-    // adjustment or reversal. Taps never resume rotation.
+    // Remember the last applied live direction, including a last-moment
+    // adjustment or reversal.
     bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
     bool   oh_hold_engaged;  // the ship is flying the remembered deflection now
-    float  oh_hold_nx, oh_hold_ny; // nx stays zero: turns require a live drag
+    float  oh_hold_nx, oh_hold_ny; // both axes of the last live deflection
     Uint32 oh_hold_until;    // initial lift-to-tap deadline (0 = latched input)
 };
 

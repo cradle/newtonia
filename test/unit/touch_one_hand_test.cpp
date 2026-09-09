@@ -288,22 +288,21 @@ static void test_reland_and_steer() {
   frame(16);
   float jx, jy;
   CHECK(last_joy(at, &jx, &jy) && near(jx, 0.5f) && near(jy, 0.0f));
-  // A rotation-only drag turns live but cannot leave the ship turning
-  // during a later fire tap, even if it lands inside the memory window.
+  // A horizontal drag also survives the firing tap; tap wobble cannot
+  // replace the remembered direction with a small accidental deflection.
   at = s_log.size();
   CHECK(up(1));
   CHECK(any_joy_zero(at));
-  CHECK(count_key(at, 'd', ' ') == 0);  // a steering release never fires
-  CHECK(!g_touch_controls.oh_hold_valid);
+  CHECK(count_key(at, 'd', ' ') == 0);
+  CHECK(g_touch_controls.oh_hold_valid);
   frame(100);
   at = s_log.size();
   down(1, 600, 500);
-  // Inside the tap threshold, but outside the ship's 0.10 deadzone.
   motion(1, 600 + 0.11f*r, 500);
   frame(16);
   CHECK(up(1));
   frame(1000);
-  CHECK(!any_joy_nonzero(at));
+  CHECK(last_joy(at, &jx, &jy) && near(jx, 0.5f) && near(jy, 0.0f));
   CHECK(count_key(at, 'd', ' ') == 1);
 }
 
@@ -419,29 +418,28 @@ static void test_long_press_under_memory() {
   CHECK(g_touch_controls.oh_hold_engaged);
 }
 
-// Remember the last live thrust even when it changes just before lift.
-// Taps still release rotation. Exercise forward and reverse thrust.
+// Remember both axes of the latest live direction, including top-left.
 static void test_last_live_thrust() {
-  for (float sign : {-1.0f, 1.0f}) {
+  for (float horizontal : {-0.6f, 0.6f}) for (float sign : {-1.0f, 1.0f}) {
     reset_layer();
     down(1, 500, 400);
     float r = g_touch_controls.joy_radius;
     frame(16);
     motion(1, 500 + 0.3f*r, 400 + sign*0.4f*r);
     frame(80);
-    motion(1, 500 + 0.6f*r, 400 + sign*0.7f*r);
+    motion(1, 500 + horizontal*r, 400 + sign*0.7f*r);
     frame(10);
     CHECK(up(1));
-    CHECK(near(g_touch_controls.oh_hold_nx, 0.0f));
+    CHECK(near(g_touch_controls.oh_hold_nx, horizontal));
     CHECK(near(g_touch_controls.oh_hold_ny, sign*0.7f));
     frame(100);
     down(1, 600, 400);
     frame(16);
     float x, y;
-    CHECK(last_joy(0, &x, &y) && near(x, 0.0f) && near(y, sign*0.7f));
+    CHECK(last_joy(0, &x, &y) && near(x, horizontal) && near(y, sign*0.7f));
     CHECK(up(1));
     frame(16);
-    CHECK(last_joy(0, &x, &y) && near(x, 0.0f) && near(y, sign*0.7f));
+    CHECK(last_joy(0, &x, &y) && near(x, horizontal) && near(y, sign*0.7f));
   }
 }
 

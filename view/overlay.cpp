@@ -678,7 +678,7 @@ void Overlay::touch_help(const GLGame *glgame) {
   static const Row ONE_HAND[] = {
     {"DRAG",           "STEER + THRUST"},
     {"TAP",            "FIRE"},
-    {"LIFT + TAP",     "FIRE, KEEP THRUST"},
+    {"LIFT + TAP",     "FIRE, KEEP INPUT"},
     {"TAP, THEN HOLD", "KEEP FIRING"},
     {"HOLD",           "SECONDARY (SHIELD: ON/OFF)"},
     {"SECOND FINGER",  "FIRE WHILE STEERING"},

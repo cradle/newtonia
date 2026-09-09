@@ -619,9 +619,9 @@ declare const NewtoniaStore: undefined | {
     let spaceUpTimer: number | null = null;
     let secondaryUpTimer: number | null = null;
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
-    // A steering release stops and remembers thrust for 500 ms. A press
-    // inside that window resumes thrust with rotation released. Its
-    // un-wandered release latches thrust until live steering or reset
+    // A steering release stops and remembers both axes for 500 ms. A press
+    // inside that window resumes the same full joystick direction. Its
+    // un-wandered release latches that input until live steering or reset
     // takes over. Only the initial
     // lift-to-tap opportunity expires, never input resumed by a tap.
     const OH_HOLD_MS = 500;
@@ -1050,9 +1050,9 @@ declare const NewtoniaStore: undefined | {
           // STEERING release outside the deadzone becomes the memory a
           // tap inside the window picks back up.
           const fliesOn = _oneHand && holdEngaged && !joySteered && !cancelled;
-          // Capture the last applied thrust before hideJoystick clears it.
+          // Capture both axes of the last live direction before clearing it.
           // Quick adjustments must not jump back to an older sample.
-          // Match native: taps preserve thrust but release rotation.
+          const releaseNx = liveNx;
           const releaseNy = liveNy;
           if (fliesOn) {
             joyFinger = null;
@@ -1063,9 +1063,9 @@ declare const NewtoniaStore: undefined | {
             holdClear();
             hideJoystick();
             if (_oneHand && _tapFire && joySteered && !cancelled &&
-                Math.abs(releaseNy) > 0.10) {
+                (Math.abs(releaseNx) > 0.10 || Math.abs(releaseNy) > 0.10)) {
               holdValid = true; holdEngaged = false;
-              holdNx = 0; holdNy = releaseNy;
+              holdNx = releaseNx; holdNy = releaseNy;
               holdArmWindow();
               showHeldStick();
             } else {

@@ -109,15 +109,15 @@ Links the real `touch_controls.cpp` against link-time stubs for the three
 one line. Each scenario runs the mobile entry points' loop (events, the
 per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
 deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
-tap and resumes thrust/reverse with rotation released. Live drags still turn
-immediately; rotation-only releases cannot restart a turn on a tap. Small tap
+tap and resumes both joystick axes. All four diagonals and horizontal
+inputs retain their direction through lift, tap and rehold. Small tap
 wobble never steers, even outside the ship's deadzone. Thrust stays active
 across multi-second gaps after a tap; re-steering and returning to centre
 stops it. An initial
-lift without a follow-up tap expires after 500 ms. Quick changes immediately before lift must remember the latest
-forward/reverse thrust, including reversals, without latching rotation. Sparse
+lift without a follow-up tap expires after 500 ms. Quick changes immediately
+before lift must remember the latest full deflection, including reversals. Sparse
 motion, short new drags, centred/reversed axes, reset and gate drops exercise the
-handoff. A 450 ms lift-to-tap gap resumes with the ring, thrust nub and action
+handoff. A 450 ms lift-to-tap gap resumes with the ring, joystick nub and action
 buttons at the previous anchor; reholding and tap jitter keep them there,
 while a deliberate new drag relocates them. Second-finger taps and long presses are also covered. Native tests
 run in `linux.yml`.
@@ -125,7 +125,7 @@ run in `linux.yml`.
 The web test compiles the production TypeScript joystick handlers into a
 temporary directory and executes them with a stub DOM and deterministic
 clock. It checks resumed tap chains, long gaps, initial memory expiry,
-last-moment thrust changes, rotation-only input, centred/reversed axes,
+last-moment direction changes, horizontal input, centred/reversed axes,
 sparse motion, fresh drags, cancellation without a shot, and gate drop under a held
 finger. Page-hide and visibility events also stop latched input with the online
 gameplay gate still open, release gesture ownership when touchcancel never
