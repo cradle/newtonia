@@ -13,11 +13,14 @@
 //    channels unscaled (music still obeys) rather than failing the build.
 //
 //  - MUSIC scales the tunes relative to that: the title stream
-//    (Mix_VolumeMusic carries master*music, under a fixed 0.75 headroom
-//    scale — the tune distorted at FULL in the field) and the intro/pause loops,
+//    (Mix_VolumeMusic carries master*music) and the intro/pause loops,
 //    which live on CHANNELS, not the music stream — those sites multiply
 //    their own chunk volume by music_scale() (master reaches them through
 //    the channel master volume, so the fraction here excludes it).
+//
+// Both sit under a fixed 0.75 HEADROOM scale (audio_volume.cpp): the
+// mix clipped audibly at FULL in the field, so every level is three
+// quarters of what the sliders say, and FULL stays the top of the range.
 //
 // apply() is called from load_preferences() (covers any later pref
 // reload), from the Menu constructor (the one platform-neutral point
