@@ -163,8 +163,10 @@ struct TouchControlsState {
     // steering/thrust immediately and remembers both axes for 500 ms.
     // Reholding inside that window selects direction from the new tap
     // location relative to the saved base, only while the finger is down.
-    // A new release renews the window; no input runs unattended. A wander takes over live from its new landing point.
-    // Pause, reset and screen changes clear the memory.
+    // A new release renews the window; no input runs unattended.
+    // Drags keep using the same base.
+    // Neutral releases also retain the base. Only a new press after
+    // expiry may relocate it. Pause, reset and screen changes clear it.
     bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
     bool   oh_hold_engaged;  // the ship is flying the remembered deflection now
     float  oh_hold_nx, oh_hold_ny; // both axes of the last live deflection

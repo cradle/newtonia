@@ -999,17 +999,9 @@ declare const NewtoniaStore: undefined | {
               Math.hypot(t.clientX - joyDownX, t.clientY - joyDownY) >
                   joyRad * 0.12)
             joySteered = true;
-          // During a resumed press the nub is the tap-selected deflection
-          // until the finger wanders (sub-slop jitter must not overwrite
-          // it with a near-centre reading); past the slop the stick is
-          // the finger's own again, live from the landing point.
-          // Small tap wobble never steers, including taps without memory.
+          // Tap slop classifies the gesture; dragging keeps measuring
+          // against the same base, without relocating it on motion.
           if (_oneHand && !joySteered) continue;
-          if (_oneHand && holdEngaged) {
-            showJoystick(joyDownX, joyDownY, joyRad);
-            actionAnchor = { x: joyDownX, y: joyDownY };
-            positionActionButtons?.();
-          }
           holdEngaged = false;
           moveJoystick(t.clientX, t.clientY);
           if (!_oneHand) break;
@@ -1035,13 +1027,11 @@ declare const NewtoniaStore: undefined | {
           const wasTap = _oneHand && !joyFireHold && !joySteered &&
                          !joyFired && Date.now() - joyDownMs < OH_LONG_PRESS_MS;
           // Every lift releases input, including a firing tap/fire-hold.
-          // Remember both axes briefly so a quick rehold still resumes them.
-          const remember = joySteered || holdEngaged;
+          // Retain the base even at neutral so quick reholds cannot relocate it.
           const releaseNx = liveNx, releaseNy = liveNy;
           holdClear();
           hideJoystick();
-          if (_oneHand && _tapFire && remember && !cancelled &&
-              (Math.abs(releaseNx) > 0.10 || Math.abs(releaseNy) > 0.10)) {
+          if (_oneHand && _tapFire && !cancelled) {
             holdValid = true;
             holdNx = releaseNx; holdNy = releaseNy;
             holdArmWindow();

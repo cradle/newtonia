@@ -220,9 +220,7 @@ static void test_armed_memory_lapses() {
   CHECK(count_key(at, 'd', ' ') == 1);  // a plain tap still fires
 }
 
-// Re-land inside the window and STEER: the finger's wander takes the
-// stick back live from its own landing point, and the lift after that
-// remembers only the new thrust.
+// Re-land inside the window and steer against the same fixed base.
 static void test_reland_and_steer() {
   reset_layer();
   float nx, ny;
@@ -238,17 +236,17 @@ static void test_reland_and_steer() {
   CHECK(near(g_touch_controls.joy_nx, 100/g_touch_controls.joy_radius));
   CHECK(near(g_touch_controls.joy_ny, 0.0f));
   frame(16);
-  // A real wander: live deflection from the landing point (600,500).
+  // A real drag still uses the original base (500,500), clamped at the rim.
   float r = g_touch_controls.joy_radius;
   motion(1, 600 + 0.5f * r, 500);
   CHECK(g_touch_controls.oh_joy_steered);
   CHECK(!g_touch_controls.oh_hold_engaged);
-  CHECK(near(g_touch_controls.joy_cx, 600) && near(g_touch_controls.joy_cy, 500));
-  CHECK(near(g_touch_controls.joy_nx, 0.5f) && near(g_touch_controls.joy_ny, 0.0f));
+  CHECK(near(g_touch_controls.joy_cx, 500) && near(g_touch_controls.joy_cy, 500));
+  CHECK(near(g_touch_controls.joy_nx, 1.0f) && near(g_touch_controls.joy_ny, 0.0f));
   size_t at = s_log.size();
   frame(16);
   float jx, jy;
-  CHECK(last_joy(at, &jx, &jy) && near(jx, 0.5f) && near(jy, 0.0f));
+  CHECK(last_joy(at, &jx, &jy) && near(jx, 1.0f) && near(jy, 0.0f));
   // A horizontal drag also survives the firing tap; tap wobble cannot
   // replace the remembered direction with a small accidental deflection.
   at = s_log.size();
@@ -268,16 +266,31 @@ static void test_reland_and_steer() {
   CHECK(count_key(at, 'd', ' ') == 1);
 }
 
-// A stick brought back to centre before the lift is a stop, not a
-// manoeuvre: nothing to remember.
-static void test_centre_release_forgets() {
+// Neutral release preserves the base too; only expiry permits relocation.
+static void test_neutral_base_expires() {
   reset_layer();
   float nx, ny;
   steer_up(1, 500, 500, &nx, &ny);
+  const float bx = g_touch_controls.boost_cx, by = g_touch_controls.boost_cy;
   motion(1, 500, 500);
   frame(16);
   CHECK(up(1));
-  CHECK(!g_touch_controls.oh_hold_valid);
+  CHECK(g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
+  CHECK(near(g_touch_controls.oh_hold_nx, 0) && near(g_touch_controls.oh_hold_ny, 0));
+  frame(499);
+  down(1, 600, 500);
+  CHECK(near(g_touch_controls.joy_cx, 500) && near(g_touch_controls.joy_cy, 500));
+  motion(1, 550, 450);
+  frame(1000); // holding does not let a release timer move the base
+  CHECK(near(g_touch_controls.joy_cx, 500) && near(g_touch_controls.joy_cy, 500));
+  CHECK(near(g_touch_controls.joy_nx, 50/g_touch_controls.joy_radius));
+  CHECK(near(g_touch_controls.joy_ny, -50/g_touch_controls.joy_radius));
+  CHECK(near(g_touch_controls.boost_cx, bx) && near(g_touch_controls.boost_cy, by));
+  CHECK(up(1));
+  frame(500);
+  down(1, 600, 300);
+  CHECK(near(g_touch_controls.joy_cx, 600) && near(g_touch_controls.joy_cy, 300));
+  CHECK(near(g_touch_controls.joy_nx, 0) && near(g_touch_controls.joy_ny, 0));
 }
 
 // The live-play gate dropping (pause, roster, help card, game over) stops
@@ -420,7 +433,7 @@ static void test_stationary_sample_and_new_press() {
   CHECK(near(g_touch_controls.oh_hold_ny, -0.3f));
   frame(100);
   down(1, 600, 400);
-  motion(1, 600, 400 + 0.5f*g_touch_controls.joy_radius);
+  motion(1, 500, 500 + 0.5f*g_touch_controls.joy_radius);
   frame(10);  // a short new drag must not reuse the prior press's history
   CHECK(up(1));
   CHECK(near(g_touch_controls.oh_hold_ny, 0.5f));
@@ -457,8 +470,9 @@ static void test_active_action_buttons() {
   down(2, x, y);
   CHECK(tc.boost_pressed && count_key(at, 'd', 'e') == 1);
   CHECK(!tc.joy_active);
+  frame(500); // the window must expire before a new press relocates the base
   down(3, 100, 200);
-  motion(3, 130, 200); // deliberate steering relocates a resumed base
+  motion(3, 130, 200);
   CHECK(tc.joy_active && tc.joy_finger == 3);
   CHECK(near(tc.boost_cx, x) && near(tc.boost_cy, y));
   CHECK(up(2));
@@ -513,7 +527,7 @@ int main() {
   test_lift_tap_tap();
   test_armed_memory_lapses();
   test_reland_and_steer();
-  test_centre_release_forgets();
+  test_neutral_base_expires();
   test_gate_off_clears_released_memory();
   test_gate_off_zeroes_held_nub();
   test_reset_clears_released_memory();

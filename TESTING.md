@@ -120,8 +120,9 @@ cannot leave an input active or restart stale steering. Quick changes immediatel
 before lift must remember the latest full deflection, including reversals. Sparse
 motion, short new drags, centred/reversed axes, reset and gate drops exercise the
 handoff. A 450 ms lift-to-tap gap resumes with the ring, joystick nub and action
-buttons at the previous anchor; reholding and tap jitter keep them there,
-while a deliberate new drag relocates them. Second-finger taps and long presses are also covered. Native tests
+buttons at the previous anchor. Taps, neutral releases and deliberate drags
+keep that anchor through the 500 ms window; holding longer than 500 ms does
+not move it. Only a new press after expiry relocates it. Second-finger taps and long presses are also covered. Native tests
 run in `linux.yml`.
 
 The web test compiles the production TypeScript joystick handlers into a

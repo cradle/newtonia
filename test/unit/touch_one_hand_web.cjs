@@ -136,8 +136,8 @@ for (const [x,y] of [[0,0], [0,.4]]) {
   const h = harness(); steer(h);
   h.send('touchmove', 500, 400-.3*r); h.advance(60);
   h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400-.3*r); h.expect(0, -.3);
-  h.send('touchmove', 500, 400+.2*r); h.advance(10);
-  h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400+.2*r); h.expect(0, .5);
+  h.send('touchmove', 500, 400+.5*r); h.advance(10);
+  h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400+.5*r); h.expect(0, .5);
 }
 
 {
@@ -232,11 +232,17 @@ function pressButton(button, type, id) {
     h.send('touchmove', x+2,y+1); h.expect(nx, ny);
     h.advance(40); h.send('touchend',x,y); h.expect(0, 0); h.advance(450);
   }
-  // The centre explicitly selects neutral input and release forgets it.
+  // Neutral input retains the base for the full window too.
   h.send('touchstart', 500,400); h.expect(0,0);
   assert.equal(nub.style.left, '500px');
   assert.equal(nub.style.top, '400px');
-  h.send('touchend'); h.advance(100);
+  h.send('touchend'); h.advance(499);
+  h.send('touchstart',500+.5*r,400); h.expect(.5,0);
+  h.send('touchmove',500-.5*r,400-.4*r); h.expect(-.5,-.4);
+  h.advance(1000); // a held finger keeps the base even beyond 500 ms
+  assert.match(base.style.cssText, /left:500px;top:400px/);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  h.send('touchend'); h.expect(0,0); h.advance(500);
   h.send('touchstart',650,420); h.expect(0,0);
   assert.match(base.style.cssText, /left:650px;top:420px/);
   h.send('touchmove',650+.3*r,420); h.expect(.3,0);
@@ -255,6 +261,7 @@ function pressButton(button, type, id) {
   const boost = actionPositions(h)[1];
   pressButton(boost, 'touchstart', 2);
   assert.deepEqual(h.keys.at(-1), ['keydown', 'e']);
+  h.advance(500); // only an expired window permits relocation
   h.send('touchstart', 100, 200, 3);
   h.send('touchmove', 130, 200, 3);
   assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);

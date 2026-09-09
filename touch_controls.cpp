@@ -450,7 +450,7 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         // long-press vs steering decidable at all (a centre-anchored
         // stick would read every off-centre touch as full deflection).
         // A resumed fire gesture keeps the visible base. Only a cold
-        // press or a deliberate new drag relocates the ring and buttons.
+        // press after expiry relocates the ring and buttons.
         bool resume = tc.one_hand_ingame && oh_hold_armed(SDL_GetTicks());
         if (!resume) {
             tc.joy_cx = px;
@@ -509,19 +509,9 @@ void touch_one_hand_motion(SDL_FingerID id, float px, float py) {
         // can never late-fire by drifting back over its start point.
         if (oh_moved_past_slop(px, py, tc.oh_joy_down_px, tc.oh_joy_down_py))
             tc.oh_joy_steered = true;
-        // During a resumed press the nub is the tap-selected deflection
-        // until the finger wanders: sub-slop jitter must not overwrite
-        // it with a near-centre reading (which would stop the ship the
-        // memory exists to keep moving). Past the slop the finger is
-        // steering, and the stick is its own again — floating base at
-        // the landing point, live deflection from here on.
-        // A tap's small wobble must never steer, even without held thrust.
+        // Tap slop only classifies the gesture. Once dragging, measure
+        // every position against the same base; never rebase on motion.
         if (!tc.oh_joy_steered) return;
-        if (tc.oh_hold_engaged) {
-            tc.joy_cx = tc.oh_joy_down_px;
-            tc.joy_cy = tc.oh_joy_down_py;
-            oh_layout_actions();
-        }
         tc.oh_hold_engaged = false;
         oh_update_nub(px, py);
     } else if (tc.oh_tap_active && tc.oh_tap_finger == id) {
@@ -558,17 +548,15 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         bool tap = !tc.oh_joy_firehold && !tc.oh_joy_steered &&
                    !tc.oh_joy_fired &&
                    now - tc.oh_joy_down_ms < OH_LONG_PRESS_MS;
-        // Every lift releases steering/thrust. Keep a short-lived snapshot
-        // for a tap/rehold, never an active input with no steering finger.
-        bool remember = tc.oh_joy_steered || tc.oh_hold_engaged;
+        // Every lift releases steering/thrust and renews the base window,
+        // including neutral taps. No input runs without a steering finger.
         float release_nx = tc.joy_nx;
         float release_ny = tc.joy_ny;
         tc.joy_active = false;
         tc.joy_nx = tc.joy_ny = 0.0f;
         game->touch_joystick(0.0f, 0.0f);
         oh_hold_clear();
-        if (tc.one_hand_ingame && remember &&
-            (std::fabs(release_nx) > 0.10f || std::fabs(release_ny) > 0.10f)) {
+        if (tc.one_hand_ingame) {
             tc.oh_hold_valid = true;
             tc.oh_hold_nx = release_nx;
             tc.oh_hold_ny = release_ny;
