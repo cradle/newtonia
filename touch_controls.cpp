@@ -154,6 +154,86 @@ void touch_controls_resize(int w, int h) {
     // list is not a tap target.
     if (touch_layout_mirrored())
         g_touch_controls.pause_cx = (float)w - g_touch_controls.pause_cx;
+    // ONE HAND: the action arc. SECONDARY / BOOST / TELEPORT HUG the
+    // resting ring on its FAR side — the side away from the thumb's
+    // pivot — a small gap off the ring's stroke, so each is one short flick
+    // from wherever the stick rests and none sits where the stick's own
+    // throw begins. Bearings use the math convention (0 = right, +90 =
+    // up), and "away" is the real bearing from the pivot to the ring:
+    // the bottom bezel's midpoint under CENTRE (straight up), the bottom
+    // corner on the thumb's side under LEFT/RIGHT (up and inward — steeper
+    // in portrait, where the ring sits higher above that corner). The
+    // three spread 60 degrees apart across that far half where the space
+    // allows; where a bezel, the zoom column or the pause circle's hit
+    // zone would catch an end button, the arc is fitted into the LEGAL
+    // span instead — a bearing scan around "away", the spread shrinking
+    // (never below 30 degrees) and the apex sliding away from the
+    // obstruction — so no button ever shares a finger with the zoom
+    // zones (which the gesture layer carves out FIRST). SECONDARY, the
+    // busiest, takes the end on the screen-centre side (the short sweep
+    // inward), BOOST the apex, TELEPORT the other end; LEFT mirrors that
+    // order like the rest of the OSD. The two-hand state fields are
+    // reused wholesale — the overlay draw, the gesture layer's hit tests
+    // and touch_controls_reset's releases all read them — so the shoot
+    // circle is the only two-hand button with no one-hand home (tap-fire
+    // is the trigger). Landscape CENTRE is the one honest compromise: the
+    // ring's top already sits just under the camera-pinned ship, so the
+    // apex circle straddles it there (translucent; LEFT/RIGHT tilt clear).
+    // web/main.ts's oneHandArc is the twin — keep the constants in step.
+    if (touch_one_handed()) {
+        TouchControlsState &tc = g_touch_controls;
+        const float DEG = (float)M_PI / 180.0f;
+        float R  = tc.joy_radius;
+        float cx = tc.joy_hint_cx, cy = tc.joy_hint_cy;
+        int side = touch_handedness_side();
+        float orbit = R + 0.045f * minDim + btnR;  // gap: a finger's breathing room
+        // Hit radius: generous, but tangent to the ring at most — a press
+        // that starts inside the resting ring is always the stick.
+        float hit = std::min(1.4f * btnR, orbit - R);
+        float pivot_x = side == 0 ? cx : side < 0 ? 0.0f : (float)w;
+        float away = atan2f((float)h - cy, cx - pivot_x);
+        // Keep-outs, pixel space: window bounds (a margin past the
+        // radius), the PLACED zoom zones, the pause circle's hit zone.
+        const TouchZone zones[2] = { TouchZone::zoom_in_placed(),
+                                     TouchZone::zoom_out_placed() };
+        float m = btnR + 0.02f * minDim;
+        auto legal = [&](float th) {
+            float px = cx + orbit * cosf(th), py = cy - orbit * sinf(th);
+            if (px < m || px > (float)w - m || py < m || py > (float)h - m)
+                return false;
+            for (int i = 0; i < 2; i++) {
+                float x0 = zones[i].nx0 * (float)w, x1 = zones[i].nx1 * (float)w;
+                float y0 = zones[i].ny0 * (float)h, y1 = zones[i].ny1 * (float)h;
+                float dx = std::max(std::max(x0 - px, px - x1), 0.0f);
+                float dy = std::max(std::max(y0 - py, py - y1), 0.0f);
+                if (dx * dx + dy * dy < hit * hit) return false;
+            }
+            float pdx = px - tc.pause_cx, pdy = py - tc.pause_cy;
+            float pr = hit + tc.pause_hit_radius;
+            return pdx * pdx + pdy * pdy >= pr * pr;
+        };
+        // The legal span around "away": the far half plus 15 degrees of
+        // slack each side, cut back to the first obstruction either way.
+        float lo = away, hi = away;
+        while (lo > away - 105.0f * DEG && legal(lo - DEG)) lo -= DEG;
+        while (hi < away + 105.0f * DEG && legal(hi + DEG)) hi += DEG;
+        float hs = std::max(30.0f * DEG, std::min(60.0f * DEG, (hi - lo) * 0.5f));
+        float apex = std::min(std::max(away, lo + hs), hi - hs);
+        float sec_off = side < 0 ? -hs : hs;
+        float bearing[3] = { apex + sec_off, apex, apex - sec_off };  // sec, boost, tele
+        float px[3], py[3];
+        for (int i = 0; i < 3; i++) {
+            px[i] = cx + orbit * cosf(bearing[i]);
+            py[i] = cy - orbit * sinf(bearing[i]);
+        }
+        tc.mine_cx = px[0];     tc.mine_cy = py[0];     tc.mine_radius = btnR;
+        tc.boost_cx = px[1];    tc.boost_cy = py[1];    tc.boost_radius = btnR;
+        tc.teleport_cx = px[2]; tc.teleport_cy = py[2]; tc.teleport_radius = btnR;
+        tc.btn_hit_radius      = hit;   // the SECONDARY (mine) region
+        tc.boost_hit_radius    = hit;
+        tc.teleport_hit_radius = hit;
+    }
+
 }
 
 void touch_controls_relayout() {
@@ -295,6 +375,11 @@ static void oh_long_press_secondary(StateManager *game) {
     oh_fire_secondary(game);
 }
 
+static bool oh_in_button(float px, float py, float cx, float cy, float hit) {
+    float dx = px - cx, dy = py - cy;
+    return dx * dx + dy * dy <= hit * hit;
+}
+
 void touch_one_hand_down(StateManager *game, SDL_FingerID id,
                          float px, float py, float nx, float ny) {
     TouchControlsState &tc = g_touch_controls;
@@ -306,6 +391,40 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         (TouchZone::zoom_in_placed().contains(nx, ny) ||
          TouchZone::zoom_out_placed().contains(nx, ny)))
         return;
+    // The action arc (touch_controls_resize): SECONDARY / BOOST / TELEPORT
+    // claim their finger ahead of the stick, in live play only — the same
+    // gate as tap-fire, so a menu or pause-screen tap on a button's spot
+    // stays a plain tap. Press = key down, release = key up, tracked per
+    // finger exactly like the two-hand circles, and a finger that slides
+    // off keeps its button until it lifts. A press on a cooling-down
+    // TELEPORT is claimed too (so it can't fall through and FIRE) but
+    // sends nothing — Ship::teleport() would refuse it anyway, and the
+    // dimmed circle is the feedback; the key-up on release is inert.
+    if (tc.one_hand_ingame) {
+        if (tc.mine_available && !tc.mine_pressed &&
+            oh_in_button(px, py, tc.mine_cx, tc.mine_cy, tc.btn_hit_radius)) {
+            tc.mine_pressed = true;
+            tc.mine_finger  = id;
+            game->keyboard('x', 0, 0);
+            return;
+        }
+        if (!tc.boost_pressed &&
+            oh_in_button(px, py, tc.boost_cx, tc.boost_cy, tc.boost_hit_radius)) {
+            // Presses during the cooldown land and no-op in Ship::boost().
+            tc.boost_pressed = true;
+            tc.boost_finger  = id;
+            game->keyboard('e', 0, 0);
+            return;
+        }
+        if (!tc.teleport_pressed &&
+            oh_in_button(px, py, tc.teleport_cx, tc.teleport_cy,
+                         tc.teleport_hit_radius)) {
+            tc.teleport_pressed = true;
+            tc.teleport_finger  = id;
+            if (tc.teleport_ready) game->keyboard('t', 0, 0);
+            return;
+        }
+    }
     if (!tc.joy_active) {
         // First finger: the joystick, floating base exactly like the
         // two-hand layout — the mid-screen ring is a resting hint, not an
@@ -362,6 +481,24 @@ void touch_one_hand_motion(SDL_FingerID id, float px, float py) {
 bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
     TouchControlsState &tc = g_touch_controls;
     Uint32 now = SDL_GetTicks();
+    // Action-arc releases first: their fingers were never the stick's.
+    // Unconditional on the gate — a button pressed in live play must
+    // release even if the game paused under the finger.
+    if (tc.mine_pressed && tc.mine_finger == id) {
+        tc.mine_pressed = false;
+        game->keyboard_up('x', 0, 0);
+        return true;
+    }
+    if (tc.boost_pressed && tc.boost_finger == id) {
+        tc.boost_pressed = false;
+        game->keyboard_up('e', 0, 0);
+        return true;
+    }
+    if (tc.teleport_pressed && tc.teleport_finger == id) {
+        tc.teleport_pressed = false;
+        game->keyboard_up('t', 0, 0);
+        return true;
+    }
     if (tc.joy_active && tc.joy_finger == id) {
         bool tap = !tc.oh_joy_firehold && !tc.oh_joy_steered &&
                    !tc.oh_joy_fired &&

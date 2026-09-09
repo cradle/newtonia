@@ -92,11 +92,16 @@ struct TouchControlsState {
 
     // ---- One-handed mode (Preferences::touch_one_hand) ----
     // The whole screen is one joystick resting centred just below the
-    // ship, and the OSD draws no shoot/mine/boost circles. A press that never wanders
+    // ship, and the OSD draws no shoot circle. A press that never wanders
     // past the tap slop is a FIRE gesture instead of steering: released
     // before the long-press threshold it taps the primary (' '), held past
     // it the secondary fires ('x', gated on mine_available exactly like
-    // the mine button it replaces). GLGame::tick mirrors one_hand_ingame
+    // the mine button it replaces). Beside the gestures, three BUTTONS —
+    // SECONDARY / BOOST / TELEPORT — ride an arc on the far side of the
+    // resting ring (touch_controls_resize lays it out in the mine_*/
+    // boost_*/teleport_* fields above, so draw, hit test and reset all
+    // share the two-hand state); the gesture layer claims their fingers
+    // ahead of the stick, in live play only. GLGame::tick mirrors one_hand_ingame
     // from touch_zoom_active() — live play with a local ship — so menu,
     // pause-screen, replay and game-over taps never synthesize fire keys
     // (the flag deliberately goes stale-true under the Intro state, where
@@ -171,7 +176,8 @@ void touch_controls_reset(StateManager *game);
 // The shared gesture layer for the native entry points: when
 // touch_one_handed() is on, finger_down/motion/up delegate here wholesale
 // (only the top-right pause button keeps its own hit test — the invisible
-// centre pause zone is the joystick field now), and the per-tick loop
+// centre pause zone is the joystick field now; the action arc's buttons
+// are hit-tested in here, ahead of the stick), and the per-tick loop
 // calls touch_one_hand_tick beside the joystick apply for the long-press
 // watchdog and the deferred fire-key releases. The web build's HTML OSD
 // implements the same gesture in web/main.ts.

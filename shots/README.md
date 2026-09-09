@@ -86,6 +86,10 @@ clear                  # empty the generated world (asteroids, hazards,
 hud off                # hide the HUD and minimap
 stars 0.15             # starfield density 0..1, overriding the preference
                        #   (shot mode never writes preferences back; 0 = none)
+one_hand [left|centre|right]   # the ONE HAND touch input method + HANDEDNESS
+                       #   (default two hands / centre) — with
+                       #   NEWTONIA_FORCE_TOUCH=1 renders the one-hand ring
+                       #   and its SECONDARY / BOOST / TELEPORT action arc
 transparent            # write RGBA: black becomes full transparency, dim
                        #   stroke edges translucent (logo/text assets)
 noship                 # hold every player unspawned — pure-scenery shots
