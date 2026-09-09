@@ -613,13 +613,19 @@ declare const NewtoniaStore: undefined | {
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
     // The one thumb has to come off the stick to tap, which used to stop
     // the ship (and re-base the stick at zero on the re-land). A STEERING
-    // release still stops the ship at once but REMEMBERS its deflection
+    // release still stops the ship at once but REMEMBERS only its thrust
     // for OH_HOLD_MS; a press inside that window engages it — the ship
     // flies the memory while the finger stays still, an un-wandered
     // release (the tap: one shot) keeps it flying and re-arms the window,
     // a wander takes the stick back live from the landing point, and a
     // lapsed window with no finger down stops the ship.
     const OH_HOLD_MS = 300;
+    const OH_SAMPLE_MS = 50;
+    let thrustSamples: { ms: number; ny: number }[] = [];
+    function pruneThrustSamples(now: number): void {
+      while (thrustSamples.length > 1 && now - thrustSamples[1].ms >= OH_SAMPLE_MS)
+        thrustSamples.shift();
+    }
     let holdValid = false, holdEngaged = false;
     let holdNx = 0, holdNy = 0;
     let holdTimer: number | null = null;   // the window; null = held by a finger or no memory
@@ -728,6 +734,7 @@ declare const NewtoniaStore: undefined | {
     }
 
     function holdClear(): void {
+      thrustSamples = [];
       holdValid = false; holdEngaged = false;
       holdNx = 0; holdNy = 0;
       if (holdTimer !== null) { window.clearTimeout(holdTimer); holdTimer = null; }
@@ -754,9 +761,14 @@ declare const NewtoniaStore: undefined | {
     _holdRelease = () => {
       const wasEngaged = holdEngaged;
       holdClear();
-      if (wasEngaged && joyFinger === null) {
+      if (wasEngaged) {
+        liveNx = 0; liveNy = 0;
         callTouchJoystick(0, 0);
-        positionJoyPlaceholder();
+        if (joyFinger === null) positionJoyPlaceholder();
+        else {
+          joyNub.style.left = `${joyCX}px`;
+          joyNub.style.top = `${joyCY}px`;
+        }
       }
     };
     // The coasting stick: the resting ring with the active nub at the
@@ -921,6 +933,7 @@ declare const NewtoniaStore: undefined | {
           if (_oneHand) {
             joyDownX = t.clientX; joyDownY = t.clientY;
             joyDownMs = Date.now();
+            thrustSamples = [];
             joySteered = false; joyFired = false;
             liveNx = 0; liveNy = 0;
             // Held deflection: a press inside the window picks the
@@ -974,6 +987,11 @@ declare const NewtoniaStore: undefined | {
           if (_oneHand && holdEngaged && !joySteered) continue;
           holdEngaged = false;
           moveJoystick(t.clientX, t.clientY);
+          if (_oneHand && joySteered) {
+            const now = Date.now();
+            thrustSamples.push({ ms: now, ny: liveNy });
+            pruneThrustSamples(now);
+          }
           if (!_oneHand) break;
         } else if (_oneHand && t.identifier === tapFinger && !tapSteered) {
           if (Math.hypot(t.clientX - tapDownX, t.clientY - tapDownY) >
@@ -1003,7 +1021,11 @@ declare const NewtoniaStore: undefined | {
           // STEERING release outside the deadzone becomes the memory a
           // tap inside the window picks back up.
           const fliesOn = _oneHand && holdEngaged && !joySteered && !cancelled;
-          const relNx = liveNx, relNy = liveNy;
+          // Keep the heading set on lift, and reject the last 50 ms of
+          // peeling-thumb drift. A short drag uses its first steering sample.
+          pruneThrustSamples(Date.now());
+          const relNy = liveNy;
+          const sampledNy = thrustSamples[0]?.ny ?? 0;
           if (fliesOn) {
             joyFinger = null;
             showHeldStick();
@@ -1011,21 +1033,22 @@ declare const NewtoniaStore: undefined | {
           } else {
             hideJoystick();
             if (_oneHand && _tapFire && joySteered && !cancelled &&
-                (Math.abs(relNx) > 0.10 || Math.abs(relNy) > 0.10)) {
+                (Math.abs(relNy) > 0.10 && Math.abs(sampledNy) > 0.10 &&
+                 relNy * sampledNy > 0)) {
               holdValid = true; holdEngaged = false;
-              holdNx = relNx; holdNy = relNy;
+              holdNx = 0; holdNy = sampledNy;
               holdArmWindow();
             } else {
               holdClear();
             }
           }
           if (_oneHand) {
-            forwardTap(t);
+            if (!cancelled) forwardTap(t);
             if (joyFireHold) {
               joyFireHold = false;
               keyEvt(" ", "keyup");
-              lastTapMs = Date.now();  // a quick re-press continues the stream
-            } else if (wasTap && _tapFire) {
+              lastTapMs = cancelled ? 0 : Date.now();  // cancellation breaks the chain
+            } else if (wasTap && _tapFire && !cancelled) {
               tapFirePrimary();
             }
           }
@@ -1033,16 +1056,16 @@ declare const NewtoniaStore: undefined | {
           const wasTap = !tapFireHold && !tapSteered && !tapFired &&
                          Date.now() - tapDownMs < OH_LONG_PRESS_MS;
           tapFinger = null;
-          forwardTap(t);
+          if (!cancelled) forwardTap(t);
           if (tapFireHold) {
             tapFireHold = false;
             keyEvt(" ", "keyup");
-            lastTapMs = Date.now();
-          } else if (wasTap && _tapFire) {
+            lastTapMs = cancelled ? 0 : Date.now();
+          } else if (wasTap && _tapFire && !cancelled) {
             tapFirePrimary();
           }
         } else if (passFingers.delete(id)) {
-          forwardTap(t);  // zoom-zone finger: the plain canvas-tap path
+          if (!cancelled) forwardTap(t);  // zoom-zone finger: the plain canvas-tap path
         }
       }
     };

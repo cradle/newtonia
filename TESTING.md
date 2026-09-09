@@ -99,6 +99,7 @@ an interrupted attempt. Uses isolated temporary player data and runs in
 
 ```sh
 bash test/unit/touch_one_hand.sh
+node test/unit/touch_one_hand_web.cjs  # Node + tsc on PATH
 ```
 
 Links the real `touch_controls.cpp` against link-time stubs for the three
@@ -113,7 +114,17 @@ the window lapses; an un-followed lift is forgotten; a re-land that steers
 takes the stick back live from its landing point; a centred release
 remembers nothing; the live-play gate, `touch_controls_reset` and a still
 finger under a dropped gate all stop the coast; the second-finger tap and
-the cold long press are unchanged. Runs in `linux.yml`.
+the cold long press are unchanged. Memory is thrust-only: diagonal steering
+must not restart rotation; the last 50 ms of lift-off drift must not amplify
+forward/reverse thrust. Sparse motion, short new drags, and an immediate
+reversal exercise the sampling boundary. Native tests run in `linux.yml`.
+
+The web test compiles the real TypeScript UI into a temporary directory and
+executes its joystick handlers with a stub DOM and deterministic clock. It
+checks thrust-only tap chains, expiry, lift-off drift, rotation-only/centred
+releases, reversal, sparse motion, new-press history, cancellation without a
+shot, and gate drop with a finger still holding the memory. It runs in
+`web.yml`. Physical phone feel still needs an on-device check.
 
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 

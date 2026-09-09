@@ -8,6 +8,7 @@
 // build's behaviour exactly as before.
 
 #include <SDL.h>
+#include <deque>
 class StateManager;
 
 // The on-screen joystick/buttons render on the touch platforms; a desktop
@@ -161,7 +162,7 @@ struct TouchControlsState {
     // the primary mid-manoeuvre it has to come off, which used to zero
     // the stick (the ship stopped) and re-base it at zero deflection on
     // the re-land (the ship stayed stopped until the thumb wandered).
-    // So a STEERING release now REMEMBERS its deflection for OH_HOLD_MS
+    // So a STEERING release now REMEMBERS its thrust for OH_HOLD_MS
     // (touch_controls.cpp) — the ship still stops on the lift, since a
     // stick let go must stop the ship at once (aiming is rotation), but a
     // press landing inside that window ENGAGES the memory: the ship flies
@@ -176,6 +177,13 @@ struct TouchControlsState {
     // the long press / fire-hold rules are unchanged; only what the ship
     // does UNDER the finger's absence changed. Cleared with the tap-fire
     // gate, so a pause or a screen change never leaves a ship coasting.
+    // Rotation is never remembered: lifting fixes the heading for the shot.
+    // Thrust is sampled 50 ms before lift to reject the peeling thumb's tail;
+    // a centred/reversed live axis cannot resurrect stale thrust.
+    // Keep the sample at/before 50 ms ago plus the recent motion tail.
+    // Only steering samples enter this history; a brief drag uses its first.
+    struct ThrustSample { Uint32 ms; float ny; };
+    std::deque<ThrustSample> oh_thrust_samples;
     bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
     bool   oh_hold_engaged;  // the ship is flying the remembered deflection now
     float  oh_hold_nx, oh_hold_ny;

@@ -323,15 +323,19 @@ static const Uint32 OH_HOLD_MS = 300;
 
 static float oh_tap_slop() { return g_touch_controls.joy_radius * 0.12f; }
 
-// The held deflection (touch_controls.h). A memory is only worth keeping
-// outside GLShip::touch_joystick_input's 0.10 deadzone on some axis —
-// inside it the "remembered" stick is the centred stick.
-static bool oh_deflected(float nx, float ny) {
-    return nx > 0.10f || nx < -0.10f || ny > 0.10f || ny < -0.10f;
+// Discard the lift-off tail without delaying live steering. Keep the most
+// recent sample at/before the cutoff and all newer samples; prune on release
+// too, since a stationary finger may have sent no recent motion events.
+static const Uint32 OH_SAMPLE_MS = 50;
+static void oh_prune_samples(Uint32 now) {
+    auto &samples = g_touch_controls.oh_thrust_samples;
+    while (samples.size() > 1 && now - samples[1].ms >= OH_SAMPLE_MS)
+        samples.pop_front();
 }
 
 static void oh_hold_clear() {
     TouchControlsState &tc = g_touch_controls;
+    tc.oh_thrust_samples.clear();
     tc.oh_hold_valid   = false;
     tc.oh_hold_engaged = false;
     tc.oh_hold_nx = tc.oh_hold_ny = 0.0f;
@@ -480,6 +484,7 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         tc.oh_joy_down_ms = SDL_GetTicks();
         tc.oh_joy_down_px = px;
         tc.oh_joy_down_py = py;
+        tc.oh_thrust_samples.clear();
         tc.oh_joy_steered = false;
         tc.oh_joy_fired   = false;
         // Held deflection (touch_controls.h): a press inside the memory
@@ -534,6 +539,11 @@ void touch_one_hand_motion(SDL_FingerID id, float px, float py) {
         if (tc.oh_hold_engaged && !tc.oh_joy_steered) return;
         tc.oh_hold_engaged = false;
         oh_update_nub(px, py);
+        if (tc.oh_joy_steered) {
+            Uint32 now = SDL_GetTicks();
+            tc.oh_thrust_samples.push_back({now, tc.joy_ny});
+            oh_prune_samples(now);
+        }
     } else if (tc.oh_tap_active && tc.oh_tap_finger == id) {
         if (oh_moved_past_slop(px, py, tc.oh_tap_down_px, tc.oh_tap_down_py))
             tc.oh_tap_steered = true;  // wandered — no shot on release
@@ -574,7 +584,10 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         // a tap inside the window picks back up. touch_one_hand_tick
         // applies the remembered deflection while no finger is down.
         bool flies_on = tc.oh_hold_engaged && !tc.oh_joy_steered;
-        float rel_nx = tc.joy_nx, rel_ny = tc.joy_ny;
+        oh_prune_samples(now);
+        float rel_ny = tc.joy_ny;
+        float sampled_ny = tc.oh_thrust_samples.empty() ? 0.0f :
+                           tc.oh_thrust_samples.front().ny;
         tc.joy_active = false;
         tc.joy_nx     = 0.0f;
         tc.joy_ny     = 0.0f;
@@ -583,11 +596,12 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         } else {
             game->touch_joystick(0.0f, 0.0f);
             if (tc.one_hand_ingame && tc.oh_joy_steered &&
-                oh_deflected(rel_nx, rel_ny)) {
+                std::fabs(rel_ny) > 0.10f && std::fabs(sampled_ny) > 0.10f &&
+                rel_ny * sampled_ny > 0.0f) {
                 tc.oh_hold_valid   = true;
                 tc.oh_hold_engaged = false;
-                tc.oh_hold_nx      = rel_nx;
-                tc.oh_hold_ny      = rel_ny;
+                tc.oh_hold_nx      = 0.0f;
+                tc.oh_hold_ny      = sampled_ny;
                 tc.oh_hold_until   = now + OH_HOLD_MS;
             } else {
                 oh_hold_clear();
