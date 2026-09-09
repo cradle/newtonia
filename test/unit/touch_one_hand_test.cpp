@@ -165,7 +165,9 @@ static void test_lift_tap_tap() {
   for (int i = 0; i < 3; ++i) {
     frame(i == 0 ? 450 : 100);
     size_t at = s_log.size();
-    down(1, 650 + 20*i, 520);
+    nx = i == 0 ? -0.4f : 0.4f;
+    ny = i == 2 ? 0.6f : -0.6f;
+    down(1, 500 + nx*g_touch_controls.joy_radius, 500 + ny*g_touch_controls.joy_radius);
     CHECK(g_touch_controls.oh_hold_engaged);
     CHECK(near(g_touch_controls.joy_cx, 500) && near(g_touch_controls.joy_cy, 500));
     CHECK(near(g_touch_controls.boost_cx, bx) && near(g_touch_controls.boost_cy, by));
@@ -233,7 +235,8 @@ static void test_reland_and_steer() {
   // Sub-slop jitter leaves the memory in the nub.
   motion(1, 602, 501);
   CHECK(!g_touch_controls.oh_joy_steered);
-  CHECK(near(g_touch_controls.joy_ny, -0.6f));
+  CHECK(near(g_touch_controls.joy_nx, 100/g_touch_controls.joy_radius));
+  CHECK(near(g_touch_controls.joy_ny, 0.0f));
   frame(16);
   // A real wander: live deflection from the landing point (600,500).
   float r = g_touch_controls.joy_radius;
@@ -364,7 +367,7 @@ static void test_long_press_under_memory() {
   CHECK(up(1));
   s_now += 100;
   size_t at = s_log.size();
-  down(1, 600, 500);
+  down(1, 500, 500 - 0.6f*g_touch_controls.joy_radius);
   CHECK(g_touch_controls.oh_hold_engaged);
   for (int i = 0; i < 30; i++) frame(16);  // 480 ms held still
   CHECK(count_key(at, 'd', 'x') == 1);
@@ -394,7 +397,7 @@ static void test_last_live_thrust() {
     CHECK(near(g_touch_controls.oh_hold_nx, horizontal));
     CHECK(near(g_touch_controls.oh_hold_ny, sign*0.7f));
     frame(100);
-    down(1, 600, 400);
+    down(1, 500 + horizontal*r, 400 + sign*0.7f*r);
     frame(16);
     float x, y;
     CHECK(last_joy(0, &x, &y) && near(x, horizontal) && near(y, sign*0.7f));
@@ -434,7 +437,7 @@ static void test_reversal_remembers_new_direction() {
   CHECK(g_touch_controls.oh_hold_valid);
   CHECK(near(g_touch_controls.oh_hold_ny, 0.4f));
   frame(100);
-  down(1, 500, 400);
+  down(1, 500, 400 + 0.4f*g_touch_controls.joy_radius);
   CHECK(near(g_touch_controls.joy_nx, 0) && near(g_touch_controls.joy_ny, 0.4f));
 }
 

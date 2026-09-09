@@ -620,7 +620,7 @@ declare const NewtoniaStore: undefined | {
     let secondaryUpTimer: number | null = null;
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
     // Every release stops input and remembers both axes for 500 ms.
-    // A quick rehold resumes the full direction while the finger is down;
+    // A quick rehold selects direction from its location at the saved base;
     // releasing again renews the window, never an unattended input latch.
     const OH_HOLD_MS = 500;
     let holdValid = false, holdEngaged = false;
@@ -962,19 +962,14 @@ declare const NewtoniaStore: undefined | {
             joyDownMs = Date.now();
             joySteered = false; joyFired = false;
             liveNx = 0; liveNy = 0;
-            // Held deflection: a press inside the window picks the
-            // manoeuvre back up — the nub sits at the remembered
-            // deflection and the ship flies it while this finger stays
-            // still; its wander takes over in touchmove. Outside the
-            // window the press is cold and the memory is spent.
+            // Keep the saved base, but let the new tap position select
+            // the direction. A still tap can fire without counting as a drag.
             if (resume) {
               holdEngaged = true;
               window.clearTimeout(holdTimer!);
               holdTimer = null;  // this finger holds it now
-              joyNub.style.left = `${joyCX + holdNx * joyRad}px`;
-              joyNub.style.top  = `${joyCY + holdNy * joyRad}px`;
-              liveNx = holdNx; liveNy = holdNy;
-              callTouchJoystick(holdNx, holdNy);
+              moveJoystick(t.clientX, t.clientY);
+              holdNx = liveNx; holdNy = liveNy;
             }
             joyFireHold = startFireHold();
             armLongPress("joy", ++joyPressSeq);
@@ -1004,7 +999,7 @@ declare const NewtoniaStore: undefined | {
               Math.hypot(t.clientX - joyDownX, t.clientY - joyDownY) >
                   joyRad * 0.12)
             joySteered = true;
-          // Under an engaged memory the nub is the REMEMBERED deflection
+          // During a resumed press the nub is the tap-selected deflection
           // until the finger wanders (sub-slop jitter must not overwrite
           // it with a near-centre reading); past the slop the stick is
           // the finger's own again, live from the landing point.

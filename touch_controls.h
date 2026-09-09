@@ -161,9 +161,9 @@ struct TouchControlsState {
     // ---- Held deflection: the stick survives a lift-and-tap ----
     // Every steering-finger release, including taps and fire-holds, stops
     // steering/thrust immediately and remembers both axes for 500 ms.
-    // Reholding inside that window resumes the same direction only while
-    // the finger is down. A new release renews the window; no input runs
-    // unattended. A wander takes over live from its new landing point.
+    // Reholding inside that window selects direction from the new tap
+    // location relative to the saved base, only while the finger is down.
+    // A new release renews the window; no input runs unattended. A wander takes over live from its new landing point.
     // Pause, reset and screen changes clear the memory.
     bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
     bool   oh_hold_engaged;  // the ship is flying the remembered deflection now

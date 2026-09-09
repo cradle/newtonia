@@ -99,7 +99,7 @@ for (const horizontal of [-.6, .6]) for (const sign of [-1, 1]) {
   assert.ok(h.context._joyPlaceholderEls[1].style.cssText.includes(`top:${400+sign*.7*r}px`));
   assert.ok(h.context._joyPlaceholderEls[1].style.cssText.includes(`left:${500+horizontal*r}px`));
   for (let i=0; i<3; i++) {
-    h.send('touchstart'); h.expect(horizontal, sign*.7);
+    h.send('touchstart', 500+horizontal*r, 400+sign*.7*r); h.expect(horizontal, sign*.7);
     assert.equal(h.context._joyPlaceholderEls[1].style.left, `${500+horizontal*r}px`);
     h.advance(40);
     h.send('touchend'); h.expect(0, 0); h.advance(100);
@@ -117,7 +117,7 @@ for (const horizontal of [-.6, .6]) for (const sign of [-1, 1]) {
 }
 for (const cancelled of [false, true]) {
   const h = harness(); steer(h); h.send('touchend'); h.advance(100);
-  h.send('touchstart'); h.expect(0, -.4);
+  h.send('touchstart', 500, 400-.4*r); h.expect(0, -.4);
   if (cancelled) {
     h.send('touchcancel'); h.expect(0, 0);
     assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 0);
@@ -130,14 +130,14 @@ for (const cancelled of [false, true]) {
 for (const [x,y] of [[0,0], [0,.4]]) {
   const h = harness(); steer(h);
   h.send('touchmove', 500+x*r, 400+y*r); h.advance(10);
-  h.send('touchend'); h.advance(100); h.send('touchstart'); h.expect(0, y);
+  h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400+y*r); h.expect(0, y);
 }
 {
   const h = harness(); steer(h);
   h.send('touchmove', 500, 400-.3*r); h.advance(60);
-  h.send('touchend'); h.advance(100); h.send('touchstart'); h.expect(0, -.3);
-  h.send('touchmove', 500, 400+.5*r); h.advance(10);
-  h.send('touchend'); h.advance(100); h.send('touchstart'); h.expect(0, .5);
+  h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400-.3*r); h.expect(0, -.3);
+  h.send('touchmove', 500, 400+.2*r); h.advance(10);
+  h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400+.2*r); h.expect(0, .5);
 }
 
 {
@@ -147,8 +147,8 @@ for (const [x,y] of [[0,0], [0,.4]]) {
 
 for (const x of [-.5, .5]) {
   const h = harness(); steer(h, x, 0); h.send('touchend'); h.expect(0, 0);
-  h.advance(100); h.send('touchstart'); h.expect(x, 0);
-  h.send('touchmove', 500+.11*r, 400); h.expect(x, 0);
+  h.advance(100); h.send('touchstart', 500+x*r, 400); h.expect(x, 0);
+  h.send('touchmove', 500+(x+.11)*r, 400); h.expect(x, 0);
   h.send('touchend');
   h.advance(5000); h.expect(0, 0);
   assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 1);
@@ -159,9 +159,9 @@ for (const x of [-.5, .5]) {
 for (const event of ['visibilitychange', 'pagehide']) {
   for (const heldFinger of [false, true]) {
     const h = harness(); steer(h); h.send('touchend'); h.advance(100);
-    h.send('touchstart'); h.advance(40); h.send('touchend');
+    h.send('touchstart',500,400-.4*r); h.advance(40); h.send('touchend');
     h.advance(100); h.expect(0, 0);
-    if (heldFinger) h.send('touchstart', 500, 400, 7);
+    if (heldFinger) h.send('touchstart', 500, 400-.4*r, 7);
     if (event === 'visibilitychange') {
       h.context.document.hidden = true;
       h.context.document.handlers[event]();
@@ -194,7 +194,7 @@ for (const event of ['visibilitychange', 'pagehide']) {
 // Repositioning the idle UI preserves the saved-direction preview.
 {
   const h = harness(); steer(h); h.send('touchend'); h.advance(100);
-  h.send('touchstart'); h.advance(40); h.send('touchend');
+  h.send('touchstart',500,400-.4*r); h.advance(40); h.send('touchend');
   const nub = h.context._joyPlaceholderEls[1];
   const heldStyle = nub.style.cssText;
   h.context._positionJoyPlaceholder();
@@ -222,18 +222,24 @@ function pressButton(button, type, id) {
   h.send('touchend'); h.expect(0, 0);
   assert.ok(nub.style.cssText.includes(`top:${400-.4*r}px`));
   h.advance(450);
-  for (const [x,y] of [[650,420], [700,450]]) {
-    h.send('touchstart', x,y); h.expect(0, -.4);
+  for (const [nx,ny] of [[-.4,-.6], [.4,-.6], [.4,.6]]) {
+    const x=500+nx*r, y=400+ny*r;
+    h.send('touchstart', x,y); h.expect(nx, ny);
     assert.match(base.style.cssText, /left:500px;top:400px/);
-    assert.equal(nub.style.left, '500px');
-    assert.equal(nub.style.top, `${400-.4*r}px`);
+    assert.equal(nub.style.left, `${x}px`);
+    assert.equal(nub.style.top, `${y}px`);
     assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
-    h.send('touchmove', x+2,y+1); h.expect(0, -.4);
-    h.advance(40); h.send('touchend',x,y); h.advance(450);
+    h.send('touchmove', x+2,y+1); h.expect(nx, ny);
+    h.advance(40); h.send('touchend',x,y); h.expect(0, 0); h.advance(450);
   }
-  h.send('touchstart', 650,420); h.expect(0, -.4);
-  h.send('touchmove', 650+.3*r,420); h.expect(.3,0);
+  // The centre explicitly selects neutral input and release forgets it.
+  h.send('touchstart', 500,400); h.expect(0,0);
+  assert.equal(nub.style.left, '500px');
+  assert.equal(nub.style.top, '400px');
+  h.send('touchend'); h.advance(100);
+  h.send('touchstart',650,420); h.expect(0,0);
   assert.match(base.style.cssText, /left:650px;top:420px/);
+  h.send('touchmove',650+.3*r,420); h.expect(.3,0);
   assert.notDeepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
 }
 {

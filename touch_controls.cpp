@@ -465,18 +465,15 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         tc.oh_joy_down_py = py;
         tc.oh_joy_steered = false;
         tc.oh_joy_fired   = false;
-        // Held deflection (touch_controls.h): a press inside the memory
-        // window picks the manoeuvre back up — the nub sits at the
-        // remembered deflection (the entry point's per-tick apply reads
-        // joy_nx/joy_ny, and the OSD draws them) while this finger stays
-        // still, and the finger's own wander takes over below in
-        // touch_one_hand_motion. A press outside the window is cold: the
-        // memory is spent, and the ship stays where the lift left it.
+        // During the rehold window, keep the base and select a fresh
+        // deflection from the tap location. A still tap remains a fire
+        // gesture; only subsequent motion beyond slop counts as a drag.
         if (resume) {
             tc.oh_hold_engaged = true;
             tc.oh_hold_until   = 0;  // this finger holds it now
-            tc.joy_nx = tc.oh_hold_nx;
-            tc.joy_ny = tc.oh_hold_ny;
+            oh_update_nub(px, py);
+            tc.oh_hold_nx = tc.joy_nx;
+            tc.oh_hold_ny = tc.joy_ny;
         } else {
             oh_hold_clear();
         }
@@ -512,7 +509,7 @@ void touch_one_hand_motion(SDL_FingerID id, float px, float py) {
         // can never late-fire by drifting back over its start point.
         if (oh_moved_past_slop(px, py, tc.oh_joy_down_px, tc.oh_joy_down_py))
             tc.oh_joy_steered = true;
-        // Under an engaged memory the nub is the REMEMBERED deflection
+        // During a resumed press the nub is the tap-selected deflection
         // until the finger wanders: sub-slop jitter must not overwrite
         // it with a near-centre reading (which would stop the ship the
         // memory exists to keep moving). Past the slop the finger is

@@ -109,9 +109,11 @@ Links the real `touch_controls.cpp` against link-time stubs for the three
 one line. Each scenario runs the mobile entry points' loop (events, the
 per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
 deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
-tap and resumes both joystick axes. All four diagonals and horizontal
-inputs retain their direction through lift, tap and rehold. Small tap
-wobble never steers, even outside the ship's deadzone. Every steering-finger release immediately clears input,
+tap and selects both joystick axes from the new tap location at the saved
+base. Tapping the old nub preserves its direction; tapping a new location
+updates it. All four diagonals, horizontal inputs and centre-to-neutral
+are covered. Small tap wobble never steers, even outside the ship's deadzone.
+Every steering-finger release immediately clears input,
 including tap/fire-hold and long-press releases. The saved direction remains
 available at 499 ms and expires at 500 ms after each release; long gaps
 cannot leave an input active or restart stale steering. Quick changes immediately
