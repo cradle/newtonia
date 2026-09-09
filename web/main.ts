@@ -273,8 +273,9 @@ declare const NewtoniaStore: undefined | {
   // One-handed input (Preferences::touch_one_hand, pushed at startup from
   // web_main.cpp and on options close from Menu::close_options): the whole
   // screen is one joystick resting centred just below the ship, taps fire
-  // the primary and a long press the secondary; the shoot/mine/boost
-  // circles never show. Mirrors the native gesture layer in
+  // the primary and a long press the secondary; the shoot circle never
+  // shows, while the secondary/boost/teleport circles ride an arc on the
+  // far side of the resting ring. Mirrors the native gesture layer in
   // touch_controls.cpp.
   let _oneHand = false;
   // Handedness (Preferences::touch_handedness as -1/0/+1). One-hand:
@@ -299,10 +300,13 @@ declare const NewtoniaStore: undefined | {
   let _secondaryKind = -1;
   let _shieldEngaged = false;
 
+  // One hand hides only the SHOOT circle (tap-fire is the trigger); the
+  // SECONDARY / BOOST / TELEPORT circles move onto the action arc around
+  // the resting ring (oneHandArc below), the native OSD's arrangement.
   function applyCircleButtonVisibility(): void {
     for (const el of _circleButtonEls) {
       const hide = _inMenuMode ||
-          (_oneHand && !el.classList.contains("touch-pause")) ||
+          (_oneHand && el.classList.contains("touch-shoot")) ||
           (!_mineAvailable && el.classList.contains("touch-mine"));
       el.style.display = hide ? "none" : "";
     }
@@ -730,22 +734,18 @@ declare const NewtoniaStore: undefined | {
       positionJoyPlaceholder();
     }
 
-    // Show a faint placeholder at the default position so the user knows
-    // where the joystick zone is before touching.
-    function positionJoyPlaceholder(): void {
-      if (_inMenuMode) return;
-      const r = canvas.getBoundingClientRect();
-      if (r.width === 0) return; // layout not ready yet
+    // The resting ring's home, in viewport pixels. One hand: horizontally
+    // per handedness — CENTRE stays centred, LEFT/RIGHT rest the ring
+    // where that thumb sits, its near edge a small margin off its bezel.
+    // Vertically the LOWER of the midpoint between canvas centre and
+    // bottom (0.75h — the portrait thumb rest) and the below-the-ship
+    // anchor — the camera pins the ship to the canvas centre, so the
+    // ring's TOP edge must clear h/2 by a margin, and in landscape that
+    // anchor is the one that binds (mirrors touch_controls.cpp). Shared
+    // by the placeholder and the one-hand action arc, so the two can't
+    // drift apart.
+    function ringHome(r: DOMRect): { px: number; py: number; rad: number } {
       const rad = Math.min(r.width, r.height) * JOY_FRAC;
-      const baseSize = rad * 2, nubSize = rad * 0.62;
-      // One hand: horizontally per handedness — CENTRE stays centred,
-      // LEFT/RIGHT rest the ring where that thumb sits, its near edge a
-      // small margin off its bezel. Vertically the LOWER of the midpoint
-      // between canvas centre and bottom (0.75h — the portrait thumb
-      // rest) and the below-the-ship anchor — the camera pins the ship
-      // to the canvas centre, so the ring's TOP edge must clear h/2 by
-      // a margin, and in landscape that anchor is the one that binds
-      // (mirrors touch_controls.cpp).
       const sideCx = Math.min(r.width, r.height) * 0.05 + rad;
       const px = r.left + (!_oneHand
           ? r.width * (_hand < 0 ? 0.82 : 0.18) // two-hand home, mirrored LEFT
@@ -757,6 +757,76 @@ declare const NewtoniaStore: undefined | {
                 r.height * 0.5 + Math.min(r.width, r.height) * 0.05 + rad,
                 r.height * 0.75)
           : r.top + r.height * 0.75;
+      return { px, py, rad };
+    }
+
+    // One-hand action arc: SECONDARY / BOOST / TELEPORT hug the resting
+    // ring on its FAR side — the side away from the thumb's pivot: the
+    // bottom bezel's midpoint under CENTRE, the bottom corner on the
+    // thumb's side under LEFT/RIGHT. Three buttons 60 degrees apart where
+    // the space allows; where a bezel, the zoom column or the pause
+    // circle would catch an end button, the arc is fitted into the legal
+    // span instead (a bearing scan around the pivot bearing, the spread
+    // shrinking to no less than 30 degrees and the apex sliding away from
+    // the obstruction). SECONDARY takes the end on the screen-centre
+    // side, BOOST the apex, TELEPORT the other end (LEFT mirrors the
+    // order). Mirrors touch_controls_resize's one-hand block — keep the
+    // constants in step; the keep-outs here are this OSD's own (the
+    // inZoomZone column, the HTML pause circle). Returns viewport-pixel
+    // centres for [secondary, boost, teleport] plus the hit radius the
+    // native layer uses (tangent to the ring at most).
+    function oneHandArc(r: DOMRect, btnR: number):
+        { pts: { x: number; y: number }[]; hit: number } {
+      const { px: cx, py: cy, rad: R } = ringHome(r);
+      const minDim = Math.min(r.width, r.height);
+      const DEG = Math.PI / 180;
+      const orbit = R + 0.02 * minDim + btnR;
+      const hit = Math.min(1.4 * btnR, orbit - R);
+      const pivotX = _hand === 0 ? cx : _hand < 0 ? r.left : r.left + r.width;
+      const away = Math.atan2(r.top + r.height - cy, cx - pivotX);
+      // Keep-outs: window bounds, the zoom column (inZoomZone's rectangle,
+      // mirrored LEFT), the pause circle (sizeCircleButtons' geometry).
+      const m = btnR + 0.02 * minDim;
+      const zx0 = r.left + r.width * (_hand < 0 ? 0 : 0.88);
+      const zx1 = r.left + r.width * (_hand < 0 ? 0.12 : 1);
+      const zy0 = r.top + r.height * 0.40, zy1 = r.top + r.height * 0.60;
+      const pauseX = r.left + r.width * (_hand < 0 ? 0.125 : 0.875);
+      const pauseY = r.top + r.height * 0.12;
+      const pauseR = minDim * 0.19 * 0.62 * 0.5;
+      const legal = (th: number): boolean => {
+        const px = cx + orbit * Math.cos(th), py = cy - orbit * Math.sin(th);
+        if (px < r.left + m || px > r.left + r.width - m ||
+            py < r.top + m || py > r.top + r.height - m) return false;
+        const dx = Math.max(zx0 - px, px - zx1, 0);
+        const dy = Math.max(zy0 - py, py - zy1, 0);
+        if (dx * dx + dy * dy < hit * hit) return false;
+        const pdx = px - pauseX, pdy = py - pauseY, pr = hit + pauseR;
+        return pdx * pdx + pdy * pdy >= pr * pr;
+      };
+      let lo = away, hi = away;
+      while (lo > away - 105 * DEG && legal(lo - DEG)) lo -= DEG;
+      while (hi < away + 105 * DEG && legal(hi + DEG)) hi += DEG;
+      const hs = Math.max(30 * DEG, Math.min(60 * DEG, (hi - lo) * 0.5));
+      const apex = Math.min(Math.max(away, lo + hs), hi - hs);
+      const secOff = _hand < 0 ? -hs : hs;
+      const bearing = [apex + secOff, apex, apex - secOff];
+      return {
+        pts: bearing.map(th => ({
+          x: cx + orbit * Math.cos(th),
+          y: cy - orbit * Math.sin(th),
+        })),
+        hit,
+      };
+    }
+
+    // Show a faint placeholder at the default position so the user knows
+    // where the joystick zone is before touching.
+    function positionJoyPlaceholder(): void {
+      if (_inMenuMode) return;
+      const r = canvas.getBoundingClientRect();
+      if (r.width === 0) return; // layout not ready yet
+      const { px, py, rad } = ringHome(r);
+      const baseSize = rad * 2, nubSize = rad * 0.62;
       joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
       joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
     }
@@ -967,10 +1037,22 @@ declare const NewtoniaStore: undefined | {
       const mineX = Math.min(r.width * 0.90, r.width - 2 * radius);
       const shootX = Math.min(r.width * 0.75, mineX - 2.5 * radius);
       const rowY = Math.min(r.height * 0.80, r.height - 3.6 * radius);
+      // One hand: the three action circles sit on the arc around the
+      // resting ring (viewport pixels already, no handedness re-mirror —
+      // the ring chose its own side).
+      const arc = _oneHand ? oneHandArc(r, radius).pts : null;
       for (const button of circleButtons) {
         const { el, d } = button;
         let { cx, cy } = button;
-        if (!el.classList.contains("touch-pause")) {
+        if (arc && !el.classList.contains("touch-pause")) {
+          const i = el.classList.contains("touch-mine") ? 0
+                  : el.classList.contains("touch-boost") ? 1
+                  : el.classList.contains("touch-teleport") ? 2 : -1;
+          if (i >= 0) {
+            cx = (arc[i].x - r.left) / r.width;
+            cy = (arc[i].y - r.top) / r.height;
+          }
+        } else if (!el.classList.contains("touch-pause")) {
           let x = (shootX + mineX) / 2;
           let y = rowY;
           if (el.classList.contains("touch-shoot")) x = shootX;

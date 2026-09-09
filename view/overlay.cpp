@@ -681,6 +681,9 @@ void Overlay::touch_help(const GLGame *glgame) {
     {"TAP, THEN HOLD", "KEEP FIRING"},
     {"HOLD",           "SECONDARY (SHIELD: ON/OFF)"},
     {"SECOND FINGER",  "FIRE WHILE STEERING"},
+    {"BLUE",           "SECONDARY"},
+    {"AMBER",          "BOOST"},
+    {"PURPLE",         "TELEPORT"},
     {"+ / -",          "ZOOM"},
   };
   static const Row TWO_HANDS[] = {
@@ -696,8 +699,13 @@ void Overlay::touch_help(const GLGame *glgame) {
   const Row *rows = one_hand ? ONE_HAND : TWO_HANDS;
   int n = (int)(one_hand ? sizeof(ONE_HAND) / sizeof(ONE_HAND[0])
                          : sizeof(TWO_HANDS) / sizeof(TWO_HANDS[0]));
+  // The one-hand list runs to nine rows (gestures + the action arc's
+  // three colours): start it higher and step tighter so the last row
+  // (glyphs extend 26 below the anchor) still clears the prompt at -290
+  // on a 16:9 half-height of 450.
+  int y0 = n > 7 ? 210 : 190, gap = n > 7 ? 54 : 64;
   for (int i = 0; i < n; i++) {
-    int y = 190 - i * 64;
+    int y = y0 - i * gap;
     const char *gesture = rows[i].gesture;
     if (!one_hand && i == 0 && touch_layout_mirrored())
       gesture = "RIGHT HALF";
@@ -1702,11 +1710,13 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   }
 
   // ---- Shoot button ----
-  // One-handed mode draws no shoot/mine/boost circles at all: the stick
-  // is the trigger (tap = primary, long press = secondary — the gesture
-  // layer in touch_controls.cpp), so a drawn button would be a control
-  // that answers no finger. The joystick above and the pause circle
-  // below stay.
+  // One-handed mode draws no shoot circle: the stick is the trigger (tap
+  // = primary, tap-then-hold streams — the gesture layer in
+  // touch_controls.cpp), so a drawn fire button would be a control that
+  // answers no finger. The SECONDARY / BOOST / TELEPORT circles below DO
+  // draw there, on the action arc touch_controls_resize lays out around
+  // the resting ring — same fields, same colours, same glyphs as the
+  // two-hand diamond, so the help card's colour names hold on both.
   if (!touch_one_handed()) {
     float bx = ox(tc.shoot_cx);
     float by = oy(tc.shoot_cy);
@@ -1723,7 +1733,7 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   // Only while a secondary is equipped (GLGame::tick keeps the flag; the
   // entry points gate their hit test on the same flag, so the region and
   // the circle appear and vanish together).
-  if (!touch_one_handed() && tc.mine_available) {
+  if (tc.mine_available) {
     float bx = ox(tc.mine_cx);
     float by = oy(tc.mine_cy);
     float br = sr(tc.mine_radius);
@@ -1735,9 +1745,9 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     draw_weapon_glyph(tc.secondary_kind, bx, by, br * 0.45f, alpha_outline);
   }
 
-  // ---- Boost button ----
-  // Teleport: two portal rings, dimmed and inert during cooldown.
-  if (!touch_one_handed()) {
+  // ---- Teleport button ----
+  // Two portal rings, dimmed and inert during cooldown.
+  {
     float bx = ox(tc.teleport_cx), by = oy(tc.teleport_cy);
     float br = sr(tc.teleport_radius);
     float dim = tc.teleport_ready ? 1.0f : 0.25f;
@@ -1749,10 +1759,12 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     draw_circle(bx + br * 0.22f, by, br * 0.30f, 20, false, 0.75f, 0.4f, 1.0f, outline);
   }
 
-  // Above and between the shoot/mine pair. Amber; dimmed while Ship's
-  // cooldown runs (boost_ready, mirrored by GLGame::tick). The icon is a
-  // double up-chevron — "more speed" in one glyph.
-  if (!touch_one_handed()) {
+  // ---- Boost button ----
+  // Above and between the shoot/mine pair (the arc's apex in one hand).
+  // Amber; dimmed while Ship's cooldown runs (boost_ready, mirrored by
+  // GLGame::tick). The icon is a double up-chevron — "more speed" in one
+  // glyph.
+  {
     float bx = ox(tc.boost_cx);
     float by = oy(tc.boost_cy);
     float br = sr(tc.boost_radius);
