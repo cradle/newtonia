@@ -109,11 +109,14 @@ Links the real `touch_controls.cpp` against link-time stubs for the three
 one line. Each scenario runs the mobile entry points' loop (events, the
 per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
 deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
-tap and resumes both joystick axes. The input stays active across multi-second
-gaps after a tap; re-steering and returning to centre stops it. An initial
+tap and resumes thrust/reverse with rotation released. Live drags still turn
+immediately; rotation-only releases cannot restart a turn on a tap. Small tap
+wobble never steers, even outside the ship's deadzone. Thrust stays active
+across multi-second gaps after a tap; re-steering and returning to centre
+stops it. An initial
 lift without a follow-up tap expires after 300 ms. The last 50 ms of lift-off
-drift must not amplify rotation or forward/reverse thrust. Sparse motion,
-short new drags, centred/reversed axes, reset and gate drops exercise the
+drift must not amplify forward/reverse thrust or latch any rotation. Sparse
+motion, short new drags, centred/reversed axes, reset and gate drops exercise the
 handoff. Second-finger taps and long presses are also covered. Native tests
 run in `linux.yml`.
 

@@ -614,9 +614,10 @@ declare const NewtoniaStore: undefined | {
     let spaceUpTimer: number | null = null;
     let secondaryUpTimer: number | null = null;
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
-    // A steering release stops and remembers both axes for 300 ms. A press
-    // inside that window resumes them; its un-wandered release latches the
-    // input until live steering or reset takes over. Only the initial
+    // A steering release stops and remembers thrust for 300 ms. A press
+    // inside that window resumes thrust with rotation released. Its
+    // un-wandered release latches thrust until live steering or reset
+    // takes over. Only the initial
     // lift-to-tap opportunity expires, never input resumed by a tap.
     const OH_HOLD_MS = 300;
     const OH_SAMPLE_MS = 50;
@@ -1001,7 +1002,8 @@ declare const NewtoniaStore: undefined | {
           // until the finger wanders (sub-slop jitter must not overwrite
           // it with a near-centre reading); past the slop the stick is
           // the finger's own again, live from the landing point.
-          if (_oneHand && holdEngaged && !joySteered) continue;
+          // Small tap wobble never steers, including taps without memory.
+          if (_oneHand && !joySteered) continue;
           holdEngaged = false;
           moveJoystick(t.clientX, t.clientY);
           if (_oneHand && joySteered) {
@@ -1041,10 +1043,9 @@ declare const NewtoniaStore: undefined | {
           // Restore the previous input and reject the last 50 ms of
           // peeling-thumb drift. A short drag uses its first steering sample.
           pruneStickSamples(Date.now());
-          const relNx = liveNx, relNy = liveNy;
-          let sampledNx = stickSamples[0]?.nx ?? 0;
+          const relNy = liveNy;
           let sampledNy = stickSamples[0]?.ny ?? 0;
-          if (Math.abs(relNx) <= 0.10 || relNx * sampledNx <= 0) sampledNx = 0;
+          // Match native: taps preserve thrust but release rotation.
           if (Math.abs(relNy) <= 0.10 || relNy * sampledNy <= 0) sampledNy = 0;
           if (fliesOn) {
             joyFinger = null;
@@ -1055,9 +1056,9 @@ declare const NewtoniaStore: undefined | {
             holdClear();
             hideJoystick();
             if (_oneHand && _tapFire && joySteered && !cancelled &&
-                (Math.abs(sampledNx) > 0.10 || Math.abs(sampledNy) > 0.10)) {
+                Math.abs(sampledNy) > 0.10) {
               holdValid = true; holdEngaged = false;
-              holdNx = sampledNx; holdNy = sampledNy;
+              holdNx = 0; holdNy = sampledNy;
               holdArmWindow();
             } else {
               holdClear();

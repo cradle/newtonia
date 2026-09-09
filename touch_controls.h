@@ -159,22 +159,22 @@ struct TouchControlsState {
     bool  oh_tap_firehold;
     // ---- Held deflection: the stick survives a lift-and-tap ----
     // A steering release stops immediately and remembers the previous
-    // joystick input for 300 ms. A press inside that window resumes both
-    // rotation and thrust/reverse. An un-wandered release (tap/fire-hold/
-    // long press) keeps that input latched without a timeout, so shooting
-    // does not stop the manoeuvre. Further taps leave the input intact.
+    // thrust/reverse input for 300 ms. A press inside that window resumes
+    // thrust/reverse; rotation is released with the drag. An un-wandered
+    // release (tap/fire-hold/long press) keeps that input latched without a
+    // timeout. Further taps preserve thrust while keeping the aim straight.
     // A wander takes over live from the new landing point; steer back to
     // centre to stop. Pause, reset and screen changes clear the memory.
-    // Both axes are sampled 50 ms before lift to reject the peeling thumb's
-    // tail without delaying live steering. A centred/reversed live axis
-    // cannot resurrect its stale sample.
+    // Thrust is sampled 50 ms before lift to reject the peeling thumb's
+    // tail without delaying live steering. Centred/reversed live thrust
+    // cannot resurrect its stale sample. Taps never resume rotation.
     // Keep the sample at/before 50 ms ago plus the recent motion tail.
     // Only steering samples enter this history; a brief drag uses its first.
     struct StickSample { Uint32 ms; float nx, ny; };
     std::deque<StickSample> oh_stick_samples;
     bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
     bool   oh_hold_engaged;  // the ship is flying the remembered deflection now
-    float  oh_hold_nx, oh_hold_ny;
+    float  oh_hold_nx, oh_hold_ny; // nx stays zero: turns require a live drag
     Uint32 oh_hold_until;    // initial lift-to-tap deadline (0 = latched input)
 };
 

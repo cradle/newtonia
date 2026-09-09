@@ -530,7 +530,8 @@ void touch_one_hand_motion(SDL_FingerID id, float px, float py) {
         // memory exists to keep moving). Past the slop the finger is
         // steering, and the stick is its own again — floating base at
         // the landing point, live deflection from here on.
-        if (tc.oh_hold_engaged && !tc.oh_joy_steered) return;
+        // A tap's small wobble must never steer, even without held thrust.
+        if (!tc.oh_joy_steered) return;
         tc.oh_hold_engaged = false;
         oh_update_nub(px, py);
         if (tc.oh_joy_steered) {
@@ -579,13 +580,12 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         // applies the remembered deflection while no finger is down.
         bool flies_on = tc.oh_hold_engaged && !tc.oh_joy_steered;
         oh_prune_samples(now);
-        float rel_nx = tc.joy_nx, rel_ny = tc.joy_ny;
-        float sampled_nx = tc.oh_stick_samples.empty() ? 0.0f :
-                           tc.oh_stick_samples.front().nx;
+        float rel_ny = tc.joy_ny;
         float sampled_ny = tc.oh_stick_samples.empty() ? 0.0f :
                            tc.oh_stick_samples.front().ny;
-        // A centred/reversed live axis must not restore its stale sample.
-        if (std::fabs(rel_nx) <= 0.10f || rel_nx * sampled_nx <= 0.0f) sampled_nx = 0;
+        // Firing keeps thrust, not a held turn: rotation belongs only to
+        // the live drag, so repeated taps cannot keep swinging the aim.
+        // A centred/reversed thrust axis must not restore its stale sample.
         if (std::fabs(rel_ny) <= 0.10f || rel_ny * sampled_ny <= 0.0f) sampled_ny = 0;
         tc.joy_active = false;
         tc.joy_nx     = 0.0f;
@@ -595,10 +595,10 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         } else {
             game->touch_joystick(0.0f, 0.0f);
             if (tc.one_hand_ingame && tc.oh_joy_steered &&
-                (std::fabs(sampled_nx) > 0.10f || std::fabs(sampled_ny) > 0.10f)) {
+                std::fabs(sampled_ny) > 0.10f) {
                 tc.oh_hold_valid   = true;
                 tc.oh_hold_engaged = false;
-                tc.oh_hold_nx      = sampled_nx;
+                tc.oh_hold_nx      = 0.0f;
                 tc.oh_hold_ny      = sampled_ny;
                 tc.oh_hold_until   = now + OH_HOLD_MS;
             } else {

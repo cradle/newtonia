@@ -678,7 +678,7 @@ void Overlay::touch_help(const GLGame *glgame) {
   static const Row ONE_HAND[] = {
     {"DRAG",           "STEER + THRUST"},
     {"TAP",            "FIRE"},
-    {"TAP MID-DRAG",   "FIRE, KEEP MOVING"},
+    {"LIFT + TAP",     "FIRE, KEEP THRUST"},
     {"TAP, THEN HOLD", "KEEP FIRING"},
     {"HOLD",           "SECONDARY (SHIELD: ON/OFF)"},
     {"SECOND FINGER",  "FIRE WHILE STEERING"},
@@ -701,7 +701,7 @@ void Overlay::touch_help(const GLGame *glgame) {
   int n = (int)(one_hand ? sizeof(ONE_HAND) / sizeof(ONE_HAND[0])
                          : sizeof(TWO_HANDS) / sizeof(TWO_HANDS[0]));
   // The one-hand list runs to ten rows (gestures — the held-deflection
-  // "TAP MID-DRAG" among them, touch_controls.h — plus the action arc's
+  // "LIFT + TAP" among them, touch_controls.h — plus the action arc's
   // three colours): start it higher and step tighter so the last row
   // (glyphs extend 26 below the anchor) still clears the prompt at -290
   // on a 16:9 half-height of 450 (ten rows at 50: last anchor -240, its
@@ -1713,7 +1713,7 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     // the ship is still flying the stick the thumb let go of to tap, so
     // the resting ring shows that stick — the active nub, at the
     // remembered deflection, a shade dimmer than under a finger — until
-    // the window lapses or the thumb re-takes it.
+    // the thumb re-takes it or the controls reset.
     draw_circle(jox, joy, jr, 32, false, 0.5f, 0.65f, 1.0f, 0.55f);
     draw_circle(jox + tc.oh_hold_nx * jr, joy - tc.oh_hold_ny * jr,
                 jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f, 0.60f);

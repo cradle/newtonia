@@ -271,14 +271,23 @@ static void test_reland_and_steer() {
   frame(16);
   float jx, jy;
   CHECK(last_joy(at, &jx, &jy) && near(jx, 0.5f) && near(jy, 0.0f));
-  // Rotation-only input is remembered too.
+  // A rotation-only drag turns live but cannot leave the ship turning
+  // during a later fire tap, even if it lands inside the memory window.
   at = s_log.size();
   CHECK(up(1));
   CHECK(any_joy_zero(at));
   CHECK(count_key(at, 'd', ' ') == 0);  // a steering release never fires
-  CHECK(g_touch_controls.oh_hold_valid);
-  CHECK(near(g_touch_controls.oh_hold_nx, 0.5f));
-  CHECK(near(g_touch_controls.oh_hold_ny, 0.0f));
+  CHECK(!g_touch_controls.oh_hold_valid);
+  frame(100);
+  at = s_log.size();
+  down(1, 600, 500);
+  // Inside the tap threshold, but outside the ship's 0.10 deadzone.
+  motion(1, 600 + 0.11f*r, 500);
+  frame(16);
+  CHECK(up(1));
+  frame(1000);
+  CHECK(!any_joy_nonzero(at));
+  CHECK(count_key(at, 'd', ' ') == 1);
 }
 
 // A stick brought back to centre before the lift is a stop, not a
@@ -406,16 +415,16 @@ static void test_pre_lift_thrust() {
     motion(1, 500 + 0.6f*r, 400 + sign*0.7f*r);
     frame(10);
     CHECK(up(1));
-    CHECK(near(g_touch_controls.oh_hold_nx, 0.3f));
+    CHECK(near(g_touch_controls.oh_hold_nx, 0.0f));
     CHECK(near(g_touch_controls.oh_hold_ny, sign*0.4f));
     frame(100);
     down(1, 600, 400);
     frame(16);
     float x, y;
-    CHECK(last_joy(0, &x, &y) && near(x, 0.3f) && near(y, sign*0.4f));
+    CHECK(last_joy(0, &x, &y) && near(x, 0.0f) && near(y, sign*0.4f));
     CHECK(up(1));
     frame(16);
-    CHECK(last_joy(0, &x, &y) && near(x, 0.3f) && near(y, sign*0.4f));
+    CHECK(last_joy(0, &x, &y) && near(x, 0.0f) && near(y, sign*0.4f));
   }
 }
 
