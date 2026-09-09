@@ -13,25 +13,40 @@ try {
   execFileSync('tsc', ['-p', path.join(root, 'web/tsconfig.json'), '--outDir', out]);
   source = fs.readFileSync(path.join(out, 'main.js'), 'utf8');
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
-// Isolate the joystick portion of the real UI factory; action buttons below
-// BUTTONS are unrelated. No gesture implementation is copied into this test.
+// Execute the complete production factory, including moving button DOM.
 const start = source.indexOf('function buildTouchControls()');
-const end = source.indexOf('const BUTTONS', start);
+const end = source.indexOf('// Tracks the active resize listener', start);
 assert.ok(start >= 0 && end > start);
-const code = source.slice(start, end) + '\nreturn joyZone; } globalThis.zone = buildTouchControls();';
+const code = source.slice(start, end) + '\nglobalThis.resizeControls = buildTouchControls();';
 const lifecycleStart = source.indexOf('document.addEventListener("visibilitychange"');
 const lifecycleEnd = source.indexOf('TOUCH_MEDIA.addEventListener("change"', lifecycleStart);
 assert.ok(lifecycleStart >= 0 && lifecycleEnd > lifecycleStart);
 const lifecycleCode = source.slice(lifecycleStart, lifecycleEnd);
-function harness() {
+function harness(width=1000, height=600, hand=0) {
   let now = 1000, seq = 0;
   const timers = new Map(), joystick = [], keys = [];
-  const element = () => ({ style: {}, handlers: {}, appendChild() {},
-    addEventListener(k, f) { this.handlers[k] = f; } });
+  const element = () => {
+    const el = { style: {}, handlers: {}, children: [], className: '',
+      appendChild(child) { this.children.push(child); },
+      addEventListener(k, f) { this.handlers[k] = f; },
+      querySelector(selector) {
+        return this.children.find(child => child.classList.contains(selector.slice(1)));
+      },
+    };
+    el.classList = {
+      contains: name => el.className.split(' ').includes(name),
+      add(name) { if (!this.contains(name)) el.className += ' '+name; },
+      remove(name) { el.className = el.className.split(' ').filter(x => x !== name).join(' '); },
+      toggle(name, on) { if (on) this.add(name); else this.remove(name); },
+    };
+    return el;
+  };
+  const container = element();
+  const bounds = {left:0, top:0, width, height};
   const context = {
-    document: { getElementById: element, createElement: element, hidden: false,
+    document: { getElementById: () => container, createElement: element, hidden: false,
       handlers: {}, addEventListener(k, f) { this.handlers[k] = f; } },
-    canvas: { getBoundingClientRect: () => ({left:0, top:0, width:1000, height:600}),
+    canvas: { getBoundingClientRect: () => bounds,
       dispatchEvent: e => keys.push([e.type, e.key]) },
     window: { setTimeout(f, ms) { timers.set(++seq, { f, at: now + ms }); return seq; },
       clearTimeout(i) { timers.delete(i); },
@@ -39,14 +54,19 @@ function harness() {
     Date: { now: () => now }, Math, Set,
     KeyboardEvent: class { constructor(type, options) { this.type = type; this.key = options.key; } },
     requestAnimationFrame() {}, Module: {},
-    _oneHand:true, _hand:0, _tapFire:true, _inMenuMode:false, _mineAvailable:false,
+    ResizeObserver: class { observe() {} disconnect() {} },
+    _resizeObserver:null, _circleButtonEls:[], _menuOverlay:null,
+    _teleportReady:true, setTeleportReady() {},
+    _oneHand:true, _hand:hand, _tapFire:true, _inMenuMode:false, _mineAvailable:false,
     _secondaryKind:-1, _shieldEngaged:false, _holdRelease:null, _resetTouchGestures:null,
     _joyPlaceholderEls:[], _positionJoyPlaceholder:null,
     callTouchJoystick: (x, y) => joystick.push([x, y]),
   };
   vm.createContext(context); vm.runInContext(code + lifecycleCode, context);
+  context.zone = container.querySelector(".joy-zone");
+  context.resizeControls();
   return {
-    context, keys,
+    context, keys, container, bounds,
     send(type, x=500, y=400, id=1) {
       context.zone.handlers[type]({ type, preventDefault() {},
         changedTouches:[{ identifier:id, clientX:x, clientY:y }] });
@@ -174,6 +194,71 @@ for (const event of ['visibilitychange', 'pagehide']) {
   assert.equal(nub.style.cssText, heldStyle);
   h.send('touchstart'); h.send('touchcancel');
   assert.match(nub.style.cssText, /opacity:0.4/);
+}
+
+function actionPositions(h) {
+  return ['touch-mine', 'touch-boost', 'touch-teleport'].map(name => {
+    const el = h.container.querySelector('.'+name);
+    return { el, x:parseFloat(el.style.left), y:parseFloat(el.style.top),
+      radius:parseFloat(el.style.width)/2 };
+  });
+}
+function pressButton(button, type, id) {
+  button.el.handlers[type]({ preventDefault() {},
+    changedTouches:[{identifier:id, clientX:button.x, clientY:button.y}] });
+}
+{
+  const h = harness();
+  const home = actionPositions(h).map(p => [p.x,p.y]);
+  h.send('touchstart', 400, 500);
+  const placed = actionPositions(h).map(p => [p.x,p.y]);
+  assert.notDeepEqual(placed, home);
+  h.send('touchmove', 450, 450);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  h.send('touchend');
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  const boost = actionPositions(h)[1];
+  pressButton(boost, 'touchstart', 2);
+  assert.deepEqual(h.keys.at(-1), ['keydown', 'e']);
+  h.send('touchstart', 100, 200, 3);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  pressButton(boost, 'touchend', 2);
+  assert.deepEqual(h.keys.at(-1), ['keyup', 'e']);
+  assert.notDeepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  // A page hide cannot leave the action cluster frozen on a lost finger.
+  pressButton(actionPositions(h)[0], 'touchstart', 4);
+  h.context.window.handlers.pagehide();
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), home);
+  h.send('touchstart', 700, 500, 5);
+  assert.notDeepEqual(actionPositions(h).map(p => [p.x,p.y]), home);
+  h.bounds.width = 600; h.bounds.height = 1000;
+  h.context.resizeControls(); h.expect(0, 0);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]),
+    actionPositions(harness(600,1000)).map(p => [p.x,p.y]));
+}
+for (const [width,height] of [[1000,600], [600,1000], [600,600]]) {
+  for (const hand of [-1,0,1]) {
+    const h = harness(width,height,hand);
+    for (let ix=0; ix<=10; ++ix) for (let iy=0; iy<=10; ++iy) {
+      const x=width*ix/10, y=height*iy/10;
+      // These presses intentionally belong to zoom, so cannot relocate the stick.
+      if ((hand<0 ? ix<=1 : ix>=9) && iy>=4 && iy<6) continue;
+      h.send('touchstart',x,y);
+      const buttons=actionPositions(h), R=Math.min(width,height)*.24;
+      for (let i=0; i<buttons.length; ++i) {
+        const p=buttons[i], eps=.01;
+        assert.ok(p.x>=p.radius && p.x<=width-p.radius && p.y>=p.radius && p.y<=height-p.radius);
+        assert.ok(Math.hypot(p.x-x,p.y-y)+eps>=R+p.radius, `stick overlap at ${width}x${height}/${hand}/${ix},${iy}`);
+        const zx0=hand<0?0:width*.88, zx1=hand<0?width*.12:width;
+        const dx=Math.max(zx0-p.x,p.x-zx1,0), dy=Math.max(height*.4-p.y,p.y-height*.6,0);
+        assert.ok(Math.hypot(dx,dy)+eps>=p.radius);
+        const pauseX=width*(hand<0?.125:.875), pauseY=height*.12;
+        assert.ok(Math.hypot(p.x-pauseX,p.y-pauseY)+eps>=p.radius+Math.min(width,height)*.19*.62*.5);
+        for (const q of buttons.slice(i+1)) assert.ok(Math.hypot(p.x-q.x,p.y-q.y)+eps>=p.radius+q.radius);
+      }
+      h.context._resetTouchGestures();
+    }
+  }
 }
 
 console.log('touch_one_hand_web: all checks passed');

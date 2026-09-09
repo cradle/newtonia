@@ -16,6 +16,8 @@
 #include "view/overlay.h"
 #include "view/tap_band.h"
 
+#include <algorithm>
+#include <utility>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -31,8 +33,17 @@ static Uint32 s_now = 1000;
 extern "C" Uint32 __wrap_SDL_GetTicks(void) { return s_now; }
 
 float Overlay::safe_inset_top() { return 0.0f; }
-TouchZone TouchZone::zoom_in_placed()  { return TouchZone(2.0f, 2.0f, 2.0f, 2.0f); }
-TouchZone TouchZone::zoom_out_placed() { return TouchZone(2.0f, 2.0f, 2.0f, 2.0f); }
+static bool s_real_zones = false;
+TouchZone TouchZone::zoom_in_placed() {
+  if (!s_real_zones) return TouchZone(2, 2, 2, 2);
+  return g_prefs.touch_handedness == 0 ? TouchZone(0, .4f, .12f, .5f)
+                                      : TouchZone(.88f, .4f, 1, .5f);
+}
+TouchZone TouchZone::zoom_out_placed() {
+  if (!s_real_zones) return TouchZone(2, 2, 2, 2);
+  return g_prefs.touch_handedness == 0 ? TouchZone(0, .5f, .12f, .6f)
+                                      : TouchZone(.88f, .5f, 1, .6f);
+}
 
 struct Ev {
   char kind;  // 'j' joystick, 'd' key down, 'u' key up
@@ -458,6 +469,70 @@ static void test_reversal_does_not_restore_old_direction() {
   CHECK(!g_touch_controls.oh_hold_valid);
 }
 
+// Draw and hit-test geometry move together at a new base, stay there
+// through lift, and freeze while an action button owns another finger.
+static void test_active_action_buttons() {
+  reset_layer();
+  auto &tc = g_touch_controls;
+  down(1, 400, 500);
+  CHECK(tc.oh_anchor_valid);
+  float x = tc.boost_cx, y = tc.boost_cy;
+  motion(1, 450, 450);
+  CHECK(near(tc.boost_cx, x) && near(tc.boost_cy, y));
+  CHECK(up(1));
+  CHECK(near(tc.boost_cx, x) && near(tc.boost_cy, y));
+  size_t at = s_log.size();
+  down(2, x, y);
+  CHECK(tc.boost_pressed && count_key(at, 'd', 'e') == 1);
+  CHECK(!tc.joy_active);
+  down(3, 100, 200);
+  CHECK(tc.joy_active && tc.joy_finger == 3);
+  CHECK(near(tc.boost_cx, x) && near(tc.boost_cy, y));
+  CHECK(up(2));
+  CHECK(!tc.boost_pressed && count_key(at, 'u', 'e') == 1);
+  CHECK(!near(tc.boost_cx, x) || !near(tc.boost_cy, y));
+  CHECK(up(3));
+  touch_controls_reset(SM);
+  CHECK(!tc.oh_anchor_valid);
+  CHECK(count_key(at, 'd', ' ') == 1); // only the final unsteered stick tap fires
+}
+
+// Sweep every side and the whole viewport, including corners where the
+// old resting-ring-only bearing scan could place buttons off-screen.
+static void test_action_layout_edges() {
+  s_real_zones = true;
+  for (const auto &size : {std::pair<int,int>(1000,600), {600,1000}, {600,600}}) {
+    int w = size.first, h = size.second;
+    for (int side = 0; side < 3; ++side) {
+      reset_layer();
+      g_prefs.touch_handedness = side;
+      touch_controls_resize(w, h);
+      auto &tc = g_touch_controls;
+      for (int ix = 0; ix <= 10; ++ix) for (int iy = 0; iy <= 10; ++iy) {
+        tc.oh_anchor_valid = true;
+        tc.joy_cx = w * ix / 10.0f; tc.joy_cy = h * iy / 10.0f;
+        touch_controls_relayout();
+        float xs[3] = {tc.mine_cx, tc.boost_cx, tc.teleport_cx};
+        float ys[3] = {tc.mine_cy, tc.boost_cy, tc.teleport_cy};
+        float hit = tc.btn_hit_radius;
+        for (int i = 0; i < 3; ++i) {
+          CHECK(xs[i] >= hit && xs[i] <= w-hit && ys[i] >= hit && ys[i] <= h-hit);
+          CHECK(std::hypot(xs[i]-tc.joy_cx, ys[i]-tc.joy_cy) + .01f >= tc.joy_radius+hit);
+          CHECK(std::hypot(xs[i]-tc.pause_cx, ys[i]-tc.pause_cy) + .01f >= tc.pause_hit_radius+hit);
+          for (auto z : {TouchZone::zoom_in_placed(), TouchZone::zoom_out_placed()}) {
+            float dx = std::max(std::max(z.nx0*w-xs[i], xs[i]-z.nx1*w), 0.0f);
+            float dy = std::max(std::max(z.ny0*h-ys[i], ys[i]-z.ny1*h), 0.0f);
+            CHECK(std::hypot(dx, dy) + .01f >= hit);
+          }
+          for (int j = i+1; j < 3; ++j)
+            CHECK(std::hypot(xs[i]-xs[j], ys[i]-ys[j]) + .01f >= 2*hit);
+        }
+      }
+    }
+  }
+  s_real_zones = false;
+}
+
 int main() {
   test_pre_lift_thrust();
   test_stationary_sample_and_new_press();
@@ -471,6 +546,8 @@ int main() {
   test_reset_stops_coast();
   test_second_finger_tap_unchanged();
   test_long_press_under_memory();
+  test_active_action_buttons();
+  test_action_layout_edges();
   if (s_failures) {
     std::fprintf(stderr, "%d check(s) failed\n", s_failures);
     return 1;

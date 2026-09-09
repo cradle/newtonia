@@ -131,6 +131,14 @@ arrives, and cancel pending fire gestures. Repositioning the resting joystick
 preserves its held-input indicator. It runs in `web.yml`. Physical phone feel
 needs an on-device check.
 
+The same suites check the moving one-hand action cluster: relocation at a new
+base, stable placement through drag/lift, correct button key down/up, freezing
+while an action finger is held, and reset/resize recovery. Native geometry is
+swept over a viewport grid in portrait, landscape, and square layouts for all
+handedness settings, checking disjoint hit regions and clearance from the
+stick, edges, zoom and pause. The web test runs the complete production DOM
+factory and checks the button elements and their actual event handlers.
+
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 
 ```sh

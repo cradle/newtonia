@@ -275,7 +275,7 @@ declare const NewtoniaStore: undefined | {
   // screen is one joystick resting centred just below the ship, taps fire
   // the primary and a long press the secondary; the shoot circle never
   // shows, while the secondary/boost/teleport circles ride an arc on the
-  // far side of the resting ring. Mirrors the native gesture layer in
+  // far side of the latest joystick base. Mirrors the native gesture layer in
   // touch_controls.cpp.
   let _oneHand = false;
   // Handedness (Preferences::touch_handedness as -1/0/+1). One-hand:
@@ -302,7 +302,7 @@ declare const NewtoniaStore: undefined | {
 
   // One hand hides only the SHOOT circle (tap-fire is the trigger); the
   // SECONDARY / BOOST / TELEPORT circles move onto the action arc around
-  // the resting ring (oneHandArc below), the native OSD's arrangement.
+  // the latest joystick base (oneHandArc below), the native OSD's arrangement.
   function applyCircleButtonVisibility(): void {
     for (const el of _circleButtonEls) {
       const hide = _inMenuMode ||
@@ -588,6 +588,11 @@ declare const NewtoniaStore: undefined | {
 
     let joyFinger: number | null = null;
     let joyCX = 0, joyCY = 0, joyRad = 0;
+    let actionAnchor: { x: number; y: number } | null = null;
+    let positionActionButtons: (() => void) | null = null;
+    let layoutWidth = 0, layoutHeight = 0;
+    const activeActionFingers = new Set<number>();
+    const resetButtons: (() => void)[] = [];
 
     // ---- One-hand gesture bookkeeping (mirrors touch_controls.cpp) ----
     // The joystick finger doubles as the first fire candidate: a press
@@ -757,6 +762,8 @@ declare const NewtoniaStore: undefined | {
     _holdRelease = () => {
       const wasEngaged = holdEngaged;
       holdClear();
+      actionAnchor = null;
+      positionActionButtons?.();
       if (wasEngaged) {
         liveNx = 0; liveNy = 0;
         callTouchJoystick(0, 0);
@@ -815,6 +822,10 @@ declare const NewtoniaStore: undefined | {
     // no finger to cancel). Online play keeps its gate open in the
     // background, so clear gesture ownership directly, before any resume.
     _resetTouchGestures = () => {
+      actionAnchor = null;
+      resetButtons.forEach(reset => reset());
+      activeActionFingers.clear();
+      positionActionButtons?.();
       holdClear();
       hideJoystick();
       tapFinger = null;
@@ -831,7 +842,8 @@ declare const NewtoniaStore: undefined | {
       secondaryUpTimer = null;
     };
 
-    // The resting ring's home, in viewport pixels. One hand: horizontally
+    // Last live base, or the resting home before play/reset, in viewport pixels.
+    // The default one-hand home follows handedness horizontally
     // per handedness — CENTRE stays centred, LEFT/RIGHT rest the ring
     // where that thumb sits, its near edge a small margin off its bezel.
     // Vertically the LOWER of the midpoint between canvas centre and
@@ -843,6 +855,8 @@ declare const NewtoniaStore: undefined | {
     // drift apart.
     function ringHome(r: DOMRect): { px: number; py: number; rad: number } {
       const rad = Math.min(r.width, r.height) * JOY_FRAC;
+      if (_oneHand && actionAnchor)
+        return { px: actionAnchor.x, py: actionAnchor.y, rad };
       const sideCx = Math.min(r.width, r.height) * 0.05 + rad;
       const px = r.left + (!_oneHand
           ? r.width * (_hand < 0 ? 0.82 : 0.18) // two-hand home, mirrored LEFT
@@ -857,63 +871,58 @@ declare const NewtoniaStore: undefined | {
       return { px, py, rad };
     }
 
-    // One-hand action arc: SECONDARY / BOOST / TELEPORT hug the resting
-    // ring on its FAR side — the side away from the thumb's pivot: the
-    // bottom bezel's midpoint under CENTRE, the bottom corner on the
-    // thumb's side under LEFT/RIGHT. Three buttons 60 degrees apart where
-    // the space allows; where a bezel, the zoom column or the pause
-    // circle would catch an end button, the arc is fitted into the legal
-    // span instead (a bearing scan around the pivot bearing, the spread
-    // shrinking to no less than 30 degrees and the apex sliding away from
-    // the obstruction). SECONDARY takes the end on the screen-centre
-    // side, BOOST the apex, TELEPORT the other end (LEFT mirrors the
-    // order). Mirrors touch_controls_resize's one-hand block — keep the
-    // constants in step; the keep-outs here are this OSD's own (the
-    // inZoomZone column, the HTML pause circle). Returns viewport-pixel
-    // centres for [secondary, boost, teleport] plus the hit radius the
-    // native layer uses (tangent to the ring at most).
+    // SECONDARY / BOOST / TELEPORT follow the latest live joystick base
+    // and stay there after lift. Prefer the far side of the thumb pivot,
+    // but search the full orbit near screen edges, zoom and pause. Tight
+    // arcs reduce hit radii so neighbouring regions remain disjoint.
+    // Mirrors oh_layout_actions in touch_controls.cpp; this OSD has its
+    // own pause keep-out and joystick radius.
     function oneHandArc(r: DOMRect, btnR: number):
-        { pts: { x: number; y: number }[]; hit: number } {
+        { pts: { x: number; y: number }[]; hit: number } | null {
       const { px: cx, py: cy, rad: R } = ringHome(r);
-      const minDim = Math.min(r.width, r.height);
-      const DEG = Math.PI / 180;
-      const orbit = R + 0.045 * minDim + btnR;
-      const hit = Math.min(1.4 * btnR, orbit - R);
+      const minDim = Math.min(r.width, r.height), DEG = Math.PI / 180;
       const pivotX = _hand === 0 ? cx : _hand < 0 ? r.left : r.left + r.width;
       const away = Math.atan2(r.top + r.height - cy, cx - pivotX);
-      // Keep-outs: window bounds, the zoom column (inZoomZone's rectangle,
-      // mirrored LEFT), the pause circle (sizeCircleButtons' geometry).
-      const m = btnR + 0.02 * minDim;
       const zx0 = r.left + r.width * (_hand < 0 ? 0 : 0.88);
       const zx1 = r.left + r.width * (_hand < 0 ? 0.12 : 1);
       const zy0 = r.top + r.height * 0.40, zy1 = r.top + r.height * 0.60;
       const pauseX = r.left + r.width * (_hand < 0 ? 0.125 : 0.875);
       const pauseY = r.top + r.height * 0.12;
       const pauseR = minDim * 0.19 * 0.62 * 0.5;
-      const legal = (th: number): boolean => {
-        const px = cx + orbit * Math.cos(th), py = cy - orbit * Math.sin(th);
-        if (px < r.left + m || px > r.left + r.width - m ||
-            py < r.top + m || py > r.top + r.height - m) return false;
-        const dx = Math.max(zx0 - px, px - zx1, 0);
-        const dy = Math.max(zy0 - py, py - zy1, 0);
-        if (dx * dx + dy * dy < hit * hit) return false;
-        const pdx = px - pauseX, pdy = py - pauseY, pr = hit + pauseR;
-        return pdx * pdx + pdy * pdy >= pr * pr;
-      };
-      let lo = away, hi = away;
-      while (lo > away - 105 * DEG && legal(lo - DEG)) lo -= DEG;
-      while (hi < away + 105 * DEG && legal(hi + DEG)) hi += DEG;
-      const hs = Math.max(30 * DEG, Math.min(60 * DEG, (hi - lo) * 0.5));
-      const apex = Math.min(Math.max(away, lo + hs), hi - hs);
-      const secOff = _hand < 0 ? -hs : hs;
-      const bearing = [apex + secOff, apex, apex - secOff];
-      return {
-        pts: bearing.map(th => ({
-          x: cx + orbit * Math.cos(th),
-          y: cy - orbit * Math.sin(th),
-        })),
-        hit,
-      };
+      // Match native: scan the full orbit so even a stick near a top
+      // corner can have its buttons below/inward, clear of all keep-outs.
+      for (let reach = 0; reach <= 6; ++reach) {
+        const orbit = R + (0.045 + 0.05 * reach) * minDim + btnR;
+        let best = Infinity;
+        let result: { pts: { x: number; y: number }[]; hit: number } | null = null;
+        for (let spread = 60; spread >= 25; spread -= 5) {
+          const hit = Math.min(1.4 * btnR, orbit - R,
+                               orbit * Math.sin(spread * DEG * 0.5) * 0.99);
+          if (hit < btnR) continue;
+          const margin = Math.max(btnR + 0.02 * minDim, hit);
+          const legal = (px: number, py: number): boolean => {
+            if (px < r.left + margin || px > r.left + r.width - margin ||
+                py < r.top + margin || py > r.top + r.height - margin) return false;
+            const dx = Math.max(zx0 - px, px - zx1, 0);
+            const dy = Math.max(zy0 - py, py - zy1, 0);
+            if (dx * dx + dy * dy < hit * hit) return false;
+            const pdx = px - pauseX, pdy = py - pauseY, gap = hit + pauseR;
+            return pdx * pdx + pdy * pdy >= gap * gap;
+          };
+          for (let turn = -180; turn <= 180; ++turn) {
+            const score = Math.abs(turn) + 1.5 * (60 - spread);
+            if (score >= best) continue;
+            const apex = away + turn * DEG, offset = (_hand < 0 ? -spread : spread) * DEG;
+            const pts = [apex + offset, apex, apex - offset].map(th => ({
+              x: cx + orbit * Math.cos(th), y: cy - orbit * Math.sin(th),
+            }));
+            if (!pts.every(p => legal(p.x, p.y))) continue;
+            best = score; result = { pts, hit };
+          }
+        }
+        if (result) return result;
+      }
+      return null;
     }
 
     // Show a faint placeholder at the default position so the user knows
@@ -951,6 +960,10 @@ declare const NewtoniaStore: undefined | {
           // clientX/Y are viewport-relative; touch-controls is position:fixed so no offset needed.
           showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * JOY_FRAC);
           if (_oneHand) {
+            if (_tapFire) {
+              actionAnchor = { x: t.clientX, y: t.clientY };
+              positionActionButtons?.();
+            }
             joyDownX = t.clientX; joyDownY = t.clientY;
             joyDownMs = Date.now();
             stickSamples = [];
@@ -1138,6 +1151,8 @@ declare const NewtoniaStore: undefined | {
           if (!activeFingers.has(id)) {
             if (activeFingers.size === 0) dispatchKey("keydown");
             activeFingers.add(id);
+            if (_oneHand && (key === "x" || key === "e" || key === "t"))
+              activeActionFingers.add(id);
           }
         }
         btn.classList.add("pressed");
@@ -1147,15 +1162,22 @@ declare const NewtoniaStore: undefined | {
         e.preventDefault();
         for (let i = 0; i < e.changedTouches.length; i++) {
           activeFingers.delete(e.changedTouches[i].identifier);
+          activeActionFingers.delete(e.changedTouches[i].identifier);
         }
         if (activeFingers.size === 0) {
           dispatchKey("keyup");
           btn.classList.remove("pressed");
         }
+        if (_oneHand && activeActionFingers.size === 0) positionActionButtons?.();
       };
       btn.addEventListener("touchend",    onBtnEnd, { passive: false });
       btn.addEventListener("touchcancel", onBtnEnd, { passive: false });
 
+      resetButtons.push(() => {
+        if (activeFingers.size) dispatchKey("keyup");
+        activeFingers.clear();
+        btn.classList.remove("pressed");
+      });
       container.appendChild(btn);
     });
 
@@ -1197,18 +1219,24 @@ declare const NewtoniaStore: undefined | {
     function sizeCircleButtons(): void {
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
+      const resized = layoutWidth > 0 && (r.width !== layoutWidth || r.height !== layoutHeight);
+      layoutWidth = r.width; layoutHeight = r.height;
+      if (_oneHand && resized) _resetTouchGestures?.();
       const diam = Math.min(r.width, r.height) * 0.14;
       const radius = diam / 2;
       const mineX = Math.min(r.width * 0.90, r.width - 2 * radius);
       const shootX = Math.min(r.width * 0.75, mineX - 2.5 * radius);
       const rowY = Math.min(r.height * 0.80, r.height - 3.6 * radius);
       // One hand: the three action circles sit on the arc around the
-      // resting ring (viewport pixels already, no handedness re-mirror —
-      // the ring chose its own side).
-      const arc = _oneHand ? oneHandArc(r, radius).pts : null;
+      // latest joystick base (viewport pixels, no handedness re-mirror).
+      const arc = _oneHand && activeActionFingers.size === 0
+          ? oneHandArc(r, radius)?.pts : null;
       for (const button of circleButtons) {
         const { el, d } = button;
         let { cx, cy } = button;
+        // The joystick may move under another finger, but held buttons
+        // remain at the locations their fingers actually pressed.
+        if (_oneHand && !el.classList.contains("touch-pause") && !arc) continue;
         if (arc && !el.classList.contains("touch-pause")) {
           const i = el.classList.contains("touch-mine") ? 0
                   : el.classList.contains("touch-boost") ? 1
@@ -1239,6 +1267,7 @@ declare const NewtoniaStore: undefined | {
 
     // Use ResizeObserver so buttons are sized correctly on initial layout
     // (requestAnimationFrame fires too early, before the canvas has its final size).
+    positionActionButtons = sizeCircleButtons;
     _resizeObserver?.disconnect();
     _resizeObserver = new ResizeObserver(sizeCircleButtons);
     _resizeObserver.observe(canvas);

@@ -24,7 +24,8 @@ inline bool touch_osd_enabled() {
 
 struct TouchControlsState {
     // ---- Virtual joystick ----
-    // When inactive, draw a faint hint ring at (joy_hint_cx, joy_hint_cy).
+    // When inactive, draw at the default hint, or the last one-hand base
+    // while oh_anchor_valid keeps the ring beside its action buttons.
     // When active, the base floats to wherever the user first touched on the
     // left half, then the nub tracks within joy_radius pixels.
     float joy_hint_cx, joy_hint_cy; // home position for inactive hint (pixels)
@@ -99,8 +100,8 @@ struct TouchControlsState {
     // it the secondary fires ('x', gated on mine_available exactly like
     // the mine button it replaces). Beside the gestures, three BUTTONS —
     // SECONDARY / BOOST / TELEPORT — ride an arc on the far side of the
-    // resting ring (touch_controls_resize lays it out in the mine_*/
-    // boost_*/teleport_* fields above, so draw, hit test and reset all
+    // latest live base, retained after lift (oh_layout_actions writes the
+    // mine_*/boost_*/teleport_* fields above, so draw, hit test and reset all
     // share the two-hand state); the gesture layer claims their fingers
     // ahead of the stick, in live play only. GLGame::tick mirrors one_hand_ingame
     // from touch_zoom_active() — live play with a local ship — so menu,
@@ -111,6 +112,7 @@ struct TouchControlsState {
     // press is released a beat later by touch_one_hand_tick, never in the
     // same event batch — the weapons only sample the trigger in step().
     bool  one_hand_ingame;
+    bool  oh_anchor_valid; // retain the last live base for ring + action buttons
     // One-hand shield toggle (see oh_long_press_secondary): the shield is
     // the one hold-to-run secondary — active while the key is down,
     // draining as it renews — which the pulse below would blink on for a

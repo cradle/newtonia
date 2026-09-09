@@ -1697,8 +1697,9 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   const TouchControlsState &tc = g_touch_controls;
 
   // ---- Virtual joystick ----
-  float jox = ox(tc.joy_hint_cx);
-  float joy = oy(tc.joy_hint_cy);
+  bool anchored = touch_one_handed() && tc.oh_anchor_valid;
+  float jox = ox(anchored ? tc.joy_cx : tc.joy_hint_cx);
+  float joy = oy(anchored ? tc.joy_cy : tc.joy_hint_cy);
   float jr  = sr(tc.joy_radius);
 
   if(tc.joy_active) {
@@ -1727,8 +1728,8 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   // = primary, tap-then-hold streams — the gesture layer in
   // touch_controls.cpp), so a drawn fire button would be a control that
   // answers no finger. The SECONDARY / BOOST / TELEPORT circles below DO
-  // draw there, on the action arc touch_controls_resize lays out around
-  // the resting ring — same fields, same colours, same glyphs as the
+  // draw there, on the action arc oh_layout_actions places around
+  // the latest joystick base — same fields, same colours, same glyphs as the
   // two-hand diamond, so the help card's colour names hold on both.
   if (!touch_one_handed()) {
     float bx = ox(tc.shoot_cx);
