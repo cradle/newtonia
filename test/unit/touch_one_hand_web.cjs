@@ -19,26 +19,32 @@ const start = source.indexOf('function buildTouchControls()');
 const end = source.indexOf('const BUTTONS', start);
 assert.ok(start >= 0 && end > start);
 const code = source.slice(start, end) + '\nreturn joyZone; } globalThis.zone = buildTouchControls();';
+const lifecycleStart = source.indexOf('document.addEventListener("visibilitychange"');
+const lifecycleEnd = source.indexOf('TOUCH_MEDIA.addEventListener("change"', lifecycleStart);
+assert.ok(lifecycleStart >= 0 && lifecycleEnd > lifecycleStart);
+const lifecycleCode = source.slice(lifecycleStart, lifecycleEnd);
 function harness() {
   let now = 1000, seq = 0;
   const timers = new Map(), joystick = [], keys = [];
   const element = () => ({ style: {}, handlers: {}, appendChild() {},
     addEventListener(k, f) { this.handlers[k] = f; } });
   const context = {
-    document: { getElementById: element, createElement: element },
+    document: { getElementById: element, createElement: element, hidden: false,
+      handlers: {}, addEventListener(k, f) { this.handlers[k] = f; } },
     canvas: { getBoundingClientRect: () => ({left:0, top:0, width:1000, height:600}),
       dispatchEvent: e => keys.push([e.type, e.key]) },
     window: { setTimeout(f, ms) { timers.set(++seq, { f, at: now + ms }); return seq; },
-      clearTimeout(i) { timers.delete(i); } },
+      clearTimeout(i) { timers.delete(i); },
+      handlers: {}, addEventListener(k, f) { this.handlers[k] = f; } },
     Date: { now: () => now }, Math, Set,
     KeyboardEvent: class { constructor(type, options) { this.type = type; this.key = options.key; } },
     requestAnimationFrame() {}, Module: {},
     _oneHand:true, _hand:0, _tapFire:true, _inMenuMode:false, _mineAvailable:false,
-    _secondaryKind:-1, _shieldEngaged:false, _holdRelease:null,
+    _secondaryKind:-1, _shieldEngaged:false, _holdRelease:null, _resetTouchGestures:null,
     _joyPlaceholderEls:[], _positionJoyPlaceholder:null,
     callTouchJoystick: (x, y) => joystick.push([x, y]),
   };
-  vm.createContext(context); vm.runInContext(code, context);
+  vm.createContext(context); vm.runInContext(code + lifecycleCode, context);
   return {
     context, keys,
     send(type, x=500, y=400, id=1) {
@@ -116,6 +122,55 @@ for (const [x,y] of [[0,0], [0,.4]]) {
   const h = harness(); steer(h, .5, 0); h.send('touchend'); h.advance(100);
   h.send('touchstart'); h.expect(.5, 0); h.send('touchend');
   h.advance(5000); h.expect(.5, 0);
+}
+
+// Backgrounding online never drops _tapFire. No finger is down to emit a
+// touchcancel once the stick is latched, so the page lifecycle must stop it.
+for (const event of ['visibilitychange', 'pagehide']) {
+  for (const heldFinger of [false, true]) {
+    const h = harness(); steer(h); h.send('touchend'); h.advance(100);
+    h.send('touchstart'); h.advance(40); h.send('touchend');
+    h.advance(1000); h.expect(.3, -.4);
+    if (heldFinger) h.send('touchstart', 500, 400, 7);
+    if (event === 'visibilitychange') {
+      h.context.document.hidden = true;
+      h.context.document.handlers[event]();
+    } else h.context.window.handlers[event]();
+    h.expect(0, 0);
+    h.context.document.hidden = false;
+    h.advance(1000);
+    h.send('touchstart', 500, 400, 8); h.expect(0, 0);
+    // A new identifier must own the stick, even if the old finger never ended.
+    h.send('touchmove', 500-.5*r, 400, 8); h.expect(-.5, 0);
+  }
+}
+
+// Reset cancels a held primary and its double-tap chain, invalidates old
+// long-press timers, and cannot turn a later stale release into a shot.
+{
+  const h = harness();
+  h.send('touchstart'); h.advance(40); h.send('touchend'); h.advance(20);
+  h.send('touchstart', 500, 400, 2);
+  h.context._mineAvailable = true;
+  h.context.window.handlers.pagehide();
+  assert.deepEqual(h.keys.at(-1), ['keyup', ' ']);
+  const at = h.keys.length;
+  h.advance(1000); h.send('touchend', 500, 400, 2);
+  assert.equal(h.keys.length, at);
+  h.send('touchstart', 500, 400, 3);
+  assert.equal(h.keys.length, at); // no stale fire-hold on the fresh press
+}
+
+// Repositioning the idle UI must keep showing the input that is still flying.
+{
+  const h = harness(); steer(h); h.send('touchend'); h.advance(100);
+  h.send('touchstart'); h.advance(40); h.send('touchend');
+  const nub = h.context._joyPlaceholderEls[1];
+  const heldStyle = nub.style.cssText;
+  h.context._positionJoyPlaceholder();
+  assert.equal(nub.style.cssText, heldStyle);
+  h.send('touchstart'); h.send('touchcancel');
+  assert.match(nub.style.cssText, /opacity:0.4/);
 }
 
 console.log('touch_one_hand_web: all checks passed');

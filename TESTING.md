@@ -122,7 +122,11 @@ temporary directory and executes them with a stub DOM and deterministic
 clock. It checks resumed tap chains, long gaps, initial memory expiry,
 lift-off drift, rotation-only input, centred/reversed axes, sparse motion,
 new-press history, cancellation without a shot, and gate drop under a held
-finger. It runs in `web.yml`. Physical phone feel needs an on-device check.
+finger. Page-hide and visibility events also stop latched input with the online
+gameplay gate still open, release gesture ownership when touchcancel never
+arrives, and cancel pending fire gestures. Repositioning the resting joystick
+preserves its held-input indicator. It runs in `web.yml`. Physical phone feel
+needs an on-device check.
 
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 

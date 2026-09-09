@@ -315,6 +315,7 @@ declare const NewtoniaStore: undefined | {
   // Called from C++ via EM_ASM when game state changes.
   function setMenuMode(isMenu: boolean): void {
     _inMenuMode = isMenu;
+    if (isMenu) _resetTouchGestures?.();
     applyCircleButtonVisibility();
     for (const el of _joyPlaceholderEls) {
       el.style.display = isMenu ? "none" : "";
@@ -357,6 +358,7 @@ declare const NewtoniaStore: undefined | {
   // play — the native layer clears it with the gate in
   // touch_one_hand_tick.
   let _holdRelease: (() => void) | null = null;
+  let _resetTouchGestures: (() => void) | null = null;
 
   // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
   function setTapFire(active: number | boolean): void {
@@ -610,6 +612,7 @@ declare const NewtoniaStore: undefined | {
     let tapFireHold = false;
     let lastTapMs = 0;
     let spaceUpTimer: number | null = null;
+    let secondaryUpTimer: number | null = null;
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
     // A steering release stops and remembers both axes for 300 ms. A press
     // inside that window resumes them; its un-wandered release latches the
@@ -643,7 +646,11 @@ declare const NewtoniaStore: undefined | {
     // same frame would fire nothing (OH_KEY_HOLD_MS's web twin).
     function fireKey(key: string): void {
       keyEvt(key, "keydown");
-      window.setTimeout(() => keyEvt(key, "keyup"), 70);
+      if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
+      secondaryUpTimer = window.setTimeout(() => {
+        secondaryUpTimer = null;
+        keyEvt(key, "keyup");
+      }, 70);
     }
 
     // The primary's tap pulse tracks its own deferred keyup so a
@@ -803,6 +810,26 @@ declare const NewtoniaStore: undefined | {
       positionJoyPlaceholder();
     }
 
+    // A hidden page need not deliver touchcancel (and a latched stick has
+    // no finger to cancel). Online play keeps its gate open in the
+    // background, so clear gesture ownership directly, before any resume.
+    _resetTouchGestures = () => {
+      holdClear();
+      hideJoystick();
+      tapFinger = null;
+      passFingers.clear();
+      ++joyPressSeq; ++tapPressSeq;
+      if (joyFireHold || tapFireHold || spaceUpTimer !== null)
+        keyEvt(" ", "keyup");
+      joyFireHold = false; tapFireHold = false;
+      lastTapMs = 0;
+      if (spaceUpTimer !== null) window.clearTimeout(spaceUpTimer);
+      spaceUpTimer = null;
+      if (secondaryUpTimer !== null) keyEvt("x", "keyup");
+      if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
+      secondaryUpTimer = null;
+    };
+
     // The resting ring's home, in viewport pixels. One hand: horizontally
     // per handedness — CENTRE stays centred, LEFT/RIGHT rest the ring
     // where that thumb sits, its near edge a small margin off its bezel.
@@ -892,6 +919,10 @@ declare const NewtoniaStore: undefined | {
     // where the joystick zone is before touching.
     function positionJoyPlaceholder(): void {
       if (_inMenuMode) return;
+      if (_oneHand && holdEngaged && joyFinger === null) {
+        showHeldStick();
+        return;
+      }
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
       const { px, py, rad } = ringHome(r);
@@ -937,8 +968,6 @@ declare const NewtoniaStore: undefined | {
               joyNub.style.top  = `${joyCY + holdNy * joyRad}px`;
               liveNx = holdNx; liveNy = holdNy;
               callTouchJoystick(holdNx, holdNy);
-            } else {
-              holdClear();
             }
             joyFireHold = startFireHold();
             armLongPress("joy", ++joyPressSeq);
@@ -1023,6 +1052,7 @@ declare const NewtoniaStore: undefined | {
             // A completed tap latches input until the pilot steers again.
             // The 300 ms timer only applies before the first tap.
           } else {
+            holdClear();
             hideJoystick();
             if (_oneHand && _tapFire && joySteered && !cancelled &&
                 (Math.abs(sampledNx) > 0.10 || Math.abs(sampledNy) > 0.10)) {
@@ -1219,6 +1249,7 @@ declare const NewtoniaStore: undefined | {
   let _resizeObserver: ResizeObserver | null = null;
 
   function applyTouchVisibility(): void {
+    _resetTouchGestures?.();
     const tc = document.getElementById("touch-controls")!;
     if (_resizeFn) { window.removeEventListener("resize", _resizeFn); _resizeFn = null; }
     _resizeObserver?.disconnect(); _resizeObserver = null;
@@ -1231,6 +1262,12 @@ declare const NewtoniaStore: undefined | {
       tc.style.display = "none";
     }
   }
+
+  // Registered once: callbacks always reset the current UI after a rebuild.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) _resetTouchGestures?.();
+  });
+  window.addEventListener("pagehide", () => _resetTouchGestures?.());
 
   TOUCH_MEDIA.addEventListener("change", applyTouchVisibility);
   applyTouchVisibility();
