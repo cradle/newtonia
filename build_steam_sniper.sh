@@ -68,7 +68,10 @@ try() {
 }
 
 echo "== sniper: installing build dependencies"
-try apt-get update -qq
+# Check-Valid-Until=false: bullseye-security's final Release file (EOL
+# 2026-08-31) has an expired validity window and no archive.debian.org
+# mirror yet — same waiver as deploy-steam.yml's Linux job.
+try apt-get -o Acquire::Check-Valid-Until=false update -qq
 try apt-get install -y -qq freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev \
   libssl-dev libxi-dev cmake libudev-dev libasound2-dev libpulse-dev git >/dev/null
 
