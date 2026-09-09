@@ -983,7 +983,13 @@ declare const NewtoniaStore: undefined | {
       }
     }, { passive: false });
 
-    const onJoyEnd = (e: TouchEvent) => {
+    // `cancelled`: a touchcancel — the browser took the finger (a system
+    // gesture, a tab switch), so the press is over with no intent behind
+    // its end. The stick stops at once and NOTHING is remembered: the
+    // held deflection is a bridge the pilot builds with a lift-and-tap,
+    // and a cancelled press is neither (it used to coast for another
+    // window on the fliesOn branch — review, 2026-09-09).
+    const onJoyEnd = (e: TouchEvent, cancelled = false) => {
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
@@ -996,7 +1002,7 @@ declare const NewtoniaStore: undefined | {
           // window re-arms. Anything else stops the ship NOW, and a
           // STEERING release outside the deadzone becomes the memory a
           // tap inside the window picks back up.
-          const fliesOn = _oneHand && holdEngaged && !joySteered;
+          const fliesOn = _oneHand && holdEngaged && !joySteered && !cancelled;
           const relNx = liveNx, relNy = liveNy;
           if (fliesOn) {
             joyFinger = null;
@@ -1004,7 +1010,7 @@ declare const NewtoniaStore: undefined | {
             holdArmWindow();
           } else {
             hideJoystick();
-            if (_oneHand && _tapFire && joySteered &&
+            if (_oneHand && _tapFire && joySteered && !cancelled &&
                 (Math.abs(relNx) > 0.10 || Math.abs(relNy) > 0.10)) {
               holdValid = true; holdEngaged = false;
               holdNx = relNx; holdNy = relNy;
@@ -1041,7 +1047,8 @@ declare const NewtoniaStore: undefined | {
       }
     };
     joyZone.addEventListener("touchend",    onJoyEnd, { passive: false });
-    joyZone.addEventListener("touchcancel", onJoyEnd, { passive: false });
+    joyZone.addEventListener("touchcancel", (e) => onJoyEnd(e, true),
+                             { passive: false });
 
     // ------------------------------------------------------------------
     // Right half — action buttons with visual press feedback
