@@ -39,6 +39,11 @@ apt-get update
 apt-get install -y build-essential
 ```
 
+On Ubuntu 24.04, `libsdl2-dev` pulls in `libx11-dev` and `libxi-dev`.
+These are direct Newtonia dependencies (`-lX11`, `-lXi`, and `XInput2.h`),
+so install them explicitly if another release's SDL2 package no longer supplies
+them transitively.
+
 For audio changes and other changes independent of networking, the documented
 build without netplay is a useful compile/link check:
 
@@ -92,12 +97,15 @@ Run from the repository root. Keep the prefix and logs outside the repository;
 reuse a compatible existing prefix rather than downloading it again. The host
 still needs `make`, `g++`, `curl`, `python3`, `dpkg-query`, and `dpkg-deb`, plus
 CA certificates for HTTPS; this recipe stages the application dependencies.
+The runtime walk can also fetch large Mesa/LLVM packages on a minimal host.
+Downloads allow up to ten minutes per attempt and retry transient failures
+twice; already downloaded packages are reused after checksum verification.
 
 ```sh
 export NEWTONIA_DEPS_DIR="$(dirname "$PWD")/newtonia-linux-deps"
 mkdir -p "$NEWTONIA_DEPS_DIR"
 for component in main universe; do
-  curl -fsSL --connect-timeout 15 --max-time 90 \
+  curl -fsSL --connect-timeout 15 --max-time 600 --retry 2 \
     "https://archive.ubuntu.com/ubuntu/dists/noble/$component/binary-amd64/Packages.xz" \
     -o "$NEWTONIA_DEPS_DIR/$component.xz"
 done
@@ -136,8 +144,11 @@ queue = [
     'libglu1-mesa-dev', 'libglu1-mesa',
     'libxext-dev', 'libxfixes-dev', 'x11proto-dev',
 ]
-# Runtime seeds are explicit because development-package dependencies are
-# intentionally not traversed. Keep their transitive runtime dependencies.
+# libglu1-mesa needs an explicit seed: -dev dependencies are not traversed,
+# and the other noble runtime packages do not pull it in. SDL2 and GL/GLX
+# runtimes are listed for explicitness; mixer/GLUT already pull them in.
+# Keep transitive runtime dependencies. The PulseAudio link fix is the
+# LD_LIBRARY_PATH below, not these redundant seeds.
 selected = {}
 while queue:
     name = queue.pop(0)
@@ -167,7 +178,8 @@ def download(item):
     if (not destination.exists()
             or hashlib.sha256(destination.read_bytes()).hexdigest() != expected):
         subprocess.run([
-            'curl', '-fsSL', '--connect-timeout', '15', '--max-time', '90',
+            'curl', '-fsSL', '--connect-timeout', '15', '--max-time', '600',
+            '--retry', '2',
             'https://archive.ubuntu.com/ubuntu/' + package['Filename'],
             '-o', str(destination)], check=True)
     if hashlib.sha256(destination.read_bytes()).hexdigest() != expected:
@@ -213,8 +225,10 @@ Build in a subshell so the local library paths do not affect later commands:
 The staged `sdl2-config` on PATH supplies the SDL2 compiler flags. Do not
 override the Makefile's complete `CFLAGS`, so the project's compiler flags and
 version stamping remain intact. The desktop link rule does not consume
-`LDFLAGS`; the library search path above includes PulseAudio's private library
-for the native linker. Runtime checks must use the same `LD_LIBRARY_PATH`
+`LDFLAGS`; `LD_LIBRARY_PATH` above includes PulseAudio's private library
+directory, which the native linker searches to resolve `libpulse.so.0`'s
+`DT_NEEDED` dependencies. Adding that directory to `LIBRARY_PATH` alone does
+not resolve them. Runtime checks must use the same `LD_LIBRARY_PATH`
 inside this subshell (or recreate that environment); a successful link alone
 does not prove the executable starts or audio works. If changing
 dependency prefixes after an earlier build, clean generated build outputs
