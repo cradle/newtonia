@@ -625,12 +625,6 @@ declare const NewtoniaStore: undefined | {
     // takes over. Only the initial
     // lift-to-tap opportunity expires, never input resumed by a tap.
     const OH_HOLD_MS = 500;
-    const OH_SAMPLE_MS = 50;
-    let stickSamples: { ms: number; nx: number; ny: number }[] = [];
-    function pruneStickSamples(now: number): void {
-      while (stickSamples.length > 1 && now - stickSamples[1].ms >= OH_SAMPLE_MS)
-        stickSamples.shift();
-    }
     let holdValid = false, holdEngaged = false;
     let holdNx = 0, holdNy = 0;
     let holdTimer: number | null = null;   // the window; null = latched input or no memory
@@ -743,7 +737,6 @@ declare const NewtoniaStore: undefined | {
     }
 
     function holdClear(): void {
-      stickSamples = [];
       holdValid = false; holdEngaged = false;
       holdNx = 0; holdNy = 0;
       if (holdTimer !== null) { window.clearTimeout(holdTimer); holdTimer = null; }
@@ -971,7 +964,6 @@ declare const NewtoniaStore: undefined | {
             }
             joyDownX = t.clientX; joyDownY = t.clientY;
             joyDownMs = Date.now();
-            stickSamples = [];
             joySteered = false; joyFired = false;
             liveNx = 0; liveNy = 0;
             // Held deflection: a press inside the window picks the
@@ -1029,11 +1021,6 @@ declare const NewtoniaStore: undefined | {
           }
           holdEngaged = false;
           moveJoystick(t.clientX, t.clientY);
-          if (_oneHand && joySteered) {
-            const now = Date.now();
-            stickSamples.push({ ms: now, nx: liveNx, ny: liveNy });
-            pruneStickSamples(now);
-          }
           if (!_oneHand) break;
         } else if (_oneHand && t.identifier === tapFinger && !tapSteered) {
           if (Math.hypot(t.clientX - tapDownX, t.clientY - tapDownY) >
@@ -1063,13 +1050,10 @@ declare const NewtoniaStore: undefined | {
           // STEERING release outside the deadzone becomes the memory a
           // tap inside the window picks back up.
           const fliesOn = _oneHand && holdEngaged && !joySteered && !cancelled;
-          // Restore the previous input and reject the last 50 ms of
-          // peeling-thumb drift. A short drag uses its first steering sample.
-          pruneStickSamples(Date.now());
-          const relNy = liveNy;
-          let sampledNy = stickSamples[0]?.ny ?? 0;
+          // Capture the last applied thrust before hideJoystick clears it.
+          // Quick adjustments must not jump back to an older sample.
           // Match native: taps preserve thrust but release rotation.
-          if (Math.abs(relNy) <= 0.10 || relNy * sampledNy <= 0) sampledNy = 0;
+          const releaseNy = liveNy;
           if (fliesOn) {
             joyFinger = null;
             showHeldStick();
@@ -1079,9 +1063,9 @@ declare const NewtoniaStore: undefined | {
             holdClear();
             hideJoystick();
             if (_oneHand && _tapFire && joySteered && !cancelled &&
-                Math.abs(sampledNy) > 0.10) {
+                Math.abs(releaseNy) > 0.10) {
               holdValid = true; holdEngaged = false;
-              holdNx = 0; holdNy = sampledNy;
+              holdNx = 0; holdNy = releaseNy;
               holdArmWindow();
               showHeldStick();
             } else {

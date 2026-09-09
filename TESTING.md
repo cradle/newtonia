@@ -114,8 +114,8 @@ immediately; rotation-only releases cannot restart a turn on a tap. Small tap
 wobble never steers, even outside the ship's deadzone. Thrust stays active
 across multi-second gaps after a tap; re-steering and returning to centre
 stops it. An initial
-lift without a follow-up tap expires after 500 ms. The last 50 ms of lift-off
-drift must not amplify forward/reverse thrust or latch any rotation. Sparse
+lift without a follow-up tap expires after 500 ms. Quick changes immediately before lift must remember the latest
+forward/reverse thrust, including reversals, without latching rotation. Sparse
 motion, short new drags, centred/reversed axes, reset and gate drops exercise the
 handoff. A 450 ms lift-to-tap gap resumes with the ring, thrust nub and action
 buttons at the previous anchor; reholding and tap jitter keep them there,
@@ -125,8 +125,8 @@ run in `linux.yml`.
 The web test compiles the production TypeScript joystick handlers into a
 temporary directory and executes them with a stub DOM and deterministic
 clock. It checks resumed tap chains, long gaps, initial memory expiry,
-lift-off drift, rotation-only input, centred/reversed axes, sparse motion,
-new-press history, cancellation without a shot, and gate drop under a held
+last-moment thrust changes, rotation-only input, centred/reversed axes,
+sparse motion, fresh drags, cancellation without a shot, and gate drop under a held
 finger. Page-hide and visibility events also stop latched input with the online
 gameplay gate still open, release gesture ownership when touchcancel never
 arrives, and cancel pending fire gestures. Repositioning the resting joystick

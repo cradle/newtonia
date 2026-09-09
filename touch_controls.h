@@ -8,7 +8,6 @@
 // build's behaviour exactly as before.
 
 #include <SDL.h>
-#include <deque>
 class StateManager;
 
 // The on-screen joystick/buttons render on the touch platforms; a desktop
@@ -167,13 +166,8 @@ struct TouchControlsState {
     // timeout. Further taps preserve thrust while keeping the aim straight.
     // A wander takes over live from the new landing point; steer back to
     // centre to stop. Pause, reset and screen changes clear the memory.
-    // Thrust is sampled 50 ms before lift to reject the peeling thumb's
-    // tail without delaying live steering. Centred/reversed live thrust
-    // cannot resurrect its stale sample. Taps never resume rotation.
-    // Keep the sample at/before 50 ms ago plus the recent motion tail.
-    // Only steering samples enter this history; a brief drag uses its first.
-    struct StickSample { Uint32 ms; float nx, ny; };
-    std::deque<StickSample> oh_stick_samples;
+    // Remember the last applied live thrust, including a last-moment
+    // adjustment or reversal. Taps never resume rotation.
     bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
     bool   oh_hold_engaged;  // the ship is flying the remembered deflection now
     float  oh_hold_nx, oh_hold_ny; // nx stays zero: turns require a live drag

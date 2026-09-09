@@ -419,9 +419,9 @@ static void test_long_press_under_memory() {
   CHECK(g_touch_controls.oh_hold_engaged);
 }
 
-// A diagonal steer followed by a peeling thumb must not amplify thrust or
-// rotation when the pilot taps. Exercise forward and reverse thrust.
-static void test_pre_lift_thrust() {
+// Remember the last live thrust even when it changes just before lift.
+// Taps still release rotation. Exercise forward and reverse thrust.
+static void test_last_live_thrust() {
   for (float sign : {-1.0f, 1.0f}) {
     reset_layer();
     down(1, 500, 400);
@@ -433,20 +433,19 @@ static void test_pre_lift_thrust() {
     frame(10);
     CHECK(up(1));
     CHECK(near(g_touch_controls.oh_hold_nx, 0.0f));
-    CHECK(near(g_touch_controls.oh_hold_ny, sign*0.4f));
+    CHECK(near(g_touch_controls.oh_hold_ny, sign*0.7f));
     frame(100);
     down(1, 600, 400);
     frame(16);
     float x, y;
-    CHECK(last_joy(0, &x, &y) && near(x, 0.0f) && near(y, sign*0.4f));
+    CHECK(last_joy(0, &x, &y) && near(x, 0.0f) && near(y, sign*0.7f));
     CHECK(up(1));
     frame(16);
-    CHECK(last_joy(0, &x, &y) && near(x, 0.0f) && near(y, sign*0.4f));
+    CHECK(last_joy(0, &x, &y) && near(x, 0.0f) && near(y, sign*0.7f));
   }
 }
 
-// Sparse events must still advance the cutoff at release. A deliberate
-// change held longer than 50 ms replaces the old thrust, including zero.
+// Stationary holds and short new drags both remember their latest input.
 static void test_stationary_sample_and_new_press() {
   reset_layer();
   float x, y;
@@ -464,7 +463,7 @@ static void test_stationary_sample_and_new_press() {
   CHECK(near(g_touch_controls.oh_hold_ny, 0.5f));
 }
 
-static void test_reversal_does_not_restore_old_direction() {
+static void test_reversal_remembers_new_direction() {
   reset_layer();
   float x, y;
   steer_up(1, 500, 400, &x, &y);
@@ -472,7 +471,11 @@ static void test_reversal_does_not_restore_old_direction() {
   motion(1, 500, 400 + 0.4f*g_touch_controls.joy_radius);
   frame(10);
   CHECK(up(1));
-  CHECK(!g_touch_controls.oh_hold_valid);
+  CHECK(g_touch_controls.oh_hold_valid);
+  CHECK(near(g_touch_controls.oh_hold_ny, 0.4f));
+  frame(100);
+  down(1, 500, 400);
+  CHECK(near(g_touch_controls.joy_nx, 0) && near(g_touch_controls.joy_ny, 0.4f));
 }
 
 // Draw and hit-test geometry move together at a new base, stay there
@@ -541,9 +544,9 @@ static void test_action_layout_edges() {
 }
 
 int main() {
-  test_pre_lift_thrust();
+  test_last_live_thrust();
   test_stationary_sample_and_new_press();
-  test_reversal_does_not_restore_old_direction();
+  test_reversal_remembers_new_direction();
   test_lift_tap_tap();
   test_armed_memory_lapses();
   test_reland_and_steer();
