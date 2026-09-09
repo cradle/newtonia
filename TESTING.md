@@ -391,7 +391,11 @@ node test/room_unit_test.mjs             # Room DO: alarm deadlines, frame bound
 node test/frame_bounds_test.mjs          # the same bounds on workerd's sockets: allowlisted
                                          #   offer/answer rebuild, mid cap, oversized frame
                                          #   dropped (socket stays open), count + byte
-                                         #   floods close 1008 with the peer untouched
+                                         #   floods close 1008 with the peer untouched —
+                                         #   the flood checks WAIT for the close (8 s cap,
+                                         #   inside the 10 s window), never a fixed sleep:
+                                         #   a starved runner failed all three on a fixed
+                                         #   1.5 s (deploy-signal run 50, 2026-09-09)
 node test/reclaim_chain_test.mjs         # reclaim CHAIN: H2 takes over, drops while H1 may
                                          #   still be closing -> grace, H3 reclaims, relay
                                          #   intact; a deliberate close still ends the room

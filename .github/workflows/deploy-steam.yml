@@ -516,13 +516,21 @@ jobs:
       # Network fetches retry with backoff — one transient GitHub/CDN 503
       # wave took out four workflow runs at once (2026-08-03; this job's
       # SDL clone was among them).
+      #
+      # Check-Valid-Until=false: the sniper image is Debian bullseye, whose
+      # security suite reached end of life on 2026-08-31 — deb.debian.org
+      # still serves its FINAL Release file, but the validity window on it
+      # lapsed a week later and archive.debian.org does not carry the suite
+      # yet, so a plain `apt-get update` fails on every retry ("Release
+      # file ... is expired"; v1.60.0's deploy, 2026-09-09). The index is
+      # final and signed; only the freshness check is waived.
       - name: Install dependencies
         run: |
           try() { local i; for i in 1 2 3; do
                     if "$@"; then return 0; fi
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          try apt-get update
+          try apt-get -o Acquire::Check-Valid-Until=false update
           try apt-get install -y \
             freeglut3-dev \
             libgl1-mesa-dev \
