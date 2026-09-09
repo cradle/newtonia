@@ -52,6 +52,9 @@ jobs:
         working-directory: web
         run: tsc
 
+      - name: One-hand web gesture regression test
+        run: node test/unit/touch_one_hand_web.cjs
+
       - name: Install Emscripten SDK
         run: |
           try() { local i; for i in 1 2 3; do

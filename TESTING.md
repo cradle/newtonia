@@ -95,6 +95,39 @@ the previous save, temporary-file cleanup, and successful replacement after
 an interrupted attempt. Uses isolated temporary player data and runs in
 `linux.yml`; only SDL2 development headers and its library are needed.
 
+### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
+
+```sh
+bash test/unit/touch_one_hand.sh
+node test/unit/touch_one_hand_web.cjs  # Node + tsc on PATH
+```
+
+Links the real `touch_controls.cpp` against link-time stubs for the three
+`StateManager` entry points it drives (recorded as an event log), the
+`Preferences` global, the zoom-zone lookups and the safe inset, with
+`SDL_GetTicks` `--wrap`ped to a fake clock so a 300 ms window is stepped in
+one line. Each scenario runs the mobile entry points' loop (events, the
+per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
+deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
+tap and resumes both joystick axes. The input stays active across multi-second
+gaps after a tap; re-steering and returning to centre stops it. An initial
+lift without a follow-up tap expires after 300 ms. The last 50 ms of lift-off
+drift must not amplify rotation or forward/reverse thrust. Sparse motion,
+short new drags, centred/reversed axes, reset and gate drops exercise the
+handoff. Second-finger taps and long presses are also covered. Native tests
+run in `linux.yml`.
+
+The web test compiles the production TypeScript joystick handlers into a
+temporary directory and executes them with a stub DOM and deterministic
+clock. It checks resumed tap chains, long gaps, initial memory expiry,
+lift-off drift, rotation-only input, centred/reversed axes, sparse motion,
+new-press history, cancellation without a shot, and gate drop under a held
+finger. Page-hide and visibility events also stop latched input with the online
+gameplay gate still open, release gesture ownership when touchcancel never
+arrives, and cancel pending fire gestures. Repositioning the resting joystick
+preserves its held-input indicator. It runs in `web.yml`. Physical phone feel
+needs an on-device check.
+
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 
 ```sh

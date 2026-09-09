@@ -15,6 +15,9 @@ TouchControlsState g_touch_controls = {};
 // Last real resize, so a mode toggle can re-run the layout in place.
 static int s_last_w = 0, s_last_h = 0;
 
+// Held deflection bookkeeping (the one-hand gesture layer below).
+static void oh_hold_clear();
+
 bool touch_one_handed() { return g_prefs.touch_one_hand; }
 
 int touch_handedness_side() {
@@ -272,6 +275,10 @@ void touch_controls_reset(StateManager *game) {
     // fire-hold's held primary, and release any synthesized fire key
     // still waiting on its deferred up.
     g_touch_controls.oh_tap_active = false;
+    // A held deflection driving the ship with no finger down (the
+    // joystick branch above only zeroes an ACTIVE stick).
+    if(g_touch_controls.oh_hold_engaged) game->touch_joystick(0.0f, 0.0f);
+    oh_hold_clear();
     if(g_touch_controls.oh_joy_firehold || g_touch_controls.oh_tap_firehold) {
         g_touch_controls.oh_joy_firehold = false;
         g_touch_controls.oh_tap_firehold = false;
@@ -304,8 +311,38 @@ static const Uint32 OH_KEY_HOLD_MS = 70;
 // (touch_controls.h): comfortably above a spam-tap gap, comfortably
 // below a deliberate pause-then-long-press for the secondary.
 static const Uint32 OH_DOUBLE_TAP_MS = 250;
+// Initial lift-to-tap opportunity. Once a tap resumes the input, it stays
+// latched until the pilot steers again or the controls reset.
+static const Uint32 OH_HOLD_MS = 300;
 
 static float oh_tap_slop() { return g_touch_controls.joy_radius * 0.12f; }
+
+// Discard the lift-off tail without delaying live steering. Keep the most
+// recent sample at/before the cutoff and all newer samples; prune on release
+// too, since a stationary finger may have sent no recent motion events.
+static const Uint32 OH_SAMPLE_MS = 50;
+static void oh_prune_samples(Uint32 now) {
+    auto &samples = g_touch_controls.oh_stick_samples;
+    while (samples.size() > 1 && now - samples[1].ms >= OH_SAMPLE_MS)
+        samples.pop_front();
+}
+
+static void oh_hold_clear() {
+    TouchControlsState &tc = g_touch_controls;
+    tc.oh_stick_samples.clear();
+    tc.oh_hold_valid   = false;
+    tc.oh_hold_engaged = false;
+    tc.oh_hold_nx = tc.oh_hold_ny = 0.0f;
+    tc.oh_hold_until = 0;
+}
+
+// True while a remembered deflection is waiting for a finger: a press
+// landing now engages it.
+static bool oh_hold_armed(Uint32 now) {
+    const TouchControlsState &tc = g_touch_controls;
+    return tc.oh_hold_valid && (tc.oh_hold_engaged ||
+           (tc.oh_hold_until && (Sint32)(now - tc.oh_hold_until) < 0));
+}
 
 static bool oh_moved_past_slop(float px, float py, float ox, float oy) {
     float dx = px - ox, dy = py - oy;
@@ -441,8 +478,24 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         tc.oh_joy_down_ms = SDL_GetTicks();
         tc.oh_joy_down_px = px;
         tc.oh_joy_down_py = py;
+        tc.oh_stick_samples.clear();
         tc.oh_joy_steered = false;
         tc.oh_joy_fired   = false;
+        // Held deflection (touch_controls.h): a press inside the memory
+        // window picks the manoeuvre back up — the nub sits at the
+        // remembered deflection (the entry point's per-tick apply reads
+        // joy_nx/joy_ny, and the OSD draws them) while this finger stays
+        // still, and the finger's own wander takes over below in
+        // touch_one_hand_motion. A press outside the window is cold: the
+        // memory is spent, and the ship stays where the lift left it.
+        if (tc.one_hand_ingame && oh_hold_armed(tc.oh_joy_down_ms)) {
+            tc.oh_hold_engaged = true;
+            tc.oh_hold_until   = 0;  // this finger holds it now
+            tc.joy_nx = tc.oh_hold_nx;
+            tc.joy_ny = tc.oh_hold_ny;
+        } else {
+            oh_hold_clear();
+        }
         // Double-tap window: this press is a fire-hold — the primary is
         // already down and stays down until the finger lifts, while the
         // deflection below still steers.
@@ -471,7 +524,20 @@ void touch_one_hand_motion(SDL_FingerID id, float px, float py) {
         // can never late-fire by drifting back over its start point.
         if (oh_moved_past_slop(px, py, tc.oh_joy_down_px, tc.oh_joy_down_py))
             tc.oh_joy_steered = true;
+        // Under an engaged memory the nub is the REMEMBERED deflection
+        // until the finger wanders: sub-slop jitter must not overwrite
+        // it with a near-centre reading (which would stop the ship the
+        // memory exists to keep moving). Past the slop the finger is
+        // steering, and the stick is its own again — floating base at
+        // the landing point, live deflection from here on.
+        if (tc.oh_hold_engaged && !tc.oh_joy_steered) return;
+        tc.oh_hold_engaged = false;
         oh_update_nub(px, py);
+        if (tc.oh_joy_steered) {
+            Uint32 now = SDL_GetTicks();
+            tc.oh_stick_samples.push_back({now, tc.joy_nx, tc.joy_ny});
+            oh_prune_samples(now);
+        }
     } else if (tc.oh_tap_active && tc.oh_tap_finger == id) {
         if (oh_moved_past_slop(px, py, tc.oh_tap_down_px, tc.oh_tap_down_py))
             tc.oh_tap_steered = true;  // wandered — no shot on release
@@ -503,10 +569,42 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
         bool tap = !tc.oh_joy_firehold && !tc.oh_joy_steered &&
                    !tc.oh_joy_fired &&
                    now - tc.oh_joy_down_ms < OH_LONG_PRESS_MS;
+        // Held deflection (touch_controls.h). An un-wandered release
+        // under an engaged memory is a fire gesture's end (a tap, a
+        // fire-hold's release, a long press let go): the ship flies on
+        // with no timeout. Anything else stops
+        // the ship NOW — a stick let go is a stop, whatever follows —
+        // and a STEERING release outside the deadzone becomes the memory
+        // a tap inside the window picks back up. touch_one_hand_tick
+        // applies the remembered deflection while no finger is down.
+        bool flies_on = tc.oh_hold_engaged && !tc.oh_joy_steered;
+        oh_prune_samples(now);
+        float rel_nx = tc.joy_nx, rel_ny = tc.joy_ny;
+        float sampled_nx = tc.oh_stick_samples.empty() ? 0.0f :
+                           tc.oh_stick_samples.front().nx;
+        float sampled_ny = tc.oh_stick_samples.empty() ? 0.0f :
+                           tc.oh_stick_samples.front().ny;
+        // A centred/reversed live axis must not restore its stale sample.
+        if (std::fabs(rel_nx) <= 0.10f || rel_nx * sampled_nx <= 0.0f) sampled_nx = 0;
+        if (std::fabs(rel_ny) <= 0.10f || rel_ny * sampled_ny <= 0.0f) sampled_ny = 0;
         tc.joy_active = false;
         tc.joy_nx     = 0.0f;
         tc.joy_ny     = 0.0f;
-        game->touch_joystick(0.0f, 0.0f);
+        if (flies_on) {
+            tc.oh_hold_until = 0;  // a completed tap keeps the input latched
+        } else {
+            game->touch_joystick(0.0f, 0.0f);
+            if (tc.one_hand_ingame && tc.oh_joy_steered &&
+                (std::fabs(sampled_nx) > 0.10f || std::fabs(sampled_ny) > 0.10f)) {
+                tc.oh_hold_valid   = true;
+                tc.oh_hold_engaged = false;
+                tc.oh_hold_nx      = sampled_nx;
+                tc.oh_hold_ny      = sampled_ny;
+                tc.oh_hold_until   = now + OH_HOLD_MS;
+            } else {
+                oh_hold_clear();
+            }
+        }
         // Pair the '\r' sent in touch_one_hand_down
         game->keyboard_up('\r', 0, 0);
         if (tc.oh_joy_firehold) {
@@ -548,7 +646,34 @@ void touch_one_hand_tick(StateManager *game) {
         tc.oh_mine_up_at = 0;
         game->keyboard_up('x', 0, 0);
     }
-    if (!tc.one_hand_ingame) return;
+    if (!tc.one_hand_ingame) {
+        // Off the live-play gate (pause, roster, help card, game over, a
+        // screen change): a remembered manoeuvre must not outlive it.
+        // GLGame::touch_joystick refuses off `running` and the
+        // StateManager's forward no-ops off a GLGame, so the zeroing is
+        // safe wherever this lands; the pause path's release_controls
+        // already stopped the ship, this just keeps the memory honest.
+        if (tc.oh_hold_engaged) {
+            // A still finger holding an engaged memory carries it in the
+            // nub: zero that too, or the resume would fly it again.
+            if (tc.joy_active && !tc.oh_joy_steered) {
+                tc.joy_nx = 0.0f;
+                tc.joy_ny = 0.0f;
+            }
+            game->touch_joystick(0.0f, 0.0f);
+        }
+        oh_hold_clear();
+        return;
+    }
+    // A completed tap latches the remembered input until live steering or
+    // a reset takes over. Only the initial lift-to-tap opportunity expires.
+    if (tc.oh_hold_valid && !tc.joy_active) {
+        if (tc.oh_hold_engaged) {
+            game->touch_joystick(tc.oh_hold_nx, tc.oh_hold_ny);
+        } else if ((Sint32)(now - tc.oh_hold_until) >= 0) {
+            oh_hold_clear();
+        }
+    }
     // Long-press watchdog: a held, un-wandered press fires the secondary
     // once, while the finger is still down (motion events stop when the
     // finger stops, so release-time checks alone would fire it late).

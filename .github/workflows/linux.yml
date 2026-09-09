@@ -74,6 +74,9 @@ jobs:
       - name: Save failure regression test
         run: bash test/unit/savegame.sh
 
+      - name: One-hand touch gesture layer unit test
+        run: bash test/unit/touch_one_hand.sh
+
       # Netplay (NETPLAY.md): the documented Linux recipe — libdatachannel
       # from source into ./netplay-libs (clone happens in a temp dir; the
       # prefix holds only headers and libs, so the source find below is safe).
