@@ -134,7 +134,7 @@ for (const [x,y] of [[0,0], [0,.4]]) {
 }
 
 {
-  const h = harness(); steer(h); h.send('touchend'); h.advance(301);
+  const h = harness(); steer(h); h.send('touchend'); h.advance(500);
   h.send('touchstart'); h.expect(0, 0);
 }
 
@@ -207,6 +207,28 @@ function pressButton(button, type, id) {
   button.el.handlers[type]({ preventDefault() {},
     changedTouches:[{identifier:id, clientX:button.x, clientY:button.y}] });
 }
+// A slower lift/tap/rehold keeps the ring, nub and action cluster anchored.
+{
+  const h = harness(); steer(h, 0, -.4);
+  const [base, nub] = h.context._joyPlaceholderEls;
+  const placed = actionPositions(h).map(p => [p.x,p.y]);
+  h.send('touchend'); h.expect(0, 0);
+  assert.ok(nub.style.cssText.includes(`top:${400-.4*r}px`));
+  h.advance(450);
+  for (const [x,y] of [[650,420], [700,450]]) {
+    h.send('touchstart', x,y); h.expect(0, -.4);
+    assert.match(base.style.cssText, /left:500px;top:400px/);
+    assert.equal(nub.style.left, '500px');
+    assert.equal(nub.style.top, `${400-.4*r}px`);
+    assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+    h.send('touchmove', x+2,y+1); h.expect(0, -.4);
+    h.advance(40); h.send('touchend',x,y); h.advance(450);
+  }
+  h.send('touchstart', 650,420); h.expect(0, -.4);
+  h.send('touchmove', 650+.3*r,420); h.expect(.3,0);
+  assert.match(base.style.cssText, /left:650px;top:420px/);
+  assert.notDeepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+}
 {
   const h = harness();
   const home = actionPositions(h).map(p => [p.x,p.y]);
@@ -221,6 +243,7 @@ function pressButton(button, type, id) {
   pressButton(boost, 'touchstart', 2);
   assert.deepEqual(h.keys.at(-1), ['keydown', 'e']);
   h.send('touchstart', 100, 200, 3);
+  h.send('touchmove', 130, 200, 3);
   assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
   pressButton(boost, 'touchend', 2);
   assert.deepEqual(h.keys.at(-1), ['keyup', 'e']);

@@ -619,12 +619,12 @@ declare const NewtoniaStore: undefined | {
     let spaceUpTimer: number | null = null;
     let secondaryUpTimer: number | null = null;
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
-    // A steering release stops and remembers thrust for 300 ms. A press
+    // A steering release stops and remembers thrust for 500 ms. A press
     // inside that window resumes thrust with rotation released. Its
     // un-wandered release latches thrust until live steering or reset
     // takes over. Only the initial
     // lift-to-tap opportunity expires, never input resumed by a tap.
-    const OH_HOLD_MS = 300;
+    const OH_HOLD_MS = 500;
     const OH_SAMPLE_MS = 50;
     let stickSamples: { ms: number; nx: number; ny: number }[] = [];
     function pruneStickSamples(now: number): void {
@@ -754,7 +754,10 @@ declare const NewtoniaStore: undefined | {
       if (holdTimer !== null) window.clearTimeout(holdTimer);
       holdTimer = window.setTimeout(() => {
         holdTimer = null;
-        if (joyFinger === null && !holdEngaged) holdClear();
+        if (joyFinger === null && !holdEngaged) {
+          holdClear();
+          positionJoyPlaceholder();
+        }
       }, OH_HOLD_MS);
     }
     // Off the live-play gate (setTapFire false): stop a ship still flying
@@ -785,7 +788,7 @@ declare const NewtoniaStore: undefined | {
       const { px, py, rad } = ringHome(r);
       const baseSize = rad * 2, nubSize = rad * 0.62;
       joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.55;`;
-      joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px + holdNx * rad}px;top:${py + holdNy * rad}px;opacity:0.7;`;
+      joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px + holdNx * rad}px;top:${py + holdNy * rad}px;opacity:${holdEngaged ? 0.7 : 0.4};`;
     }
 
     // Radius is captured at touchstart and reused for the whole drag — avoids
@@ -929,7 +932,7 @@ declare const NewtoniaStore: undefined | {
     // where the joystick zone is before touching.
     function positionJoyPlaceholder(): void {
       if (_inMenuMode) return;
-      if (_oneHand && holdEngaged && joyFinger === null) {
+      if (_oneHand && holdValid && joyFinger === null) {
         showHeldStick();
         return;
       }
@@ -958,10 +961,12 @@ declare const NewtoniaStore: undefined | {
           joyFinger = t.identifier;
           const r = canvas.getBoundingClientRect();
           // clientX/Y are viewport-relative; touch-controls is position:fixed so no offset needed.
-          showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * JOY_FRAC);
+          const resume = _oneHand && _tapFire && holdArmed();
+          const anchor = resume && actionAnchor ? actionAnchor : { x: t.clientX, y: t.clientY };
+          showJoystick(anchor.x, anchor.y, Math.min(r.width, r.height) * JOY_FRAC);
           if (_oneHand) {
             if (_tapFire) {
-              actionAnchor = { x: t.clientX, y: t.clientY };
+              actionAnchor = anchor;
               positionActionButtons?.();
             }
             joyDownX = t.clientX; joyDownY = t.clientY;
@@ -974,7 +979,7 @@ declare const NewtoniaStore: undefined | {
             // deflection and the ship flies it while this finger stays
             // still; its wander takes over in touchmove. Outside the
             // window the press is cold and the memory is spent.
-            if (_tapFire && holdArmed()) {
+            if (resume) {
               holdEngaged = true;
               window.clearTimeout(holdTimer!);
               holdTimer = null;  // this finger holds it now
@@ -1017,6 +1022,11 @@ declare const NewtoniaStore: undefined | {
           // the finger's own again, live from the landing point.
           // Small tap wobble never steers, including taps without memory.
           if (_oneHand && !joySteered) continue;
+          if (_oneHand && holdEngaged) {
+            showJoystick(joyDownX, joyDownY, joyRad);
+            actionAnchor = { x: joyDownX, y: joyDownY };
+            positionActionButtons?.();
+          }
           holdEngaged = false;
           moveJoystick(t.clientX, t.clientY);
           if (_oneHand && joySteered) {
@@ -1064,7 +1074,7 @@ declare const NewtoniaStore: undefined | {
             joyFinger = null;
             showHeldStick();
             // A completed tap latches input until the pilot steers again.
-            // The 300 ms timer only applies before the first tap.
+            // The 500 ms timer only applies before the first tap.
           } else {
             holdClear();
             hideJoystick();
@@ -1073,6 +1083,7 @@ declare const NewtoniaStore: undefined | {
               holdValid = true; holdEngaged = false;
               holdNx = 0; holdNy = sampledNy;
               holdArmWindow();
+              showHeldStick();
             } else {
               holdClear();
             }

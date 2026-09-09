@@ -161,7 +161,7 @@ struct TouchControlsState {
     bool  oh_tap_firehold;
     // ---- Held deflection: the stick survives a lift-and-tap ----
     // A steering release stops immediately and remembers the previous
-    // thrust/reverse input for 300 ms. A press inside that window resumes
+    // thrust/reverse input for 500 ms. A press inside that window resumes
     // thrust/reverse; rotation is released with the drag. An un-wandered
     // release (tap/fire-hold/long press) keeps that input latched without a
     // timeout. Further taps preserve thrust while keeping the aim straight.

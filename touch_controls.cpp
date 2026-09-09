@@ -305,7 +305,7 @@ static const Uint32 OH_KEY_HOLD_MS = 70;
 static const Uint32 OH_DOUBLE_TAP_MS = 250;
 // Initial lift-to-tap opportunity. Once a tap resumes the input, it stays
 // latched until the pilot steers again or the controls reset.
-static const Uint32 OH_HOLD_MS = 300;
+static const Uint32 OH_HOLD_MS = 500;
 
 static float oh_tap_slop() { return g_touch_controls.joy_radius * 0.12f; }
 
@@ -461,8 +461,13 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         // what keeps a still press still, which is what makes tap vs
         // long-press vs steering decidable at all (a centre-anchored
         // stick would read every off-centre touch as full deflection).
-        tc.joy_cx     = px;
-        tc.joy_cy     = py;
+        // A resumed fire gesture keeps the visible base. Only a cold
+        // press or a deliberate new drag relocates the ring and buttons.
+        bool resume = tc.one_hand_ingame && oh_hold_armed(SDL_GetTicks());
+        if (!resume) {
+            tc.joy_cx = px;
+            tc.joy_cy = py;
+        }
         tc.joy_nx     = 0.0f;
         tc.joy_ny     = 0.0f;
         tc.joy_active = true;
@@ -480,7 +485,7 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
         // still, and the finger's own wander takes over below in
         // touch_one_hand_motion. A press outside the window is cold: the
         // memory is spent, and the ship stays where the lift left it.
-        if (tc.one_hand_ingame && oh_hold_armed(tc.oh_joy_down_ms)) {
+        if (resume) {
             tc.oh_hold_engaged = true;
             tc.oh_hold_until   = 0;  // this finger holds it now
             tc.joy_nx = tc.oh_hold_nx;
@@ -528,6 +533,11 @@ void touch_one_hand_motion(SDL_FingerID id, float px, float py) {
         // the landing point, live deflection from here on.
         // A tap's small wobble must never steer, even without held thrust.
         if (!tc.oh_joy_steered) return;
+        if (tc.oh_hold_engaged) {
+            tc.joy_cx = tc.oh_joy_down_px;
+            tc.joy_cy = tc.oh_joy_down_py;
+            oh_layout_actions();
+        }
         tc.oh_hold_engaged = false;
         oh_update_nub(px, py);
         if (tc.oh_joy_steered) {

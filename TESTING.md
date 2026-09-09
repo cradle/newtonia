@@ -105,7 +105,7 @@ node test/unit/touch_one_hand_web.cjs  # Node + tsc on PATH
 Links the real `touch_controls.cpp` against link-time stubs for the three
 `StateManager` entry points it drives (recorded as an event log), the
 `Preferences` global, the zoom-zone lookups and the safe inset, with
-`SDL_GetTicks` `--wrap`ped to a fake clock so a 300 ms window is stepped in
+`SDL_GetTicks` `--wrap`ped to a fake clock so a 500 ms window is stepped in
 one line. Each scenario runs the mobile entry points' loop (events, the
 per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
 deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
@@ -114,10 +114,12 @@ immediately; rotation-only releases cannot restart a turn on a tap. Small tap
 wobble never steers, even outside the ship's deadzone. Thrust stays active
 across multi-second gaps after a tap; re-steering and returning to centre
 stops it. An initial
-lift without a follow-up tap expires after 300 ms. The last 50 ms of lift-off
+lift without a follow-up tap expires after 500 ms. The last 50 ms of lift-off
 drift must not amplify forward/reverse thrust or latch any rotation. Sparse
 motion, short new drags, centred/reversed axes, reset and gate drops exercise the
-handoff. Second-finger taps and long presses are also covered. Native tests
+handoff. A 450 ms lift-to-tap gap resumes with the ring, thrust nub and action
+buttons at the previous anchor; reholding and tap jitter keep them there,
+while a deliberate new drag relocates them. Second-finger taps and long presses are also covered. Native tests
 run in `linux.yml`.
 
 The web test compiles the production TypeScript joystick handlers into a

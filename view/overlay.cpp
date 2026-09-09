@@ -1709,15 +1709,16 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float nx_off =  tc.joy_nx * jr;
     float ny_off = -tc.joy_ny * jr;
     draw_circle(bx + nx_off, by + ny_off, jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f, 0.90f);
-  } else if (touch_one_handed() && tc.oh_hold_engaged) {
+  } else if (touch_one_handed() && tc.oh_hold_valid) {
     // One-hand held deflection with no finger down (touch_controls.h):
-    // the ship is still flying the stick the thumb let go of to tap, so
-    // the resting ring shows that stick — the active nub, at the
+    // retain the thrust preview during the lift window; dimmer while
+    // stopped, brighter once a tap resumes it. The resting ring shows that stick — the active nub, at the
     // remembered deflection, a shade dimmer than under a finger — until
     // the thumb re-takes it or the controls reset.
     draw_circle(jox, joy, jr, 32, false, 0.5f, 0.65f, 1.0f, 0.55f);
     draw_circle(jox + tc.oh_hold_nx * jr, joy - tc.oh_hold_ny * jr,
-                jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f, 0.60f);
+                jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f,
+                tc.oh_hold_engaged ? 0.60f : 0.40f);
   } else {
     draw_circle(jox, joy, jr, 32, false, 0.4f, 0.55f, 1.0f, 0.55f);
     draw_circle(jox, joy, jr * 0.25f, 20, true, 0.4f, 0.55f, 1.0f, 0.40f);

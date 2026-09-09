@@ -4,7 +4,7 @@
 // reaches — the three StateManager entry points it drives (recorded as an
 // event log), the Preferences global, the zoom-zone lookups and the safe
 // inset — and a --wrap'ped SDL_GetTicks, so the clock is the test's and a
-// 300 ms window can be stepped past in one line. No SDL runtime, no
+// 500 ms window can be stepped past in one line. No SDL runtime, no
 // display. Run via test/unit/touch_one_hand.sh.
 //
 // Every scenario mimics the mobile entry points' loop (android_main.cpp /
@@ -172,10 +172,13 @@ static void test_lift_tap_tap() {
   // Armed, not engaged: nothing drives the ship while it waits.
   CHECK(!any_joy_nonzero(at));
 
-  // Tap 1, 100 ms after the lift, somewhere else on the screen.
-  s_now += 68;
+  // A slower tap at 450 ms still resumes, without moving the visual base.
+  const float bx = g_touch_controls.boost_cx, by = g_touch_controls.boost_cy;
+  s_now += 418;
   at = s_log.size();
   down(1, 700, 520);
+  CHECK(near(g_touch_controls.joy_cx, 500) && near(g_touch_controls.joy_cy, 500));
+  CHECK(near(g_touch_controls.boost_cx, bx) && near(g_touch_controls.boost_cy, by));
   CHECK(g_touch_controls.oh_hold_engaged);
   CHECK(near(g_touch_controls.joy_nx, nx) && near(g_touch_controls.joy_ny, ny));
   frame(16);  // the entry point's apply carries the nub = the memory
@@ -199,6 +202,8 @@ static void test_lift_tap_tap() {
     s_now += 100;
     at = s_log.size();
     down(1, 650 + 30 * i, 540);
+    CHECK(near(g_touch_controls.joy_cx, 500) && near(g_touch_controls.joy_cy, 500));
+    CHECK(near(g_touch_controls.boost_cx, bx) && near(g_touch_controls.boost_cy, by));
     CHECK(g_touch_controls.oh_hold_engaged);
     frame(16);
     s_now += 40;
@@ -242,7 +247,7 @@ static void test_armed_memory_lapses() {
   CHECK(up(1));
   frame(150);
   frame(150);
-  frame(40);
+  frame(200);
   CHECK(!g_touch_controls.oh_hold_valid);
   size_t at = s_log.size();
   down(1, 600, 500);
@@ -277,6 +282,7 @@ static void test_reland_and_steer() {
   motion(1, 600 + 0.5f * r, 500);
   CHECK(g_touch_controls.oh_joy_steered);
   CHECK(!g_touch_controls.oh_hold_engaged);
+  CHECK(near(g_touch_controls.joy_cx, 600) && near(g_touch_controls.joy_cy, 500));
   CHECK(near(g_touch_controls.joy_nx, 0.5f) && near(g_touch_controls.joy_ny, 0.0f));
   size_t at = s_log.size();
   frame(16);
@@ -486,6 +492,7 @@ static void test_active_action_buttons() {
   CHECK(tc.boost_pressed && count_key(at, 'd', 'e') == 1);
   CHECK(!tc.joy_active);
   down(3, 100, 200);
+  motion(3, 130, 200); // deliberate steering relocates a resumed base
   CHECK(tc.joy_active && tc.joy_finger == 3);
   CHECK(near(tc.boost_cx, x) && near(tc.boost_cy, y));
   CHECK(up(2));
@@ -494,7 +501,7 @@ static void test_active_action_buttons() {
   CHECK(up(3));
   touch_controls_reset(SM);
   CHECK(!tc.oh_anchor_valid);
-  CHECK(count_key(at, 'd', ' ') == 1); // only the final unsteered stick tap fires
+  CHECK(count_key(at, 'd', ' ') == 0); // both stick fingers deliberately steered
 }
 
 // Sweep every side and the whole viewport, including corners where the
