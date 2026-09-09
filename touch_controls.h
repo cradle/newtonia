@@ -158,36 +158,24 @@ struct TouchControlsState {
     bool  oh_joy_firehold;
     bool  oh_tap_firehold;
     // ---- Held deflection: the stick survives a lift-and-tap ----
-    // A one-handed pilot has ONE thumb, and it is on the stick: to tap
-    // the primary mid-manoeuvre it has to come off, which used to zero
-    // the stick (the ship stopped) and re-base it at zero deflection on
-    // the re-land (the ship stayed stopped until the thumb wandered).
-    // So a STEERING release now REMEMBERS its thrust for OH_HOLD_MS
-    // (touch_controls.cpp) — the ship still stops on the lift, since a
-    // stick let go must stop the ship at once (aiming is rotation), but a
-    // press landing inside that window ENGAGES the memory: the ship flies
-    // the remembered deflection again while that finger stays still, its
-    // un-wandered release (a tap: one shot, the same tap-fire as ever)
-    // keeps the ship flying and re-arms the window, so tap, tap, tap
-    // shoots three times through one unbroken manoeuvre. A wander hands
-    // the stick back to the finger live (floating base at the landing
-    // point, exactly as always — the memory is a bridge over the lift,
-    // never an offset base), and a window that lapses with no finger down
-    // stops the ship. Nothing here is a new gesture: the tap is a tap and
-    // the long press / fire-hold rules are unchanged; only what the ship
-    // does UNDER the finger's absence changed. Cleared with the tap-fire
-    // gate, so a pause or a screen change never leaves a ship coasting.
-    // Rotation is never remembered: lifting fixes the heading for the shot.
-    // Thrust is sampled 50 ms before lift to reject the peeling thumb's tail;
-    // a centred/reversed live axis cannot resurrect stale thrust.
+    // A steering release stops immediately and remembers the previous
+    // joystick input for 300 ms. A press inside that window resumes both
+    // rotation and thrust/reverse. An un-wandered release (tap/fire-hold/
+    // long press) keeps that input latched without a timeout, so shooting
+    // does not stop the manoeuvre. Further taps leave the input intact.
+    // A wander takes over live from the new landing point; steer back to
+    // centre to stop. Pause, reset and screen changes clear the memory.
+    // Both axes are sampled 50 ms before lift to reject the peeling thumb's
+    // tail without delaying live steering. A centred/reversed live axis
+    // cannot resurrect its stale sample.
     // Keep the sample at/before 50 ms ago plus the recent motion tail.
     // Only steering samples enter this history; a brief drag uses its first.
-    struct ThrustSample { Uint32 ms; float ny; };
-    std::deque<ThrustSample> oh_thrust_samples;
+    struct StickSample { Uint32 ms; float nx, ny; };
+    std::deque<StickSample> oh_stick_samples;
     bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
     bool   oh_hold_engaged;  // the ship is flying the remembered deflection now
     float  oh_hold_nx, oh_hold_ny;
-    Uint32 oh_hold_until;    // window deadline while no finger drives it (0 = held by a finger)
+    Uint32 oh_hold_until;    // initial lift-to-tap deadline (0 = latched input)
 };
 
 extern TouchControlsState g_touch_controls;

@@ -109,22 +109,20 @@ Links the real `touch_controls.cpp` against link-time stubs for the three
 one line. Each scenario runs the mobile entry points' loop (events, the
 per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
 deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
-tap with the ship flying the remembered stick throughout and stopping when
-the window lapses; an un-followed lift is forgotten; a re-land that steers
-takes the stick back live from its landing point; a centred release
-remembers nothing; the live-play gate, `touch_controls_reset` and a still
-finger under a dropped gate all stop the coast; the second-finger tap and
-the cold long press are unchanged. Memory is thrust-only: diagonal steering
-must not restart rotation; the last 50 ms of lift-off drift must not amplify
-forward/reverse thrust. Sparse motion, short new drags, and an immediate
-reversal exercise the sampling boundary. Native tests run in `linux.yml`.
+tap and resumes both joystick axes. The input stays active across multi-second
+gaps after a tap; re-steering and returning to centre stops it. An initial
+lift without a follow-up tap expires after 300 ms. The last 50 ms of lift-off
+drift must not amplify rotation or forward/reverse thrust. Sparse motion,
+short new drags, centred/reversed axes, reset and gate drops exercise the
+handoff. Second-finger taps and long presses are also covered. Native tests
+run in `linux.yml`.
 
-The web test compiles the real TypeScript UI into a temporary directory and
-executes its joystick handlers with a stub DOM and deterministic clock. It
-checks thrust-only tap chains, expiry, lift-off drift, rotation-only/centred
-releases, reversal, sparse motion, new-press history, cancellation without a
-shot, and gate drop with a finger still holding the memory. It runs in
-`web.yml`. Physical phone feel still needs an on-device check.
+The web test compiles the production TypeScript joystick handlers into a
+temporary directory and executes them with a stub DOM and deterministic
+clock. It checks resumed tap chains, long gaps, initial memory expiry,
+lift-off drift, rotation-only input, centred/reversed axes, sparse motion,
+new-press history, cancellation without a shot, and gate drop under a held
+finger. It runs in `web.yml`. Physical phone feel needs an on-device check.
 
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 

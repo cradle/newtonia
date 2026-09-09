@@ -71,15 +71,20 @@ for (const sign of [-1, 1]) {
   h.send('touchmove', 500+.6*r, 400+sign*.7*r); h.advance(10);
   h.send('touchend'); h.expect(0, 0); h.advance(100);
   for (let i=0; i<3; i++) {
-    h.send('touchstart'); h.expect(0, sign*.4); h.advance(40);
-    h.send('touchend'); h.expect(0, sign*.4); h.advance(100);
+    h.send('touchstart'); h.expect(.3, sign*.4); h.advance(40);
+    h.send('touchend'); h.expect(.3, sign*.4); h.advance(100);
   }
   assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 3);
-  h.advance(201); h.expect(0, 0);
+  h.advance(5000); h.expect(.3, sign*.4);
+  h.send('touchstart'); h.expect(.3, sign*.4); h.advance(40);
+  h.send('touchend'); h.advance(1000); h.expect(.3, sign*.4);
+  h.send('touchstart'); h.send('touchmove', 500, 400-.4*r);
+  h.send('touchmove', 500, 400); h.send('touchend'); h.expect(0, 0);
+  h.advance(100); h.send('touchstart'); h.expect(0, 0);
 }
 for (const cancelled of [false, true]) {
   const h = harness(); steer(h); h.send('touchend'); h.advance(100);
-  h.send('touchstart'); h.expect(0, -.4);
+  h.send('touchstart'); h.expect(.3, -.4);
   if (cancelled) {
     h.send('touchcancel'); h.expect(0, 0);
     assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 0);
@@ -89,7 +94,7 @@ for (const cancelled of [false, true]) {
   }
   h.advance(100); h.send('touchstart'); h.expect(0, 0);
 }
-for (const [x,y] of [[.5,0], [0,0], [0,.4]]) {
+for (const [x,y] of [[0,0], [0,.4]]) {
   const h = harness(); steer(h);
   h.send('touchmove', 500+x*r, 400+y*r); h.advance(10);
   h.send('touchend'); h.advance(100); h.send('touchstart'); h.expect(0, 0);
@@ -101,4 +106,16 @@ for (const [x,y] of [[.5,0], [0,0], [0,.4]]) {
   h.send('touchmove', 500, 400+.5*r); h.advance(10);
   h.send('touchend'); h.advance(100); h.send('touchstart'); h.expect(0, .5);
 }
+
+{
+  const h = harness(); steer(h); h.send('touchend'); h.advance(301);
+  h.send('touchstart'); h.expect(0, 0);
+}
+
+{
+  const h = harness(); steer(h, .5, 0); h.send('touchend'); h.advance(100);
+  h.send('touchstart'); h.expect(.5, 0); h.send('touchend');
+  h.advance(5000); h.expect(.5, 0);
+}
+
 console.log('touch_one_hand_web: all checks passed');

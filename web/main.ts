@@ -611,24 +611,20 @@ declare const NewtoniaStore: undefined | {
     let lastTapMs = 0;
     let spaceUpTimer: number | null = null;
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
-    // The one thumb has to come off the stick to tap, which used to stop
-    // the ship (and re-base the stick at zero on the re-land). A STEERING
-    // release still stops the ship at once but REMEMBERS only its thrust
-    // for OH_HOLD_MS; a press inside that window engages it — the ship
-    // flies the memory while the finger stays still, an un-wandered
-    // release (the tap: one shot) keeps it flying and re-arms the window,
-    // a wander takes the stick back live from the landing point, and a
-    // lapsed window with no finger down stops the ship.
+    // A steering release stops and remembers both axes for 300 ms. A press
+    // inside that window resumes them; its un-wandered release latches the
+    // input until live steering or reset takes over. Only the initial
+    // lift-to-tap opportunity expires, never input resumed by a tap.
     const OH_HOLD_MS = 300;
     const OH_SAMPLE_MS = 50;
-    let thrustSamples: { ms: number; ny: number }[] = [];
-    function pruneThrustSamples(now: number): void {
-      while (thrustSamples.length > 1 && now - thrustSamples[1].ms >= OH_SAMPLE_MS)
-        thrustSamples.shift();
+    let stickSamples: { ms: number; nx: number; ny: number }[] = [];
+    function pruneStickSamples(now: number): void {
+      while (stickSamples.length > 1 && now - stickSamples[1].ms >= OH_SAMPLE_MS)
+        stickSamples.shift();
     }
     let holdValid = false, holdEngaged = false;
     let holdNx = 0, holdNy = 0;
-    let holdTimer: number | null = null;   // the window; null = held by a finger or no memory
+    let holdTimer: number | null = null;   // the window; null = latched input or no memory
     let liveNx = 0, liveNy = 0;            // the stick's last applied deflection
     // Fingers deliberately left to the canvas-tap path (the zoom zones).
     const passFingers = new Set<number>();
@@ -734,26 +730,18 @@ declare const NewtoniaStore: undefined | {
     }
 
     function holdClear(): void {
-      thrustSamples = [];
+      stickSamples = [];
       holdValid = false; holdEngaged = false;
       holdNx = 0; holdNy = 0;
       if (holdTimer !== null) { window.clearTimeout(holdTimer); holdTimer = null; }
     }
-    function holdArmed(): boolean { return holdValid && holdTimer !== null; }
-    // The window: when it lapses with no finger on the stick, an ENGAGED
-    // memory stops the ship (the pilot stopped tapping and never re-took
-    // the stick) and an armed one is simply forgotten.
+    function holdArmed(): boolean { return holdValid && (holdEngaged || holdTimer !== null); }
+    // Forget an initial lift that was never followed by a tap.
     function holdArmWindow(): void {
       if (holdTimer !== null) window.clearTimeout(holdTimer);
       holdTimer = window.setTimeout(() => {
         holdTimer = null;
-        if (joyFinger !== null) return;
-        const wasEngaged = holdEngaged;
-        holdClear();
-        if (wasEngaged) {
-          callTouchJoystick(0, 0);
-          positionJoyPlaceholder();
-        }
+        if (joyFinger === null && !holdEngaged) holdClear();
       }, OH_HOLD_MS);
     }
     // Off the live-play gate (setTapFire false): stop a ship still flying
@@ -933,7 +921,7 @@ declare const NewtoniaStore: undefined | {
           if (_oneHand) {
             joyDownX = t.clientX; joyDownY = t.clientY;
             joyDownMs = Date.now();
-            thrustSamples = [];
+            stickSamples = [];
             joySteered = false; joyFired = false;
             liveNx = 0; liveNy = 0;
             // Held deflection: a press inside the window picks the
@@ -989,8 +977,8 @@ declare const NewtoniaStore: undefined | {
           moveJoystick(t.clientX, t.clientY);
           if (_oneHand && joySteered) {
             const now = Date.now();
-            thrustSamples.push({ ms: now, ny: liveNy });
-            pruneThrustSamples(now);
+            stickSamples.push({ ms: now, nx: liveNx, ny: liveNy });
+            pruneStickSamples(now);
           }
           if (!_oneHand) break;
         } else if (_oneHand && t.identifier === tapFinger && !tapSteered) {
@@ -1016,27 +1004,30 @@ declare const NewtoniaStore: undefined | {
           const wasTap = _oneHand && !joyFireHold && !joySteered &&
                          !joyFired && Date.now() - joyDownMs < OH_LONG_PRESS_MS;
           // Held deflection: an un-wandered release under an engaged
-          // memory is a fire gesture's end — the ship flies on and the
-          // window re-arms. Anything else stops the ship NOW, and a
+          // memory is a fire gesture's end — the input stays latched.
+          // Anything else stops the ship NOW, and a
           // STEERING release outside the deadzone becomes the memory a
           // tap inside the window picks back up.
           const fliesOn = _oneHand && holdEngaged && !joySteered && !cancelled;
-          // Keep the heading set on lift, and reject the last 50 ms of
+          // Restore the previous input and reject the last 50 ms of
           // peeling-thumb drift. A short drag uses its first steering sample.
-          pruneThrustSamples(Date.now());
-          const relNy = liveNy;
-          const sampledNy = thrustSamples[0]?.ny ?? 0;
+          pruneStickSamples(Date.now());
+          const relNx = liveNx, relNy = liveNy;
+          let sampledNx = stickSamples[0]?.nx ?? 0;
+          let sampledNy = stickSamples[0]?.ny ?? 0;
+          if (Math.abs(relNx) <= 0.10 || relNx * sampledNx <= 0) sampledNx = 0;
+          if (Math.abs(relNy) <= 0.10 || relNy * sampledNy <= 0) sampledNy = 0;
           if (fliesOn) {
             joyFinger = null;
             showHeldStick();
-            holdArmWindow();
+            // A completed tap latches input until the pilot steers again.
+            // The 300 ms timer only applies before the first tap.
           } else {
             hideJoystick();
             if (_oneHand && _tapFire && joySteered && !cancelled &&
-                (Math.abs(relNy) > 0.10 && Math.abs(sampledNy) > 0.10 &&
-                 relNy * sampledNy > 0)) {
+                (Math.abs(sampledNx) > 0.10 || Math.abs(sampledNy) > 0.10)) {
               holdValid = true; holdEngaged = false;
-              holdNx = 0; holdNy = sampledNy;
+              holdNx = sampledNx; holdNy = sampledNy;
               holdArmWindow();
             } else {
               holdClear();

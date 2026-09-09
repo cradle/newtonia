@@ -174,7 +174,7 @@ static void test_lift_tap_tap() {
   CHECK(up(1));
   CHECK(count_key(at, 'd', ' ') == 1);  // one shot
   CHECK(!any_joy_zero(at));             // and no stop
-  CHECK(g_touch_controls.oh_hold_engaged && g_touch_controls.oh_hold_until != 0);
+  CHECK(g_touch_controls.oh_hold_engaged && g_touch_controls.oh_hold_until == 0);
 
   // Coasting between taps: the tick keeps the ship on the memory.
   at = s_log.size();
@@ -199,16 +199,27 @@ static void test_lift_tap_tap() {
     frame(60);
   }
 
-  // The pilot stops tapping: the window lapses and the ship stops.
+  // A completed tap resumes the input until the pilot steers again,
+  // including long gaps before the next tap.
   at = s_log.size();
-  frame(200);
+  frame(5000);
   CHECK(!any_joy_zero(at));
-  frame(120);
-  CHECK(any_joy_zero(at));
-  CHECK(!g_touch_controls.oh_hold_valid && !g_touch_controls.oh_hold_engaged);
-  at = s_log.size();
+  CHECK(g_touch_controls.oh_hold_valid && g_touch_controls.oh_hold_engaged);
+  CHECK(last_joy(at, &jx, &jy) && near(jy, -0.6f));
+  down(1, 600, 400);
+  CHECK(g_touch_controls.oh_hold_engaged);
+  frame(40);
+  CHECK(up(1));
+  frame(1000);
+  CHECK(!any_joy_zero(at));
+  // Take over and return to centre to stop.
+  down(1, 600, 400);
+  motion(1, 600, 400 - 0.4f*g_touch_controls.joy_radius);
+  motion(1, 600, 400);
   frame(16);
-  CHECK(!any_joy_nonzero(at));
+  CHECK(up(1));
+  CHECK(any_joy_zero(at));
+  CHECK(!g_touch_controls.oh_hold_valid);
 }
 
 // A lift the pilot never follows up: the memory is forgotten, and the
@@ -260,12 +271,14 @@ static void test_reland_and_steer() {
   frame(16);
   float jx, jy;
   CHECK(last_joy(at, &jx, &jy) && near(jx, 0.5f) && near(jy, 0.0f));
-  // A rotation-only lift stops with no thrust memory.
+  // Rotation-only input is remembered too.
   at = s_log.size();
   CHECK(up(1));
   CHECK(any_joy_zero(at));
   CHECK(count_key(at, 'd', ' ') == 0);  // a steering release never fires
-  CHECK(!g_touch_controls.oh_hold_valid);
+  CHECK(g_touch_controls.oh_hold_valid);
+  CHECK(near(g_touch_controls.oh_hold_nx, 0.5f));
+  CHECK(near(g_touch_controls.oh_hold_ny, 0.0f));
 }
 
 // A stick brought back to centre before the lift is a stop, not a
@@ -381,7 +394,7 @@ static void test_long_press_under_memory() {
 }
 
 // A diagonal steer followed by a peeling thumb must not amplify thrust or
-// resume rotation when the pilot taps. Exercise forward and reverse thrust.
+// rotation when the pilot taps. Exercise forward and reverse thrust.
 static void test_pre_lift_thrust() {
   for (float sign : {-1.0f, 1.0f}) {
     reset_layer();
@@ -393,16 +406,16 @@ static void test_pre_lift_thrust() {
     motion(1, 500 + 0.6f*r, 400 + sign*0.7f*r);
     frame(10);
     CHECK(up(1));
-    CHECK(near(g_touch_controls.oh_hold_nx, 0));
+    CHECK(near(g_touch_controls.oh_hold_nx, 0.3f));
     CHECK(near(g_touch_controls.oh_hold_ny, sign*0.4f));
     frame(100);
     down(1, 600, 400);
     frame(16);
     float x, y;
-    CHECK(last_joy(0, &x, &y) && near(x, 0) && near(y, sign*0.4f));
+    CHECK(last_joy(0, &x, &y) && near(x, 0.3f) && near(y, sign*0.4f));
     CHECK(up(1));
     frame(16);
-    CHECK(last_joy(0, &x, &y) && near(x, 0) && near(y, sign*0.4f));
+    CHECK(last_joy(0, &x, &y) && near(x, 0.3f) && near(y, sign*0.4f));
   }
 }
 
