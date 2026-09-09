@@ -106,6 +106,13 @@ jobs:
           node test/reclaim_chain_test.mjs
           kill $DEV_PID
 
+      # The worker's own console output (budget trips, relay errors) is the
+      # other half of any protocol-test failure — without it a FAIL line
+      # can't be told apart from a slow runner (run 50, 2026-09-09).
+      - name: wrangler dev log (on failure)
+        if: failure()
+        run: cat wrangler-dev.log || true
+
   deploy:
     needs: test
     runs-on: ubuntu-latest

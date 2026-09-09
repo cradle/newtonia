@@ -12,6 +12,15 @@
 //   - a frame FLOOD (count) and a byte flood both close the flooding socket
 //     with 1008, and the peer stays connected
 //
+// The flood checks WAIT for the close (bounded by FLOOD_DEADLINE_MS, inside
+// the worker's 10 s budget window) instead of sleeping a fixed beat: a
+// slow runner needs longer than any fixed sleep to relay 320 frames and
+// complete the close handshake, and the budget is about the WINDOW, not
+// about how fast the relay drains (deploy-signal run 50, v1.60.0,
+// 2026-09-09 — three flood checks failed on a starved runner while the
+// same commit passed the day before; reproduced locally by CPU-starving
+// workerd, where the fixed 1.5 s sleep sees no close and a partial relay).
+//
 // Run against `wrangler dev --local --port 8787 --var FAKE_VERIFY:1
 //   --var RATE_HOST_LIMIT:200 --var RATE_JOIN_LIMIT:500`
 // (deploy-signal.yml's "Protocol tests" step). Node 22+.
@@ -23,6 +32,15 @@ function watch_close(ws) {
   return state;
 }
 const send = (ws, o) => ws.send(JSON.stringify(o));
+
+// Wait for a watched socket to close, up to the deadline (well inside the
+// worker's 10 s FRAME_WINDOW_MS, so a budget that trips at all trips here).
+// Resolves as soon as the close lands; a timeout leaves state.code null.
+const FLOOD_DEADLINE_MS = 8000;
+async function wait_close(state, ms = FLOOD_DEADLINE_MS) {
+  const until = Date.now() + ms;
+  while (state.code === null && Date.now() < until) await t(50);
+}
 
 // ---- allowlisted forwards ---------------------------------------------------
 {
@@ -72,11 +90,15 @@ const send = (ws, o) => ws.send(JSON.stringify(o));
   await host._recvType("peer");
   const hc = watch_close(host), jc = watch_close(joiner);
   for (let i = 0; i < 320; i++) send(host, { t: "cand", cand: "c", mid: "0" });
-  await t(1500);
-  check("301st frame in the window closes the flooding socket with 1008", hc.code === 1008);
+  await wait_close(hc);
+  check(`301st frame in the window closes the flooding socket with 1008 (got ${hc.code})`,
+        hc.code === 1008);
   check("the joiner is not closed by the host's flood", jc.code === null);
+  // The relayed frames were sent to the joiner BEFORE the host's close,
+  // but on a separate socket — give them a beat to land before counting.
+  await t(300);
   const got = joiner._drain().filter((f) => f && f.t === "cand").length;
-  check("relayed candidates stop at the budget (300)", got === 300);
+  check(`relayed candidates stop at the budget (300, got ${got})`, got === 300);
   joiner.close();
 }
 
@@ -88,8 +110,9 @@ const send = (ws, o) => ws.send(JSON.stringify(o));
   const hc = watch_close(host);
   // 70 x 16 KB > 1 MiB inside one window; each frame is under MAX_FRAME_LEN.
   for (let i = 0; i < 70; i++) send(host, { t: "offer", sdp: "s".repeat(16000), to: "1" });
-  await t(1500);
-  check("byte volume past 1 MiB in the window closes the socket with 1008", hc.code === 1008);
+  await wait_close(hc);
+  check(`byte volume past 1 MiB in the window closes the socket with 1008 (got ${hc.code})`,
+        hc.code === 1008);
   joiner.close();
 }
 
