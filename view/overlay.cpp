@@ -678,7 +678,7 @@ void Overlay::touch_help(const GLGame *glgame) {
   static const Row ONE_HAND[] = {
     {"DRAG",           "STEER + THRUST"},
     {"TAP",            "FIRE"},
-    {"TAP MID-DRAG",   "FIRE, KEEP MOVING"},
+    {"LIFT + TAP",     "FIRE, KEEP INPUT"},
     {"TAP, THEN HOLD", "KEEP FIRING"},
     {"HOLD",           "SECONDARY (SHIELD: ON/OFF)"},
     {"SECOND FINGER",  "FIRE WHILE STEERING"},
@@ -701,7 +701,7 @@ void Overlay::touch_help(const GLGame *glgame) {
   int n = (int)(one_hand ? sizeof(ONE_HAND) / sizeof(ONE_HAND[0])
                          : sizeof(TWO_HANDS) / sizeof(TWO_HANDS[0]));
   // The one-hand list runs to ten rows (gestures — the held-deflection
-  // "TAP MID-DRAG" among them, touch_controls.h — plus the action arc's
+  // "LIFT + TAP" among them, touch_controls.h — plus the action arc's
   // three colours): start it higher and step tighter so the last row
   // (glyphs extend 26 below the anchor) still clears the prompt at -290
   // on a 16:9 half-height of 450 (ten rows at 50: last anchor -240, its
@@ -1697,8 +1697,9 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   const TouchControlsState &tc = g_touch_controls;
 
   // ---- Virtual joystick ----
-  float jox = ox(tc.joy_hint_cx);
-  float joy = oy(tc.joy_hint_cy);
+  bool anchored = touch_one_handed() && tc.oh_anchor_valid;
+  float jox = ox(anchored ? tc.joy_cx : tc.joy_hint_cx);
+  float joy = oy(anchored ? tc.joy_cy : tc.joy_hint_cy);
   float jr  = sr(tc.joy_radius);
 
   if(tc.joy_active) {
@@ -1708,15 +1709,16 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float nx_off =  tc.joy_nx * jr;
     float ny_off = -tc.joy_ny * jr;
     draw_circle(bx + nx_off, by + ny_off, jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f, 0.90f);
-  } else if (touch_one_handed() && tc.oh_hold_engaged) {
+  } else if (touch_one_handed() && tc.oh_hold_valid) {
     // One-hand held deflection with no finger down (touch_controls.h):
-    // the ship is still flying the stick the thumb let go of to tap, so
-    // the resting ring shows that stick — the active nub, at the
+    // retain the thrust preview during the lift window; dimmer while
+    // stopped, brighter once a tap resumes it. The resting ring shows that stick — the active nub, at the
     // remembered deflection, a shade dimmer than under a finger — until
-    // the window lapses or the thumb re-takes it.
+    // the thumb re-takes it or the controls reset.
     draw_circle(jox, joy, jr, 32, false, 0.5f, 0.65f, 1.0f, 0.55f);
     draw_circle(jox + tc.oh_hold_nx * jr, joy - tc.oh_hold_ny * jr,
-                jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f, 0.60f);
+                jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f,
+                tc.oh_hold_engaged ? 0.60f : 0.40f);
   } else {
     draw_circle(jox, joy, jr, 32, false, 0.4f, 0.55f, 1.0f, 0.55f);
     draw_circle(jox, joy, jr * 0.25f, 20, true, 0.4f, 0.55f, 1.0f, 0.40f);
@@ -1727,8 +1729,8 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   // = primary, tap-then-hold streams — the gesture layer in
   // touch_controls.cpp), so a drawn fire button would be a control that
   // answers no finger. The SECONDARY / BOOST / TELEPORT circles below DO
-  // draw there, on the action arc touch_controls_resize lays out around
-  // the resting ring — same fields, same colours, same glyphs as the
+  // draw there, on the action arc oh_layout_actions places around
+  // the latest joystick base — same fields, same colours, same glyphs as the
   // two-hand diamond, so the help card's colour names hold on both.
   if (!touch_one_handed()) {
     float bx = ox(tc.shoot_cx);
