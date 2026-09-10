@@ -141,6 +141,11 @@ late releases from cancelled fingers. Repositioning the resting joystick
 preserves its held-input indicator. It runs in `web.yml`. Physical phone feel
 needs an on-device check.
 
+One-hand action buttons retain the joystick base for their entire hold and
+for 1000 ms after release. Regression checks cover all three buttons, slow
+trips to the action, long holds, return at 999 ms, expiry at 1000 ms, reset
+and web cancellation, and restoration of the ordinary 500 ms steering window.
+
 The same suites check the moving one-hand action cluster: relocation at a new
 base, stable placement through drag/lift, correct button key down/up, freezing
 while an action finger is held, and reset/resize recovery. Native geometry is

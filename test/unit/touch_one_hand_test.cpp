@@ -470,14 +470,15 @@ static void test_active_action_buttons() {
   down(2, x, y);
   CHECK(tc.boost_pressed && count_key(at, 'd', 'e') == 1);
   CHECK(!tc.joy_active);
-  frame(500); // the window must expire before a new press relocates the base
+  frame(1500); // an action finger keeps the base beyond either timeout
   down(3, 100, 200);
   motion(3, 130, 200);
   CHECK(tc.joy_active && tc.joy_finger == 3);
   CHECK(near(tc.boost_cx, x) && near(tc.boost_cy, y));
   CHECK(up(2));
   CHECK(!tc.boost_pressed && count_key(at, 'u', 'e') == 1);
-  CHECK(!near(tc.boost_cx, x) || !near(tc.boost_cy, y));
+  CHECK(near(tc.boost_cx, x) && near(tc.boost_cy, y));
+  CHECK(near(tc.joy_cx, 400) && near(tc.joy_cy, 500));
   CHECK(up(3));
   touch_controls_reset(SM);
   CHECK(!tc.oh_anchor_valid);
@@ -560,7 +561,48 @@ static void test_intro_forgets_hold() {
   }
 }
 
+// Action use preserves only the base, never unattended movement. The
+// return window starts at release, even after a long button hold.
+static void test_action_return_window() {
+  for (int action = 0; action < 3; ++action) {
+    for (int scenario = 0; scenario < 3; ++scenario) {
+      reset_layer();
+      auto &tc = g_touch_controls;
+      tc.mine_available = tc.teleport_ready = true;
+      down(1, 400, 500);
+      motion(1, 440, 460);
+      frame(16);
+      CHECK(up(1));
+      frame(600); // a slower trip to the action can reclaim the visible base
+      float x = action == 0 ? tc.mine_cx : action == 1 ? tc.boost_cx : tc.teleport_cx;
+      float y = action == 0 ? tc.mine_cy : action == 1 ? tc.boost_cy : tc.teleport_cy;
+      size_t action_start = s_log.size();
+      down(2, x, y);
+      frame(1500);
+      CHECK(tc.oh_hold_valid && !tc.joy_active);
+      CHECK(!any_joy_nonzero(action_start));
+      if (scenario == 2) touch_one_hand_clear_hold();
+      CHECK(up(2));
+      frame(scenario == 0 ? 999 : scenario == 1 ? 1000 : 10);
+      down(3, 430, 470);
+      frame(16);
+      if (scenario == 0) {
+        CHECK(near(tc.joy_cx, 400) && near(tc.joy_cy, 500));
+        CHECK(near(tc.joy_nx, 30/tc.joy_radius));
+        CHECK(up(3));
+        frame(500); // ordinary steering releases still use the 500 ms window
+        down(4, 450, 480);
+        CHECK(near(tc.joy_cx, 450) && near(tc.joy_cy, 480));
+      } else {
+        CHECK(near(tc.joy_cx, 430) && near(tc.joy_cy, 470));
+        CHECK(near(tc.joy_nx, 0) && near(tc.joy_ny, 0));
+      }
+    }
+  }
+}
+
 int main() {
+  test_action_return_window();
   test_intro_forgets_hold();
   test_last_live_thrust();
   test_stationary_sample_and_new_press();

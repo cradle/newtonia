@@ -623,6 +623,7 @@ declare const NewtoniaStore: undefined | {
     // A quick rehold selects direction from its location at the saved base;
     // releasing again renews the window, never an unattended input latch.
     const OH_HOLD_MS = 500;
+    const OH_ACTION_RETURN_MS = 1000;
     let holdValid = false, holdEngaged = false;
     let holdNx = 0, holdNy = 0;
     let holdTimer: number | null = null;   // the window; null = held by a finger or no memory
@@ -739,17 +740,26 @@ declare const NewtoniaStore: undefined | {
       holdNx = 0; holdNy = 0;
       if (holdTimer !== null) { window.clearTimeout(holdTimer); holdTimer = null; }
     }
-    function holdArmed(): boolean { return holdValid && (holdEngaged || holdTimer !== null); }
+    function holdArmed(): boolean { return holdValid && (holdEngaged || holdTimer !== null || activeActionFingers.size > 0); }
     // Forget a release that was not followed by a quick rehold.
-    function holdArmWindow(): void {
+    function holdArmWindow(ms = OH_HOLD_MS): void {
       if (holdTimer !== null) window.clearTimeout(holdTimer);
       holdTimer = window.setTimeout(() => {
         holdTimer = null;
-        if (joyFinger === null && !holdEngaged) {
+        if (joyFinger === null && !holdEngaged && activeActionFingers.size === 0) {
           holdClear();
           positionJoyPlaceholder();
         }
-      }, OH_HOLD_MS);
+      }, ms);
+    }
+    // Buttons preserve the visible base while held and give the thumb a
+    // fresh return window on release. A late release cannot undo a reset.
+    function actionReturnWindow(arm: boolean): void {
+      if (!_oneHand || !_tapFire || actionAnchor === null || joyFinger !== null ||
+          (!arm && !holdValid)) return;
+      holdValid = true;
+      holdEngaged = false;
+      holdArmWindow(OH_ACTION_RETURN_MS);
     }
     // Off the live-play gate (setTapFire false): stop a ship still flying
     // the memory and forget it, exactly like the native layer's tick.
@@ -1117,14 +1127,16 @@ declare const NewtoniaStore: undefined | {
           if (!activeFingers.has(id)) {
             if (activeFingers.size === 0) dispatchKey("keydown");
             activeFingers.add(id);
-            if (_oneHand && (key === "x" || key === "e" || key === "t"))
+            if (_oneHand && (key === "x" || key === "e" || key === "t")) {
               activeActionFingers.add(id);
+              actionReturnWindow(true);
+            }
           }
         }
         btn.classList.add("pressed");
       }, { passive: false });
 
-      const onBtnEnd = (e: TouchEvent) => {
+      const onBtnEnd = (e: TouchEvent, cancelled = false) => {
         e.preventDefault();
         let released = false;
         for (let i = 0; i < e.changedTouches.length; i++) {
@@ -1136,11 +1148,17 @@ declare const NewtoniaStore: undefined | {
         if (released && activeFingers.size === 0) {
           dispatchKey("keyup");
           btn.classList.remove("pressed");
+          if (!cancelled && (key === "x" || key === "e" || key === "t"))
+            actionReturnWindow(false);
+        }
+        if (cancelled && released && activeActionFingers.size === 0 && joyFinger === null) {
+          holdClear();
+          positionJoyPlaceholder();
         }
         if (_oneHand && activeActionFingers.size === 0) positionActionButtons?.();
       };
       btn.addEventListener("touchend",    onBtnEnd, { passive: false });
-      btn.addEventListener("touchcancel", onBtnEnd, { passive: false });
+      btn.addEventListener("touchcancel", e => onBtnEnd(e, true), { passive: false });
 
       container.appendChild(btn);
     });

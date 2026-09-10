@@ -312,13 +312,13 @@ function pressButton(button, type, id) {
   const boost = actionPositions(h)[1];
   pressButton(boost, 'touchstart', 2);
   assert.deepEqual(h.keys.at(-1), ['keydown', 'e']);
-  h.advance(500); // only an expired window permits relocation
+  h.advance(1500); // a held action keeps the base beyond the ordinary window
   h.send('touchstart', 100, 200, 3);
   h.send('touchmove', 130, 200, 3);
   assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
   pressButton(boost, 'touchend', 2);
   assert.deepEqual(h.keys.at(-1), ['keyup', 'e']);
-  assert.notDeepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
   // A page hide cannot leave the action cluster frozen on a lost finger.
   pressButton(actionPositions(h)[0], 'touchstart', 4);
   h.context.window.handlers.pagehide();
@@ -352,6 +352,27 @@ for (const [width,height] of [[1000,600], [600,1000], [600,600]]) {
       }
       h.context._resetTouchGestures();
     }
+  }
+}
+
+// Secondary/boost/teleport pin the base while held, then give a full
+// second to return. Expiry, resets and ordinary release timing still work.
+for (const cls of ['touch-mine', 'touch-boost', 'touch-teleport']) {
+  for (const scenario of ['return', 'expire', 'reset', 'cancel']) {
+    const h = harness();
+    h.send('touchstart',400,500); h.send('touchmove',440,460);
+    h.send('touchend'); h.advance(600);
+    h.button(cls,'touchstart',2); h.advance(1500); h.expect(0,0);
+    if (scenario === 'reset') h.context.window.handlers.pagehide();
+    h.button(cls,scenario === 'cancel' ? 'touchcancel' : 'touchend',2);
+    h.advance(scenario === 'return' ? 999 : scenario === 'expire' ? 1000 : 10);
+    h.send('touchstart',430,470,3);
+    if (scenario === 'return') {
+      h.expect(30/r,-30/r);
+      assert.match(h.context._joyPlaceholderEls[0].style.cssText,/left:400px;top:500px/);
+      h.send('touchend',430,470,3); h.advance(500);
+      h.send('touchstart',450,480,4); h.expect(0,0);
+    } else h.expect(0,0);
   }
 }
 

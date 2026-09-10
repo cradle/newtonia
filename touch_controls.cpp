@@ -305,6 +305,8 @@ static const Uint32 OH_KEY_HOLD_MS = 70;
 static const Uint32 OH_DOUBLE_TAP_MS = 250;
 // Lift-to-tap/rehold opportunity, renewed on every steering-finger release.
 static const Uint32 OH_HOLD_MS = 500;
+// Extra time to move the thumb back from the action arc.
+static const Uint32 OH_ACTION_RETURN_MS = 1000;
 
 static float oh_tap_slop() { return g_touch_controls.joy_radius * 0.12f; }
 
@@ -325,11 +327,28 @@ void touch_one_hand_clear_hold() {
     oh_hold_clear();
 }
 
+static bool oh_action_pressed() {
+    const TouchControlsState &tc = g_touch_controls;
+    return tc.mine_pressed || tc.boost_pressed || tc.teleport_pressed;
+}
+
+// An action can reclaim the visible base even after the ordinary window
+// expired. Its release only extends an existing hold, so reset/intro/gate
+// clearing cannot be undone by a late button release.
+static void oh_action_return_window(bool arm) {
+    TouchControlsState &tc = g_touch_controls;
+    if (!tc.one_hand_ingame || !tc.oh_anchor_valid || tc.joy_active ||
+        (!arm && !tc.oh_hold_valid)) return;
+    tc.oh_hold_valid = true;
+    tc.oh_hold_engaged = false;
+    tc.oh_hold_until = SDL_GetTicks() + OH_ACTION_RETURN_MS;
+}
+
 // True while a remembered deflection is waiting for a finger: a press
 // landing now engages it.
 static bool oh_hold_armed(Uint32 now) {
     const TouchControlsState &tc = g_touch_controls;
-    return tc.oh_hold_valid && (tc.oh_hold_engaged ||
+    return tc.oh_hold_valid && (tc.oh_hold_engaged || oh_action_pressed() ||
            (tc.oh_hold_until && (Sint32)(now - tc.oh_hold_until) < 0));
 }
 
@@ -431,6 +450,7 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
             oh_in_button(px, py, tc.mine_cx, tc.mine_cy, tc.btn_hit_radius)) {
             tc.mine_pressed = true;
             tc.mine_finger  = id;
+            oh_action_return_window(true);
             game->keyboard('x', 0, 0);
             return;
         }
@@ -439,6 +459,7 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
             // Presses during the cooldown land and no-op in Ship::boost().
             tc.boost_pressed = true;
             tc.boost_finger  = id;
+            oh_action_return_window(true);
             game->keyboard('e', 0, 0);
             return;
         }
@@ -447,6 +468,7 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
                          tc.teleport_hit_radius)) {
             tc.teleport_pressed = true;
             tc.teleport_finger  = id;
+            oh_action_return_window(true);
             if (tc.teleport_ready) game->keyboard('t', 0, 0);
             return;
         }
@@ -538,18 +560,21 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
     if (tc.mine_pressed && tc.mine_finger == id) {
         tc.mine_pressed = false;
         game->keyboard_up('x', 0, 0);
+        oh_action_return_window(false);
         oh_layout_actions();
         return true;
     }
     if (tc.boost_pressed && tc.boost_finger == id) {
         tc.boost_pressed = false;
         game->keyboard_up('e', 0, 0);
+        oh_action_return_window(false);
         oh_layout_actions();
         return true;
     }
     if (tc.teleport_pressed && tc.teleport_finger == id) {
         tc.teleport_pressed = false;
         game->keyboard_up('t', 0, 0);
+        oh_action_return_window(false);
         oh_layout_actions();
         return true;
     }
@@ -636,7 +661,7 @@ void touch_one_hand_tick(StateManager *game) {
         return;
     }
     // A released snapshot may be resumed briefly, but never drives input.
-    if (tc.oh_hold_valid && !tc.joy_active &&
+    if (tc.oh_hold_valid && !tc.joy_active && !oh_action_pressed() &&
         (Sint32)(now - tc.oh_hold_until) >= 0) {
         oh_hold_clear();
     }
