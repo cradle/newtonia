@@ -1752,8 +1752,9 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float bx = ox(tc.mine_cx);
     float by = oy(tc.mine_cy);
     float br = sr(tc.mine_radius);
-    float alpha_fill    = tc.mine_pressed ? 0.55f : 0.25f;
-    float alpha_outline = tc.mine_pressed ? 0.95f : 0.70f;
+    bool active = tc.mine_pressed || (touch_one_handed() && tc.shield_engaged);
+    float alpha_fill    = active ? 0.55f : 0.25f;
+    float alpha_outline = active ? 0.95f : 0.70f;
     draw_circle(bx, by, br, 28, true,  0.35f, 0.6f, 1.0f, alpha_fill);
     draw_circle(bx, by, br, 28, false, 0.35f, 0.6f, 1.0f, alpha_outline);
     glLineWidth(2.5f);

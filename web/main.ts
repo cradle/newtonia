@@ -455,6 +455,8 @@ declare const NewtoniaStore: undefined | {
   // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
   function setShieldEngaged(on: number | boolean): void {
     _shieldEngaged = !!on;
+    document.getElementById("touch-controls")?.querySelector(".touch-mine")
+      ?.classList.toggle("engaged", _oneHand && _shieldEngaged);
   }
   (window as any).setShieldEngaged = setShieldEngaged;
 
@@ -593,6 +595,7 @@ declare const NewtoniaStore: undefined | {
     let layoutWidth = 0, layoutHeight = 0;
     const activeActionFingers = new Set<number>();
     const resetButtons: (() => void)[] = [];
+    let shieldHeld = false; // key ownership for reset, never the toggle decision
 
     // ---- One-hand gesture bookkeeping (mirrors touch_controls.cpp) ----
     // The joystick finger doubles as the first fire candidate: a press
@@ -687,6 +690,9 @@ declare const NewtoniaStore: undefined | {
     // touch_controls.cpp).
     function longPressSecondary(): void {
       if (_secondaryKind === 5) {  // Save::WeaponEntry::Kind::Shield
+        if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
+        secondaryUpTimer = null;
+        shieldHeld = !_shieldEngaged;
         keyEvt("x", _shieldEngaged ? "keyup" : "keydown");
       } else {
         fireKey("x");
@@ -1112,11 +1118,18 @@ declare const NewtoniaStore: undefined | {
 
       // Track active fingers so multi-finger presses keep the button held.
       const activeFingers = new Set<number>();
+      // Remember the press's semantics even if the equipped weapon changes.
+      let shieldTogglePress = false;
       resetButtons.push(() => {
         const wasPressed = activeFingers.size > 0;
         activeFingers.clear();
         btn.classList.remove("pressed");
-        if (wasPressed) dispatchKey("keyup");
+        if (wasPressed || (key === "x" && (shieldHeld || _shieldEngaged))) dispatchKey("keyup");
+        shieldTogglePress = false;
+        if (key === "x") {
+          shieldHeld = false;
+          setShieldEngaged(false);
+        }
       });
 
       btn.addEventListener("touchstart", (e) => {
@@ -1125,7 +1138,11 @@ declare const NewtoniaStore: undefined | {
         for (let i = 0; i < e.changedTouches.length; i++) {
           const id = e.changedTouches[i].identifier;
           if (!activeFingers.has(id)) {
-            if (activeFingers.size === 0) dispatchKey("keydown");
+            if (activeFingers.size === 0) {
+              shieldTogglePress = _oneHand && _tapFire && key === "x" && _secondaryKind === 5;
+              if (shieldTogglePress) longPressSecondary();
+              else dispatchKey("keydown");
+            }
             activeFingers.add(id);
             if (_oneHand && (key === "x" || key === "e" || key === "t")) {
               activeActionFingers.add(id);
@@ -1146,7 +1163,12 @@ declare const NewtoniaStore: undefined | {
         // A late release after reset owns nothing. In particular, do not
         // synthesize a second pause key-up into the resumed screen.
         if (released && activeFingers.size === 0) {
-          dispatchKey("keyup");
+          if (!shieldTogglePress || cancelled) dispatchKey("keyup");
+          if (shieldTogglePress && cancelled) {
+            shieldHeld = false;
+            setShieldEngaged(false);
+          }
+          shieldTogglePress = false;
           btn.classList.remove("pressed");
           if (!cancelled && (key === "x" || key === "e" || key === "t"))
             actionReturnWindow(false);

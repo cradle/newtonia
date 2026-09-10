@@ -601,7 +601,85 @@ static void test_action_return_window() {
   }
 }
 
+static void test_shield_button_toggle() {
+  reset_layer();
+  TouchControlsState &tc = g_touch_controls;
+  tc.mine_available = true;
+  tc.secondary_kind = 5; // Save::WeaponEntry::Kind::Shield
+  down(1, 400, 500);
+  motion(1, 440, 460);
+  CHECK(up(1));
+  frame(600);
+  const float bx = tc.mine_cx, by = tc.mine_cy;
+  const size_t begin = s_log.size();
+  tc.oh_mine_up_at = s_now + 70; // an earlier secondary's pending pulse
+  down(2, bx, by);
+  CHECK(count_key(begin, 'd', 'x') == 1);
+  CHECK(!tc.joy_active);
+  tc.shield_engaged = true; // engine mirror on the next tick
+  frame(1500);
+  CHECK(up(2));
+  CHECK(count_key(begin, 'u', 'x') == 0);
+  CHECK(tc.shield_engaged && !tc.mine_pressed);
+  frame(999);
+  down(3, 430, 470);
+  CHECK(near(tc.joy_cx, 400) && near(tc.joy_cy, 500));
+  motion(3, 450, 450);
+  CHECK(up(3));
+  down(4, bx, by);
+  CHECK(count_key(begin, 'u', 'x') == 1);
+  tc.shield_engaged = false;
+  CHECK(up(4));
+  CHECK(count_key(begin, 'u', 'x') == 1);
+
+  // Button and long-press gesture read the same engine state.
+  frame(1000);
+  down(5, 400, 500);
+  frame(400);
+  CHECK(count_key(begin, 'd', 'x') == 2);
+  tc.shield_engaged = true;
+  CHECK(up(5));
+  down(6, tc.mine_cx, tc.mine_cy);
+  tc.shield_engaged = false;
+  CHECK(up(6));
+  CHECK(count_key(begin, 'u', 'x') == 2);
+
+  // A shield reset by the engine is off; the next tap re-engages it.
+  down(7, tc.mine_cx, tc.mine_cy);
+  tc.shield_engaged = true;
+  CHECK(up(7));
+  tc.shield_engaged = false;
+  down(8, tc.mine_cx, tc.mine_cy);
+  tc.shield_engaged = true;
+  CHECK(up(8));
+  CHECK(count_key(begin, 'd', 'x') == 4);
+  const size_t before_reset = s_log.size();
+  touch_controls_reset(SM); // no action finger remains, but Shield is on
+  CHECK(count_key(before_reset, 'u', 'x') == 1);
+  CHECK(!tc.shield_engaged);
+  touch_controls_reset(SM);
+  CHECK(count_key(before_reset, 'u', 'x') == 1);
+
+  // Equipment changing under a toggle finger must not change lift semantics.
+  down(9, tc.mine_cx, tc.mine_cy);
+  tc.secondary_kind = 0;
+  const size_t before_up = s_log.size();
+  CHECK(up(9));
+  CHECK(count_key(before_up, 'u', 'x') == 0);
+
+  reset_layer();
+  tc.mine_available = true;
+  tc.secondary_kind = 5;
+  down(1, tc.mine_cx, tc.mine_cy);
+  CHECK(up(1));
+  // Background before the next engine tick has mirrored the trigger.
+  touch_controls_reset(SM);
+  CHECK(count_key(0, 'd', 'x') == 1);
+  CHECK(count_key(0, 'u', 'x') == 1);
+}
+
 int main() {
+  test_shield_button_toggle();
   test_action_return_window();
   test_intro_forgets_hold();
   test_last_live_thrust();

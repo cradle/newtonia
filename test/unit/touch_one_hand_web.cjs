@@ -22,6 +22,10 @@ const lifecycleStart = source.indexOf('document.addEventListener("visibilitychan
 const lifecycleEnd = source.indexOf('TOUCH_MEDIA.addEventListener("change"', lifecycleStart);
 assert.ok(lifecycleStart >= 0 && lifecycleEnd > lifecycleStart);
 const lifecycleCode = source.slice(lifecycleStart, lifecycleEnd);
+const shieldStart = source.indexOf('function setShieldEngaged(');
+const shieldEnd = source.indexOf('window.setShieldEngaged = setShieldEngaged;', shieldStart);
+assert.ok(shieldStart >= 0 && shieldEnd > shieldStart);
+const shieldCode = source.slice(shieldStart, shieldEnd);
 function harness(width=1000, height=600, hand=0) {
   let now = 1000, seq = 0;
   const timers = new Map(), joystick = [], keys = [];
@@ -62,7 +66,7 @@ function harness(width=1000, height=600, hand=0) {
     _joyPlaceholderEls:[], _positionJoyPlaceholder:null,
     callTouchJoystick: (x, y) => joystick.push([x, y]),
   };
-  vm.createContext(context); vm.runInContext(code + lifecycleCode, context);
+  vm.createContext(context); vm.runInContext(shieldCode + code + lifecycleCode, context);
   context.zone = container.querySelector(".joy-zone");
   context.resizeControls();
   return {
@@ -376,4 +380,82 @@ for (const cls of ['touch-mine', 'touch-boost', 'touch-teleport']) {
   }
 }
 
+// Shield taps toggle once per button hold, retaining the one-second return.
+{
+  const h = harness(); steer(h); h.send('touchend'); h.advance(600);
+  h.context._secondaryKind = 5;
+  const mirror = on => h.context.setShieldEngaged(on);
+  h.keys.length = 0;
+  h.button('touch-mine', 'touchstart', 2);
+  mirror(true);
+  h.button('touch-mine', 'touchstart', 3); // another finger is the same hold
+  h.advance(1500);
+  h.button('touch-mine', 'touchend', 2);
+  h.button('touch-mine', 'touchend', 3);
+  assert.deepEqual(h.keys, [['keydown', 'x']]);
+  assert.ok(h.container.querySelector('.touch-mine').classList.contains('engaged'));
+  h.advance(999);
+  h.send('touchstart', 500, 400-.4*r, 4); h.expect(0, -.4);
+  h.send('touchmove', 550, 330, 4); h.send('touchend', 550, 330, 4);
+  h.button('touch-mine', 'touchstart', 5); mirror(false);
+  h.button('touch-mine', 'touchend', 5);
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+  assert.ok(!h.container.querySelector('.touch-mine').classList.contains('engaged'));
+  // Engine reset and equipment changes must not leave an independent latch.
+  h.button('touch-mine', 'touchstart', 6); mirror(true);
+  h.button('touch-mine', 'touchend', 6); mirror(false);
+  h.button('touch-mine', 'touchstart', 7); mirror(true);
+  h.context._secondaryKind = 0;
+  h.button('touch-mine', 'touchend', 7);
+  assert.deepEqual(h.keys.slice(-2), [['keydown', 'x'], ['keydown', 'x']]);
+  h.context._resetTouchGestures();
+  assert.deepEqual(h.keys.at(-1), ['keyup', 'x']);
+  assert.ok(!h.context._shieldEngaged);
+  const n = h.keys.length;
+  h.context._resetTouchGestures();
+  assert.equal(h.keys.length, n);
+}
+for (const reset of ['touchcancel', 'pagehide', 'visibilitychange']) {
+  const h = harness(); h.context._secondaryKind = 5;
+  h.button('touch-mine', 'touchstart', 1); h.context.setShieldEngaged(true);
+  if (reset === 'touchcancel') h.button('touch-mine', reset, 1);
+  else {
+    h.button('touch-mine', 'touchend', 1);
+    if (reset === 'pagehide') h.context.window.handlers.pagehide();
+    else { h.context.document.hidden = true; h.context.document.handlers.visibilitychange(); }
+  }
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+  h.button('touch-mine', 'touchend', 1); // stale release
+  assert.equal(h.keys.length, 2);
+}
+// The two-hand Shield button still holds only until release.
+{
+  const h = harness(); h.context._oneHand = false; h.context._secondaryKind = 5;
+  h.button('touch-mine', 'touchstart', 1);
+  h.button('touch-mine', 'touchend', 1);
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+}
+// Reset before the engine has mirrored the new trigger still releases it.
+{
+  const h = harness(); h.context._secondaryKind = 5;
+  h.button('touch-mine', 'touchstart', 1);
+  h.button('touch-mine', 'touchend', 1);
+  h.context._resetTouchGestures();
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+}
+// A preceding non-shield pulse cannot release a new Shield toggle, and
+// the long-press gesture can turn off the button's engaged shield.
+{
+  const h = harness(); h.context._mineAvailable = true;
+  h.context._secondaryKind = 0;
+  h.send('touchstart'); h.advance(400); h.send('touchend');
+  h.context._secondaryKind = 5;
+  h.button('touch-mine', 'touchstart', 2); h.context.setShieldEngaged(true);
+  h.button('touch-mine', 'touchend', 2); h.advance(100);
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keydown', 'x']]);
+  h.send('touchstart'); h.advance(400); h.context.setShieldEngaged(false);
+  h.send('touchend'); h.advance(100);
+  assert.deepEqual(h.keys.at(-1), ['keyup', 'x']);
+  assert.equal(h.keys.length, 3);
+}
 console.log('touch_one_hand_web: all checks passed');

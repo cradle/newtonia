@@ -245,10 +245,14 @@ void touch_controls_reset(StateManager *game) {
         g_touch_controls.shoot_pressed = false;
         game->keyboard_up(' ', 0, 0);
     }
-    if(g_touch_controls.mine_pressed) {
+    if(g_touch_controls.mine_pressed || g_touch_controls.oh_shield_held ||
+       (touch_one_handed() && g_touch_controls.shield_engaged)) {
         g_touch_controls.mine_pressed = false;
         game->keyboard_up('x', 0, 0);
     }
+    g_touch_controls.oh_mine_toggle = false;
+    g_touch_controls.oh_shield_held = false;
+    g_touch_controls.shield_engaged = false;
     if(g_touch_controls.boost_pressed) {
         g_touch_controls.boost_pressed = false;
         game->keyboard_up('e', 0, 0);
@@ -411,6 +415,9 @@ static void oh_fire_secondary(StateManager *game) {
 static void oh_long_press_secondary(StateManager *game) {
     TouchControlsState &tc = g_touch_controls;
     if (tc.secondary_kind == (unsigned char)Save::WeaponEntry::Kind::Shield) {
+        // A previous secondary's pulse must not switch the toggle off later.
+        tc.oh_mine_up_at = 0;
+        tc.oh_shield_held = !tc.shield_engaged;
         if (tc.shield_engaged)
             game->keyboard_up('x', 0, 0);
         else
@@ -439,7 +446,8 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
     // The action arc (touch_controls_resize): SECONDARY / BOOST / TELEPORT
     // claim their finger ahead of the stick, in live play only — the same
     // gate as tap-fire, so a menu or pause-screen tap on a button's spot
-    // stays a plain tap. Press = key down, release = key up, tracked per
+    // stays a plain tap. Shield toggles on press; other actions use
+    // press = key down, release = key up, tracked per
     // finger exactly like the two-hand circles, and a finger that slides
     // off keeps its button until it lifts. A press on a cooling-down
     // TELEPORT is claimed too (so it can't fall through and FIRE) but
@@ -451,7 +459,10 @@ void touch_one_hand_down(StateManager *game, SDL_FingerID id,
             tc.mine_pressed = true;
             tc.mine_finger  = id;
             oh_action_return_window(true);
-            game->keyboard('x', 0, 0);
+            tc.oh_mine_toggle =
+                tc.secondary_kind == (unsigned char)Save::WeaponEntry::Kind::Shield;
+            if (tc.oh_mine_toggle) oh_long_press_secondary(game);
+            else game->keyboard('x', 0, 0);
             return;
         }
         if (!tc.boost_pressed &&
@@ -559,7 +570,8 @@ bool touch_one_hand_up(StateManager *game, SDL_FingerID id) {
     // release even if the game paused under the finger.
     if (tc.mine_pressed && tc.mine_finger == id) {
         tc.mine_pressed = false;
-        game->keyboard_up('x', 0, 0);
+        if (!tc.oh_mine_toggle) game->keyboard_up('x', 0, 0);
+        tc.oh_mine_toggle = false;
         oh_action_return_window(false);
         oh_layout_actions();
         return true;

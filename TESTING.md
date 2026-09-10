@@ -146,6 +146,13 @@ for 1000 ms after release. Regression checks cover all three buttons, slow
 trips to the action, long holds, return at 999 ms, expiry at 1000 ms, reset
 and web cancellation, and restoration of the ordinary 500 ms steering window.
 
+The one-hand Shield button toggles the selected shield on press and leaves it
+active after lift; the next press turns it off, using the same engine state as
+the long-press gesture. Its highlight follows that state. Regression checks
+cover toggle on/off, engine resets, equipment changes under the finger, reset
+after lift, the one-second joystick return, web multiple fingers/cancellation,
+and unchanged two-hand hold-to-shield behavior.
+
 The same suites check the moving one-hand action cluster: relocation at a new
 base, stable placement through drag/lift, correct button key down/up, freezing
 while an action finger is held, and reset/resize recovery. Native geometry is

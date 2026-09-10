@@ -43,6 +43,8 @@ struct TouchControlsState {
     float mine_cx, mine_cy, mine_radius;
     bool  mine_pressed;
     SDL_FingerID mine_finger;
+    bool  oh_mine_toggle; // this button press toggled Shield; lift must not release it
+    bool  oh_shield_held; // owns a synthesized key-down until reset, not toggle truth
     // The mine button only exists while the local ship has a secondary
     // equipped (secondaries come from pickups and drop off the ship when
     // the last one runs dry). GLGame::tick writes this each frame; the
@@ -115,7 +117,7 @@ struct TouchControlsState {
     // One-hand shield toggle (see oh_long_press_secondary): the shield is
     // the one hold-to-run secondary — active while the key is down,
     // draining as it renews — which the pulse below would blink on for a
-    // single beat. Under the one-hand grammar a long press TOGGLES it
+    // single beat. Under the one-hand grammar a long press or button tap TOGGLES it
     // instead, and the decision keys on THIS mirror — the SELECTED
     // secondary's own trigger, (*secondary)->is_shooting() when it is the
     // shield, written by GLGame::tick beside secondary_kind — never a
