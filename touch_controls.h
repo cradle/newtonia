@@ -180,6 +180,11 @@ struct TouchControlsState {
 
 extern TouchControlsState g_touch_controls;
 
+// Forget a remembered manoeuvre at an intro boundary without disabling
+// tap-to-start or synthesizing navigation key releases into either state.
+// The caller releases the ship's controls separately before play resumes.
+void touch_one_hand_clear_hold();
+
 // Call whenever the window is resized to reposition controls.
 void touch_controls_resize(int w, int h);
 

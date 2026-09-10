@@ -449,7 +449,46 @@ static void test_reversal_does_not_restore_old_direction() {
   CHECK(!g_touch_controls.oh_hold_valid);
 }
 
+// Intro boundaries leave tap-to-start enabled, so the gameplay gate is
+// deliberately true. Both off-finger memory and a stationary resumed nub
+// must be forgotten; the next native tick must not undo the ship reset.
+static void test_intro_forgets_hold() {
+  for (int phase = 0; phase < 3; ++phase) {
+    reset_layer();
+    float x, y;
+    steer_up(1, 500, 400, &x, &y);
+    CHECK(up(1));
+    frame(100);
+    if (phase > 0) {
+      down(2, 500, 400);
+      frame(40);
+      if (phase == 2) CHECK(up(2));
+    }
+    // phase 0: initial lift window; 1: memory under a finger; 2: latched.
+    touch_one_hand_clear_hold();
+    CHECK(g_touch_controls.one_hand_ingame);
+    CHECK(!g_touch_controls.oh_hold_valid);
+    CHECK(!g_touch_controls.oh_hold_engaged);
+    size_t after_clear = s_log.size();
+    frame(16);
+    CHECK(!any_joy_nonzero(after_clear));
+    if (phase == 1) CHECK(up(2));
+    frame(5000);
+    CHECK(!any_joy_nonzero(after_clear));
+    // A fresh tap still emits fire to dismiss the intro; it must not
+    // restore the pre-intro manoeuvre or depend on a closed fire gate.
+    size_t fresh = s_log.size();
+    down(3, 500, 400);
+    frame(40);
+    CHECK(up(3));
+    frame(16);
+    CHECK(count_key(fresh, 'd', ' ') == 1);
+    CHECK(!any_joy_nonzero(fresh));
+  }
+}
+
 int main() {
+  test_intro_forgets_hold();
   test_pre_lift_thrust();
   test_stationary_sample_and_new_press();
   test_reversal_does_not_restore_old_direction();

@@ -1,4 +1,4 @@
-// Exercise the compiled production joystick handlers with a fake DOM/clock.
+// Exercise the compiled production touch controls with a fake DOM/clock.
 // No WASM or browser required. Run: node test/unit/touch_one_hand_web.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,12 +13,12 @@ try {
   execFileSync('tsc', ['-p', path.join(root, 'web/tsconfig.json'), '--outDir', out]);
   source = fs.readFileSync(path.join(out, 'main.js'), 'utf8');
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
-// Isolate the joystick portion of the real UI factory; action buttons below
-// BUTTONS are unrelated. No gesture implementation is copied into this test.
+// Run the complete UI factory, including action buttons: their finger
+// ownership must be reset alongside the joystick. No handlers are copied.
 const start = source.indexOf('function buildTouchControls()');
-const end = source.indexOf('const BUTTONS', start);
+const end = source.indexOf('// Tracks the active resize listener', start);
 assert.ok(start >= 0 && end > start);
-const code = source.slice(start, end) + '\nreturn joyZone; } globalThis.zone = buildTouchControls();';
+const code = source.slice(start, end) + '\nbuildTouchControls();';
 const lifecycleStart = source.indexOf('document.addEventListener("visibilitychange"');
 const lifecycleEnd = source.indexOf('TOUCH_MEDIA.addEventListener("change"', lifecycleStart);
 assert.ok(lifecycleStart >= 0 && lifecycleEnd > lifecycleStart);
@@ -26,10 +26,24 @@ const lifecycleCode = source.slice(lifecycleStart, lifecycleEnd);
 function harness() {
   let now = 1000, seq = 0;
   const timers = new Map(), joystick = [], keys = [];
-  const element = () => ({ style: {}, handlers: {}, appendChild() {},
-    addEventListener(k, f) { this.handlers[k] = f; } });
+  const element = () => {
+    const el = { style: {}, handlers: {}, children: [], className: '',
+      appendChild(child) { this.children.push(child); },
+      querySelector(selector) {
+        return this.children.find(child => child.classList.contains(selector.slice(1)));
+      },
+      addEventListener(k, f) { this.handlers[k] = f; },
+    };
+    el.classList = {
+      contains(cls) { return el.className.split(' ').includes(cls); },
+      add(cls) { if (!this.contains(cls)) el.className += ' ' + cls; },
+      remove(cls) { el.className = el.className.split(' ').filter(c => c !== cls).join(' '); },
+    };
+    return el;
+  };
+  const container = element();
   const context = {
-    document: { getElementById: element, createElement: element, hidden: false,
+    document: { getElementById: () => container, createElement: element, hidden: false,
       handlers: {}, addEventListener(k, f) { this.handlers[k] = f; } },
     canvas: { getBoundingClientRect: () => ({left:0, top:0, width:1000, height:600}),
       dispatchEvent: e => keys.push([e.type, e.key]) },
@@ -39,6 +53,9 @@ function harness() {
     Date: { now: () => now }, Math, Set,
     KeyboardEvent: class { constructor(type, options) { this.type = type; this.key = options.key; } },
     requestAnimationFrame() {}, Module: {},
+    ResizeObserver: class { observe() {} disconnect() {} },
+    _resizeObserver:null, _circleButtonEls:[], _teleportReady:true,
+    setTeleportReady() {}, _menuOverlay:null,
     _oneHand:true, _hand:0, _tapFire:true, _inMenuMode:false, _mineAvailable:false,
     _secondaryKind:-1, _shieldEngaged:false, _holdRelease:null, _resetTouchGestures:null,
     _joyPlaceholderEls:[], _positionJoyPlaceholder:null,
@@ -47,8 +64,13 @@ function harness() {
   vm.createContext(context); vm.runInContext(code + lifecycleCode, context);
   return {
     context, keys,
+    button(cls, type, id) {
+      container.querySelector('.' + cls).handlers[type]({ preventDefault() {},
+        changedTouches:[{ identifier:id }] });
+    },
+    pressed(cls) { return container.querySelector('.' + cls).classList.contains('pressed'); },
     send(type, x=500, y=400, id=1) {
-      context.zone.handlers[type]({ type, preventDefault() {},
+      container.querySelector('.joy-zone').handlers[type]({ type, preventDefault() {},
         changedTouches:[{ identifier:id, clientX:x, clientY:y }] });
     },
     advance(ms) {
@@ -171,6 +193,52 @@ for (const event of ['visibilitychange', 'pagehide']) {
   assert.equal(nub.style.cssText, heldStyle);
   h.send('touchstart'); h.send('touchcancel');
   assert.match(nub.style.cssText, /opacity:0.4/);
+}
+
+
+// Hidden pages can omit touchcancel. Reset each button's complete finger
+// set, release the held key once, and accept a new press after resume.
+for (const event of ['visibilitychange', 'pagehide']) {
+  for (const [cls, key] of [['touch-mine', 'x'], ['touch-boost', 'e'],
+                          ['touch-teleport', 't'], ['touch-pause', 'p'],
+                          ['touch-shoot', ' ']]) {
+    const h = harness();
+    h.button(cls, 'touchstart', 11);
+    h.button(cls, 'touchstart', 12);
+    assert.deepEqual(h.keys, [['keydown', key]]);
+    assert.ok(h.pressed(cls));
+    if (event === 'visibilitychange') {
+      h.context.document.hidden = true;
+      h.context.document.handlers[event]();
+      h.context.document.hidden = false;
+    } else h.context.window.handlers[event]();
+    assert.deepEqual(h.keys, [['keydown', key], ['keyup', key]]);
+    assert.ok(!h.pressed(cls));
+    // Reset is idempotent, and old touches cannot release a fresh hold.
+    h.context._resetTouchGestures();
+    h.button(cls, 'touchstart', 13);
+    h.button(cls, 'touchend', 11);
+    h.button(cls, 'touchcancel', 12);
+    assert.deepEqual(h.keys.at(-1), ['keydown', key]);
+    assert.ok(h.pressed(cls));
+    h.button(cls, 'touchend', 13);
+    assert.deepEqual(h.keys, [['keydown', key], ['keyup', key],
+                              ['keydown', key], ['keyup', key]]);
+    assert.ok(!h.pressed(cls));
+  }
+}
+
+// Ordinary multi-finger holds still last until the final finger lifts.
+{
+  const h = harness();
+  h.button('touch-mine', 'touchstart', 1);
+  h.button('touch-mine', 'touchstart', 2);
+  h.button('touch-mine', 'touchend', 1);
+  assert.deepEqual(h.keys, [['keydown', 'x']]);
+  h.button('touch-mine', 'touchcancel', 2);
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+  h.button('touch-mine', 'touchend', 2);
+  assert.equal(h.keys.length, 2);
 }
 
 console.log('touch_one_hand_web: all checks passed');

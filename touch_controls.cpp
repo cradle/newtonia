@@ -336,6 +336,15 @@ static void oh_hold_clear() {
     tc.oh_hold_until = 0;
 }
 
+void touch_one_hand_clear_hold() {
+    TouchControlsState &tc = g_touch_controls;
+    // A stationary finger that resumed the memory also carries it in
+    // the live nub; forgetting only the off-finger copy would replay it.
+    if (tc.oh_hold_engaged && tc.joy_active && !tc.oh_joy_steered)
+        tc.joy_nx = tc.joy_ny = 0.0f;
+    oh_hold_clear();
+}
+
 // True while a remembered deflection is waiting for a finger: a press
 // landing now engages it.
 static bool oh_hold_armed(Uint32 now) {

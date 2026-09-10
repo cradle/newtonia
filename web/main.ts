@@ -613,6 +613,7 @@ declare const NewtoniaStore: undefined | {
     let lastTapMs = 0;
     let spaceUpTimer: number | null = null;
     let secondaryUpTimer: number | null = null;
+    const resetButtons: (() => void)[] = [];
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
     // A steering release stops and remembers both axes for 300 ms. A press
     // inside that window resumes them; its un-wandered release latches the
@@ -814,6 +815,7 @@ declare const NewtoniaStore: undefined | {
     // no finger to cancel). Online play keeps its gate open in the
     // background, so clear gesture ownership directly, before any resume.
     _resetTouchGestures = () => {
+      for (const reset of resetButtons) reset();
       holdClear();
       hideJoystick();
       tapFinger = null;
@@ -1128,6 +1130,12 @@ declare const NewtoniaStore: undefined | {
 
       // Track active fingers so multi-finger presses keep the button held.
       const activeFingers = new Set<number>();
+      resetButtons.push(() => {
+        const wasPressed = activeFingers.size > 0;
+        activeFingers.clear();
+        btn.classList.remove("pressed");
+        if (wasPressed) dispatchKey("keyup");
+      });
 
       btn.addEventListener("touchstart", (e) => {
         e.preventDefault();
@@ -1144,10 +1152,13 @@ declare const NewtoniaStore: undefined | {
 
       const onBtnEnd = (e: TouchEvent) => {
         e.preventDefault();
+        let released = false;
         for (let i = 0; i < e.changedTouches.length; i++) {
-          activeFingers.delete(e.changedTouches[i].identifier);
+          if (activeFingers.delete(e.changedTouches[i].identifier)) released = true;
         }
-        if (activeFingers.size === 0) {
+        // A late release after reset owns nothing. In particular, do not
+        // synthesize a second pause key-up into the resumed screen.
+        if (released && activeFingers.size === 0) {
           dispatchKey("keyup");
           btn.classList.remove("pressed");
         }

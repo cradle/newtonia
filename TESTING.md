@@ -114,17 +114,21 @@ gaps after a tap; re-steering and returning to centre stops it. An initial
 lift without a follow-up tap expires after 300 ms. The last 50 ms of lift-off
 drift must not amplify rotation or forward/reverse thrust. Sparse motion,
 short new drags, centred/reversed axes, reset and gate drops exercise the
-handoff. Second-finger taps and long presses are also covered. Native tests
+handoff. Intro-boundary clearing is checked with armed memory, latched input,
+and memory under a stationary finger while tap-to-start remains enabled.
+Second-finger taps and long presses are also covered. Native tests
 run in `linux.yml`.
 
-The web test compiles the production TypeScript joystick handlers into a
+The web test compiles the complete production TypeScript touch UI factory into a
 temporary directory and executes them with a stub DOM and deterministic
 clock. It checks resumed tap chains, long gaps, initial memory expiry,
 lift-off drift, rotation-only input, centred/reversed axes, sparse motion,
 new-press history, cancellation without a shot, and gate drop under a held
 finger. Page-hide and visibility events also stop latched input with the online
 gameplay gate still open, release gesture ownership when touchcancel never
-arrives, and cancel pending fire gestures. Repositioning the resting joystick
+arrives, and cancel pending fire gestures. Action-button checks cover multiple
+held fingers, key release on backgrounding, fresh presses after resume, and
+late releases from cancelled fingers. Repositioning the resting joystick
 preserves its held-input indicator. It runs in `web.yml`. Physical phone feel
 needs an on-device check.
 
