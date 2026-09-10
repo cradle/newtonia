@@ -2243,7 +2243,13 @@ void Ship::shoot(bool on) {
 
 void Ship::fire_secondary(bool on) {
   if(secondary_weapons.empty()) return;
-  if((*secondary)->empty() && on) {
+  // A one-hand Shield toggle sends a release when it is already on.
+  // That tap must discard an exhausted Shield too, not spend a tap merely
+  // clearing its trigger. Other secondaries retain press-only disposal.
+  // The final charge's protection belongs to ShieldBehaviour, so deleting
+  // the weapon does not cut it short or fire the next secondary.
+  if((*secondary)->empty() &&
+     (on || dynamic_cast<Weapon::Shield*>(*secondary))) {
     auto to_remove = secondary;
     auto next = to_remove;
     ++next;

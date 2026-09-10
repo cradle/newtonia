@@ -153,6 +153,13 @@ cover toggle on/off, engine resets, equipment changes under the finger, reset
 after lift, the one-second joystick return, web multiple fingers/cancellation,
 and unchanged two-hand hold-to-shield behavior.
 
+`make NETPLAY=0 test-shield-empty` (Linux/GNU ld, desktop dependencies) links
+the real engine objects with a windowless test entry and dummy audio. It drains
+a held Shield, then verifies that one toggle-off tap discards it, selects the
+next secondary or leaves none, never fires the fallback, and preserves the
+last charge's remaining protection. It also covers inventory wraparound,
+already-off empty Shields, nonempty toggles, and unchanged non-Shield releases.
+
 The same suites check the moving one-hand action cluster: relocation at a new
 base, stable placement through drag/lift, correct button key down/up, freezing
 while an action finger is held, and reset/resize recovery. Native geometry is

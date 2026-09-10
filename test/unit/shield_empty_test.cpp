@@ -1,0 +1,95 @@
+// Real Ship/Shield inventory regression; GNU ld replaces only the app entry.
+// Run: make NETPLAY=0 test-shield-empty (no display or GL context needed).
+#include "ship.h"
+#include "grid.h"
+#include <SDL.h>
+#include <SDL_mixer.h>
+#include <cassert>
+#include <cstdio>
+
+using Kind = Save::WeaponEntry::Kind;
+
+static void equip(Ship &ship, const Grid &grid, int ammo, int fallback = 0) {
+  Save::Player p{};
+  p.lives = 3;
+  p.pos_x = p.pos_y = 500;
+  p.facing_x = 1;
+  p.primary_weapons.push_back({Kind::Default, 0, 100});
+  if (fallback == 2) p.secondary_weapons.push_back({Kind::Mine, 0, 10});
+  p.selected_secondary_idx = (int)p.secondary_weapons.size();
+  p.secondary_weapons.push_back({Kind::Shield, 0, ammo});
+  if (fallback == 1) p.secondary_weapons.push_back({Kind::Mine, 0, 10});
+  ship.sound_own_cues = false;
+  ship.restore_state(p, grid);
+  ship.invincible = false;
+  ship.time_left_invincible = 0;
+}
+
+static int selected_ammo(const Ship &ship) {
+  const auto p = ship.capture_state();
+  return p.secondary_weapons.at(p.selected_secondary_idx).ammo;
+}
+
+extern "C" int __wrap_main() {
+  assert(SDL_Init(SDL_INIT_AUDIO) == 0);
+  assert(Mix_OpenAudio(22050, AUDIO_S16SYS, 2, 512) == 0);
+  WrappedPoint::set_boundaries(Point(2000, 2000));
+  Grid grid(Point(2000, 2000), Point(100, 100));
+
+  // The next tap after draining a toggled Shield sends fire_secondary(false).
+  // Check the final charge still protecting us and protection expired,
+  // with no fallback, a next weapon, and wrapping to an earlier weapon.
+  for (int fallback = 0; fallback < 3; ++fallback) {
+    for (bool protection_expired : {false, true}) {
+      Ship ship(grid, true);
+      equip(ship, grid, 2, fallback);
+      ship.fire_secondary(true);
+      assert(selected_ammo(ship) == 1);
+      for (int i = 0; i < 130 && selected_ammo(ship) > 0; ++i)
+        ship.step(8, grid); // held trigger renews after the first charge
+      assert(selected_ammo(ship) == 0 && ship.invincible);
+      if (protection_expired)
+        for (int i = 0; i < 130; ++i) ship.step(8, grid);
+      const int duration = ship.time_left_invincible;
+      assert(ship.invincible == !protection_expired);
+      ship.fire_secondary(false); // one tap, no second press needed
+      const auto p = ship.capture_state();
+      assert(p.secondary_weapons.size() == (fallback ? 1u : 0u));
+      assert(ship.invincible == !protection_expired);
+      assert(ship.time_left_invincible == duration);
+      if (fallback) {
+        assert(p.selected_secondary_idx == 0);
+        assert(p.secondary_weapons[0].kind == Kind::Mine);
+        assert(p.secondary_weapons[0].ammo == 10 && ship.mines.empty());
+      } else assert(p.selected_secondary_idx == -1);
+      ship.fire_secondary(false); // late release is harmless
+      assert(ship.capture_state().secondary_weapons.size() == (fallback ? 1u : 0u));
+    }
+  }
+  {
+    Ship ship(grid, true);
+    equip(ship, grid, 2);
+    ship.fire_secondary(true);
+    ship.fire_secondary(false);
+    for (int i = 0; i < 130; ++i) ship.step(8, grid);
+    assert(selected_ammo(ship) == 1); // nonempty toggle stops renewal
+    // An empty, already-off Shield is still discarded on a press.
+    equip(ship, grid, 0);
+    ship.fire_secondary(true);
+    assert(ship.capture_state().secondary_weapons.empty());
+  }
+  {
+    Ship ship(grid, true);
+    equip(ship, grid, 0);
+    ship.fire_secondary(true);
+    ship.add_mine_ammo(0);
+    ship.fire_secondary(false);
+    assert(ship.capture_state().secondary_weapons.size() == 1);
+    ship.fire_secondary(true);
+    assert(ship.capture_state().secondary_weapons.empty());
+  }
+  Mix_CloseAudio();
+  SDL_Quit();
+  std::puts("shield_empty_test: all checks passed");
+  return 0;
+}
