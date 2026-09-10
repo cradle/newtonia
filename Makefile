@@ -213,6 +213,14 @@ endif
 newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
 
+# Linux/GNU ld: reuse the real engine objects with a windowless test entry.
+.PHONY: test-shield-empty
+test-shield-empty: $(OBJFILES)
+	@set -e; out=$$(mktemp -d); trap 'rm -rf "$$out"' EXIT; \
+	$(CC) $(CFLAGS) -I. test/unit/shield_empty_test.cpp $(OBJFILES) $(LIBS) \
+	  -Wl,--wrap=main -o "$$out/shield_empty_test"; \
+	SDL_AUDIODRIVER=dummy "$$out/shield_empty_test"
+
 clean:
 	rm -rf $(OBJFILES) $(DEPFILES) newtonia newtonia.exe newtonia-arm64 newtonia-x86_64 flavor.stamp
 

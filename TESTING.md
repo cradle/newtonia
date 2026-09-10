@@ -105,28 +105,78 @@ node test/unit/touch_one_hand_web.cjs  # Node + tsc on PATH
 Links the real `touch_controls.cpp` against link-time stubs for the three
 `StateManager` entry points it drives (recorded as an event log), the
 `Preferences` global, the zoom-zone lookups and the safe inset, with
-`SDL_GetTicks` `--wrap`ped to a fake clock so a 300 ms window is stepped in
+`SDL_GetTicks` `--wrap`ped to a fake clock so a 500 ms window is stepped in
 one line. Each scenario runs the mobile entry points' loop (events, the
 per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
 deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
-tap and resumes both joystick axes. The input stays active across multi-second
-gaps after a tap; re-steering and returning to centre stops it. An initial
-lift without a follow-up tap expires after 300 ms. The last 50 ms of lift-off
-drift must not amplify rotation or forward/reverse thrust. Sparse motion,
-short new drags, centred/reversed axes, reset and gate drops exercise the
-handoff. Second-finger taps and long presses are also covered. Native tests
+tap and selects both joystick axes from the new tap location at the saved
+base. Tapping the old nub preserves its direction; tapping a new location
+updates it. All four diagonals, horizontal inputs and centre-to-neutral
+are covered. Small tap wobble never steers, even outside the ship's deadzone.
+Every steering-finger release immediately clears input,
+including tap/fire-hold and long-press releases. The saved direction remains
+available at 499 ms and expires at 500 ms after each release; long gaps
+cannot leave an input active or restart stale steering. Quick changes immediately
+before lift must remember the latest full deflection, including reversals. Sparse
+motion, short new drags, centred/reversed axes, reset and gate drops exercise the
+handoff. A 450 ms lift-to-tap gap resumes with the ring, joystick nub and action
+buttons at the previous anchor. Taps, neutral releases and deliberate drags
+keep that anchor through the 500 ms window; holding longer than 500 ms does
+not move it. Only a new press after expiry relocates it. Intro-boundary clearing
+is checked with released memory and a stationary resumed finger while
+tap-to-start remains enabled. Second-finger taps and long presses are also
+covered. Native tests
 run in `linux.yml`.
 
-The web test compiles the production TypeScript joystick handlers into a
+The web test compiles the complete production TypeScript touch UI factory into a
 temporary directory and executes them with a stub DOM and deterministic
-clock. It checks resumed tap chains, long gaps, initial memory expiry,
-lift-off drift, rotation-only input, centred/reversed axes, sparse motion,
-new-press history, cancellation without a shot, and gate drop under a held
-finger. Page-hide and visibility events also stop latched input with the online
+clock. It checks resumed tap chains, long gaps, memory expiry after every release,
+last-moment direction changes, horizontal input, centred/reversed axes,
+sparse motion, fresh drags, cancellation without a shot, and gate drop under a held
+finger. Page-hide and visibility events also clear active input and saved direction with the online
 gameplay gate still open, release gesture ownership when touchcancel never
-arrives, and cancel pending fire gestures. Repositioning the resting joystick
+arrives, and cancel pending fire gestures. Action-button checks cover multiple
+held fingers, key release on backgrounding, fresh presses after resume, and
+late releases from cancelled fingers. Repositioning the resting joystick
 preserves its held-input indicator. It runs in `web.yml`. Physical phone feel
 needs an on-device check.
+
+One-hand action buttons retain the joystick base for their entire hold and
+for 1000 ms after release. Regression checks cover all three buttons, slow
+trips to the action, long holds, return at 999 ms, expiry at 1000 ms, reset
+and web cancellation, and restoration of the ordinary 500 ms steering window.
+
+The one-hand Shield button toggles the selected shield on press and leaves it
+active after lift; the next press turns it off, using the same engine state as
+the long-press gesture. Its highlight follows that state. Regression checks
+cover toggle on/off, engine resets, equipment changes under the finger, reset
+after lift, the one-second joystick return, web multiple fingers/cancellation,
+and unchanged two-hand hold-to-shield behavior.
+
+`make NETPLAY=0 test-shield-empty` (Linux/GNU ld, desktop dependencies) links
+the real engine objects with a windowless test entry and dummy audio. Linux CI
+runs the same target. It drains a held Shield, then verifies that one deliberate
+press discards it, selects the next secondary or leaves none, never fires the fallback, and preserves the
+last charge's remaining protection. It also covers inventory wraparound,
+already-off empty Shields, nonempty toggles, and unchanged ordinary releases
+(including empty Shields on pause/intro/input reset). It asserts `shield_active()`
+through disposal and expiry, tests snapshot effect restoration and reset, and
+checks host queued-press disposal without firing the fallback. The native and
+web gesture suites verify that an empty-Shield button tap or long press sends
+that deliberate press even while the Shield is toggled on. An integrated case
+runs the real touch button through `StateManager`'s held-key filter into `Ship`:
+toggle on, exhaust, tap to discard, then tap the replacement weapon. The empty
+tap must release the existing key latch before pressing and leave it released
+after disposal. This case reproduced the Android failure when only the press
+was sent; separate gesture-event and inventory tests had missed the filter.
+
+The same suites check the moving one-hand action cluster: relocation at a new
+base, stable placement through drag/lift, correct button key down/up, freezing
+while an action finger is held, and reset/resize recovery. Native geometry is
+swept over a viewport grid in portrait, landscape, and square layouts for all
+handedness settings, checking disjoint hit regions and clearance from the
+stick, edges, zoom and pause. The web test runs the complete production DOM
+factory and checks the button elements and their actual event handlers.
 
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 

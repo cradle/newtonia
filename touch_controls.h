@@ -8,7 +8,6 @@
 // build's behaviour exactly as before.
 
 #include <SDL.h>
-#include <deque>
 class StateManager;
 
 // The on-screen joystick/buttons render on the touch platforms; a desktop
@@ -24,7 +23,8 @@ inline bool touch_osd_enabled() {
 
 struct TouchControlsState {
     // ---- Virtual joystick ----
-    // When inactive, draw a faint hint ring at (joy_hint_cx, joy_hint_cy).
+    // When inactive, draw at the default hint, or the last one-hand base
+    // while oh_anchor_valid keeps the ring beside its action buttons.
     // When active, the base floats to wherever the user first touched on the
     // left half, then the nub tracks within joy_radius pixels.
     float joy_hint_cx, joy_hint_cy; // home position for inactive hint (pixels)
@@ -43,6 +43,8 @@ struct TouchControlsState {
     float mine_cx, mine_cy, mine_radius;
     bool  mine_pressed;
     SDL_FingerID mine_finger;
+    bool  oh_mine_toggle; // this button press toggled Shield; lift must not release it
+    bool  oh_shield_held; // owns a synthesized key-down until reset, not toggle truth
     // The mine button only exists while the local ship has a secondary
     // equipped (secondaries come from pickups and drop off the ship when
     // the last one runs dry). GLGame::tick writes this each frame; the
@@ -99,8 +101,8 @@ struct TouchControlsState {
     // it the secondary fires ('x', gated on mine_available exactly like
     // the mine button it replaces). Beside the gestures, three BUTTONS —
     // SECONDARY / BOOST / TELEPORT — ride an arc on the far side of the
-    // resting ring (touch_controls_resize lays it out in the mine_*/
-    // boost_*/teleport_* fields above, so draw, hit test and reset all
+    // latest live base, retained after lift (oh_layout_actions writes the
+    // mine_*/boost_*/teleport_* fields above, so draw, hit test and reset all
     // share the two-hand state); the gesture layer claims their fingers
     // ahead of the stick, in live play only. GLGame::tick mirrors one_hand_ingame
     // from touch_zoom_active() — live play with a local ship — so menu,
@@ -111,10 +113,11 @@ struct TouchControlsState {
     // press is released a beat later by touch_one_hand_tick, never in the
     // same event batch — the weapons only sample the trigger in step().
     bool  one_hand_ingame;
+    bool  oh_anchor_valid; // retain the last live base for ring + action buttons
     // One-hand shield toggle (see oh_long_press_secondary): the shield is
     // the one hold-to-run secondary — active while the key is down,
     // draining as it renews — which the pulse below would blink on for a
-    // single beat. Under the one-hand grammar a long press TOGGLES it
+    // single beat. Under the one-hand grammar a long press or button tap TOGGLES it
     // instead, and the decision keys on THIS mirror — the SELECTED
     // secondary's own trigger, (*secondary)->is_shooting() when it is the
     // shield, written by GLGame::tick beside secondary_kind — never a
@@ -122,6 +125,7 @@ struct TouchControlsState {
     // rollover simply reads back as "off" and the next long press
     // re-engages, nothing to desync or clean up.
     bool  shield_engaged;
+    bool  shield_empty; // deliberate tap must press to discard, even if engaged
     // The joystick finger doubles as the first fire candidate.
     Uint32 oh_joy_down_ms;
     float oh_joy_down_px, oh_joy_down_py;
@@ -158,27 +162,26 @@ struct TouchControlsState {
     bool  oh_joy_firehold;
     bool  oh_tap_firehold;
     // ---- Held deflection: the stick survives a lift-and-tap ----
-    // A steering release stops immediately and remembers the previous
-    // joystick input for 300 ms. A press inside that window resumes both
-    // rotation and thrust/reverse. An un-wandered release (tap/fire-hold/
-    // long press) keeps that input latched without a timeout, so shooting
-    // does not stop the manoeuvre. Further taps leave the input intact.
-    // A wander takes over live from the new landing point; steer back to
-    // centre to stop. Pause, reset and screen changes clear the memory.
-    // Both axes are sampled 50 ms before lift to reject the peeling thumb's
-    // tail without delaying live steering. A centred/reversed live axis
-    // cannot resurrect its stale sample.
-    // Keep the sample at/before 50 ms ago plus the recent motion tail.
-    // Only steering samples enter this history; a brief drag uses its first.
-    struct StickSample { Uint32 ms; float nx, ny; };
-    std::deque<StickSample> oh_stick_samples;
+    // Every steering-finger release, including taps and fire-holds, stops
+    // steering/thrust immediately and remembers both axes for 500 ms.
+    // Reholding inside that window selects direction from the new tap
+    // location relative to the saved base, only while the finger is down.
+    // A new release renews the window; no input runs unattended.
+    // Drags keep using the same base.
+    // Neutral releases also retain the base. Only a new press after
+    // expiry may relocate it. Pause, reset and screen changes clear it.
     bool   oh_hold_valid;    // a deflection is remembered (armed or engaged)
     bool   oh_hold_engaged;  // the ship is flying the remembered deflection now
-    float  oh_hold_nx, oh_hold_ny;
-    Uint32 oh_hold_until;    // initial lift-to-tap deadline (0 = latched input)
+    float  oh_hold_nx, oh_hold_ny; // both axes of the last live deflection
+    Uint32 oh_hold_until;    // release-to-rehold deadline (0 while a finger holds it)
 };
 
 extern TouchControlsState g_touch_controls;
+
+// Forget a remembered manoeuvre at an intro boundary without disabling
+// tap-to-start or synthesizing navigation key releases into either state.
+// The caller releases the ship's controls separately before play resumes.
+void touch_one_hand_clear_hold();
 
 // Call whenever the window is resized to reposition controls.
 void touch_controls_resize(int w, int h);

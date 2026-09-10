@@ -77,6 +77,9 @@ jobs:
       - name: One-hand touch gesture layer unit test
         run: bash test/unit/touch_one_hand.sh
 
+      - name: Shield inventory and effect regression test
+        run: CPATH=/usr/local/include/SDL2${CPATH:+:$CPATH} make NETPLAY=0 -j4 test-shield-empty
+
       # Netplay (NETPLAY.md): the documented Linux recipe — libdatachannel
       # from source into ./netplay-libs (clone happens in a temp dir; the
       # prefix holds only headers and libs, so the source find below is safe).

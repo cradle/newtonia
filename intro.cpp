@@ -26,6 +26,9 @@ Intro::Intro(GLGame *game, Kind kind, const char *name,
   name(name),
   asteroids_(std::move(display_asteroids)),
   hazard_kind(hazard_kind) {
+  // The fire gate stays open so taps can start the level. It therefore
+  // cannot clear remembered steering for us while this state is active.
+  touch_one_hand_clear_hold();
   for (Asteroid *a : asteroids_) {
     // Park the display asteroids at the world centre so the fixed intro
     // camera (which looks at the focus point) keeps them on screen while
@@ -108,6 +111,9 @@ Intro::~Intro() {
 }
 
 void Intro::dismiss() {
+  // Gestures made on the intro can also arm memory. Drop it before the
+  // ship's controls are released, including a stationary resumed nub.
+  touch_one_hand_clear_hold();
   if (music_channel >= 0) {
     Mix_HaltChannel(music_channel);
     music_channel = -1;

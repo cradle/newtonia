@@ -275,7 +275,7 @@ declare const NewtoniaStore: undefined | {
   // screen is one joystick resting centred just below the ship, taps fire
   // the primary and a long press the secondary; the shoot circle never
   // shows, while the secondary/boost/teleport circles ride an arc on the
-  // far side of the resting ring. Mirrors the native gesture layer in
+  // far side of the latest joystick base. Mirrors the native gesture layer in
   // touch_controls.cpp.
   let _oneHand = false;
   // Handedness (Preferences::touch_handedness as -1/0/+1). One-hand:
@@ -299,10 +299,11 @@ declare const NewtoniaStore: undefined | {
   // (mirrors oh_long_press_secondary in touch_controls.cpp).
   let _secondaryKind = -1;
   let _shieldEngaged = false;
+  let _shieldEmpty = false;
 
   // One hand hides only the SHOOT circle (tap-fire is the trigger); the
   // SECONDARY / BOOST / TELEPORT circles move onto the action arc around
-  // the resting ring (oneHandArc below), the native OSD's arrangement.
+  // the latest joystick base (oneHandArc below), the native OSD's arrangement.
   function applyCircleButtonVisibility(): void {
     for (const el of _circleButtonEls) {
       const hide = _inMenuMode ||
@@ -453,8 +454,11 @@ declare const NewtoniaStore: undefined | {
   (window as any).setWeaponKinds = setWeaponKinds;
 
   // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
-  function setShieldEngaged(on: number | boolean): void {
+  function setShieldEngaged(on: number | boolean, empty: number | boolean = _shieldEmpty): void {
     _shieldEngaged = !!on;
+    _shieldEmpty = !!empty;
+    document.getElementById("touch-controls")?.querySelector(".touch-mine")
+      ?.classList.toggle("engaged", _oneHand && _shieldEngaged);
   }
   (window as any).setShieldEngaged = setShieldEngaged;
 
@@ -588,6 +592,12 @@ declare const NewtoniaStore: undefined | {
 
     let joyFinger: number | null = null;
     let joyCX = 0, joyCY = 0, joyRad = 0;
+    let actionAnchor: { x: number; y: number } | null = null;
+    let positionActionButtons: (() => void) | null = null;
+    let layoutWidth = 0, layoutHeight = 0;
+    const activeActionFingers = new Set<number>();
+    const resetButtons: (() => void)[] = [];
+    let shieldHeld = false; // key ownership for reset, never the toggle decision
 
     // ---- One-hand gesture bookkeeping (mirrors touch_controls.cpp) ----
     // The joystick finger doubles as the first fire candidate: a press
@@ -614,20 +624,14 @@ declare const NewtoniaStore: undefined | {
     let spaceUpTimer: number | null = null;
     let secondaryUpTimer: number | null = null;
     // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
-    // A steering release stops and remembers both axes for 300 ms. A press
-    // inside that window resumes them; its un-wandered release latches the
-    // input until live steering or reset takes over. Only the initial
-    // lift-to-tap opportunity expires, never input resumed by a tap.
-    const OH_HOLD_MS = 300;
-    const OH_SAMPLE_MS = 50;
-    let stickSamples: { ms: number; nx: number; ny: number }[] = [];
-    function pruneStickSamples(now: number): void {
-      while (stickSamples.length > 1 && now - stickSamples[1].ms >= OH_SAMPLE_MS)
-        stickSamples.shift();
-    }
+    // Every release stops input and remembers both axes for 500 ms.
+    // A quick rehold selects direction from its location at the saved base;
+    // releasing again renews the window, never an unattended input latch.
+    const OH_HOLD_MS = 500;
+    const OH_ACTION_RETURN_MS = 1000;
     let holdValid = false, holdEngaged = false;
     let holdNx = 0, holdNy = 0;
-    let holdTimer: number | null = null;   // the window; null = latched input or no memory
+    let holdTimer: number | null = null;   // the window; null = held by a finger or no memory
     let liveNx = 0, liveNy = 0;            // the stick's last applied deflection
     // Fingers deliberately left to the canvas-tap path (the zoom zones).
     const passFingers = new Set<number>();
@@ -688,7 +692,19 @@ declare const NewtoniaStore: undefined | {
     // touch_controls.cpp).
     function longPressSecondary(): void {
       if (_secondaryKind === 5) {  // Save::WeaponEntry::Kind::Shield
-        keyEvt("x", _shieldEngaged ? "keyup" : "keydown");
+        if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
+        secondaryUpTimer = null;
+        if (_shieldEmpty) {
+          // Clear the engine's held-key latch before the disposal press,
+          // then leave it released for the next secondary's first tap.
+          shieldHeld = false;
+          keyEvt("x", "keyup");
+          keyEvt("x", "keydown");
+          keyEvt("x", "keyup");
+          return;
+        }
+        shieldHeld = !_shieldEngaged;
+        keyEvt("x", shieldHeld ? "keydown" : "keyup");
       } else {
         fireKey("x");
       }
@@ -737,39 +753,50 @@ declare const NewtoniaStore: undefined | {
     }
 
     function holdClear(): void {
-      stickSamples = [];
       holdValid = false; holdEngaged = false;
       holdNx = 0; holdNy = 0;
       if (holdTimer !== null) { window.clearTimeout(holdTimer); holdTimer = null; }
     }
-    function holdArmed(): boolean { return holdValid && (holdEngaged || holdTimer !== null); }
-    // Forget an initial lift that was never followed by a tap.
-    function holdArmWindow(): void {
+    function holdArmed(): boolean { return holdValid && (holdEngaged || holdTimer !== null || activeActionFingers.size > 0); }
+    // Forget a release that was not followed by a quick rehold.
+    function holdArmWindow(ms = OH_HOLD_MS): void {
       if (holdTimer !== null) window.clearTimeout(holdTimer);
       holdTimer = window.setTimeout(() => {
         holdTimer = null;
-        if (joyFinger === null && !holdEngaged) holdClear();
-      }, OH_HOLD_MS);
+        if (joyFinger === null && !holdEngaged && activeActionFingers.size === 0) {
+          holdClear();
+          positionJoyPlaceholder();
+        }
+      }, ms);
+    }
+    // Buttons preserve the visible base while held and give the thumb a
+    // fresh return window on release. A late release cannot undo a reset.
+    function actionReturnWindow(arm: boolean): void {
+      if (!_oneHand || !_tapFire || actionAnchor === null || joyFinger !== null ||
+          (!arm && !holdValid)) return;
+      holdValid = true;
+      holdEngaged = false;
+      holdArmWindow(OH_ACTION_RETURN_MS);
     }
     // Off the live-play gate (setTapFire false): stop a ship still flying
     // the memory and forget it, exactly like the native layer's tick.
     _holdRelease = () => {
       const wasEngaged = holdEngaged;
       holdClear();
+      actionAnchor = null;
+      positionActionButtons?.();
       if (wasEngaged) {
         liveNx = 0; liveNy = 0;
         callTouchJoystick(0, 0);
-        if (joyFinger === null) positionJoyPlaceholder();
-        else {
+        if (joyFinger !== null) {
           joyNub.style.left = `${joyCX}px`;
           joyNub.style.top = `${joyCY}px`;
         }
       }
+      if (joyFinger === null) positionJoyPlaceholder();
     };
-    // The coasting stick: the resting ring with the active nub at the
-    // remembered deflection, a shade dimmer than under a finger, so the
-    // pilot can see the ship is still flying the stick they let go of
-    // (mirrors the overlay's one-hand draw).
+    // Dim preview of the saved direction during the release-to-rehold
+    // window; the preview does not apply input to the ship.
     function showHeldStick(): void {
       if (_inMenuMode) return;
       const r = canvas.getBoundingClientRect();
@@ -777,7 +804,7 @@ declare const NewtoniaStore: undefined | {
       const { px, py, rad } = ringHome(r);
       const baseSize = rad * 2, nubSize = rad * 0.62;
       joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.55;`;
-      joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px + holdNx * rad}px;top:${py + holdNy * rad}px;opacity:0.7;`;
+      joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px + holdNx * rad}px;top:${py + holdNy * rad}px;opacity:${holdEngaged ? 0.7 : 0.4};`;
     }
 
     // Radius is captured at touchstart and reused for the whole drag — avoids
@@ -810,10 +837,14 @@ declare const NewtoniaStore: undefined | {
       positionJoyPlaceholder();
     }
 
-    // A hidden page need not deliver touchcancel (and a latched stick has
+    // A hidden page need not deliver touchcancel (and a released stick has
     // no finger to cancel). Online play keeps its gate open in the
     // background, so clear gesture ownership directly, before any resume.
     _resetTouchGestures = () => {
+      actionAnchor = null;
+      resetButtons.forEach(reset => reset());
+      activeActionFingers.clear();
+      positionActionButtons?.();
       holdClear();
       hideJoystick();
       tapFinger = null;
@@ -830,7 +861,8 @@ declare const NewtoniaStore: undefined | {
       secondaryUpTimer = null;
     };
 
-    // The resting ring's home, in viewport pixels. One hand: horizontally
+    // Last live base, or the resting home before play/reset, in viewport pixels.
+    // The default one-hand home follows handedness horizontally
     // per handedness — CENTRE stays centred, LEFT/RIGHT rest the ring
     // where that thumb sits, its near edge a small margin off its bezel.
     // Vertically the LOWER of the midpoint between canvas centre and
@@ -842,6 +874,8 @@ declare const NewtoniaStore: undefined | {
     // drift apart.
     function ringHome(r: DOMRect): { px: number; py: number; rad: number } {
       const rad = Math.min(r.width, r.height) * JOY_FRAC;
+      if (_oneHand && actionAnchor)
+        return { px: actionAnchor.x, py: actionAnchor.y, rad };
       const sideCx = Math.min(r.width, r.height) * 0.05 + rad;
       const px = r.left + (!_oneHand
           ? r.width * (_hand < 0 ? 0.82 : 0.18) // two-hand home, mirrored LEFT
@@ -856,70 +890,65 @@ declare const NewtoniaStore: undefined | {
       return { px, py, rad };
     }
 
-    // One-hand action arc: SECONDARY / BOOST / TELEPORT hug the resting
-    // ring on its FAR side — the side away from the thumb's pivot: the
-    // bottom bezel's midpoint under CENTRE, the bottom corner on the
-    // thumb's side under LEFT/RIGHT. Three buttons 60 degrees apart where
-    // the space allows; where a bezel, the zoom column or the pause
-    // circle would catch an end button, the arc is fitted into the legal
-    // span instead (a bearing scan around the pivot bearing, the spread
-    // shrinking to no less than 30 degrees and the apex sliding away from
-    // the obstruction). SECONDARY takes the end on the screen-centre
-    // side, BOOST the apex, TELEPORT the other end (LEFT mirrors the
-    // order). Mirrors touch_controls_resize's one-hand block — keep the
-    // constants in step; the keep-outs here are this OSD's own (the
-    // inZoomZone column, the HTML pause circle). Returns viewport-pixel
-    // centres for [secondary, boost, teleport] plus the hit radius the
-    // native layer uses (tangent to the ring at most).
+    // SECONDARY / BOOST / TELEPORT follow the latest live joystick base
+    // and stay there after lift. Prefer the far side of the thumb pivot,
+    // but search the full orbit near screen edges, zoom and pause. Tight
+    // arcs reduce hit radii so neighbouring regions remain disjoint.
+    // Mirrors oh_layout_actions in touch_controls.cpp; this OSD has its
+    // own pause keep-out and joystick radius.
     function oneHandArc(r: DOMRect, btnR: number):
-        { pts: { x: number; y: number }[]; hit: number } {
+        { pts: { x: number; y: number }[]; hit: number } | null {
       const { px: cx, py: cy, rad: R } = ringHome(r);
-      const minDim = Math.min(r.width, r.height);
-      const DEG = Math.PI / 180;
-      const orbit = R + 0.045 * minDim + btnR;
-      const hit = Math.min(1.4 * btnR, orbit - R);
+      const minDim = Math.min(r.width, r.height), DEG = Math.PI / 180;
       const pivotX = _hand === 0 ? cx : _hand < 0 ? r.left : r.left + r.width;
       const away = Math.atan2(r.top + r.height - cy, cx - pivotX);
-      // Keep-outs: window bounds, the zoom column (inZoomZone's rectangle,
-      // mirrored LEFT), the pause circle (sizeCircleButtons' geometry).
-      const m = btnR + 0.02 * minDim;
       const zx0 = r.left + r.width * (_hand < 0 ? 0 : 0.88);
       const zx1 = r.left + r.width * (_hand < 0 ? 0.12 : 1);
       const zy0 = r.top + r.height * 0.40, zy1 = r.top + r.height * 0.60;
       const pauseX = r.left + r.width * (_hand < 0 ? 0.125 : 0.875);
       const pauseY = r.top + r.height * 0.12;
       const pauseR = minDim * 0.19 * 0.62 * 0.5;
-      const legal = (th: number): boolean => {
-        const px = cx + orbit * Math.cos(th), py = cy - orbit * Math.sin(th);
-        if (px < r.left + m || px > r.left + r.width - m ||
-            py < r.top + m || py > r.top + r.height - m) return false;
-        const dx = Math.max(zx0 - px, px - zx1, 0);
-        const dy = Math.max(zy0 - py, py - zy1, 0);
-        if (dx * dx + dy * dy < hit * hit) return false;
-        const pdx = px - pauseX, pdy = py - pauseY, pr = hit + pauseR;
-        return pdx * pdx + pdy * pdy >= pr * pr;
-      };
-      let lo = away, hi = away;
-      while (lo > away - 105 * DEG && legal(lo - DEG)) lo -= DEG;
-      while (hi < away + 105 * DEG && legal(hi + DEG)) hi += DEG;
-      const hs = Math.max(30 * DEG, Math.min(60 * DEG, (hi - lo) * 0.5));
-      const apex = Math.min(Math.max(away, lo + hs), hi - hs);
-      const secOff = _hand < 0 ? -hs : hs;
-      const bearing = [apex + secOff, apex, apex - secOff];
-      return {
-        pts: bearing.map(th => ({
-          x: cx + orbit * Math.cos(th),
-          y: cy - orbit * Math.sin(th),
-        })),
-        hit,
-      };
+      // Match native: scan the full orbit so even a stick near a top
+      // corner can have its buttons below/inward, clear of all keep-outs.
+      for (let reach = 0; reach <= 6; ++reach) {
+        const orbit = R + (0.045 + 0.05 * reach) * minDim + btnR;
+        let best = Infinity;
+        let result: { pts: { x: number; y: number }[]; hit: number } | null = null;
+        for (let spread = 60; spread >= 25; spread -= 5) {
+          const hit = Math.min(1.4 * btnR, orbit - R,
+                               orbit * Math.sin(spread * DEG * 0.5) * 0.99);
+          if (hit < btnR) continue;
+          const margin = Math.max(btnR + 0.02 * minDim, hit);
+          const legal = (px: number, py: number): boolean => {
+            if (px < r.left + margin || px > r.left + r.width - margin ||
+                py < r.top + margin || py > r.top + r.height - margin) return false;
+            const dx = Math.max(zx0 - px, px - zx1, 0);
+            const dy = Math.max(zy0 - py, py - zy1, 0);
+            if (dx * dx + dy * dy < hit * hit) return false;
+            const pdx = px - pauseX, pdy = py - pauseY, gap = hit + pauseR;
+            return pdx * pdx + pdy * pdy >= gap * gap;
+          };
+          for (let turn = -180; turn <= 180; ++turn) {
+            const score = Math.abs(turn) + 1.5 * (60 - spread);
+            if (score >= best) continue;
+            const apex = away + turn * DEG, offset = (_hand < 0 ? -spread : spread) * DEG;
+            const pts = [apex + offset, apex, apex - offset].map(th => ({
+              x: cx + orbit * Math.cos(th), y: cy - orbit * Math.sin(th),
+            }));
+            if (!pts.every(p => legal(p.x, p.y))) continue;
+            best = score; result = { pts, hit };
+          }
+        }
+        if (result) return result;
+      }
+      return null;
     }
 
     // Show a faint placeholder at the default position so the user knows
     // where the joystick zone is before touching.
     function positionJoyPlaceholder(): void {
       if (_inMenuMode) return;
-      if (_oneHand && holdEngaged && joyFinger === null) {
+      if (_oneHand && holdValid && joyFinger === null) {
         showHeldStick();
         return;
       }
@@ -948,26 +977,26 @@ declare const NewtoniaStore: undefined | {
           joyFinger = t.identifier;
           const r = canvas.getBoundingClientRect();
           // clientX/Y are viewport-relative; touch-controls is position:fixed so no offset needed.
-          showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * JOY_FRAC);
+          const resume = _oneHand && _tapFire && holdArmed();
+          const anchor = resume && actionAnchor ? actionAnchor : { x: t.clientX, y: t.clientY };
+          showJoystick(anchor.x, anchor.y, Math.min(r.width, r.height) * JOY_FRAC);
           if (_oneHand) {
+            if (_tapFire) {
+              actionAnchor = anchor;
+              positionActionButtons?.();
+            }
             joyDownX = t.clientX; joyDownY = t.clientY;
             joyDownMs = Date.now();
-            stickSamples = [];
             joySteered = false; joyFired = false;
             liveNx = 0; liveNy = 0;
-            // Held deflection: a press inside the window picks the
-            // manoeuvre back up — the nub sits at the remembered
-            // deflection and the ship flies it while this finger stays
-            // still; its wander takes over in touchmove. Outside the
-            // window the press is cold and the memory is spent.
-            if (_tapFire && holdArmed()) {
+            // Keep the saved base, but let the new tap position select
+            // the direction. A still tap can fire without counting as a drag.
+            if (resume) {
               holdEngaged = true;
               window.clearTimeout(holdTimer!);
               holdTimer = null;  // this finger holds it now
-              joyNub.style.left = `${joyCX + holdNx * joyRad}px`;
-              joyNub.style.top  = `${joyCY + holdNy * joyRad}px`;
-              liveNx = holdNx; liveNy = holdNy;
-              callTouchJoystick(holdNx, holdNy);
+              moveJoystick(t.clientX, t.clientY);
+              holdNx = liveNx; holdNy = liveNy;
             }
             joyFireHold = startFireHold();
             armLongPress("joy", ++joyPressSeq);
@@ -997,18 +1026,11 @@ declare const NewtoniaStore: undefined | {
               Math.hypot(t.clientX - joyDownX, t.clientY - joyDownY) >
                   joyRad * 0.12)
             joySteered = true;
-          // Under an engaged memory the nub is the REMEMBERED deflection
-          // until the finger wanders (sub-slop jitter must not overwrite
-          // it with a near-centre reading); past the slop the stick is
-          // the finger's own again, live from the landing point.
-          if (_oneHand && holdEngaged && !joySteered) continue;
+          // Tap slop classifies the gesture; dragging keeps measuring
+          // against the same base, without relocating it on motion.
+          if (_oneHand && !joySteered) continue;
           holdEngaged = false;
           moveJoystick(t.clientX, t.clientY);
-          if (_oneHand && joySteered) {
-            const now = Date.now();
-            stickSamples.push({ ms: now, nx: liveNx, ny: liveNy });
-            pruneStickSamples(now);
-          }
           if (!_oneHand) break;
         } else if (_oneHand && t.identifier === tapFinger && !tapSteered) {
           if (Math.hypot(t.clientX - tapDownX, t.clientY - tapDownY) >
@@ -1022,8 +1044,7 @@ declare const NewtoniaStore: undefined | {
     // gesture, a tab switch), so the press is over with no intent behind
     // its end. The stick stops at once and NOTHING is remembered: the
     // held deflection is a bridge the pilot builds with a lift-and-tap,
-    // and a cancelled press is neither (it used to coast for another
-    // window on the fliesOn branch — review, 2026-09-09).
+    // and a cancelled press is neither.
     const onJoyEnd = (e: TouchEvent, cancelled = false) => {
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
@@ -1032,36 +1053,16 @@ declare const NewtoniaStore: undefined | {
         if (id === joyFinger) {
           const wasTap = _oneHand && !joyFireHold && !joySteered &&
                          !joyFired && Date.now() - joyDownMs < OH_LONG_PRESS_MS;
-          // Held deflection: an un-wandered release under an engaged
-          // memory is a fire gesture's end — the input stays latched.
-          // Anything else stops the ship NOW, and a
-          // STEERING release outside the deadzone becomes the memory a
-          // tap inside the window picks back up.
-          const fliesOn = _oneHand && holdEngaged && !joySteered && !cancelled;
-          // Restore the previous input and reject the last 50 ms of
-          // peeling-thumb drift. A short drag uses its first steering sample.
-          pruneStickSamples(Date.now());
-          const relNx = liveNx, relNy = liveNy;
-          let sampledNx = stickSamples[0]?.nx ?? 0;
-          let sampledNy = stickSamples[0]?.ny ?? 0;
-          if (Math.abs(relNx) <= 0.10 || relNx * sampledNx <= 0) sampledNx = 0;
-          if (Math.abs(relNy) <= 0.10 || relNy * sampledNy <= 0) sampledNy = 0;
-          if (fliesOn) {
-            joyFinger = null;
+          // Every lift releases input, including a firing tap/fire-hold.
+          // Retain the base even at neutral so quick reholds cannot relocate it.
+          const releaseNx = liveNx, releaseNy = liveNy;
+          holdClear();
+          hideJoystick();
+          if (_oneHand && _tapFire && !cancelled) {
+            holdValid = true;
+            holdNx = releaseNx; holdNy = releaseNy;
+            holdArmWindow();
             showHeldStick();
-            // A completed tap latches input until the pilot steers again.
-            // The 300 ms timer only applies before the first tap.
-          } else {
-            holdClear();
-            hideJoystick();
-            if (_oneHand && _tapFire && joySteered && !cancelled &&
-                (Math.abs(sampledNx) > 0.10 || Math.abs(sampledNy) > 0.10)) {
-              holdValid = true; holdEngaged = false;
-              holdNx = sampledNx; holdNy = sampledNy;
-              holdArmWindow();
-            } else {
-              holdClear();
-            }
           }
           if (_oneHand) {
             if (!cancelled) forwardTap(t);
@@ -1128,6 +1129,19 @@ declare const NewtoniaStore: undefined | {
 
       // Track active fingers so multi-finger presses keep the button held.
       const activeFingers = new Set<number>();
+      // Remember the press's semantics even if the equipped weapon changes.
+      let shieldTogglePress = false;
+      resetButtons.push(() => {
+        const wasPressed = activeFingers.size > 0;
+        activeFingers.clear();
+        btn.classList.remove("pressed");
+        if (wasPressed || (key === "x" && (shieldHeld || _shieldEngaged))) dispatchKey("keyup");
+        shieldTogglePress = false;
+        if (key === "x") {
+          shieldHeld = false;
+          setShieldEngaged(false);
+        }
+      });
 
       btn.addEventListener("touchstart", (e) => {
         e.preventDefault();
@@ -1135,25 +1149,49 @@ declare const NewtoniaStore: undefined | {
         for (let i = 0; i < e.changedTouches.length; i++) {
           const id = e.changedTouches[i].identifier;
           if (!activeFingers.has(id)) {
-            if (activeFingers.size === 0) dispatchKey("keydown");
+            if (activeFingers.size === 0) {
+              shieldTogglePress = _oneHand && _tapFire && key === "x" && _secondaryKind === 5;
+              if (shieldTogglePress) longPressSecondary();
+              else dispatchKey("keydown");
+            }
             activeFingers.add(id);
+            if (_oneHand && (key === "x" || key === "e" || key === "t")) {
+              activeActionFingers.add(id);
+              actionReturnWindow(true);
+            }
           }
         }
         btn.classList.add("pressed");
       }, { passive: false });
 
-      const onBtnEnd = (e: TouchEvent) => {
+      const onBtnEnd = (e: TouchEvent, cancelled = false) => {
         e.preventDefault();
+        let released = false;
         for (let i = 0; i < e.changedTouches.length; i++) {
-          activeFingers.delete(e.changedTouches[i].identifier);
+          if (activeFingers.delete(e.changedTouches[i].identifier)) released = true;
+          activeActionFingers.delete(e.changedTouches[i].identifier);
         }
-        if (activeFingers.size === 0) {
-          dispatchKey("keyup");
+        // A late release after reset owns nothing. In particular, do not
+        // synthesize a second pause key-up into the resumed screen.
+        if (released && activeFingers.size === 0) {
+          if (!shieldTogglePress || cancelled) dispatchKey("keyup");
+          if (shieldTogglePress && cancelled) {
+            shieldHeld = false;
+            setShieldEngaged(false);
+          }
+          shieldTogglePress = false;
           btn.classList.remove("pressed");
+          if (!cancelled && (key === "x" || key === "e" || key === "t"))
+            actionReturnWindow(false);
         }
+        if (cancelled && released && activeActionFingers.size === 0 && joyFinger === null) {
+          holdClear();
+          positionJoyPlaceholder();
+        }
+        if (_oneHand && activeActionFingers.size === 0) positionActionButtons?.();
       };
       btn.addEventListener("touchend",    onBtnEnd, { passive: false });
-      btn.addEventListener("touchcancel", onBtnEnd, { passive: false });
+      btn.addEventListener("touchcancel", e => onBtnEnd(e, true), { passive: false });
 
       container.appendChild(btn);
     });
@@ -1196,18 +1234,24 @@ declare const NewtoniaStore: undefined | {
     function sizeCircleButtons(): void {
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
+      const resized = layoutWidth > 0 && (r.width !== layoutWidth || r.height !== layoutHeight);
+      layoutWidth = r.width; layoutHeight = r.height;
+      if (_oneHand && resized) _resetTouchGestures?.();
       const diam = Math.min(r.width, r.height) * 0.14;
       const radius = diam / 2;
       const mineX = Math.min(r.width * 0.90, r.width - 2 * radius);
       const shootX = Math.min(r.width * 0.75, mineX - 2.5 * radius);
       const rowY = Math.min(r.height * 0.80, r.height - 3.6 * radius);
       // One hand: the three action circles sit on the arc around the
-      // resting ring (viewport pixels already, no handedness re-mirror —
-      // the ring chose its own side).
-      const arc = _oneHand ? oneHandArc(r, radius).pts : null;
+      // latest joystick base (viewport pixels, no handedness re-mirror).
+      const arc = _oneHand && activeActionFingers.size === 0
+          ? oneHandArc(r, radius)?.pts : null;
       for (const button of circleButtons) {
         const { el, d } = button;
         let { cx, cy } = button;
+        // The joystick may move under another finger, but held buttons
+        // remain at the locations their fingers actually pressed.
+        if (_oneHand && !el.classList.contains("touch-pause") && !arc) continue;
         if (arc && !el.classList.contains("touch-pause")) {
           const i = el.classList.contains("touch-mine") ? 0
                   : el.classList.contains("touch-boost") ? 1
@@ -1238,12 +1282,14 @@ declare const NewtoniaStore: undefined | {
 
     // Use ResizeObserver so buttons are sized correctly on initial layout
     // (requestAnimationFrame fires too early, before the canvas has its final size).
+    positionActionButtons = sizeCircleButtons;
     _resizeObserver?.disconnect();
     _resizeObserver = new ResizeObserver(sizeCircleButtons);
     _resizeObserver.observe(canvas);
     return sizeCircleButtons;
   }
 
+  // TEST-SLICE-END: touch_one_hand_web.cjs
   // Tracks the active resize listener so it can be removed on rebuild.
   let _resizeFn: (() => void) | null = null;
   let _resizeObserver: ResizeObserver | null = null;

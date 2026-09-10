@@ -1,4 +1,4 @@
-// Exercise the compiled production joystick handlers with a fake DOM/clock.
+// Exercise the compiled production touch controls with a fake DOM/clock.
 // No WASM or browser required. Run: node test/unit/touch_one_hand_web.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,25 +13,44 @@ try {
   execFileSync('tsc', ['-p', path.join(root, 'web/tsconfig.json'), '--outDir', out]);
   source = fs.readFileSync(path.join(out, 'main.js'), 'utf8');
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
-// Isolate the joystick portion of the real UI factory; action buttons below
-// BUTTONS are unrelated. No gesture implementation is copied into this test.
+// Execute the complete production factory, including moving button DOM.
 const start = source.indexOf('function buildTouchControls()');
-const end = source.indexOf('const BUTTONS', start);
+const end = source.indexOf('// TEST-SLICE-END: touch_one_hand_web.cjs', start);
 assert.ok(start >= 0 && end > start);
-const code = source.slice(start, end) + '\nreturn joyZone; } globalThis.zone = buildTouchControls();';
+const code = source.slice(start, end) + '\nglobalThis.resizeControls = buildTouchControls();';
 const lifecycleStart = source.indexOf('document.addEventListener("visibilitychange"');
 const lifecycleEnd = source.indexOf('TOUCH_MEDIA.addEventListener("change"', lifecycleStart);
 assert.ok(lifecycleStart >= 0 && lifecycleEnd > lifecycleStart);
 const lifecycleCode = source.slice(lifecycleStart, lifecycleEnd);
-function harness() {
+const shieldStart = source.indexOf('function setShieldEngaged(');
+const shieldEnd = source.indexOf('window.setShieldEngaged = setShieldEngaged;', shieldStart);
+assert.ok(shieldStart >= 0 && shieldEnd > shieldStart);
+const shieldCode = source.slice(shieldStart, shieldEnd);
+function harness(width=1000, height=600, hand=0) {
   let now = 1000, seq = 0;
   const timers = new Map(), joystick = [], keys = [];
-  const element = () => ({ style: {}, handlers: {}, appendChild() {},
-    addEventListener(k, f) { this.handlers[k] = f; } });
+  const element = () => {
+    const el = { style: {}, handlers: {}, children: [], className: '',
+      appendChild(child) { this.children.push(child); },
+      addEventListener(k, f) { this.handlers[k] = f; },
+      querySelector(selector) {
+        return this.children.find(child => child.classList.contains(selector.slice(1)));
+      },
+    };
+    el.classList = {
+      contains: name => el.className.split(' ').includes(name),
+      add(name) { if (!this.contains(name)) el.className += ' '+name; },
+      remove(name) { el.className = el.className.split(' ').filter(x => x !== name).join(' '); },
+      toggle(name, on) { if (on) this.add(name); else this.remove(name); },
+    };
+    return el;
+  };
+  const container = element();
+  const bounds = {left:0, top:0, width, height};
   const context = {
-    document: { getElementById: element, createElement: element, hidden: false,
+    document: { getElementById: () => container, createElement: element, hidden: false,
       handlers: {}, addEventListener(k, f) { this.handlers[k] = f; } },
-    canvas: { getBoundingClientRect: () => ({left:0, top:0, width:1000, height:600}),
+    canvas: { getBoundingClientRect: () => bounds,
       dispatchEvent: e => keys.push([e.type, e.key]) },
     window: { setTimeout(f, ms) { timers.set(++seq, { f, at: now + ms }); return seq; },
       clearTimeout(i) { timers.delete(i); },
@@ -39,16 +58,27 @@ function harness() {
     Date: { now: () => now }, Math, Set,
     KeyboardEvent: class { constructor(type, options) { this.type = type; this.key = options.key; } },
     requestAnimationFrame() {}, Module: {},
-    _oneHand:true, _hand:0, _tapFire:true, _inMenuMode:false, _mineAvailable:false,
-    _secondaryKind:-1, _shieldEngaged:false, _holdRelease:null, _resetTouchGestures:null,
+    ResizeObserver: class { observe() {} disconnect() {} },
+    _resizeObserver:null, _circleButtonEls:[], _menuOverlay:null,
+    _teleportReady:true, setTeleportReady() {},
+    _oneHand:true, _hand:hand, _tapFire:true, _inMenuMode:false, _mineAvailable:false,
+    _secondaryKind:-1, _shieldEngaged:false, _shieldEmpty:false,
+    _holdRelease:null, _resetTouchGestures:null,
     _joyPlaceholderEls:[], _positionJoyPlaceholder:null,
     callTouchJoystick: (x, y) => joystick.push([x, y]),
   };
-  vm.createContext(context); vm.runInContext(code + lifecycleCode, context);
+  vm.createContext(context); vm.runInContext(shieldCode + code + lifecycleCode, context);
+  context.zone = container.querySelector(".joy-zone");
+  context.resizeControls();
   return {
-    context, keys,
+    context, keys, container, bounds,
+    button(cls, type, id) {
+      container.querySelector('.' + cls).handlers[type]({ preventDefault() {},
+        changedTouches:[{ identifier:id }] });
+    },
+    pressed(cls) { return container.querySelector('.' + cls).classList.contains('pressed'); },
     send(type, x=500, y=400, id=1) {
-      context.zone.handlers[type]({ type, preventDefault() {},
+      container.querySelector('.joy-zone').handlers[type]({ type, preventDefault() {},
         changedTouches:[{ identifier:id, clientX:x, clientY:y }] });
     },
     advance(ms) {
@@ -68,29 +98,36 @@ function harness() {
   };
 }
 const r = 600 * 0.24;
-function steer(h, x=.3, y=-.4) {
+function steer(h, x=0, y=-.4) {
   h.send('touchstart'); h.advance(16);
-  h.send('touchmove', 500+x*r, 400+y*r); h.advance(80);
+  h.send('touchmove', 500+x*r, 400+y*r); h.expect(x, y); h.advance(80);
 }
-for (const sign of [-1, 1]) {
+for (const horizontal of [-.6, .6]) for (const sign of [-1, 1]) {
   const h = harness(); steer(h, .3, sign*.4);
-  h.send('touchmove', 500+.6*r, 400+sign*.7*r); h.advance(10);
+  h.send('touchmove', 500+horizontal*r, 400+sign*.7*r); h.advance(10);
   h.send('touchend'); h.expect(0, 0); h.advance(100);
+  assert.ok(h.context._joyPlaceholderEls[1].style.cssText.includes(`top:${400+sign*.7*r}px`));
+  assert.ok(h.context._joyPlaceholderEls[1].style.cssText.includes(`left:${500+horizontal*r}px`));
   for (let i=0; i<3; i++) {
-    h.send('touchstart'); h.expect(.3, sign*.4); h.advance(40);
-    h.send('touchend'); h.expect(.3, sign*.4); h.advance(100);
+    h.send('touchstart', 500+horizontal*r, 400+sign*.7*r); h.expect(horizontal, sign*.7);
+    assert.equal(h.context._joyPlaceholderEls[1].style.left, `${500+horizontal*r}px`);
+    h.advance(40);
+    h.send('touchend'); h.expect(0, 0); h.advance(100);
   }
   assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 3);
-  h.advance(5000); h.expect(.3, sign*.4);
-  h.send('touchstart'); h.expect(.3, sign*.4); h.advance(40);
-  h.send('touchend'); h.advance(1000); h.expect(.3, sign*.4);
+  h.advance(399); h.expect(0, 0); // 499 ms after the final tap release
+  assert.ok(h.context._joyPlaceholderEls[1].style.cssText.includes(`left:${500+horizontal*r}px`));
+  h.advance(1); h.expect(0, 0);
+  assert.match(h.context._joyPlaceholderEls[1].style.cssText, /left:500px;top:400px/);
+  h.send('touchstart'); h.expect(0, 0); h.advance(40);
+  h.send('touchend'); h.advance(5000); h.expect(0, 0);
   h.send('touchstart'); h.send('touchmove', 500, 400-.4*r);
   h.send('touchmove', 500, 400); h.send('touchend'); h.expect(0, 0);
   h.advance(100); h.send('touchstart'); h.expect(0, 0);
 }
 for (const cancelled of [false, true]) {
   const h = harness(); steer(h); h.send('touchend'); h.advance(100);
-  h.send('touchstart'); h.expect(.3, -.4);
+  h.send('touchstart', 500, 400-.4*r); h.expect(0, -.4);
   if (cancelled) {
     h.send('touchcancel'); h.expect(0, 0);
     assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 0);
@@ -103,35 +140,38 @@ for (const cancelled of [false, true]) {
 for (const [x,y] of [[0,0], [0,.4]]) {
   const h = harness(); steer(h);
   h.send('touchmove', 500+x*r, 400+y*r); h.advance(10);
-  h.send('touchend'); h.advance(100); h.send('touchstart'); h.expect(0, 0);
+  h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400+y*r); h.expect(0, y);
 }
 {
   const h = harness(); steer(h);
   h.send('touchmove', 500, 400-.3*r); h.advance(60);
-  h.send('touchend'); h.advance(100); h.send('touchstart'); h.expect(0, -.3);
+  h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400-.3*r); h.expect(0, -.3);
   h.send('touchmove', 500, 400+.5*r); h.advance(10);
-  h.send('touchend'); h.advance(100); h.send('touchstart'); h.expect(0, .5);
+  h.send('touchend'); h.advance(100); h.send('touchstart', 500, 400+.5*r); h.expect(0, .5);
 }
 
 {
-  const h = harness(); steer(h); h.send('touchend'); h.advance(301);
+  const h = harness(); steer(h); h.send('touchend'); h.advance(500);
   h.send('touchstart'); h.expect(0, 0);
 }
 
-{
-  const h = harness(); steer(h, .5, 0); h.send('touchend'); h.advance(100);
-  h.send('touchstart'); h.expect(.5, 0); h.send('touchend');
-  h.advance(5000); h.expect(.5, 0);
+for (const x of [-.5, .5]) {
+  const h = harness(); steer(h, x, 0); h.send('touchend'); h.expect(0, 0);
+  h.advance(100); h.send('touchstart', 500+x*r, 400); h.expect(x, 0);
+  h.send('touchmove', 500+(x+.11)*r, 400); h.expect(x, 0);
+  h.send('touchend');
+  h.advance(5000); h.expect(0, 0);
+  assert.equal(h.keys.filter(([type,key]) => type === 'keydown' && key === ' ').length, 1);
 }
 
 // Backgrounding online never drops _tapFire. No finger is down to emit a
-// touchcancel once the stick is latched, so the page lifecycle must stop it.
+// touchcancel after release, so the page lifecycle must clear the snapshot.
 for (const event of ['visibilitychange', 'pagehide']) {
   for (const heldFinger of [false, true]) {
     const h = harness(); steer(h); h.send('touchend'); h.advance(100);
-    h.send('touchstart'); h.advance(40); h.send('touchend');
-    h.advance(1000); h.expect(.3, -.4);
-    if (heldFinger) h.send('touchstart', 500, 400, 7);
+    h.send('touchstart',500,400-.4*r); h.advance(40); h.send('touchend');
+    h.advance(100); h.expect(0, 0);
+    if (heldFinger) h.send('touchstart', 500, 400-.4*r, 7);
     if (event === 'visibilitychange') {
       h.context.document.hidden = true;
       h.context.document.handlers[event]();
@@ -161,10 +201,10 @@ for (const event of ['visibilitychange', 'pagehide']) {
   assert.equal(h.keys.length, at); // no stale fire-hold on the fresh press
 }
 
-// Repositioning the idle UI must keep showing the input that is still flying.
+// Repositioning the idle UI preserves the saved-direction preview.
 {
   const h = harness(); steer(h); h.send('touchend'); h.advance(100);
-  h.send('touchstart'); h.advance(40); h.send('touchend');
+  h.send('touchstart',500,400-.4*r); h.advance(40); h.send('touchend');
   const nub = h.context._joyPlaceholderEls[1];
   const heldStyle = nub.style.cssText;
   h.context._positionJoyPlaceholder();
@@ -173,4 +213,265 @@ for (const event of ['visibilitychange', 'pagehide']) {
   assert.match(nub.style.cssText, /opacity:0.4/);
 }
 
+
+// Hidden pages can omit touchcancel. Reset each button's complete finger
+// set, release the held key once, and accept a new press after resume.
+for (const event of ['visibilitychange', 'pagehide']) {
+  for (const [cls, key] of [['touch-mine', 'x'], ['touch-boost', 'e'],
+                          ['touch-teleport', 't'], ['touch-pause', 'p'],
+                          ['touch-shoot', ' ']]) {
+    const h = harness();
+    h.button(cls, 'touchstart', 11);
+    h.button(cls, 'touchstart', 12);
+    assert.deepEqual(h.keys, [['keydown', key]]);
+    assert.ok(h.pressed(cls));
+    if (event === 'visibilitychange') {
+      h.context.document.hidden = true;
+      h.context.document.handlers[event]();
+      h.context.document.hidden = false;
+    } else h.context.window.handlers[event]();
+    assert.deepEqual(h.keys, [['keydown', key], ['keyup', key]]);
+    assert.ok(!h.pressed(cls));
+    // Reset is idempotent, and old touches cannot release a fresh hold.
+    h.context._resetTouchGestures();
+    h.button(cls, 'touchstart', 13);
+    h.button(cls, 'touchend', 11);
+    h.button(cls, 'touchcancel', 12);
+    assert.deepEqual(h.keys.at(-1), ['keydown', key]);
+    assert.ok(h.pressed(cls));
+    h.button(cls, 'touchend', 13);
+    assert.deepEqual(h.keys, [['keydown', key], ['keyup', key],
+                              ['keydown', key], ['keyup', key]]);
+    assert.ok(!h.pressed(cls));
+  }
+}
+
+// Ordinary multi-finger holds still last until the final finger lifts.
+{
+  const h = harness();
+  h.button('touch-mine', 'touchstart', 1);
+  h.button('touch-mine', 'touchstart', 2);
+  h.button('touch-mine', 'touchend', 1);
+  assert.deepEqual(h.keys, [['keydown', 'x']]);
+  h.button('touch-mine', 'touchcancel', 2);
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+  h.button('touch-mine', 'touchend', 2);
+  assert.equal(h.keys.length, 2);
+}
+
+function actionPositions(h) {
+  return ['touch-mine', 'touch-boost', 'touch-teleport'].map(name => {
+    const el = h.container.querySelector('.'+name);
+    return { el, x:parseFloat(el.style.left), y:parseFloat(el.style.top),
+      radius:parseFloat(el.style.width)/2 };
+  });
+}
+function pressButton(button, type, id) {
+  button.el.handlers[type]({ preventDefault() {},
+    changedTouches:[{identifier:id, clientX:button.x, clientY:button.y}] });
+}
+// A slower lift/tap/rehold keeps the ring, nub and action cluster anchored.
+{
+  const h = harness(); steer(h, 0, -.4);
+  const [base, nub] = h.context._joyPlaceholderEls;
+  const placed = actionPositions(h).map(p => [p.x,p.y]);
+  h.send('touchend'); h.expect(0, 0);
+  assert.ok(nub.style.cssText.includes(`top:${400-.4*r}px`));
+  h.advance(450);
+  for (const [nx,ny] of [[-.4,-.6], [.4,-.6], [.4,.6]]) {
+    const x=500+nx*r, y=400+ny*r;
+    h.send('touchstart', x,y); h.expect(nx, ny);
+    assert.match(base.style.cssText, /left:500px;top:400px/);
+    assert.equal(nub.style.left, `${x}px`);
+    assert.equal(nub.style.top, `${y}px`);
+    assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+    h.send('touchmove', x+2,y+1); h.expect(nx, ny);
+    h.advance(40); h.send('touchend',x,y); h.expect(0, 0); h.advance(450);
+  }
+  // Neutral input retains the base for the full window too.
+  h.send('touchstart', 500,400); h.expect(0,0);
+  assert.equal(nub.style.left, '500px');
+  assert.equal(nub.style.top, '400px');
+  h.send('touchend'); h.advance(499);
+  h.send('touchstart',500+.5*r,400); h.expect(.5,0);
+  h.send('touchmove',500-.5*r,400-.4*r); h.expect(-.5,-.4);
+  h.advance(1000); // a held finger keeps the base even beyond 500 ms
+  assert.match(base.style.cssText, /left:500px;top:400px/);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  h.send('touchend'); h.expect(0,0); h.advance(500);
+  h.send('touchstart',650,420); h.expect(0,0);
+  assert.match(base.style.cssText, /left:650px;top:420px/);
+  h.send('touchmove',650+.3*r,420); h.expect(.3,0);
+  assert.notDeepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+}
+{
+  const h = harness();
+  const home = actionPositions(h).map(p => [p.x,p.y]);
+  h.send('touchstart', 400, 500);
+  const placed = actionPositions(h).map(p => [p.x,p.y]);
+  assert.notDeepEqual(placed, home);
+  h.send('touchmove', 450, 450);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  h.send('touchend');
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  const boost = actionPositions(h)[1];
+  pressButton(boost, 'touchstart', 2);
+  assert.deepEqual(h.keys.at(-1), ['keydown', 'e']);
+  h.advance(1500); // a held action keeps the base beyond the ordinary window
+  h.send('touchstart', 100, 200, 3);
+  h.send('touchmove', 130, 200, 3);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  pressButton(boost, 'touchend', 2);
+  assert.deepEqual(h.keys.at(-1), ['keyup', 'e']);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), placed);
+  // A page hide cannot leave the action cluster frozen on a lost finger.
+  pressButton(actionPositions(h)[0], 'touchstart', 4);
+  h.context.window.handlers.pagehide();
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]), home);
+  h.send('touchstart', 700, 500, 5);
+  assert.notDeepEqual(actionPositions(h).map(p => [p.x,p.y]), home);
+  h.bounds.width = 600; h.bounds.height = 1000;
+  h.context.resizeControls(); h.expect(0, 0);
+  assert.deepEqual(actionPositions(h).map(p => [p.x,p.y]),
+    actionPositions(harness(600,1000)).map(p => [p.x,p.y]));
+}
+for (const [width,height] of [[1000,600], [600,1000], [600,600]]) {
+  for (const hand of [-1,0,1]) {
+    const h = harness(width,height,hand);
+    for (let ix=0; ix<=10; ++ix) for (let iy=0; iy<=10; ++iy) {
+      const x=width*ix/10, y=height*iy/10;
+      // These presses intentionally belong to zoom, so cannot relocate the stick.
+      if ((hand<0 ? ix<=1 : ix>=9) && iy>=4 && iy<6) continue;
+      h.send('touchstart',x,y);
+      const buttons=actionPositions(h), R=Math.min(width,height)*.24;
+      for (let i=0; i<buttons.length; ++i) {
+        const p=buttons[i], eps=.01;
+        assert.ok(p.x>=p.radius && p.x<=width-p.radius && p.y>=p.radius && p.y<=height-p.radius);
+        assert.ok(Math.hypot(p.x-x,p.y-y)+eps>=R+p.radius, `stick overlap at ${width}x${height}/${hand}/${ix},${iy}`);
+        const zx0=hand<0?0:width*.88, zx1=hand<0?width*.12:width;
+        const dx=Math.max(zx0-p.x,p.x-zx1,0), dy=Math.max(height*.4-p.y,p.y-height*.6,0);
+        assert.ok(Math.hypot(dx,dy)+eps>=p.radius);
+        const pauseX=width*(hand<0?.125:.875), pauseY=height*.12;
+        assert.ok(Math.hypot(p.x-pauseX,p.y-pauseY)+eps>=p.radius+Math.min(width,height)*.19*.62*.5);
+        for (const q of buttons.slice(i+1)) assert.ok(Math.hypot(p.x-q.x,p.y-q.y)+eps>=p.radius+q.radius);
+      }
+      h.context._resetTouchGestures();
+    }
+  }
+}
+
+// Secondary/boost/teleport pin the base while held, then give a full
+// second to return. Expiry, resets and ordinary release timing still work.
+for (const cls of ['touch-mine', 'touch-boost', 'touch-teleport']) {
+  for (const scenario of ['return', 'expire', 'reset', 'cancel']) {
+    const h = harness();
+    h.send('touchstart',400,500); h.send('touchmove',440,460);
+    h.send('touchend'); h.advance(600);
+    h.button(cls,'touchstart',2); h.advance(1500); h.expect(0,0);
+    if (scenario === 'reset') h.context.window.handlers.pagehide();
+    h.button(cls,scenario === 'cancel' ? 'touchcancel' : 'touchend',2);
+    h.advance(scenario === 'return' ? 999 : scenario === 'expire' ? 1000 : 10);
+    h.send('touchstart',430,470,3);
+    if (scenario === 'return') {
+      h.expect(30/r,-30/r);
+      assert.match(h.context._joyPlaceholderEls[0].style.cssText,/left:400px;top:500px/);
+      h.send('touchend',430,470,3); h.advance(500);
+      h.send('touchstart',450,480,4); h.expect(0,0);
+    } else h.expect(0,0);
+  }
+}
+
+// Shield taps toggle once per button hold, retaining the one-second return.
+{
+  const h = harness(); steer(h); h.send('touchend'); h.advance(600);
+  h.context._secondaryKind = 5;
+  const mirror = on => h.context.setShieldEngaged(on);
+  h.keys.length = 0;
+  h.button('touch-mine', 'touchstart', 2);
+  mirror(true);
+  h.button('touch-mine', 'touchstart', 3); // another finger is the same hold
+  h.advance(1500);
+  h.button('touch-mine', 'touchend', 2);
+  h.button('touch-mine', 'touchend', 3);
+  assert.deepEqual(h.keys, [['keydown', 'x']]);
+  assert.ok(h.container.querySelector('.touch-mine').classList.contains('engaged'));
+  h.advance(999);
+  h.send('touchstart', 500, 400-.4*r, 4); h.expect(0, -.4);
+  h.send('touchmove', 550, 330, 4); h.send('touchend', 550, 330, 4);
+  h.button('touch-mine', 'touchstart', 5); mirror(false);
+  h.button('touch-mine', 'touchend', 5);
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+  assert.ok(!h.container.querySelector('.touch-mine').classList.contains('engaged'));
+  // Engine reset and equipment changes must not leave an independent latch.
+  h.button('touch-mine', 'touchstart', 6); mirror(true);
+  h.button('touch-mine', 'touchend', 6); mirror(false);
+  h.button('touch-mine', 'touchstart', 7); mirror(true);
+  h.context._secondaryKind = 0;
+  h.button('touch-mine', 'touchend', 7);
+  assert.deepEqual(h.keys.slice(-2), [['keydown', 'x'], ['keydown', 'x']]);
+  h.context._resetTouchGestures();
+  assert.deepEqual(h.keys.at(-1), ['keyup', 'x']);
+  assert.ok(!h.context._shieldEngaged);
+  const n = h.keys.length;
+  h.context._resetTouchGestures();
+  assert.equal(h.keys.length, n);
+}
+for (const reset of ['touchcancel', 'pagehide', 'visibilitychange']) {
+  const h = harness(); h.context._secondaryKind = 5;
+  h.button('touch-mine', 'touchstart', 1); h.context.setShieldEngaged(true);
+  if (reset === 'touchcancel') h.button('touch-mine', reset, 1);
+  else {
+    h.button('touch-mine', 'touchend', 1);
+    if (reset === 'pagehide') h.context.window.handlers.pagehide();
+    else { h.context.document.hidden = true; h.context.document.handlers.visibilitychange(); }
+  }
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+  h.button('touch-mine', 'touchend', 1); // stale release
+  assert.equal(h.keys.length, 2);
+}
+// The two-hand Shield button still holds only until release.
+{
+  const h = harness(); h.context._oneHand = false; h.context._secondaryKind = 5;
+  h.button('touch-mine', 'touchstart', 1);
+  h.button('touch-mine', 'touchend', 1);
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+}
+// Reset before the engine has mirrored the new trigger still releases it.
+{
+  const h = harness(); h.context._secondaryKind = 5;
+  h.button('touch-mine', 'touchstart', 1);
+  h.button('touch-mine', 'touchend', 1);
+  h.context._resetTouchGestures();
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+}
+// A preceding non-shield pulse cannot release a new Shield toggle, and
+// the long-press gesture can turn off the button's engaged shield.
+{
+  const h = harness(); h.context._mineAvailable = true;
+  h.context._secondaryKind = 0;
+  h.send('touchstart'); h.advance(400); h.send('touchend');
+  h.context._secondaryKind = 5;
+  h.button('touch-mine', 'touchstart', 2); h.context.setShieldEngaged(true);
+  h.button('touch-mine', 'touchend', 2); h.advance(100);
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keydown', 'x']]);
+  h.send('touchstart'); h.advance(400); h.context.setShieldEngaged(false);
+  h.send('touchend'); h.advance(100);
+  assert.deepEqual(h.keys.at(-1), ['keyup', 'x']);
+  assert.equal(h.keys.length, 3);
+}
+// Both one-hand inputs deliberately press to discard an empty held Shield.
+for (const gesture of [false, true]) {
+  const h = harness(); h.context._secondaryKind = 5;
+  h.context._mineAvailable = true;
+  h.context.setShieldEngaged(true, true);
+  if (gesture) { h.send('touchstart'); h.advance(400); h.send('touchend'); }
+  else {
+    h.button('touch-mine', 'touchstart', 1);
+    h.button('touch-mine', 'touchend', 1);
+  }
+  assert.deepEqual(h.keys, [['keyup', 'x'], ['keydown', 'x'], ['keyup', 'x']]);
+  h.context.setShieldEngaged(false, false); // engine removed the weapon
+  h.context._resetTouchGestures();
+  assert.deepEqual(h.keys, [['keyup', 'x'], ['keydown', 'x'], ['keyup', 'x']]);
+}
 console.log('touch_one_hand_web: all checks passed');

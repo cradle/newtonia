@@ -9,6 +9,7 @@
 class StateManager {
 public:
   StateManager();
+  explicit StateManager(State *initial_state); // takes ownership, including in headless tests
   ~StateManager();
 
   void draw();
