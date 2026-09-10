@@ -36,7 +36,7 @@ extern "C" int __wrap_main() {
   WrappedPoint::set_boundaries(Point(2000, 2000));
   Grid grid(Point(2000, 2000), Point(100, 100));
 
-  // The next tap after draining a toggled Shield sends fire_secondary(false).
+  // A deliberate tap on an empty Shield sends a press, even if toggled on.
   // Check the final charge still protecting us and protection expired,
   // with no fallback, a next weapon, and wrapping to an earlier weapon.
   for (int fallback = 0; fallback < 3; ++fallback) {
@@ -52,19 +52,54 @@ extern "C" int __wrap_main() {
         for (int i = 0; i < 130; ++i) ship.step(8, grid);
       const int duration = ship.time_left_invincible;
       assert(ship.invincible == !protection_expired);
-      ship.fire_secondary(false); // one tap, no second press needed
+      assert(ship.shield_active() == !protection_expired);
+      ship.fire_secondary(false); // pause, intro and ordinary releases do not dispose
+      assert(ship.capture_state().secondary_weapons.size() == (fallback ? 2u : 1u));
+      ship.fire_secondary(true); // one deliberate tap discards it
       const auto p = ship.capture_state();
       assert(p.secondary_weapons.size() == (fallback ? 1u : 0u));
       assert(ship.invincible == !protection_expired);
+      assert(ship.shield_active() == !protection_expired);
       assert(ship.time_left_invincible == duration);
       if (fallback) {
         assert(p.selected_secondary_idx == 0);
         assert(p.secondary_weapons[0].kind == Kind::Mine);
         assert(p.secondary_weapons[0].ammo == 10 && ship.mines.empty());
       } else assert(p.selected_secondary_idx == -1);
+      // nx snapshot extras carry shield_active independently of inventory.
+      Ship peer(grid, true);
+      peer.sound_own_cues = false;
+      peer.restore_state(p, grid);
+      assert(!peer.shield_effect_active); // reset must forget a former charge
+      peer.time_left_invincible = duration;
+      peer.invincible = ship.invincible;
+      peer.shield_effect_active = ship.shield_active();
+      assert(peer.shield_active() == !protection_expired);
       ship.fire_secondary(false); // late release is harmless
       assert(ship.capture_state().secondary_weapons.size() == (fallback ? 1u : 0u));
+      for (int i = 0; i < 130; ++i) ship.step(8, grid);
+      assert(!ship.shield_active());
+      for (int i = 0; i < 130; ++i) peer.step(8, grid);
+      assert(!peer.shield_active());
+      peer.shield_effect_active = true;
+      peer.restore_state(p, grid);
+      assert(!peer.shield_effect_active && !peer.shield_active());
     }
+  }
+  {
+    // The host must consume a client's deliberate disposal press even
+    // though the exhausted Shield still reports a held trigger.
+    Ship ship(grid, true);
+    equip(ship, grid, 1, 1);
+    ship.fire_secondary(true);
+    assert(selected_ammo(ship) == 0 && ship.shield_active());
+    ship.net_queued_secondary_presses = 1;
+    ship.step(8, grid);
+    const auto p = ship.capture_state();
+    assert(p.secondary_weapons.size() == 1);
+    assert(p.secondary_weapons[0].kind == Kind::Mine);
+    assert(p.secondary_weapons[0].ammo == 10 && ship.mines.empty());
+    assert(ship.net_queued_secondary_presses == 0 && ship.shield_active());
   }
   {
     Ship ship(grid, true);

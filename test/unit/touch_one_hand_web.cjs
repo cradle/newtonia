@@ -15,7 +15,7 @@ try {
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
 // Execute the complete production factory, including moving button DOM.
 const start = source.indexOf('function buildTouchControls()');
-const end = source.indexOf('// Tracks the active resize listener', start);
+const end = source.indexOf('// TEST-SLICE-END: touch_one_hand_web.cjs', start);
 assert.ok(start >= 0 && end > start);
 const code = source.slice(start, end) + '\nglobalThis.resizeControls = buildTouchControls();';
 const lifecycleStart = source.indexOf('document.addEventListener("visibilitychange"');
@@ -62,7 +62,8 @@ function harness(width=1000, height=600, hand=0) {
     _resizeObserver:null, _circleButtonEls:[], _menuOverlay:null,
     _teleportReady:true, setTeleportReady() {},
     _oneHand:true, _hand:hand, _tapFire:true, _inMenuMode:false, _mineAvailable:false,
-    _secondaryKind:-1, _shieldEngaged:false, _holdRelease:null, _resetTouchGestures:null,
+    _secondaryKind:-1, _shieldEngaged:false, _shieldEmpty:false,
+    _holdRelease:null, _resetTouchGestures:null,
     _joyPlaceholderEls:[], _positionJoyPlaceholder:null,
     callTouchJoystick: (x, y) => joystick.push([x, y]),
   };
@@ -457,5 +458,19 @@ for (const reset of ['touchcancel', 'pagehide', 'visibilitychange']) {
   h.send('touchend'); h.advance(100);
   assert.deepEqual(h.keys.at(-1), ['keyup', 'x']);
   assert.equal(h.keys.length, 3);
+}
+// Both one-hand inputs deliberately press to discard an empty held Shield.
+for (const gesture of [false, true]) {
+  const h = harness(); h.context._secondaryKind = 5;
+  h.context._mineAvailable = true;
+  h.context.setShieldEngaged(true, true);
+  if (gesture) { h.send('touchstart'); h.advance(400); h.send('touchend'); }
+  else {
+    h.button('touch-mine', 'touchstart', 1);
+    h.button('touch-mine', 'touchend', 1);
+  }
+  assert.deepEqual(h.keys, [['keydown', 'x']]);
+  h.context._resetTouchGestures();
+  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
 }
 console.log('touch_one_hand_web: all checks passed');

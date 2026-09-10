@@ -154,11 +154,17 @@ after lift, the one-second joystick return, web multiple fingers/cancellation,
 and unchanged two-hand hold-to-shield behavior.
 
 `make NETPLAY=0 test-shield-empty` (Linux/GNU ld, desktop dependencies) links
-the real engine objects with a windowless test entry and dummy audio. It drains
-a held Shield, then verifies that one toggle-off tap discards it, selects the
+the real engine objects with a windowless test entry and dummy audio. Linux CI
+runs the same target. It drains a held Shield, then verifies that one deliberate
+press discards it, selects the
 next secondary or leaves none, never fires the fallback, and preserves the
 last charge's remaining protection. It also covers inventory wraparound,
-already-off empty Shields, nonempty toggles, and unchanged non-Shield releases.
+already-off empty Shields, nonempty toggles, and unchanged ordinary releases
+(including empty Shields on pause/intro/input reset). It asserts `shield_active()`
+through disposal and expiry, tests snapshot effect restoration and reset, and
+checks host queued-press disposal without firing the fallback. The native and
+web gesture suites verify that an empty-Shield button tap or long press sends
+that deliberate press even while the Shield is toggled on.
 
 The same suites check the moving one-hand action cluster: relocation at a new
 base, stable placement through drag/lift, correct button key down/up, freezing

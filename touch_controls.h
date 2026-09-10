@@ -125,6 +125,7 @@ struct TouchControlsState {
     // rollover simply reads back as "off" and the next long press
     // re-engages, nothing to desync or clean up.
     bool  shield_engaged;
+    bool  shield_empty; // deliberate tap must press to discard, even if engaged
     // The joystick finger doubles as the first fire candidate.
     Uint32 oh_joy_down_ms;
     float oh_joy_down_px, oh_joy_down_py;

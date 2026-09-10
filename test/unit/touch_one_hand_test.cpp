@@ -678,7 +678,31 @@ static void test_shield_button_toggle() {
   CHECK(count_key(0, 'u', 'x') == 1);
 }
 
+static void test_empty_shield_tap_is_a_press() {
+  for (bool gesture : {false, true}) {
+    reset_layer();
+    TouchControlsState &tc = g_touch_controls;
+    tc.mine_available = true;
+    tc.secondary_kind = 5;
+    tc.shield_engaged = true;
+    tc.shield_empty = true;
+    if (gesture) {
+      down(1, 400, 500);
+      frame(400);
+    } else down(1, tc.mine_cx, tc.mine_cy);
+    CHECK(count_key(0, 'd', 'x') == 1); // intentional disposal, not toggle-off
+    CHECK(count_key(0, 'u', 'x') == 0);
+    CHECK(up(1));
+    CHECK(count_key(0, 'd', 'x') == 1);
+    CHECK(count_key(0, 'u', 'x') == 0);
+    touch_controls_reset(SM);
+    CHECK(count_key(0, 'd', 'x') == 1); // reset cannot ask to dispose
+    CHECK(count_key(0, 'u', 'x') == 1);
+  }
+}
+
 int main() {
+  test_empty_shield_tap_is_a_press();
   test_shield_button_toggle();
   test_action_return_window();
   test_intro_forgets_hold();

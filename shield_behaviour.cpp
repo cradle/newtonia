@@ -4,12 +4,14 @@
 ShieldBehaviour::ShieldBehaviour(Ship *ship, int duration)
   : Behaviour(ship) {
   ship->invincible = true;
+  ship->shield_effect_active = true;
   ship->time_left_invincible = duration;
   ship->set_shield_hum(true);
 }
 
 void ShieldBehaviour::step(int delta) {
   if (ship->time_left_invincible <= 0) {
+    ship->shield_effect_active = false;
     ship->set_shield_hum(false);
     done = true;
   }

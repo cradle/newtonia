@@ -855,9 +855,12 @@ int Ship::god_mode_time_remaining() const {
 }
 
 bool Ship::shield_active() const {
+  if (!invincible || god_mode_time_remaining() > 0) return false;
+  // Discarding the spent inventory item does not end its final charge.
+  if (shield_effect_active) return true;
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Shield*>(*it)) {
-      return invincible && god_mode_time_remaining() == 0;
+      return true;
     }
   }
   return false;
@@ -1255,6 +1258,7 @@ void Ship::safe_position(const Grid &grid, bool try_current) {
 }
 
 void Ship::reset(bool was_killed) {
+  shield_effect_active = false;
   velocity = Point(0, 0);
   thrusting = false;
   reversing = false;
@@ -2243,13 +2247,9 @@ void Ship::shoot(bool on) {
 
 void Ship::fire_secondary(bool on) {
   if(secondary_weapons.empty()) return;
-  // A one-hand Shield toggle sends a release when it is already on.
-  // That tap must discard an exhausted Shield too, not spend a tap merely
-  // clearing its trigger. Other secondaries retain press-only disposal.
-  // The final charge's protection belongs to ShieldBehaviour, so deleting
-  // the weapon does not cut it short or fire the next secondary.
-  if((*secondary)->empty() &&
-     (on || dynamic_cast<Weapon::Shield*>(*secondary))) {
+  // Disposal requires a deliberate press. In particular, pause/intro/input
+  // resets release controls without changing the player's inventory.
+  if((*secondary)->empty() && on) {
     auto to_remove = secondary;
     auto next = to_remove;
     ++next;
@@ -2905,6 +2905,7 @@ void Ship::step(float delta, const Grid &grid) {
       time_left_invincible -= delta;
       if(time_left_invincible < 0) {
         invincible = false;
+        shield_effect_active = false;
         set_shield_hum(false);
       }
     }
@@ -2951,7 +2952,8 @@ void Ship::step(float delta, const Grid &grid) {
     if(net_queued_secondary_presses > 0) {
       if(secondary_weapons.empty() || secondary == secondary_weapons.end()) {
         net_queued_secondary_presses = 0;  // nothing armed: never block the release
-      } else if(!(*secondary)->is_shooting()) {
+      } else if((*secondary)->empty() || !(*secondary)->is_shooting()) {
+        // An empty held Shield still needs its deliberate disposal press.
         fire_secondary(true);              // replay one press per step
         net_queued_secondary_presses--;
       } else {

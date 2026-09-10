@@ -299,6 +299,7 @@ declare const NewtoniaStore: undefined | {
   // (mirrors oh_long_press_secondary in touch_controls.cpp).
   let _secondaryKind = -1;
   let _shieldEngaged = false;
+  let _shieldEmpty = false;
 
   // One hand hides only the SHOOT circle (tap-fire is the trigger); the
   // SECONDARY / BOOST / TELEPORT circles move onto the action arc around
@@ -453,8 +454,9 @@ declare const NewtoniaStore: undefined | {
   (window as any).setWeaponKinds = setWeaponKinds;
 
   // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
-  function setShieldEngaged(on: number | boolean): void {
+  function setShieldEngaged(on: number | boolean, empty: number | boolean = _shieldEmpty): void {
     _shieldEngaged = !!on;
+    _shieldEmpty = !!empty;
     document.getElementById("touch-controls")?.querySelector(".touch-mine")
       ?.classList.toggle("engaged", _oneHand && _shieldEngaged);
   }
@@ -692,8 +694,10 @@ declare const NewtoniaStore: undefined | {
       if (_secondaryKind === 5) {  // Save::WeaponEntry::Kind::Shield
         if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
         secondaryUpTimer = null;
-        shieldHeld = !_shieldEngaged;
-        keyEvt("x", _shieldEngaged ? "keyup" : "keydown");
+        // An empty Shield needs a deliberate press to discard it. Normal
+        // release/reset events must not change inventory.
+        shieldHeld = !_shieldEngaged || _shieldEmpty;
+        keyEvt("x", shieldHeld ? "keydown" : "keyup");
       } else {
         fireKey("x");
       }
@@ -1278,6 +1282,7 @@ declare const NewtoniaStore: undefined | {
     return sizeCircleButtons;
   }
 
+  // TEST-SLICE-END: touch_one_hand_web.cjs
   // Tracks the active resize listener so it can be removed on rebuild.
   let _resizeFn: (() => void) | null = null;
   let _resizeObserver: ResizeObserver | null = null;

@@ -280,6 +280,9 @@ class Ship : public CompositeObject {
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
     bool shield_active() const;
+    // The live charge outlasts its inventory item. ShieldBehaviour owns it
+    // locally; snapshot extras mirror the same effect on clients/replays.
+    bool shield_effect_active = false;
     void add_nova_charge(int n);   // call on every asteroid kill
     void add_nova_ammo(int amount);
     void nova_detonate();

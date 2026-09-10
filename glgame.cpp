@@ -8491,6 +8491,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     // instead or the shield ring flickers and the hum plays constantly.
     ship->invincible = ex.time_left_invincible > 0 || ex.god_ms > 0 ||
                        ex.shield != 0;
+    ship->shield_effect_active = ex.shield != 0;
     // The hum is a personal cue: only the LOCAL ship (last in the list on
     // the client) gets it. The remote host's ship respawning far away
     // otherwise plays short full-volume hums that sound random. A replay
@@ -8829,12 +8830,16 @@ void GLGame::tick(int delta) {
                       : 0;
     // One-hand shield toggle truth (touch_controls.h): the SELECTED
     // secondary's own trigger when it is the shield. Written every tick
-    // like the flags above; only the gesture layer's long press reads it.
+    // like the flags above; the button and long-press gesture both read it.
     g_touch_controls.shield_engaged =
         has_secondary &&
         g_touch_controls.secondary_kind ==
             (uint8_t)Save::WeaponEntry::Kind::Shield &&
         (*lp->ship->secondary)->is_shooting();
+    g_touch_controls.shield_empty =
+        has_secondary &&
+        g_touch_controls.secondary_kind == (uint8_t)Save::WeaponEntry::Kind::Shield &&
+        (*lp->ship->secondary)->empty();
     // One-handed touch: taps fire only in LIVE play. touch_zoom_active()
     // is exactly that gate (running, not spectating/replay/roster, a local
     // ship to fire) — deliberately shared, so the tap can never shoot on a
@@ -8881,12 +8886,15 @@ void GLGame::tick(int delta) {
     }
     // One-hand shield toggle truth for the HTML OSD's gesture layer, on
     // change only like the rest.
-    static bool web_se_pushed = false, web_se_last = false;
-    if (!web_se_pushed || web_se_last != g_touch_controls.shield_engaged) {
+    static bool web_se_pushed = false, web_se_last = false, web_se_empty = false;
+    if (!web_se_pushed || web_se_last != g_touch_controls.shield_engaged ||
+        web_se_empty != g_touch_controls.shield_empty) {
       web_se_pushed = true;
       web_se_last = g_touch_controls.shield_engaged;
-      EM_ASM({ if (window.setShieldEngaged) window.setShieldEngaged($0); },
-             g_touch_controls.shield_engaged ? 1 : 0);
+      web_se_empty = g_touch_controls.shield_empty;
+      EM_ASM({ if (window.setShieldEngaged) window.setShieldEngaged($0, $1); },
+             g_touch_controls.shield_engaged ? 1 : 0,
+             g_touch_controls.shield_empty ? 1 : 0);
     }
     // Active-weapon icons on the HTML circle buttons (Save kind values,
     // -1 secondary = none; main.ts maps them to inline SVG backgrounds).
