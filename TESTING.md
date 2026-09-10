@@ -156,15 +156,19 @@ and unchanged two-hand hold-to-shield behavior.
 `make NETPLAY=0 test-shield-empty` (Linux/GNU ld, desktop dependencies) links
 the real engine objects with a windowless test entry and dummy audio. Linux CI
 runs the same target. It drains a held Shield, then verifies that one deliberate
-press discards it, selects the
-next secondary or leaves none, never fires the fallback, and preserves the
+press discards it, selects the next secondary or leaves none, never fires the fallback, and preserves the
 last charge's remaining protection. It also covers inventory wraparound,
 already-off empty Shields, nonempty toggles, and unchanged ordinary releases
 (including empty Shields on pause/intro/input reset). It asserts `shield_active()`
 through disposal and expiry, tests snapshot effect restoration and reset, and
 checks host queued-press disposal without firing the fallback. The native and
 web gesture suites verify that an empty-Shield button tap or long press sends
-that deliberate press even while the Shield is toggled on.
+that deliberate press even while the Shield is toggled on. An integrated case
+runs the real touch button through `StateManager`'s held-key filter into `Ship`:
+toggle on, exhaust, tap to discard, then tap the replacement weapon. The empty
+tap must release the existing key latch before pressing and leave it released
+after disposal. This case reproduced the Android failure when only the press
+was sent; separate gesture-event and inventory tests had missed the filter.
 
 The same suites check the moving one-hand action cluster: relocation at a new
 base, stable placement through drag/lift, correct button key down/up, freezing

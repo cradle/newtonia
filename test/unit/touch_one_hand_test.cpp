@@ -691,13 +691,13 @@ static void test_empty_shield_tap_is_a_press() {
       frame(400);
     } else down(1, tc.mine_cx, tc.mine_cy);
     CHECK(count_key(0, 'd', 'x') == 1); // intentional disposal, not toggle-off
-    CHECK(count_key(0, 'u', 'x') == 0);
+    CHECK(count_key(0, 'u', 'x') == 2); // release latch, press, release
     CHECK(up(1));
     CHECK(count_key(0, 'd', 'x') == 1);
-    CHECK(count_key(0, 'u', 'x') == 0);
+    CHECK(count_key(0, 'u', 'x') == 2);
     touch_controls_reset(SM);
     CHECK(count_key(0, 'd', 'x') == 1); // reset cannot ask to dispose
-    CHECK(count_key(0, 'u', 'x') == 1);
+    CHECK(count_key(0, 'u', 'x') == 3); // mirror has not updated yet
   }
 }
 

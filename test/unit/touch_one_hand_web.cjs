@@ -469,8 +469,9 @@ for (const gesture of [false, true]) {
     h.button('touch-mine', 'touchstart', 1);
     h.button('touch-mine', 'touchend', 1);
   }
-  assert.deepEqual(h.keys, [['keydown', 'x']]);
+  assert.deepEqual(h.keys, [['keyup', 'x'], ['keydown', 'x'], ['keyup', 'x']]);
+  h.context.setShieldEngaged(false, false); // engine removed the weapon
   h.context._resetTouchGestures();
-  assert.deepEqual(h.keys, [['keydown', 'x'], ['keyup', 'x']]);
+  assert.deepEqual(h.keys, [['keyup', 'x'], ['keydown', 'x'], ['keyup', 'x']]);
 }
 console.log('touch_one_hand_web: all checks passed');

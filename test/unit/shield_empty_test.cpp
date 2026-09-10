@@ -2,6 +2,8 @@
 // Run: make NETPLAY=0 test-shield-empty (no display or GL context needed).
 #include "ship.h"
 #include "grid.h"
+#include "state_manager.h"
+#include "touch_controls.h"
 #include <SDL.h>
 #include <SDL_mixer.h>
 #include <cassert>
@@ -30,11 +32,62 @@ static int selected_ammo(const Ship &ship) {
   return p.secondary_weapons.at(p.selected_secondary_idx).ammo;
 }
 
+// Keep the production key latch and touch handler; replace only the screen
+// forwarding so this test needs no window, GL renderer or running level.
+class ShieldInputState : public State {
+  Ship &ship;
+public:
+  explicit ShieldInputState(Ship &s) : ship(s) {}
+  void draw() override {}
+  void keyboard(unsigned char key, int, int) override {
+    if (key == 'x') ship.fire_secondary(true);
+  }
+  void keyboard_up(unsigned char key, int, int) override {
+    if (key == 'x') ship.fire_secondary(false);
+  }
+  void controller(SDL_Event) override {}
+  void tick(int) override {}
+};
+
+static void test_touch_disposal_through_key_latch(const Grid &grid) {
+  for (int fallback : {0, 1}) {
+    Ship ship(grid, true);
+    equip(ship, grid, 1, fallback);
+    StateManager manager(new ShieldInputState(ship));
+    g_prefs.touch_one_hand = true;
+    g_touch_controls = TouchControlsState();
+    touch_controls_resize(1000, 600);
+    auto &tc = g_touch_controls;
+    tc.one_hand_ingame = tc.mine_available = true;
+    tc.secondary_kind = (unsigned char)Kind::Shield;
+    auto tap = [&](SDL_FingerID id) {
+      touch_one_hand_down(&manager, id, tc.mine_cx, tc.mine_cy,
+                          tc.mine_cx / 1000, tc.mine_cy / 600);
+      assert(touch_one_hand_up(&manager, id));
+    };
+    tap(1); // toggling on leaves StateManager's x key held
+    assert(selected_ammo(ship) == 0);
+    tc.shield_engaged = tc.shield_empty = true; // next game tick's mirror
+    tap(2); // must get past the real duplicate-keydown filter
+    auto p = ship.capture_state();
+    assert(p.secondary_weapons.size() == (fallback ? 1u : 0u));
+    assert(ship.shield_active());
+    if (fallback) {
+      assert(p.secondary_weapons[0].ammo == 10 && ship.mines.empty());
+      tc.secondary_kind = (unsigned char)Kind::Mine;
+      tc.shield_engaged = tc.shield_empty = false;
+      tap(3); // disposal must also leave the key ready for the next weapon
+      assert(selected_ammo(ship) == 9 && ship.mines.size() == 1);
+    }
+  }
+}
+
 extern "C" int __wrap_main() {
   assert(SDL_Init(SDL_INIT_AUDIO) == 0);
   assert(Mix_OpenAudio(22050, AUDIO_S16SYS, 2, 512) == 0);
   WrappedPoint::set_boundaries(Point(2000, 2000));
   Grid grid(Point(2000, 2000), Point(100, 100));
+  test_touch_disposal_through_key_latch(grid);
 
   // A deliberate tap on an empty Shield sends a press, even if toggled on.
   // Check the final charge still protecting us and protection expired,

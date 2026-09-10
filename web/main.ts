@@ -694,9 +694,16 @@ declare const NewtoniaStore: undefined | {
       if (_secondaryKind === 5) {  // Save::WeaponEntry::Kind::Shield
         if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
         secondaryUpTimer = null;
-        // An empty Shield needs a deliberate press to discard it. Normal
-        // release/reset events must not change inventory.
-        shieldHeld = !_shieldEngaged || _shieldEmpty;
+        if (_shieldEmpty) {
+          // Clear the engine's held-key latch before the disposal press,
+          // then leave it released for the next secondary's first tap.
+          shieldHeld = false;
+          keyEvt("x", "keyup");
+          keyEvt("x", "keydown");
+          keyEvt("x", "keyup");
+          return;
+        }
+        shieldHeld = !_shieldEngaged;
         keyEvt("x", shieldHeld ? "keydown" : "keyup");
       } else {
         fireKey("x");

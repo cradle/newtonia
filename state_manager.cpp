@@ -23,6 +23,8 @@ StateManager::StateManager() {
   state = new Menu();
 }
 
+StateManager::StateManager(State *initial_state) : state(initial_state) {}
+
 StateManager::~StateManager() {
   delete state;
 }

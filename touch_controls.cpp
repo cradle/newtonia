@@ -417,10 +417,18 @@ static void oh_long_press_secondary(StateManager *game) {
     if (tc.secondary_kind == (unsigned char)Save::WeaponEntry::Kind::Shield) {
         // A previous secondary's pulse must not switch the toggle off later.
         tc.oh_mine_up_at = 0;
-        // Empty-shield disposal uses the ordinary deliberate-press path;
-        // generic key releases (pause/background/two-hand) remain releases.
-        tc.oh_shield_held = !tc.shield_engaged || tc.shield_empty;
-        if (tc.shield_engaged && !tc.shield_empty)
+        if (tc.shield_empty) {
+            // The toggle left x down in StateManager. Release that latch
+            // before the disposal press, then release again so the next
+            // secondary's first tap is not filtered as a repeated keydown.
+            tc.oh_shield_held = false;
+            game->keyboard_up('x', 0, 0);
+            game->keyboard('x', 0, 0);
+            game->keyboard_up('x', 0, 0);
+            return;
+        }
+        tc.oh_shield_held = !tc.shield_engaged;
+        if (tc.shield_engaged)
             game->keyboard_up('x', 0, 0);
         else
             game->keyboard('x', 0, 0);
