@@ -152,9 +152,11 @@ replay.o replay.steam.o: version.stamp
 
 # --- macOS universal bundle ----------------------------------------------
 # Two whole-program compiles (arm64 + x86_64) lipo'd together, mirroring
-# the CI recipe. The x86_64 half links against the Rosetta Homebrew tree
-# (/usr/local) — install it plus sdl2/sdl2_mixer there for local universal
-# builds. The default netplay build needs a UNIVERSAL libdatachannel here:
+# the CI recipe. Build pinned SDL3 + sdl2-compat + SDL2_mixer from source:
+#   ./build_sdl_deps_macos.sh   # arm64 -> /opt/homebrew, x86_64 -> /usr/local
+# Requires Xcode Command Line Tools + CMake, not Intel Homebrew. Optional
+# script prefix arguments must match OSX_SDL_ARM / OSX_SDL_X86 below.
+# The default netplay build needs a UNIVERSAL libdatachannel here:
 #   ./build_netplay_deps.sh --universal
 # and the dylib is embedded in the bundle at Contents/Frameworks.
 OSX_SDL_ARM ?= /opt/homebrew
