@@ -195,6 +195,11 @@ ifeq ($(NETPLAY),1)
 	  echo "error: $(NETPLAY_PREFIX) predates the WS CA patch —" ; \
 	  echo "       rebuild the deps with: ./build_netplay_deps.sh --universal" ; \
 	  exit 1 ; }
+	@macos/check_min_os.sh $(patsubst -mmacosx-version-min=%,%,$(OSX_MIN)) \
+	  $(NETPLAY_PREFIX)/lib/libdatachannel.dylib > /dev/null || { \
+	  echo "error: $(NETPLAY_PREFIX)/lib/libdatachannel.dylib targets a newer macOS than the game —" ; \
+	  echo "       it would abort in dyld on older Macs; rebuild the deps with: ./build_netplay_deps.sh --universal" ; \
+	  exit 1 ; }
 endif
 
 osx: osx-netplay-check newtonia-arm64 newtonia-x86_64
