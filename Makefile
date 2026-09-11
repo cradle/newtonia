@@ -171,7 +171,7 @@ endif
 
 newtonia-arm64: OSX_SDL = $(OSX_SDL_ARM)
 newtonia-x86_64: OSX_SDL = $(OSX_SDL_X86)
-newtonia-arm64 newtonia-x86_64: osx-netplay-check FORCE
+newtonia-arm64 newtonia-x86_64: osx-sdl-check osx-netplay-check FORCE
 	$(CC) -O3 -Wall -std=c++11 -arch $(patsubst newtonia-%,%,$@) $(OSX_MIN) \
 	  -DGL_SILENCE_DEPRECATION -Wno-char-subscripts $(OSX_NET_CFLAGS) \
 	  $(VERSION_CFLAGS) \
@@ -179,6 +179,36 @@ newtonia-arm64 newtonia-x86_64: osx-netplay-check FORCE
 	  -o $@ $(ALL_SRCS) macos_window.mm \
 	  -L$(OSX_SDL)/lib -lSDL2 -lSDL2_mixer $(OSX_NET_LIBS) \
 	  -framework GLUT -framework OpenGL -framework AppKit
+
+# A missing SDL prefix used to surface only as a page of "SDL.h file not
+# found" errors per source file (Intel Mac, 2026-09-11) — say what is
+# missing and which script builds it. Each prefix must hold ITS
+# architecture's SDL3 + sdl2-compat + SDL2_mixer (build_sdl_deps_macos.sh
+# lays them out that way; a leftover Homebrew SDL2 in /usr/local or
+# /opt/homebrew is single-arch, may target a newer macOS than the game,
+# and has no libSDL3 for sdl2-compat to dlopen).
+.PHONY: osx-sdl-check
+osx-sdl-check:
+	@for pair in arm64:$(OSX_SDL_ARM) x86_64:$(OSX_SDL_X86); do \
+	  arch=$${pair%%:*}; prefix=$${pair#*:}; \
+	  for f in include/SDL2/SDL.h include/SDL2/SDL_mixer.h \
+	           lib/libSDL2.dylib lib/libSDL2_mixer.dylib lib/libSDL3.dylib; do \
+	    [ -e "$$prefix/$$f" ] || { \
+	      echo "error: $$prefix/$$f is missing — the $$arch SDL stack is not built." ; \
+	      echo "       build it with: ./build_sdl_deps_macos.sh   # arm64 -> $(OSX_SDL_ARM), x86_64 -> $(OSX_SDL_X86)" ; \
+	      exit 1 ; } ; \
+	  done ; \
+	  for f in lib/libSDL2.dylib lib/libSDL2_mixer.dylib lib/libSDL3.dylib; do \
+	    lipo "$$prefix/$$f" -verify_arch $$arch || { \
+	      echo "error: $$prefix/$$f has no $$arch slice — not the build_sdl_deps_macos.sh layout (a Homebrew SDL?)." ; \
+	      echo "       rebuild with: ./build_sdl_deps_macos.sh" ; \
+	      exit 1 ; } ; \
+	    macos/check_min_os.sh $(patsubst -mmacosx-version-min=%,%,$(OSX_MIN)) "$$prefix/$$f" > /dev/null || { \
+	      echo "error: $$prefix/$$f targets a newer macOS than the game — it would abort in dyld on older Macs." ; \
+	      echo "       rebuild with: ./build_sdl_deps_macos.sh" ; \
+	      exit 1 ; } ; \
+	  done ; \
+	done
 
 # A thin (single-arch) libdatachannel from a plain `./build_netplay_deps.sh`
 # run fails the x86_64 link with pages of undefined _rtc* symbols; catch it
@@ -202,7 +232,7 @@ ifeq ($(NETPLAY),1)
 	  exit 1 ; }
 endif
 
-osx: osx-netplay-check newtonia-arm64 newtonia-x86_64
+osx: osx-sdl-check osx-netplay-check newtonia-arm64 newtonia-x86_64
 	lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
 	lipo -info newtonia
 	mkdir -p Newtonia.app/Contents/MacOS
