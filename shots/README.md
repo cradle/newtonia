@@ -162,6 +162,7 @@ Notes:
 | `options.shot` | The desktop OPTIONS list, for legibility checks when a row is added. `key`s through the menu, so it assumes the netless build's row order — see the note in the scene before rendering it against a netplay build |
 | `specials.shot` | Labelled reference card of the special asteroid types |
 | `hazards.shot` | Pulsar, comet, seeker and a black hole, HUD off |
+| `onehand.shot` / `touchhelp.shot` | Touch-layout checks under `NEWTONIA_FORCE_TOUCH=1`: the ONE HAND resting ring + action arc, and the paused game's TOUCH CONTROLS card with its INPUT METHOD / HANDEDNESS bands (`key p`, then a `tap` on the CONTROLS band) |
 | `lens_stress.shot` | An invisible asteroid in front of every ship — WarpPass's worst case, for the 1P-vs-4P render-cost measurement rather than for looking at (TESTING.md, FOURPLAYER.md O6) |
 | `lategame.shot` | Natural generation-14 chaos (station, black hole, full counts) |
 | `steam*.shot` | The five 1920x1080 store screenshots (levels 1, 5 co-op, 5, 14, 20) |

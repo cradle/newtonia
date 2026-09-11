@@ -191,6 +191,14 @@ void touch_controls_resize(int w, int h);
 // real resize.
 void touch_controls_relayout();
 
+// The touch layout prefs changed — Preferences::touch_one_hand and/or
+// touch_handedness, written by the Options rows or the in-game TOUCH
+// CONTROLS card's option bands: re-run the layout in place (above) and,
+// on web, hand the HTML OSD the new mode + side so it rebuilds its own
+// (web/main.ts setOneHandMode). The caller saves the prefs; this is the
+// one apply site, so the two writers can't drift on what a change means.
+void touch_layout_prefs_changed();
+
 // Release all held touch inputs and send corresponding key-up events.
 // Call when the app goes to the background so no inputs get stuck.
 void touch_controls_reset(StateManager *game);

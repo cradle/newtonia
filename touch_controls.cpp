@@ -9,6 +9,9 @@
 #include <algorithm>
 #include <math.h>
 #include <cmath>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 TouchControlsState g_touch_controls = {};
 
@@ -231,6 +234,20 @@ static void oh_layout_actions() {
 
 void touch_controls_relayout() {
     if (s_last_w > 0 && s_last_h > 0) touch_controls_resize(s_last_w, s_last_h);
+}
+
+void touch_layout_prefs_changed() {
+    // The joystick hint/radius live in the layout, so re-run it in place —
+    // the next game (or the paused one under the controls card) must open
+    // in the picked input method without waiting for a window resize.
+    touch_controls_relayout();
+#ifdef __EMSCRIPTEN__
+    // The web build's OSD is HTML (web/main.ts): hand it the mode and the
+    // handedness side (-1/0/+1) so it can rebuild its own layout, over the
+    // same bridge setMenuMode rides.
+    EM_ASM({ if (window.setOneHandMode) window.setOneHandMode($0, $1); },
+           g_prefs.touch_one_hand ? 1 : 0, g_prefs.touch_handedness - 1);
+#endif
 }
 
 void touch_controls_reset(StateManager *game) {

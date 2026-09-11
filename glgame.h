@@ -326,9 +326,13 @@ private:
   // invisible, so it auto-shows ONCE on the first offline one-hand game
   // (Preferences::touch_help_done latches) and pauses the game under it;
   // the pause screen's CONTROLS band (touch, both layouts) reopens it any
-  // time. Any tap or Esc/back closes it — back to play if it auto-paused,
-  // back to the pause screen otherwise. While up it owns the screen like
-  // the roster: keyboard_up swallows the entry points' synthesized keys,
+  // time. Under the gesture table it carries the INPUT METHOD and
+  // HANDEDNESS prefs as tap-to-cycle bands (Overlay::touch_help_*_band),
+  // so the layout can be switched mid-game on the screen that explains
+  // it — the table redraws for the picked method on the spot. Any other
+  // tap, or Esc/back, closes it — back to play if it auto-paused, back to
+  // the pause screen otherwise. While up it owns the screen like the
+  // roster: keyboard_up swallows the entry points' synthesized keys,
   // touch_zoom_active() refuses (killing tap-fire and the zoom zones),
   // and the pause chrome/exit band are suppressed under its dim.
   bool touch_help_active() const { return touch_help_active_; }
@@ -336,6 +340,11 @@ private:
   TapBand controls_band() const;   // above roster_manage_band's slot
   void touch_help_open(bool resume_on_close);
   void touch_help_close();
+  // The card's option bands: cycle the pref, save it and re-run the touch
+  // layout (touch_layout_prefs_changed) — the game is paused under the
+  // card, so nothing is mid-gesture when the layout moves.
+  void touch_help_cycle_input();
+  void touch_help_cycle_handedness();
   bool touch_help_active_ = false;
   bool touch_help_resume_ = false;  // the card auto-paused: resume on close
   bool touch_help_tried_ = false;   // first-tick auto-show decided

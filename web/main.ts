@@ -338,11 +338,13 @@ declare const NewtoniaStore: undefined | {
   }
   (window as any).setMineAvailable = setMineAvailable;
 
-  // Called from C++ (web_main.cpp startup, Menu::close_options) with the
-  // stored touch input method and handedness side (-1/0/+1); a change to
-  // either rebuilds the whole touch layout. Only ever pushed in the menu,
-  // so the setMenuMode(true) inside applyTouchVisibility is always
-  // correct here.
+  // Called from C++ (web_main.cpp startup, touch_layout_prefs_changed —
+  // the Options rows on close and the in-game TOUCH CONTROLS card's
+  // option bands) with the stored touch input method and handedness side
+  // (-1/0/+1); a change to either rebuilds the whole touch layout. The
+  // rebuild (applyTouchVisibility) lands in menu mode, which is right
+  // from the Options screen but not from the card — the game is paused
+  // under it, its OSD up — so the mode in force is put back afterwards.
   function setOneHandMode(on: number | boolean, side?: number): void {
     const v = !!on;
     const s = typeof side === "number"
@@ -350,7 +352,9 @@ declare const NewtoniaStore: undefined | {
     if (v === _oneHand && s === _hand) return;
     _oneHand = v;
     _hand = s;
+    const inMenu = _inMenuMode;
     applyTouchVisibility();
+    if (!inMenu) setMenuMode(false);
   }
   (window as any).setOneHandMode = setOneHandMode;
 

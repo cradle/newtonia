@@ -1,0 +1,21 @@
+# TOUCH CONTROLS card check (not a store asset): the in-game help card
+# reached from the touch pause screen's CONTROLS band, with its INPUT
+# METHOD / HANDEDNESS option bands under the gesture table. Render with
+# NEWTONIA_FORCE_TOUCH=1 (shots/run.sh shots/touchhelp.shot). The first
+# tap dismisses the first-game auto-shown card (one_hand), `key p`
+# pauses, and the last tap lands on the pause screen's CONTROLS band
+# (landscape: the exit band's -420 anchor + 240 -> Typer -180 -> 0.65 of
+# the height; portrait anchors it to the bottom, ~0.87). Add a tap at
+# 0.73 of the height (left half INPUT METHOD, right half HANDEDNESS) to
+# see the bands cycle and the table swap.
+game 1
+sim 1500
+camera fixed
+ship 0 0 0
+asteroid 700 400 tough
+asteroid -800 300 armoured
+asteroid 300 -800
+one_hand centre
+tap 0.5 0.5 200
+key p 500
+tap 0.5 0.65 900

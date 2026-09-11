@@ -2300,17 +2300,10 @@ void Menu::close_options() {
   g_prefs.touch_one_hand               = (input_index_ == 1);
   g_prefs.touch_handedness             = handedness_index_;
   save_preferences();
-  // The joystick hint/radius live in the touch layout, so re-run it in
-  // place — the next game must open in the picked input method without
-  // waiting for a window resize.
-  touch_controls_relayout();
-#ifdef __EMSCRIPTEN__
-  // The web build's OSD is HTML (web/main.ts): hand it the mode and the
-  // handedness side (-1/0/+1) so it can rebuild its own layout, over the
-  // same bridge setMenuMode rides.
-  EM_ASM({ if (window.setOneHandMode) window.setOneHandMode($0, $1); },
-         g_prefs.touch_one_hand ? 1 : 0, g_prefs.touch_handedness - 1);
-#endif
+  // Input method / handedness: the shared apply site (touch_controls.h) —
+  // the layout re-run and the web OSD hand-off, also what the in-game
+  // TOUCH CONTROLS card's option bands call.
+  touch_layout_prefs_changed();
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),
                               STAR_DENSITY_MULTIPLIERS[star_density_index_],
