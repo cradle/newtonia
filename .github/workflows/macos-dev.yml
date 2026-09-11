@@ -106,6 +106,10 @@ jobs:
           make osx NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs-uni
           lipo -info newtonia | grep arm64 | grep -q x86_64
           lipo -info Newtonia.app/Contents/Frameworks/libdatachannel.*.dylib | grep arm64 | grep -q x86_64
+          # The deploy-steam bundle ships this same dylib: assert it was built
+          # for the 12.0 floor here, on every push, not on the tag.
+          macos/check_min_os.sh 12.0 Newtonia.app/Contents/MacOS/Newtonia \
+            Newtonia.app/Contents/Frameworks/*.dylib
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./Newtonia.app/Contents/MacOS/Newtonia
 
           # Renamed, not deleted: the live-relay gate is the LAST step of
@@ -236,6 +240,8 @@ jobs:
             lipo -info "$f"
             lipo "$f" -verify_arch arm64 x86_64
           done
+          macos/check_min_os.sh 12.0 Newtonia.app/Contents/MacOS/Newtonia \
+            Newtonia.app/Contents/Frameworks/*.dylib
 
       - name: Sign .app bundle
         run: |

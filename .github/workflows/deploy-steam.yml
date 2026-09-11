@@ -387,6 +387,11 @@ jobs:
             lipo -info "$f"
             lipo "$f" -verify_arch arm64 x86_64
           done
+          # Every slice built for the shipped floor (Info.plist's
+          # LSMinimumSystemVersion): a dylib that inherited the runner's OS
+          # aborts in dyld on older Macs (libdatachannel, 2026-09-11).
+          macos/check_min_os.sh 12.0 Newtonia.app/Contents/MacOS/newtonia \
+            Newtonia.app/Contents/Frameworks/*.dylib
 
       - name: Sign .app bundle
         run: |

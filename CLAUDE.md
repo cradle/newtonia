@@ -27,6 +27,21 @@ dependency sections below). A missing prefix is a hard `make` error (never a
 silent netless fallback); `make NETPLAY=0` is the explicit opt-out.
 `make web` / `make android*` don't
 need the prefix (web's backend is unconditional; Android builds via Gradle).
+On macOS the script pins `CMAKE_OSX_DEPLOYMENT_TARGET` to the game's own
+12.0 floor (Makefile `OSX_MIN`, `build_sdl_deps_macos.sh`, both macOS
+workflows): a libdatachannel built without one inherits the BUILDING Mac's
+OS, and on the macOS 15 runner libc++ inlined an
+`exception_ptr::__from_native_exception_pointer` that 14 and older don't
+export, so the Steam build aborted in dyld at launch on every older Mac
+(2026-09-11). `macos/check_min_os.sh <floor> <mach-o>...` asserts the floor
+on every slice of every shipped Mach-O — the deploy-steam and macos-dev
+bundle verify steps run it, and `make osx`'s prefix check runs it on the
+dylib (a stale local prefix gets the rebuild hint instead of a bad bundle).
+`make osx` also runs `osx-sdl-check` first: both SDL prefixes must hold
+their architecture's SDL3 + sdl2-compat + SDL2_mixer at the 12.0 floor, or
+it names the missing file and `./build_sdl_deps_macos.sh` — a missing
+prefix used to surface only as a page of `SDL.h not found` (Intel Mac,
+2026-09-11).
 
 **libdatachannel is PATCHED** — `patches/libdatachannel-ws-ca-cert.patch`
 (9 lines) adds `caCertificatePemFile` to the C `rtcWsConfiguration` and lets

@@ -24,6 +24,15 @@ ROOT="$PWD"
 PREFIX="${1:-$PWD/netplay-libs}"
 TAG=v0.24.5           # keep in lockstep with xbox/CMakeLists.txt (see NETPLAY.md)
 MBEDTLS_TAG=v3.6.6    # same pin as the Windows FetchContent build
+# macOS deployment target — the SAME floor as the game (Makefile OSX_MIN,
+# the two macOS workflows) and the SDL stack (build_sdl_deps_macos.sh).
+# Without it CMake targets the BUILDING machine's OS, and a dylib built on
+# a macOS 15 runner inlines libc++ helpers that only exist in 15's
+# /usr/lib/libc++.1.dylib (exception_ptr::__from_native_exception_pointer):
+# the Steam build then aborted in dyld at launch on every older Mac
+# ("Symbol missing … Referenced from libdatachannel.0.dylib", 2026-09-11).
+# macos/check_min_os.sh asserts the floor on every shipped Mach-O.
+OSX_MIN=12.0
 
 # Clones retry with backoff, wiping the partial clone between attempts —
 # transient GitHub 503 waves have taken out whole CI runs (2026-08-03).
@@ -99,6 +108,7 @@ if [ "$UNIVERSAL" = "1" ]; then
   cmake -B "$MTLS/build" -S "$MTLS" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_OSX_ARCHITECTURES="$ARCHS" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET="$OSX_MIN" \
     -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
     -DCMAKE_C_FLAGS="$UCFG" \
     -DCMAKE_INSTALL_PREFIX="$PREFIX"
@@ -106,6 +116,7 @@ if [ "$UNIVERSAL" = "1" ]; then
   cmake --install "$MTLS/build"
 
   EXTRA+=("-DCMAKE_OSX_ARCHITECTURES=$ARCHS"
+          "-DCMAKE_OSX_DEPLOYMENT_TARGET=$OSX_MIN"
           "-DUSE_MBEDTLS=ON"
           "-DCMAKE_PREFIX_PATH=$PREFIX"
           "-DCMAKE_C_FLAGS=$UCFG"
@@ -115,7 +126,8 @@ else
   # Rosetta terminal otherwise builds an x86_64 dylib on Apple Silicon, and
   # the game link fails with "undefined symbols for architecture arm64".
   if [ "$(uname)" = "Darwin" ]; then
-    EXTRA+=("-DCMAKE_OSX_ARCHITECTURES=$(uname -m)")
+    EXTRA+=("-DCMAKE_OSX_ARCHITECTURES=$(uname -m)"
+            "-DCMAKE_OSX_DEPLOYMENT_TARGET=$OSX_MIN")
   fi
   if command -v brew > /dev/null 2>&1; then
     # Homebrew's OpenSSL is keg-only; point CMake at it explicitly.
