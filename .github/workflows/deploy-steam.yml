@@ -151,79 +151,18 @@ jobs:
         if: github.ref_type == 'tag'
         run: echo "NEWTONIA_VERSION=$(tr -d '[:space:]' < SEASON)" >> "$GITHUB_ENV"
 
-      # Network fetches retry with backoff — one transient GitHub/CDN 503
-      # wave took out four workflow runs at once (2026-08-03; the macOS Dev
-      # twin of the x86_64 Homebrew step was among them).
-      - name: Install arm64 dependencies
+      - name: Install native build tools
         run: |
           try() { local i; for i in 1 2 3; do
                     if "$@"; then return 0; fi
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          try brew install sdl2 mpg123
+          try brew install cmake
 
-      - name: Install x86_64 Homebrew and dependencies
-        run: |
-          try() { local i; for i in 1 2 3; do
-                    if "$@"; then return 0; fi
-                    if [ "$i" = 3 ]; then return 1; fi
-                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          install_x86_brew() {
-            arch -x86_64 /bin/bash -c \
-              "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          }
-          try install_x86_brew
-          try arch -x86_64 /usr/local/bin/brew install sdl2 mpg123
-
-      - name: Build SDL2_mixer from source (WAV + MP3 only)
-        run: |
-          try() { local i; for i in 1 2 3; do
-                    if "$@"; then return 0; fi
-                    if [ "$i" = 3 ]; then return 1; fi
-                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          SDL_MIXER_VER=2.8.2
-          fetch() { curl -fsSL https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz | tar xz; }
-          try fetch
-          cd SDL2_mixer-${SDL_MIXER_VER}
-
-          cmake_flags=(
-            -DCMAKE_BUILD_TYPE=Release
-            -DSDL2MIXER_VENDORED=OFF
-            -DSDL2MIXER_SAMPLES=OFF
-            -DSDL2MIXER_OGG=OFF
-            -DSDL2MIXER_FLAC=OFF
-            -DSDL2MIXER_MIDI=OFF
-            -DSDL2MIXER_OPUS=OFF
-            -DSDL2MIXER_MOD=OFF
-            -DSDL2MIXER_WAVPACK=OFF
-            -DSDL2MIXER_MP3=ON
-            -DSDL2MIXER_MP3_MPG123=ON
-            -DSDL2MIXER_WAVE=ON
-          )
-
-          cmake -B build-arm64 "${cmake_flags[@]}" \
-            -DCMAKE_PREFIX_PATH=/opt/homebrew \
-            -DCMAKE_INSTALL_PREFIX=/opt/homebrew
-          cmake --build build-arm64 -j$(sysctl -n hw.logicalcpu)
-          install_name_tool -id /opt/homebrew/lib/libSDL2_mixer.dylib \
-            build-arm64/libSDL2_mixer.dylib
-          cp build-arm64/libSDL2_mixer.dylib /opt/homebrew/lib/libSDL2_mixer.dylib
-
-          cmake -B build-x86 "${cmake_flags[@]}" \
-            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_C_FLAGS="-target x86_64-apple-macos12.0" \
-            -DCMAKE_CXX_FLAGS="-target x86_64-apple-macos12.0" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-target x86_64-apple-macos12.0" \
-            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-            -DCMAKE_PREFIX_PATH=/usr/local \
-            -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
-          install_name_tool -id /usr/local/lib/libSDL2_mixer.dylib \
-            build-x86/libSDL2_mixer.dylib
-          cp build-x86/libSDL2_mixer.dylib /usr/local/lib/libSDL2_mixer.dylib
-
-          cp include/SDL_mixer.h /opt/homebrew/include/SDL2/SDL_mixer.h
-          cp include/SDL_mixer.h /usr/local/include/SDL2/SDL_mixer.h
+      # Homebrew no longer supports Intel macOS. Source-build the same pinned
+      # SDL stack for both architectures, with WAV + bundled minimp3 decoding.
+      - name: Build SDL dependencies (arm64 + x86_64)
+        run: ./build_sdl_deps_macos.sh
 
       - name: Download Steamworks SDK
         env:
@@ -408,31 +347,10 @@ jobs:
               --options runtime "$f"
           done
 
-          # Bundle libSDL3 — Homebrew's "sdl2" is now sdl2-compat, an SDL2 API
-          # shim that loads SDL3 at runtime via dlopen and aborts if it can't
-          # find it ("Failed loading SDL3 library").  Because that load is a
-          # dlopen, not a linked dependency, the bundle() walk above never sees
-          # SDL3, so copy it in explicitly.  sdl2-compat's first macOS search
-          # candidate is @loader_path/libSDL3.dylib — i.e. next to libSDL2 in
-          # Frameworks — so the file must be named exactly libSDL3.dylib.
-          find_sdl3() {
-            for n in libSDL3.0.dylib libSDL3.dylib; do
-              if [ -f "$1/lib/$n" ]; then echo "$1/lib/$n"; return 0; fi
-            done
-            return 1
-          }
-          SDL3_ARM=$(find_sdl3 /opt/homebrew || true)
-          SDL3_X86=$(find_sdl3 /usr/local   || true)
-          if [ -n "$SDL3_ARM" ] && [ -n "$SDL3_X86" ]; then
-            lipo -create "$SDL3_ARM" "$SDL3_X86" -output "$FW/libSDL3.dylib"
-          elif [ -n "$SDL3_ARM" ]; then
-            cp "$SDL3_ARM" "$FW/libSDL3.dylib"
-          elif [ -n "$SDL3_X86" ]; then
-            cp "$SDL3_X86" "$FW/libSDL3.dylib"
-          else
-            echo "ERROR: libSDL3 not found in Homebrew prefixes" >&2
-            exit 1
-          fi
+          # sdl2-compat dlopens SDL3, so the dependency walk cannot see it.
+          # Its first macOS search path is beside libSDL2 in Frameworks.
+          lipo -create /opt/homebrew/lib/libSDL3.dylib /usr/local/lib/libSDL3.dylib \
+            -output "$FW/libSDL3.dylib"
           install_name_tool -id "@loader_path/libSDL3.dylib" "$FW/libSDL3.dylib"
           # Pull in any non-system libraries SDL3 itself links, then sign it
           # with the same identity so library validation accepts the dlopen.
@@ -462,6 +380,13 @@ jobs:
           </dict>
           </plist>
           PLIST
+
+      - name: Verify universal bundle
+        run: |
+          for f in Newtonia.app/Contents/MacOS/newtonia Newtonia.app/Contents/Frameworks/*.dylib; do
+            lipo -info "$f"
+            lipo "$f" -verify_arch arm64 x86_64
+          done
 
       - name: Sign .app bundle
         run: |

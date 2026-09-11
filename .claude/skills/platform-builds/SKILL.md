@@ -27,8 +27,27 @@ To re-test earns from scratch: run once with `NEWTONIA_RESET_STEAM_STATS=1` (wip
 
 ## macOS App Bundle
 ```sh
-make osx      # Build universal arm64+x86_64 .app bundle
+brew install cmake                         # native Apple Silicon build tool
+./build_sdl_deps_macos.sh                    # SDL deps for BOTH architectures
+./build_netplay_deps.sh --universal          # default netplay build
+make osx                                   # universal arm64+x86_64 .app bundle
 ```
+
+Homebrew no longer supports Intel macOS; do not install a second Homebrew
+under Rosetta. `build_sdl_deps_macos.sh` builds pinned SDL3 3.4.16,
+sdl2-compat 2.32.72 and SDL2_mixer 2.8.2 from release tarballs for both
+architectures (macOS 12 minimum). Mixer enables WAV and bundled minimp3,
+with mpg123 disabled. The two CI workflows call this same script.
+
+Requires Xcode Command Line Tools and CMake. The script installs arm64 into
+`/opt/homebrew` and x86_64 into `/usr/local` by default (replacing SDL files
+there; installation uses sudo when needed). For separate local prefixes,
+pass absolute paths as its two arguments and use those same paths with
+`make osx OSX_SDL_ARM=... OSX_SDL_X86=...`. The local bundle uses these SDL
+prefixes at runtime. CI makes the distributable bundle self-contained:
+its dylib walk pairs both prefixes, explicitly includes the SDL3 library
+that sdl2-compat dlopens, and asserts both architectures in the executable
+and every bundled dylib before signing the app.
 
 Signing entitlements live in `macos/` (`Entitlements.plist`, `EntitlementsDevID.plist`).
 
