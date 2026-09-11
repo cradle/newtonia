@@ -95,6 +95,6 @@ for arch in arm64 x86_64; do
     lipo -info "$prefix/lib/$lib"
     lipo "$prefix/lib/$lib" -verify_arch "$arch"
     # The recursive bundle walker needs absolute, prefix-paired install names.
-    otool -D "$prefix/lib/$lib" | grep -F "$prefix/lib/"
+    otool -D "$prefix/lib/$lib" | tail -n +2 | grep -F "$prefix/lib/"
   done
 done
