@@ -385,7 +385,7 @@ jobs:
         run: |
           for f in Newtonia.app/Contents/MacOS/newtonia Newtonia.app/Contents/Frameworks/*.dylib; do
             lipo -info "$f"
-            lipo -verify_arch arm64 x86_64 "$f"
+            lipo "$f" -verify_arch arm64 x86_64
           done
 
       - name: Sign .app bundle

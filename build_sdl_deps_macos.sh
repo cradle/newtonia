@@ -93,7 +93,7 @@ for arch in arm64 x86_64; do
 
   for lib in libSDL3.dylib libSDL2.dylib libSDL2_mixer.dylib; do
     lipo -info "$prefix/lib/$lib"
-    lipo -verify_arch "$arch" "$prefix/lib/$lib"
+    lipo "$prefix/lib/$lib" -verify_arch "$arch"
     # The recursive bundle walker needs absolute, prefix-paired install names.
     otool -D "$prefix/lib/$lib" | grep -F "$prefix/lib/"
   done
