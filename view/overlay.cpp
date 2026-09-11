@@ -15,6 +15,7 @@
 #include "../touch_controls.h"
 #include "../preferences.h"
 #include "../replay.h"
+#include <algorithm>
 #include <cctype>
 
 #include "../gl_compat.h"
@@ -636,10 +637,83 @@ void Overlay::paused(const GLGame *glgame) {
 // gestures — tap, tap-then-hold, cold long press — are invisible, so this
 // spells the current layout out. Auto-shown once on the first one-hand
 // game (paused under it), reopened from the pause screen's CONTROLS band
-// on either layout; any tap closes it. Full-window over its own dim,
-// owning the screen like the roster. Fixed anchors like the roster's —
-// portrait's stretched half-height spreads the rows mid-screen, which is
-// where a reading card belongs anyway.
+// on either layout; a tap outside the option bands closes it. Full-window
+// over its own dim, owning the screen like the roster.
+//
+// Under the gesture table sit the two prefs that SHAPE it — INPUT METHOD
+// and HANDEDNESS, the Options screen's touch-only rows — as tap-to-cycle
+// bands, so a pilot mid-game can switch layouts on the screen that
+// explains them instead of quitting to the menu (the table redraws for
+// the picked method on the same tap, which is the whole demonstration).
+//
+// Gesture left / meaning right — the STATS screen's two-column idiom.
+// Column math (count the glyphs): labels start at -360, size 13
+// (advance 26), longest "TAP, THEN HOLD" (14) ends at +4, clear of the
+// value column at 40; the longest value, "SECONDARY (SHIELD: ON/OFF)"
+// (26), ends at 716, inside the >=800 virtual half-width every aspect
+// guarantees (Typer pins half-WIDTH, stretching half-height in
+// portrait). Two-hand names the circles by colour — the shapes are
+// already on screen — with the halves worded per handedness, since
+// LEFT mirrors the whole layout.
+struct TouchHelpRow { const char *gesture, *action; };
+static const TouchHelpRow TOUCH_HELP_ONE_HAND[] = {
+  {"DRAG",           "STEER + THRUST"},
+  {"TAP",            "FIRE"},
+  {"LIFT + TAP",     "FIRE, KEEP INPUT"},
+  {"TAP, THEN HOLD", "KEEP FIRING"},
+  {"HOLD",           "SECONDARY (SHIELD: ON/OFF)"},
+  {"SECOND FINGER",  "FIRE WHILE STEERING"},
+  {"BLUE",           "SECONDARY"},
+  {"AMBER",          "BOOST"},
+  {"PURPLE",         "TELEPORT"},
+  {"+ / -",          "ZOOM"},
+};
+static const TouchHelpRow TOUCH_HELP_TWO_HANDS[] = {
+  {"LEFT HALF",  "DRAG TO STEER + THRUST"},
+  {"RED",        "FIRE"},
+  {"BLUE",       "SECONDARY"},
+  {"AMBER",      "BOOST"},
+  {"PURPLE",     "TELEPORT"},
+  {"+ / -",      "ZOOM"},
+  {"TOP CIRCLE", "PAUSE"},
+};
+
+// The card's vertical anchors, in Typer virtual units — fixed like the
+// roster's (the landscape half-height is 600 at every aspect; portrait
+// stretches it, leaving the card compact under the title, mid-screen).
+// Title glyphs run 350..302; the table starts 90 under the title and
+// steps its pitch by row count — ten one-hand rows at 50 end at -190
+// (glyphs to -216), seven two-hand rows at 64 at -124. The option bands
+// sit at ONE anchor for both tables, under the longer one: the band a
+// finger just tapped must not jump away when the tap swaps the table.
+// Option band metrics: a size-9 caption on the anchor (glyphs to
+// anchor-18), the size-15 value 28 under it (glyphs to anchor-58); the
+// band's own glyph size is the hit-test's, sized to cover both lines
+// plus a finger margin above and below (TapBand: [y - 2*size - pad,
+// y + pad], so [-324, -254] here — 38 clear of the ten-row table's last
+// glyphs). The prompt at -356 (glyphs to -384) clears the bands and the
+// bottom edge.
+static const float TH_TITLE_Y      = 350.0f;
+static const float TH_ROW_Y0       = 260.0f;
+static const float TH_ROW_SIZE     = 13.0f;
+static const float TH_OPTS_Y       = -266.0f;
+static const int   TH_OPT_BAND_SIZE = 23;
+static const float TH_OPT_BAND_PAD  = 12.0f;
+static const float TH_OPT_CAPTION_SIZE = 9.0f;
+static const float TH_OPT_VALUE_SIZE   = 15.0f;
+static const float TH_OPT_VALUE_DY  = 28.0f;
+static const float TH_PROMPT_Y     = -356.0f;
+
+TapBand Overlay::touch_help_input_band() {
+  return TapBand(0.25f, TH_OPTS_Y, TH_OPT_BAND_SIZE, TH_OPT_BAND_PAD, false,
+                 false, 0.0f, 0.5f);
+}
+
+TapBand Overlay::touch_help_hand_band() {
+  return TapBand(0.75f, TH_OPTS_Y, TH_OPT_BAND_SIZE, TH_OPT_BAND_PAD, false,
+                 false, 0.5f, 1.0f);
+}
+
 void Overlay::touch_help(const GLGame *glgame) {
   if (!glgame->touch_help_active()) return;
 
@@ -663,62 +737,48 @@ void Overlay::touch_help(const GLGame *glgame) {
   mesh.upload(mb, GL_DYNAMIC_DRAW);
   mesh.draw();
 
-  Typer::draw_centered(0, 300, "TOUCH CONTROLS", 24);
+  Typer::draw_centered(0, TH_TITLE_Y, "TOUCH CONTROLS", 24);
 
-  // Gesture left / meaning right — the STATS screen's two-column idiom.
-  // Column math (count the glyphs): labels start at -360, size 13
-  // (advance 26), longest "TAP, THEN HOLD" (14) ends at +4, clear of the
-  // value column at 40; the longest value, "SECONDARY (SHIELD: ON/OFF)"
-  // (26), ends at 716, inside the >=800 virtual half-width every aspect
-  // guarantees (Typer pins half-WIDTH, stretching half-height in
-  // portrait). Two-hand names the circles by colour — the shapes are
-  // already on screen — with the halves worded per handedness, since
-  // LEFT mirrors the whole layout.
-  struct Row { const char *gesture, *action; };
-  static const Row ONE_HAND[] = {
-    {"DRAG",           "STEER + THRUST"},
-    {"TAP",            "FIRE"},
-    {"LIFT + TAP",     "FIRE, KEEP INPUT"},
-    {"TAP, THEN HOLD", "KEEP FIRING"},
-    {"HOLD",           "SECONDARY (SHIELD: ON/OFF)"},
-    {"SECOND FINGER",  "FIRE WHILE STEERING"},
-    {"BLUE",           "SECONDARY"},
-    {"AMBER",          "BOOST"},
-    {"PURPLE",         "TELEPORT"},
-    {"+ / -",          "ZOOM"},
-  };
-  static const Row TWO_HANDS[] = {
-    {"LEFT HALF",  "DRAG TO STEER + THRUST"},
-    {"RED",        "FIRE"},
-    {"BLUE",       "SECONDARY"},
-    {"AMBER",      "BOOST"},
-    {"PURPLE",     "TELEPORT"},
-    {"+ / -",      "ZOOM"},
-    {"TOP CIRCLE", "PAUSE"},
-  };
   bool one_hand = touch_one_handed();
-  const Row *rows = one_hand ? ONE_HAND : TWO_HANDS;
-  int n = (int)(one_hand ? sizeof(ONE_HAND) / sizeof(ONE_HAND[0])
-                         : sizeof(TWO_HANDS) / sizeof(TWO_HANDS[0]));
-  // The one-hand list runs to ten rows (gestures — the held-deflection
-  // "LIFT + TAP" among them, touch_controls.h — plus the action arc's
-  // three colours): start it higher and step tighter so the last row
-  // (glyphs extend 26 below the anchor) still clears the prompt at -290
-  // on a 16:9 half-height of 450 (ten rows at 50: last anchor -240, its
-  // glyphs to -266; the first row's top at 236 clears the title's glyphs
-  // above 250).
-  int y0 = n > 7 ? 210 : 190, gap = n > 9 ? 50 : n > 7 ? 54 : 64;
+  const TouchHelpRow *rows = one_hand ? TOUCH_HELP_ONE_HAND : TOUCH_HELP_TWO_HANDS;
+  int n = (int)(one_hand
+                    ? sizeof(TOUCH_HELP_ONE_HAND) / sizeof(TOUCH_HELP_ONE_HAND[0])
+                    : sizeof(TOUCH_HELP_TWO_HANDS) / sizeof(TOUCH_HELP_TWO_HANDS[0]));
+  float gap = n > 9 ? 50.0f : n > 7 ? 54.0f : 64.0f;
   for (int i = 0; i < n; i++) {
-    int y = y0 - i * gap;
+    float y = TH_ROW_Y0 - (float)i * gap;
     const char *gesture = rows[i].gesture;
     if (!one_hand && i == 0 && touch_layout_mirrored())
       gesture = "RIGHT HALF";
-    Typer::draw(-360, y, gesture, 13);
-    Typer::draw(40, y, rows[i].action, 13);
+    Typer::draw(-360, y, gesture, TH_ROW_SIZE);
+    Typer::draw(40, y, rows[i].action, TH_ROW_SIZE);
+  }
+
+  // The option bands: the Options screen's touch-only rows, one per half
+  // — a small caption naming the pref over the value it holds, tap to
+  // cycle (GLGame::touch_tap answers the same bands). The words are the
+  // Options rows' own (menu.cpp INPUT_LABELS / HANDEDNESS_LABELS), so
+  // the two screens can't disagree about what a setting is called.
+  static const char *INPUT_LABELS[] = {"TWO HANDS", "ONE HAND"};
+  static const char *HANDEDNESS_LABELS[] = {"LEFT", "CENTRE", "RIGHT"};
+  int hand = g_prefs.touch_handedness;
+  if (hand < 0 || hand > 2) hand = 1;
+  // Both lines are drawn on the band's own anchor (its nx/y), at their
+  // own sizes — the band's glyph size is the two-line hit box, not a
+  // text size, so TapBand::draw (one label at that size) is not used.
+  const TapBand bands[2] = {touch_help_input_band(), touch_help_hand_band()};
+  const char *captions[2] = {"INPUT METHOD", "HANDEDNESS"};
+  const char *values[2] = {INPUT_LABELS[one_hand ? 1 : 0],
+                           HANDEDNESS_LABELS[hand]};
+  for (int i = 0; i < 2; i++) {
+    float x = (2.0f * bands[i].nx - 1.0f) * Typer::scaled_window_width;
+    Typer::draw_centered(x, bands[i].y, captions[i], TH_OPT_CAPTION_SIZE);
+    Typer::draw_centered(x, bands[i].y - TH_OPT_VALUE_DY, values[i],
+                         TH_OPT_VALUE_SIZE);
   }
 
   if ((glgame->current_time / 700) % 2 == 0)
-    Typer::draw_centered(0, -290, "TAP TO CONTINUE", 14);
+    Typer::draw_centered(0, TH_PROMPT_Y, "TAP ELSEWHERE TO CONTINUE", 14);
 }
 
 // The seat roster (offline): one row per seat showing what drives it, plus

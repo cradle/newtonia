@@ -1569,6 +1569,30 @@ void GLGame::touch_help_close() {
   touch_help_resume_ = false;
 }
 
+// The card's INPUT METHOD band: TWO HANDS <-> ONE HAND. Saved on the tap
+// like the Options rows are on close, then the shared apply — the layout
+// re-run in place (the paused game under the card resumes into the new
+// OSD) and the web build's HTML OSD hand-off. Safe mid-game: the pause
+// force-released every control, and the entry points' finger-up paths
+// already release a press begun before a mode flip (they had to for the
+// Options toggle). Picking ONE HAND here retires the first-game auto-show
+// — the pilot is reading the card it would have shown.
+void GLGame::touch_help_cycle_input() {
+  g_prefs.touch_one_hand = !g_prefs.touch_one_hand;
+  if (g_prefs.touch_one_hand) g_prefs.touch_help_done = true;
+  save_preferences();
+  touch_layout_prefs_changed();
+}
+
+// The HANDEDNESS band: LEFT -> CENTRE -> RIGHT -> LEFT (the touch Options
+// row's cycle order, Preferences::touch_handedness 0/1/2).
+void GLGame::touch_help_cycle_handedness() {
+  int h = g_prefs.touch_handedness;
+  g_prefs.touch_handedness = (h < 0 || h >= 2) ? 0 : h + 1;
+  save_preferences();
+  touch_layout_prefs_changed();
+}
+
 // True when this row is a remote pilot the host may remove, rather than a
 // local seat whose input can be re-bound.
 bool GLGame::roster_row_is_peer(int row) const {
@@ -12165,11 +12189,18 @@ bool GLGame::exit_band_showing() const {
 
 void GLGame::touch_tap(float nx, float ny) {
   if (!is_touch_mode()) return;
-  // The touch controls help card owns every tap while it is up: any tap
+  // The touch controls help card owns every tap while it is up: its two
+  // option bands (Overlay::touch_help_*_band — the geometry the card
+  // draws) cycle INPUT METHOD / HANDEDNESS in place, and any other tap
   // closes it — back to play if it auto-paused the game, back to the
   // pause screen otherwise.
   if (touch_help_active_) {
-    touch_help_close();
+    if (Overlay::touch_help_input_band().contains(nx, ny))
+      touch_help_cycle_input();
+    else if (Overlay::touch_help_hand_band().contains(nx, ny))
+      touch_help_cycle_handedness();
+    else
+      touch_help_close();
     return;
   }
   // Leaderboard prompt on the GAME OVER card: a tap on the EXIT TO MENU
