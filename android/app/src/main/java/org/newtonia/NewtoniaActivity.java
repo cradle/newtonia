@@ -43,11 +43,14 @@ public class NewtoniaActivity extends SDLActivity {
 
     // Display.getCutout() (API 29+) already reflects the current rotation,
     // and is callable synchronously from any lifecycle point — unlike the
-    // window insets, which need a listener and an attached window. Cutout
-    // phones still on API 28 keep 0 insets (cosmetic only: the HUD row
-    // stays at the screen edge there, as it always has).
+    // window insets, which need a listener and an attached window. Below
+    // API 30 the insets stay 0: the window only extends under the cutout
+    // from 30 up (LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS, set by the patched
+    // SDLActivity — android/app/build.gradle patchSdlJava), and on 28/29 a
+    // fullscreen window is laid out beside the notch, so reporting its
+    // depth there would inset the HUD twice.
     private void updateSafeInsets() {
-        if (Build.VERSION.SDK_INT < 29) return;
+        if (Build.VERSION.SDK_INT < 30) return;
         try {
             Display d = getWindowManager().getDefaultDisplay();
             DisplayCutout c = d != null ? d.getCutout() : null;
