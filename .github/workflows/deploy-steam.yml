@@ -454,6 +454,13 @@ jobs:
       # yet, so a plain `apt-get update` fails on every retry ("Release
       # file ... is expired"; v1.60.0's deploy, 2026-09-09). The index is
       # final and signed; only the freshness check is waived.
+      #
+      # --no-upgrade: that final index still advertises security updates
+      # whose .debs the mirrors are now pruning — unzip 6.0-26+deb11u2
+      # 404'd on every retry from the runner's CDN edge (v1.61.3's deploy,
+      # 2026-09-12) while another edge still served it. Every package
+      # below is already in the image, so nothing needs fetching; this
+      # stops apt "upgrading" one to a file that may no longer exist.
       - name: Install dependencies
         run: |
           try() { local i; for i in 1 2 3; do
@@ -461,7 +468,7 @@ jobs:
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
           try apt-get -o Acquire::Check-Valid-Until=false update
-          try apt-get install -y \
+          try apt-get install -y --no-upgrade \
             freeglut3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
