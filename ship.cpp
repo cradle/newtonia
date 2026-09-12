@@ -1964,8 +1964,10 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   // total path. Killable asteroids along the line die and the pulse continues
   // through them — including TOUGH asteroids, which the lance kills outright;
   // surfaces that reflect bullets (reflective asteroids, armoured faces,
-  // phased ghosts) mirror-reflect it with its remaining distance; anything it
-  // cannot destroy (plain invincible, a teleport evade) blocks it.
+  // phased ghosts) mirror-reflect it with its remaining distance; a
+  // ready-to-teleport asteroid evades the hit but the pulse carries straight
+  // on through it (Glenn's ruling, 2026-09-12 — it used to block like a
+  // rock); only a plain invincible asteroid blocks it.
   float fm = facing.magnitude();
   if(fm <= 0.0f) return;
   Point dir = facing * (1.0f / fm);
@@ -1976,10 +1978,12 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   pulse.ttl = pulse.time_left = 250.0f;
   pulse.points.push_back(Point(pos.x(), pos.y()));
 
-  // PROTO 18 (net client): asteroids this pulse already claimed — they stay
-  // alive until the claim drain kills them later this tick, so the march
-  // must not re-strike them (offline/host kills leave them !is_alive()).
-  vector<Asteroid *> claimed;
+  // Asteroids this pulse already passed through but which are still alive:
+  // PROTO 18 (net client) claimed kills, which stay up until the claim
+  // drain kills them later this tick (offline/host kills leave them
+  // !is_alive()), and teleport evades on every machine, which relocate at
+  // the end of the tick. The march must not re-strike either.
+  vector<Asteroid *> passed;
 
   vector<Object *> candidates;
   const int max_hits = 16;  // safety cap on kills+reflections per pulse
@@ -1997,7 +2001,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
     for(Object *cand : candidates) {
       Asteroid *ast = dynamic_cast<Asteroid *>(cand);
       if(!ast || !ast->is_alive()) continue;
-      if(std::find(claimed.begin(), claimed.end(), ast) != claimed.end()) continue;
+      if(std::find(passed.begin(), passed.end(), ast) != passed.end()) continue;
       Point ast_near = ast->position.closest_to(seg_a);
       float ox = ast_near.x() - ast->position.x();
       float oy = ast_near.y() - ast->position.y();
@@ -2060,15 +2064,31 @@ void Ship::fire_lance_pulse(const Grid &grid) {
 
     explode(Point(hit_world.x(), hit_world.y()), ast_hit->velocity);
 
+    if(ast_hit->teleporting && !ast_hit->teleport_vulnerable) {
+      // Ready-to-teleport: the asteroid evades the hit, but the pulse is
+      // NOT blocked — it carries straight on through, collinearly like a
+      // kill (so resolve_lance_ship_hits' first-reflection rule holds).
+      // Offline/host, kill() runs the evade itself (debris + thud +
+      // teleport_pending; never a death). On the client the evade is the
+      // host's call, made from this pass-through vertex of the MSG_LANCE
+      // polyline in net_resolve_polyline_block — nothing to claim here.
+      // Either way the rock stays alive until the relocation, so it joins
+      // the passed list and the next segment can't re-strike it.
+      if(!net_claim_kills) ast_hit->kill();
+      passed.push_back(ast_hit);
+      pos = WrappedPoint(hit_world.x(), hit_world.y());
+      continue;
+    }
+
     // PROTO 18 (net client, net_claim_kills): predict the outcome without
     // killing locally and queue an MSG_HIT claim (bullet_id 0 — no clone
     // to consume). The claim drain later this tick does the local kill
     // with proper removal bookkeeping, exactly like bullet claims; the
-    // host honors the claim with the same tough/teleport forcing.
+    // host honors the claim with the same tough forcing.
     if(net_claim_kills) {
-      if(ast_hit->invincible ||
-         (ast_hit->teleporting && !ast_hit->teleport_vulnerable)) {
-        // Blocked (a teleport evade is the host's call — don't claim it).
+      if(ast_hit->invincible) {
+        // Blocked: a plain invincible rock is the one thing the lance
+        // cannot pass (never claimed — the host refuses those anyway).
         remaining = 0.0f;
         break;
       }
@@ -2076,7 +2096,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
       c.ast_id = ast_hit->net_id;
       c.bullet_id = 0;  // lance sentinel: honor without a clone consume
       net_kill_claims.push_back(c);
-      claimed.push_back(ast_hit);
+      passed.push_back(ast_hit);
       // Claimed-dead: carry straight on through it (score/kills are
       // host-owned and arrive via the snapshot HUD scalars).
       pos = WrappedPoint(hit_world.x(), hit_world.y());
@@ -2096,8 +2116,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
       continue;
     }
 
-    // Survived the hit (invincible or a teleport evade): the pulse is
-    // blocked here.
+    // Survived the hit (plain invincible): the pulse is blocked here.
     remaining = 0.0f;
     break;
   }
