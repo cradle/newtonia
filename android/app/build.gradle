@@ -28,6 +28,7 @@ plugins {
 // once, so an SDL bump that moves or drops it stops loudly instead of
 // quietly shipping the deprecated write again (re-check on any bump).
 def sdlJavaSrc = file("${rootDir}/../../SDL2/android-project/app/src/main/java")
+def sdlJavaOut = layout.buildDirectory.dir('generated/sdl-java').get().asFile
 def sdlCutoutOld = 'window.getAttributes().layoutInDisplayCutoutMode = ' +
     'WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;'
 def sdlCutoutNew = 'if (Build.VERSION.SDK_INT >= 30 /* Android 11 (R) */) { ' +
@@ -55,7 +56,7 @@ def patchSdlJava = tasks.register('patchSdlJava', Copy) {
     dependsOn checkSdlJava
     doFirst { sdlCutoutHits.set(0) }
     from sdlJavaSrc
-    into layout.buildDirectory.dir('generated/sdl-java')
+    into sdlJavaOut
     filesMatching('**/SDLActivity.java') {
         filter { String line ->
             if (line.contains(sdlCutoutOld)) {
@@ -194,10 +195,19 @@ android {
             // SDL2's Java layer comes from the SDL2 sibling clone (works
             // locally and in CI with no manual copy step) — through the
             // patchSdlJava copy above, never straight from the checkout.
-            java.srcDir(patchSdlJava)
+            // A plain directory, not the task: AGP's srcDir() resolves
+            // through Project.file(), which made nothing of a TaskProvider
+            // — the task never ran and javac saw no SDL sources at all
+            // (PR #544's first Android run). The ordering is the explicit
+            // preBuild hook under the android block.
+            java.srcDir(sdlJavaOut)
         }
     }
 }
+
+// Every AGP task runs after preBuild, so this one hook orders the patched
+// copy ahead of javac (and of anything else that walks the source set).
+tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn(patchSdlJava) }
 
 dependencies {
     // Play Games Services v2 — achievements backend (PlayGamesAchievements.java;
