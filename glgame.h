@@ -421,8 +421,13 @@ private:
   // (MSG_LANCE / MSG_SHOCK): the client stops its lance/shock at an
   // asteroid its local rules say survives, without claiming — the actual
   // outcome (teleport evade, tough chip, ghost/invincible feedback) is
-  // the host's call, made here via the survivor's own kill().
-  void net_resolve_polyline_block(const std::vector<Point> &pts);
+  // the host's call, made here via the survivor's own kill(). With
+  // lance_pass_throughs (MSG_LANCE only) the polyline's INTERIOR vertices
+  // are also checked for ready-to-teleport asteroids: a lance pulse passes
+  // straight through those, so the evade the client could not claim is
+  // triggered from the vertex it left on the rock.
+  void net_resolve_polyline_block(const std::vector<Point> &pts,
+                                  bool lance_pass_throughs = false);
   void draw_map() const;
   // cull_r > 0 skips asteroids further than cull_r + radius from
   // (cam_x, cam_y) — the camera centre in the calling tile's object space —

@@ -2738,7 +2738,8 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
         replay_record_polyline(Replay::FX_LANCE, firer,
                                firer->lance_pulses.back().points);
         resolve_lance_ship_hits(firer, firer->lance_pulses.back().points);
-        net_resolve_polyline_block(firer->lance_pulses.back().points);
+        net_resolve_polyline_block(firer->lance_pulses.back().points,
+                                   /*lance_pass_throughs=*/true);
         relay_others();  // PB-D4
       }
       continue;
@@ -12395,28 +12396,43 @@ static const int LANCE_STATION_DAMAGE = 3;
 // its feedback. The guard list is strict so a plain killable rock that
 // happens to sit at a faded bolt's tip can never be destroyed by this —
 // kills only ever arrive as claims.
-void GLGame::net_resolve_polyline_block(const std::vector<Point> &pts) {
+void GLGame::net_resolve_polyline_block(const std::vector<Point> &pts,
+                                        bool lance_pass_throughs) {
   if (pts.size() < 2) return;
-  const Point &end = pts.back();
-  for (Asteroid *ast : *objects) {
-    if (!ast->is_alive()) continue;
-    bool survivor = ast->invincible ||
-                    (ast->teleporting && !ast->teleport_vulnerable) ||
-                    (ast->phasing && ast->phased) ||
-                    (ast->tough && ast->health > 1);
-    if (!survivor) continue;
-    // The endpoint sits ON the blocking surface (the march's segment_hit
-    // entry point / the bolt's stop() collision point), so centre distance
-    // ~= radius; small slack for the client/host position skew at 10 Hz.
-    // Wrapped-world translation first, like every other cross-copy test.
-    Point centre = ast->position.closest_to(end);
-    float dx = centre.x() - end.x(), dy = centre.y() - end.y();
-    float reach = ast->radius + 6.0f;
-    if (dx * dx + dy * dy <= reach * reach) {
-      ast->kill();  // evade / chip / feedback — never a death (see guard)
-      break;
+  // kill() the first SURVIVOR-type asteroid whose surface the vertex sits
+  // on. teleport_only narrows the guard to ready-to-teleport rocks — the
+  // one survivor type a lance passes through (an interior vertex of its
+  // polyline is otherwise a claimed kill's entry point or a reflection
+  // off a neighbour, neither of which may chip or cue anything here).
+  auto resolve_at = [&](const Point &at, bool teleport_only) {
+    for (Asteroid *ast : *objects) {
+      if (!ast->is_alive()) continue;
+      bool evading = ast->teleporting && !ast->teleport_vulnerable;
+      bool survivor = teleport_only
+                          ? evading
+                          : (ast->invincible || evading ||
+                             (ast->phasing && ast->phased) ||
+                             (ast->tough && ast->health > 1));
+      if (!survivor) continue;
+      // The vertex sits ON the surface (the march's segment_hit entry
+      // point / the bolt's stop() collision point), so centre distance
+      // ~= radius; small slack for the client/host position skew at 10 Hz.
+      // Wrapped-world translation first, like every other cross-copy test.
+      Point centre = ast->position.closest_to(at);
+      float dx = centre.x() - at.x(), dy = centre.y() - at.y();
+      float reach = ast->radius + 6.0f;
+      if (dx * dx + dy * dy <= reach * reach) {
+        ast->kill();  // evade / chip / feedback — never a death (see guard)
+        return;
+      }
     }
-  }
+  };
+  // Lance pass-throughs: every interior vertex is a rock the pulse went
+  // through (a kill, a reflection, or a teleport evade); only the evade
+  // needs the host's hand, since the client can't claim it.
+  if (lance_pass_throughs)
+    for (size_t i = 1; i + 1 < pts.size(); i++) resolve_at(pts[i], true);
+  resolve_at(pts.back(), false);
 }
 
 void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts) {
