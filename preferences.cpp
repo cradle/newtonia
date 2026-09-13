@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
+#include <cerrno>
 #include <cmath>
 #include <string>
 #include <sys/stat.h>
@@ -355,14 +356,20 @@ void load_preferences(bool startup) {
 
     FILE *f = fopen(fp.c_str(), "r");
     if (!f) {
-        // No INI. A peek (startup false) stops here on the struct
-        // defaults. At startup, decide whether this pref path is a fresh
-        // install (see kPlayerDataEntries) and, if so, take the new
-        // defaults AND write them straight away: from here on the INI
-        // carries the choice explicitly, so the stats/savegame files this
-        // install is about to create can never make a later launch read it
-        // as an old install and flip the layout back.
-        if (startup && !pref_dir_has_player_data(dir)) {
+        // Only a MISSING INI can mean a fresh install. Any other failure —
+        // a permission or I/O error on a file that exists — must leave it
+        // alone: deciding first launch there would overwrite every saved
+        // setting the moment the directory turned out writable (review,
+        // PR #547). Read errno before anything else can clobber it.
+        const bool missing = errno == ENOENT;
+        // A peek (startup false) stops here on the struct defaults. At
+        // startup, decide whether this pref path is a fresh install (see
+        // kPlayerDataEntries) and, if so, take the new defaults AND write
+        // them straight away: from here on the INI carries the choice
+        // explicitly, so the stats/savegame files this install is about to
+        // create can never make a later launch read it as an old install
+        // and flip the layout back.
+        if (startup && missing && !pref_dir_has_player_data(dir)) {
             s_first_launch = true;
             first_launch_defaults();
             save_preferences();

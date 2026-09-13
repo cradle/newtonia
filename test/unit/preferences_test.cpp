@@ -9,6 +9,7 @@
 #include "audio_volume.h"
 #include <SDL.h>
 #include <cassert>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -18,6 +19,17 @@
 
 void web_fs_sync(const char *) {}
 namespace AudioVolume { void apply() {} }
+
+// GNU ld --wrap=fopen: while set, every READ open fails with EACCES (the
+// file is there but unreadable — a permission or I/O error, not a missing
+// INI); writes still succeed, which is exactly the shape that let the
+// first-launch branch overwrite an existing INI (review, PR #547).
+static bool fail_reads = false;
+extern "C" FILE *__real_fopen(const char *, const char *);
+extern "C" FILE *__wrap_fopen(const char *path, const char *mode) {
+  if (fail_reads && mode[0] == 'r') { errno = EACCES; return nullptr; }
+  return __real_fopen(path, mode);
+}
 
 static std::string contents(const std::string &path) {
   std::ifstream f(path, std::ios::binary);
@@ -122,7 +134,27 @@ int main() {
     assert(g_prefs.touch_handedness == 1);
   }
 
-  // 5. A peek on an empty pref path (the shot/video harnesses, the signal
+  // 5. An INI that exists but cannot be READ (EACCES, an I/O error): not
+  //    a fresh install, whatever else the directory holds — the file is
+  //    left exactly as it was and the struct defaults stand.
+  {
+    std::string dir = fresh_pref_dir();
+    const std::string ini = "touch_one_hand=0\ntouch_handedness=0\nstar_density=0.50\n";
+    touch(dir + "preferences.ini", ini.c_str());
+    fail_reads = true;
+    load_preferences();
+    fail_reads = false;
+    assert(!preferences_first_launch());
+    assert(!g_prefs.touch_one_hand);
+    assert(g_prefs.touch_handedness == 1);
+    assert(contents(dir + "preferences.ini") == ini);
+    // Readable again: the saved values are still there to read.
+    load_preferences();
+    assert(!g_prefs.touch_one_hand);
+    assert(g_prefs.touch_handedness == 0);
+  }
+
+  // 6. A peek on an empty pref path (the shot/video harnesses, the signal
   //    self-test): struct defaults, no decision, nothing written.
   {
     std::string dir = fresh_pref_dir();

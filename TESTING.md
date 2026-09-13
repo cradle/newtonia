@@ -108,7 +108,9 @@ RIGHT, written to the INI on the spot so the choice survives the
 stats/savegame files play creates next), while an INI without the keys —
 or no INI beside any other game file, the never-changed-a-setting mobile
 install — keeps the classic TWO HANDS + CENTRE and writes nothing; explicit
-values win; the peek mode the shot/video harnesses and the signal self-test
+values win; an INI that exists but fails to READ (a `--wrap`'d `fopen`
+returning EACCES) is never mistaken for a fresh install and is left
+untouched; the peek mode the shot/video harnesses and the signal self-test
 use never decides or writes. Runs in `linux.yml`.
 
 ### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
