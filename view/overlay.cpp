@@ -689,20 +689,26 @@ static const TouchHelpRow TOUCH_HELP_TWO_HANDS[] = {
 // Option band metrics: a size-9 caption on the anchor (glyphs to
 // anchor-18), the size-15 value 28 under it (glyphs to anchor-58); the
 // band's own glyph size is the hit-test's, sized to cover both lines
-// plus a finger margin above and below (TapBand: [y - 2*size - pad,
-// y + pad], so [-324, -254] here — 38 clear of the ten-row table's last
-// glyphs). The prompt at -356 (glyphs to -384) clears the bands and the
-// bottom edge.
+// (2*size = 46, both lines' 58 less the caption/value gap the pad
+// absorbs) plus a GENEROUS finger margin — TapBand: [y - 2*size - pad,
+// y + pad], so [-374, -232] here, 48 above the caption's top and 36
+// under the value's bottom. It used to be [-324, -254], the ink plus 12
+// above and NOTHING below, and a thumb aimed at the value line landed
+// under it twice in the field (2026-09-13) — outside both bands, where
+// a tap CLOSES the card and resumes the game. The band's top clears the
+// ten-row table's last glyphs (-216) by 16; the prompt at -404 (glyphs
+// to -432) sits 30 under the bands, inside the 600 landscape
+// half-height.
 static const float TH_TITLE_Y      = 350.0f;
 static const float TH_ROW_Y0       = 260.0f;
 static const float TH_ROW_SIZE     = 13.0f;
-static const float TH_OPTS_Y       = -266.0f;
+static const float TH_OPTS_Y       = -280.0f;
 static const int   TH_OPT_BAND_SIZE = 23;
-static const float TH_OPT_BAND_PAD  = 12.0f;
+static const float TH_OPT_BAND_PAD  = 48.0f;
 static const float TH_OPT_CAPTION_SIZE = 9.0f;
 static const float TH_OPT_VALUE_SIZE   = 15.0f;
 static const float TH_OPT_VALUE_DY  = 28.0f;
-static const float TH_PROMPT_Y     = -356.0f;
+static const float TH_PROMPT_Y     = -404.0f;
 
 TapBand Overlay::touch_help_input_band() {
   return TapBand(0.25f, TH_OPTS_Y, TH_OPT_BAND_SIZE, TH_OPT_BAND_PAD, false,
