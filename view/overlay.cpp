@@ -687,38 +687,59 @@ static const TouchHelpRow TOUCH_HELP_TWO_HANDS[] = {
 // sit at ONE anchor for both tables, under the longer one: the band a
 // finger just tapped must not jump away when the tap swaps the table.
 // Option band metrics: a size-9 caption on the anchor (glyphs to
-// anchor-18), the size-15 value 28 under it (glyphs to anchor-58); the
-// band's own glyph size is the hit-test's, sized to cover both lines
-// (2*size = 46, both lines' 58 less the caption/value gap the pad
-// absorbs) plus a GENEROUS finger margin — TapBand: [y - 2*size - pad,
-// y + pad], so [-374, -232] here, 48 above the caption's top and 36
-// under the value's bottom. It used to be [-324, -254], the ink plus 12
-// above and NOTHING below, and a thumb aimed at the value line landed
-// under it twice in the field (2026-09-13) — outside both bands, where
-// a tap CLOSES the card and resumes the game. The band's top clears the
-// ten-row table's last glyphs (-216) by 16; the prompt at -404 (glyphs
-// to -432) sits 30 under the bands, inside the 600 landscape
-// half-height.
+// anchor-18), the size-15 value 28 under it (glyphs to anchor-58). The
+// band's own glyph size is the hit-test's, not a text size: TapBand
+// spans [y - 2*size - pad, y + pad], so the SIZE sets how far the box
+// reaches under the anchor and the PAD grows it both ways. [-410, -230]
+// here — 50 above the caption's top and 72 under the value's bottom,
+// weighted low on purpose: a thumb aimed at the value line lands UNDER
+// the glyphs. It used to be [-324, -254], the ink plus 12 above and
+// NOTHING below, and that tap fell outside both bands twice in the field
+// (2026-09-13) — where a tap CLOSES the card and resumes the game; a
+// first widening to [-374, -232] was still too tight underneath. The
+// band's top clears the ten-row table's last glyphs (-216) by 14; the
+// prompt at -450 (glyphs to -478) sits 40 under the bands, inside the
+// 600 landscape half-height.
+//
+// PORTRAIT scales the whole option block up (th_opt_scale, 1.6x): the
+// virtual half-height stretches to 800*h/w there (1700+ on a tall
+// phone), so a band tuned in landscape units is a thin slice of the
+// screen with empty space under the card — the field report that the
+// bands were still too small came from portrait (2026-09-13). The
+// anchor drops to -320 so the taller box still clears the table, and
+// the prompt to -570 under it: [-528, -240], 80 above the caption, 115
+// under the value (glyphs -365..-413 at the scaled sizes). Both the
+// draw and the two band getters go through the same three helpers, so
+// the text and its tap zone can never disagree — the TapBand rule.
 static const float TH_TITLE_Y      = 350.0f;
 static const float TH_ROW_Y0       = 260.0f;
 static const float TH_ROW_SIZE     = 13.0f;
 static const float TH_OPTS_Y       = -280.0f;
-static const int   TH_OPT_BAND_SIZE = 23;
-static const float TH_OPT_BAND_PAD  = 48.0f;
+static const float TH_OPTS_Y_PORTRAIT = -320.0f;
+static const int   TH_OPT_BAND_SIZE = 40;
+static const float TH_OPT_BAND_PAD  = 50.0f;
 static const float TH_OPT_CAPTION_SIZE = 9.0f;
 static const float TH_OPT_VALUE_SIZE   = 15.0f;
 static const float TH_OPT_VALUE_DY  = 28.0f;
-static const float TH_PROMPT_Y     = -404.0f;
+static const float TH_PROMPT_Y     = -450.0f;
+static const float TH_PROMPT_Y_PORTRAIT = -570.0f;
+static const float TH_OPT_PORTRAIT_SCALE = 1.6f;
 
-TapBand Overlay::touch_help_input_band() {
-  return TapBand(0.25f, TH_OPTS_Y, TH_OPT_BAND_SIZE, TH_OPT_BAND_PAD, false,
-                 false, 0.0f, 0.5f);
+// Landscape pins the virtual half-height at 600 whatever the aspect;
+// anything taller is portrait's stretch.
+static bool th_portrait() { return Typer::scaled_window_height > 620.0f; }
+static float th_opt_scale() { return th_portrait() ? TH_OPT_PORTRAIT_SCALE : 1.0f; }
+static float th_opts_y() { return th_portrait() ? TH_OPTS_Y_PORTRAIT : TH_OPTS_Y; }
+static float th_prompt_y() { return th_portrait() ? TH_PROMPT_Y_PORTRAIT : TH_PROMPT_Y; }
+
+static TapBand th_opt_band(float nx, float nx_min, float nx_max) {
+  float k = th_opt_scale();
+  return TapBand(nx, th_opts_y(), (int)(TH_OPT_BAND_SIZE * k),
+                 TH_OPT_BAND_PAD * k, false, false, nx_min, nx_max);
 }
 
-TapBand Overlay::touch_help_hand_band() {
-  return TapBand(0.75f, TH_OPTS_Y, TH_OPT_BAND_SIZE, TH_OPT_BAND_PAD, false,
-                 false, 0.5f, 1.0f);
-}
+TapBand Overlay::touch_help_input_band() { return th_opt_band(0.25f, 0.0f, 0.5f); }
+TapBand Overlay::touch_help_hand_band()  { return th_opt_band(0.75f, 0.5f, 1.0f); }
 
 void Overlay::touch_help(const GLGame *glgame) {
   if (!glgame->touch_help_active()) return;
@@ -776,15 +797,16 @@ void Overlay::touch_help(const GLGame *glgame) {
   const char *captions[2] = {"INPUT METHOD", "HANDEDNESS"};
   const char *values[2] = {INPUT_LABELS[one_hand ? 1 : 0],
                            HANDEDNESS_LABELS[hand]};
+  const float k = th_opt_scale();
   for (int i = 0; i < 2; i++) {
     float x = (2.0f * bands[i].nx - 1.0f) * Typer::scaled_window_width;
-    Typer::draw_centered(x, bands[i].y, captions[i], TH_OPT_CAPTION_SIZE);
-    Typer::draw_centered(x, bands[i].y - TH_OPT_VALUE_DY, values[i],
-                         TH_OPT_VALUE_SIZE);
+    Typer::draw_centered(x, bands[i].y, captions[i], TH_OPT_CAPTION_SIZE * k);
+    Typer::draw_centered(x, bands[i].y - TH_OPT_VALUE_DY * k, values[i],
+                         TH_OPT_VALUE_SIZE * k);
   }
 
   if ((glgame->current_time / 700) % 2 == 0)
-    Typer::draw_centered(0, TH_PROMPT_Y, "TAP ELSEWHERE TO CONTINUE", 14);
+    Typer::draw_centered(0, th_prompt_y(), "TAP ELSEWHERE TO CONTINUE", 14);
 }
 
 // The seat roster (offline): one row per seat showing what drives it, plus
