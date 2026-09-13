@@ -490,7 +490,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         // completes proves the roots in net_ca_bundle.cpp wrote, parsed and
         // verified Cloudflare's chain.
         if (want_signal) {
-            load_preferences();  // net_signal_url() honours the INI override
+            load_preferences(false);  // a peek: net_signal_url() honours the INI override
             SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
             bool ok = net_signal_selftest();
             SDL_Log("%s", ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");

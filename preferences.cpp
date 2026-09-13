@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cmath>
 #include <string>
+#include <sys/stat.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -56,13 +57,59 @@ static const char* PREF_ORG  = "cc.gfm";
 static const char* PREF_APP  = "newtonia";
 static const char* PREF_FILE = "preferences.ini";
 
-static std::string pref_filepath() {
+static std::string pref_dirpath() {
     char *path = SDL_GetPrefPath(PREF_ORG, PREF_APP);
     if (!path) return "";
-    std::string fp = std::string(path) + PREF_FILE;
+    std::string dir(path);
     SDL_free(path);
-    return fp;
+    return dir;
 }
+
+static std::string pref_filepath() {
+    std::string dir = pref_dirpath();
+    return dir.empty() ? dir : dir + PREF_FILE;
+}
+
+// ---- New-install detection ----
+// The touch layout defaults changed on 2026-09-13 (ONE HAND + RIGHT, see
+// first_launch_defaults below) and an install that predates the change
+// must keep the layout it has been playing on. An OLD install is one
+// whose pref path already holds anything of the game's: the INI itself
+// (desktop writes it on every exit; mobile only on a settings change, a
+// first boost/zoom/rotate toggle or the help card — so a mobile pilot who
+// never touched a setting may have none), or any of the other files play
+// leaves behind. stats.dat lands within ~60 s of play and the savegame on
+// the first pause, death or level clear, so an install that has actually
+// been played is never mistaken for a fresh one; only one launched and
+// abandoned before any of that looks new, and there the "old" setting was
+// an untouched default nobody had used. Keep this list in step with the
+// pref-path writers (savegame.cpp, stats.cpp, highscore.cpp,
+// achievement_journal.cpp, net_resume.cpp, replay.cpp).
+static const char *const kPlayerDataEntries[] = {
+    "savegame.dat", "online_savegame.dat", "stats.dat", "highscore.dat",
+    "pending_achievements.dat", "netplay_resume.dat", "replays",
+};
+
+static bool pref_dir_has_player_data(const std::string &dir) {
+    for (size_t i = 0; i < sizeof(kPlayerDataEntries) / sizeof(kPlayerDataEntries[0]); i++) {
+        struct stat st;
+        if (stat((dir + kPlayerDataEntries[i]).c_str(), &st) == 0) return true;
+    }
+    return false;
+}
+
+// What a NEW install starts on, where it differs from the struct defaults
+// (which stay the OLD install's values, so an INI that predates a key
+// still reads as the layout it was written under). Touch layouts only:
+// desktop input has no OSD, so the flag is inert there.
+static void first_launch_defaults() {
+    g_prefs.touch_one_hand   = true;
+    g_prefs.touch_handedness = 2;   // RIGHT
+}
+
+static bool s_first_launch = false;
+
+bool preferences_first_launch() { return s_first_launch; }
 
 // The one named-special-key table (see special_key_name in preferences.h).
 // The HUD's key_label (glship.cpp) uppercases these same names, so a key
@@ -297,15 +344,31 @@ static void parse_line(const char *key, const char *val) {
     // Unknown keys are silently ignored so older files stay valid.
 }
 
-void load_preferences() {
+void load_preferences(bool startup) {
     // Start from struct defaults.
     g_prefs = Preferences();
+    s_first_launch = false;
 
-    std::string fp = pref_filepath();
-    if (fp.empty()) return;
+    std::string dir = pref_dirpath();
+    if (dir.empty()) return;
+    std::string fp = dir + PREF_FILE;
 
     FILE *f = fopen(fp.c_str(), "r");
-    if (!f) return;
+    if (!f) {
+        // No INI. A peek (startup false) stops here on the struct
+        // defaults. At startup, decide whether this pref path is a fresh
+        // install (see kPlayerDataEntries) and, if so, take the new
+        // defaults AND write them straight away: from here on the INI
+        // carries the choice explicitly, so the stats/savegame files this
+        // install is about to create can never make a later launch read it
+        // as an old install and flip the layout back.
+        if (startup && !pref_dir_has_player_data(dir)) {
+            s_first_launch = true;
+            first_launch_defaults();
+            save_preferences();
+        }
+        return;
+    }
 
     char line[256];
     while (fgets(line, sizeof(line), f)) {

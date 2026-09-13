@@ -98,8 +98,10 @@ static const int NUM_INPUT = 2;
 // LEFT/RIGHT park the stick's resting ring where that thumb sits, CENTRE
 // keeps it centred. LEFT also MIRRORS the inputs (touch_layout_mirrored):
 // pause + zoom column in one hand, the whole layout in two hands — stick
-// right, shoot/mine/boost left. CENTRE is the shipped default; RIGHT and
-// CENTRE are both the classic arrangement in two-hand mode.
+// right, shoot/mine/boost left. CENTRE is what old installs sit on (and
+// what an INI without the key means); a new install starts on RIGHT with
+// ONE HAND (load_preferences). RIGHT and CENTRE are both the classic
+// arrangement in two-hand mode.
 static const char* HANDEDNESS_LABELS[] = {"LEFT", "CENTRE", "RIGHT"};
 static const int NUM_HANDEDNESS = 3;
 // leaderboard_prompts: ON = ask at game over (the per-run opt-out), OFF =
