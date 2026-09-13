@@ -74,6 +74,9 @@ jobs:
       - name: Save failure regression test
         run: bash test/unit/savegame.sh
 
+      - name: New-install touch layout defaults unit test
+        run: bash test/unit/preferences.sh
+
       - name: One-hand touch gesture layer unit test
         run: bash test/unit/touch_one_hand.sh
 

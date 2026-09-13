@@ -365,7 +365,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         }
         const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
         if (ss && ss[0] == '1' && ss[1] == '\0') {
-            load_preferences();  // signal_url INI override applies here too
+            load_preferences(false);  // a peek: signal_url INI override applies here too
             SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
             bool ok = net_signal_selftest();
             SDL_Log(ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");

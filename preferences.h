@@ -140,10 +140,15 @@ struct Preferences {
     // slightly larger joystick resting centred just below the ship, a tap
     // fires the primary and a long press the secondary (touch_controls.h,
     // the one-hand gesture layer). Desktop/controller input is untouched;
-    // the flag only matters where the touch OSD runs.
+    // the flag only matters where the touch OSD runs. STRUCT default false
+    // = what every install before 2026-09-13 played on and what an INI
+    // without the key still means; a NEW install starts on ONE HAND
+    // (load_preferences, first_launch_defaults).
     bool touch_one_hand      = false;
     // Handedness (the Options HANDEDNESS row, touch layouts): 0 = LEFT,
-    // 1 = CENTRE (default — the shipped layouts), 2 = RIGHT. One hand:
+    // 1 = CENTRE (the struct default — the layouts as originally shipped,
+    // and what an INI without the key means), 2 = RIGHT (a NEW install's
+    // start, with ONE HAND above). One hand:
     // LEFT/RIGHT rest the stick's resting ring where that thumb
     // naturally sits, near its screen edge; CENTRE keeps it centred.
     // LEFT additionally MIRRORS the inputs to the left
@@ -236,8 +241,21 @@ const char *special_key_name(int key);
 
 // Populate g_prefs from disk.  Call once at startup (after the pref path is
 // available, i.e. after IDBFS sync on web).  Returns defaults when no file
-// exists or a key is absent.
-void load_preferences();
+// exists or a key is absent — the STRUCT defaults, which are deliberately
+// the values an OLD install played on, so a key an older build never wrote
+// reads back as the layout that install had. A NEW install (no INI and no
+// other game file in the pref path — see preferences.cpp's
+// kPlayerDataEntries) instead starts on the new-install defaults (ONE HAND,
+// RIGHT) and has them written to the INI on the spot, so the decision is
+// made exactly once per install. `startup` false is a PEEK: read the file
+// as-is, never decide first launch and never write — for the side loads
+// (the shot/video harnesses, the signal self-test) that only want an INI
+// override and must leave player data untouched.
+void load_preferences(bool startup = true);
+
+// True after a load_preferences() that found a fresh install and applied
+// the new-install defaults (this process only; not persisted).
+bool preferences_first_launch();
 
 // Write g_prefs to disk immediately.  On web, also flushes to IndexedDB.
 void save_preferences();

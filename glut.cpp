@@ -998,7 +998,7 @@ static void shot_tick() {
 
 static int shot_main(int argc, char *argv[]) {
   if (!ShotScene::init()) return 1;
-  load_preferences();  // star density etc.; never written back
+  load_preferences(false);  // a peek: star density etc.; never written back
   int w = ShotScene::width()  > 0 ? ShotScene::width()  : g_prefs.window_width;
   int h = ShotScene::height() > 0 ? ShotScene::height() : g_prefs.window_height;
   init(argc, argv, (float)w, (float)h, HARNESS_SHOT);
@@ -1048,7 +1048,7 @@ static void video_frame() {
 static int video_main(int argc, char *argv[]) {
   if (!VideoCapture::init()) return 1;
   if (VideoCapture::info_only()) return 0;
-  load_preferences();  // star density etc.; never written back
+  load_preferences(false);  // a peek: star density etc.; never written back
   // The window is opened at the capture size in BOTH passes: the audio pass
   // never draws, but the distance attenuation is measured against the camera
   // viewport (CLAUDE.md "Audio"), so a different window would mix the world at
@@ -1083,7 +1083,7 @@ int main(int argc, char* argv[]) {
     // signal_url to point elsewhere).
     const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
     if (ss && ss[0] == '1' && ss[1] == '\0') {
-      load_preferences();  // net_signal_url() honours the INI override
+      load_preferences(false);  // a peek: net_signal_url() honours the INI override
       std::cout << "NEWTONIA_SIGNAL_SELFTEST: running relay self-test..." << std::endl;
       bool ok = net_signal_selftest();
       std::cout << (ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL") << std::endl;

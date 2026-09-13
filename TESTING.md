@@ -95,6 +95,24 @@ the previous save, temporary-file cleanup, and successful replacement after
 an interrupted attempt. Uses isolated temporary player data and runs in
 `linux.yml`; only SDL2 development headers and its library are needed.
 
+### New-install touch layout defaults unit test (Linux)
+
+```sh
+bash test/unit/preferences.sh
+```
+
+Links the real `preferences.cpp` (over `atomic_file.cpp`; the mixer and
+IDBFS seams stubbed) and drives `load_preferences()` against a fresh
+`XDG_DATA_HOME` per case: an empty pref path is a NEW install (ONE HAND +
+RIGHT, written to the INI on the spot so the choice survives the
+stats/savegame files play creates next), while an INI without the keys —
+or no INI beside any other game file, the never-changed-a-setting mobile
+install — keeps the classic TWO HANDS + CENTRE and writes nothing; explicit
+values win; an INI that exists but fails to READ (a `--wrap`'d `fopen`
+returning EACCES) is never mistaken for a fresh install and is left
+untouched; the peek mode the shot/video harnesses and the signal self-test
+use never decides or writes. Runs in `linux.yml`.
+
 ### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
 
 ```sh

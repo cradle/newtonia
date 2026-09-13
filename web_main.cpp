@@ -489,9 +489,10 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
     load_preferences();
 
     // Hand the HTML OSD the stored touch input method + handedness side
-    // (-1/0/+1) (web/main.ts): the JS defaults are two-hand/centre, so
-    // only stored non-defaults change anything. Options-menu changes
-    // re-push from Menu::close_options.
+    // (-1/0/+1) (web/main.ts): the JS defaults are two-hand/centre (an
+    // old install's layout), so this push is what puts a new install —
+    // ONE HAND, RIGHT — on its layout. Options-menu changes re-push from
+    // Menu::close_options.
     EM_ASM({ if (window.setOneHandMode) window.setOneHandMode($0, $1); },
            g_prefs.touch_one_hand ? 1 : 0, g_prefs.touch_handedness - 1);
 

@@ -482,11 +482,12 @@ State *ShotScene::build_state() {
   // Touch input method: the same scene-scoped poke, then re-run the OSD
   // layout — touch_controls_resize reads the prefs, and the window's first
   // resize has usually already happened by now.
-  if (s_scene.one_hand >= 0) {
-    g_prefs.touch_one_hand = s_scene.one_hand != 0;
-    g_prefs.touch_handedness = s_scene.handedness;
-    touch_controls_relayout();
-  }
+  // A scene without a `one_hand` line renders the classic two-hand CENTRE
+  // layout whatever the machine's INI holds (shots must not drift with the
+  // maintainer's own setting, and a new install's default is ONE HAND now).
+  g_prefs.touch_one_hand = s_scene.one_hand > 0;
+  g_prefs.touch_handedness = s_scene.one_hand >= 0 ? s_scene.handedness : 1;
+  touch_controls_relayout();
   if (s_scene.menu_mode) return new Menu();
 
   // A shot game must never touch real player data (see shot_scene.h).
