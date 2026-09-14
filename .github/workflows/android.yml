@@ -51,6 +51,14 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default is "tools platform-tools"; Google's SDK
+          # repository stopped listing the legacy "tools" package (2026-09-14,
+          # "Failed to find package 'tools'" took the build red on a
+          # workflow-only PR). Only platform-tools (adb) is needed here — the
+          # NDK/CMake come from the sdkmanager step below and Gradle fetches
+          # the platform itself.
+          packages: platform-tools
 
       - name: Install NDK and CMake
         # sdkmanager occasionally fetches a corrupt archive ("Error on ZipFile
