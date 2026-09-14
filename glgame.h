@@ -207,6 +207,10 @@ private:
   // Spawn the mid-game hazards this generation calls for (counts scale with
   // generation, like the special-asteroid counts). Appends to `hazards`.
   void add_hazards();
+  // Settle the freshly scattered level's elastic overlaps before anyone
+  // spawns into it (see the definition).
+  static const int SPAWN_SETTLE_ROUNDS = 8;
+  void settle_spawn_overlaps();
   // Break a small asteroid chunk off a comet at its current position, flung
   // outward from its heading. The chunk is a normal killable asteroid.
   void shed_comet_fragment(const Hazard *comet);

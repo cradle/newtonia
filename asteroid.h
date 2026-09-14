@@ -97,8 +97,11 @@ public:
   float crack_t[5];         // position along vertex→center (0.35–0.65)
   float crack_perp[5];      // perpendicular jitter as fraction of vertex distance (−0.35..0.35)
 
-private:
+  // Hard speed cap (u/ms) step() clamps to — public because the ship's
+  // spawn sweep sizes its lookahead query by it.
   const static int max_speed;
+
+private:
   const static float speed_headroom;
   const static float speed_decay_ms;
   const static int radius_variation;

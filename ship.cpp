@@ -1240,21 +1240,87 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
   }
 }
 
-void Ship::safe_position(const Grid &grid, bool try_current) {
-  auto in_black_hole_pull = [this]() {
-    if(!black_holes) return false;
-    for(const BlackHole *bh : *black_holes) {
+const float Ship::SPAWN_CLEARANCE    = 120.0f;
+const int   Ship::SPAWN_LOOKAHEAD_MS = 2000;
+const int   Ship::SPAWN_STRICT_TRIES = 400;
+const int   Ship::SPAWN_LEGACY_TRIES = 2000;
+
+// Closest the moving body `o` (nearest wrapped copy) comes to `from` over
+// the next `ms` along its current velocity. Constant velocity is a model,
+// not the truth (seekers steer, elastic rocks bounce), which is what the
+// clearance margin is for.
+static float closest_approach(const Point &from, const Object &o, int ms) {
+  Point rel = o.position.closest_to(from) - from;
+  const Point &v = o.velocity;
+  float vv = v.magnitude_squared();
+  float t = 0.0f;
+  if (vv > 1e-12f) {
+    t = -(rel.x() * v.x() + rel.y() * v.y()) / vv;
+    if (t < 0.0f) t = 0.0f;
+    if (t > (float)ms) t = (float)ms;
+  }
+  return (rel + v * t).magnitude();
+}
+
+// The pre-2026-09-14 test: 50 units beyond touching any rock, and outside
+// every black hole's pull. Kept as the fallback and for a restored pose.
+bool Ship::spawn_spot_legacy_ok(const Grid &grid) const {
+  if (grid.collide(*this, 50.0f) != NULL) return false;
+  if (black_holes) {
+    for (const BlackHole *bh : *black_holes) {
       Point diff = bh->position.closest_to(position) - position;
-      if(diff.magnitude_squared() < BlackHole::influence_radius * BlackHole::influence_radius)
-        return true;
+      if (diff.magnitude_squared() < BlackHole::influence_radius * BlackHole::influence_radius)
+        return false;
     }
-    return false;
-  };
-  if(try_current && grid.collide(*this, 50.0f) == NULL && !in_black_hole_pull())
-    return;
-  do {
+  }
+  return true;
+}
+
+bool Ship::spawn_spot_ok(const Grid &grid) const {
+  if (!spawn_spot_legacy_ok(grid)) return false;
+  // Every rock that could reach the spot inside the lookahead: the query
+  // radius covers the fastest rock the sim allows (Asteroid::max_speed,
+  // the black-hole fling), which in practice spans the whole grid — a
+  // few hundred pointer tests per candidate, and spawns are rare.
+  float reach = radius + SPAWN_CLEARANCE + (float)Asteroid::max_radius * 1.3f
+              + (float)Asteroid::max_speed * (float)SPAWN_LOOKAHEAD_MS;
+  std::vector<Object *> near_rocks;
+  grid.query_radius(position, reach, near_rocks);
+  for (const Object *o : near_rocks) {
+    if (!o->alive) continue;
+    if (closest_approach(position, *o, SPAWN_LOOKAHEAD_MS)
+        < radius + o->effective_radius() + SPAWN_CLEARANCE)
+      return false;
+  }
+  if (teleport_hazards) {
+    for (const Hazard *h : *teleport_hazards) {
+      if (!h->is_alive()) continue;
+      if (closest_approach(position, *h, SPAWN_LOOKAHEAD_MS)
+          < radius + h->teleport_clearance() + SPAWN_CLEARANCE)
+        return false;
+    }
+  }
+  // Other hulls (partner, enemies, the stations): body overlap kills
+  // outright and the spawn flash is real bullets under friendly fire.
+  if (missile_ships_list) {
+    for (const Object *o : *missile_ships_list) {
+      if (o == this || !o->is_alive()) continue;
+      if (collide(*o, SPAWN_CLEARANCE)) return false;
+    }
+  }
+  return true;
+}
+
+void Ship::safe_position(const Grid &grid, bool try_current) {
+  if (try_current && spawn_spot_legacy_ok(grid)) return;
+  for (int i = 0; i < SPAWN_STRICT_TRIES; i++) {
     position = WrappedPoint();
-  } while(grid.collide(*this, 50.0f) != NULL || in_black_hole_pull());
+    if (spawn_spot_ok(grid)) return;
+  }
+  for (int i = 0; i < SPAWN_LEGACY_TRIES; i++) {
+    position = WrappedPoint();
+    if (spawn_spot_legacy_ok(grid)) return;
+  }
 }
 
 void Ship::reset(bool was_killed) {
