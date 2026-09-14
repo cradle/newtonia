@@ -701,16 +701,29 @@ static const TouchHelpRow TOUCH_HELP_TWO_HANDS[] = {
 // prompt at -450 (glyphs to -478) sits 40 under the bands, inside the
 // 600 landscape half-height.
 //
-// PORTRAIT scales the whole option block up (th_opt_scale, 1.6x): the
-// virtual half-height stretches to 800*h/w there (1700+ on a tall
-// phone), so a band tuned in landscape units is a thin slice of the
-// screen with empty space under the card — the field report that the
-// bands were still too small came from portrait (2026-09-13). The
-// anchor drops to -320 so the taller box still clears the table, and
-// the prompt to -570 under it: [-528, -240], 80 above the caption, 115
-// under the value (glyphs -365..-413 at the scaled sizes). Both the
-// draw and the two band getters go through the same three helpers, so
-// the text and its tap zone can never disagree — the TapBand rule.
+// PORTRAIT scales the option block up: the virtual half-height
+// stretches to 800*h/w there (1700+ on a tall phone), so a band tuned
+// in landscape units is a thin slice of the screen with empty space
+// under the card — the field report that the bands were still too
+// small came from portrait (2026-09-13). The tap BOX scales 1.6x
+// (th_opt_scale): the anchor drops to -320 so the taller box still
+// clears the table, and the prompt to -570 under it: [-528, -240]. The
+// TEXT scales further than the box — a second portrait report
+// (2026-09-14) found the captions unreadable at 1.6x, where a size-9
+// caption lands at 14.4, barely over the table's 13: at 1600 virtual
+// units across a phone's 1080 px that is a 19 px cap height. Portrait
+// draws the caption at 18 and the value at 28, 56 under it (glyphs
+// -320..-356 and -376..-432 — 80 under the box's top, 96 over its
+// bottom; a first cut at 22/34 read as a little too big in the field,
+// same day). Width is the tight axis in portrait, and the numbers were
+// counted: the longest value, "TWO HANDS" (9 glyphs, 18 advances at
+// 28 = 504), sits centred at +-400 and ends 148 short of the 800 edge;
+// "INPUT METHOD" (12 glyphs at 18 = 414) and "HANDEDNESS" (378) clear
+// each other by 400+. The size-13 gesture table stays as it is — its
+// two columns already run -360..716 of the 800 half-width, so a
+// portrait rescale there is a layout change, not a size bump. Both the
+// draw and the two band getters go through the same helpers, so the
+// text and its tap zone can never disagree — the TapBand rule.
 static const float TH_TITLE_Y      = 350.0f;
 static const float TH_ROW_Y0       = 260.0f;
 static const float TH_ROW_SIZE     = 13.0f;
@@ -721,6 +734,9 @@ static const float TH_OPT_BAND_PAD  = 50.0f;
 static const float TH_OPT_CAPTION_SIZE = 9.0f;
 static const float TH_OPT_VALUE_SIZE   = 15.0f;
 static const float TH_OPT_VALUE_DY  = 28.0f;
+static const float TH_OPT_CAPTION_SIZE_PORTRAIT = 18.0f;
+static const float TH_OPT_VALUE_SIZE_PORTRAIT   = 28.0f;
+static const float TH_OPT_VALUE_DY_PORTRAIT  = 56.0f;
 static const float TH_PROMPT_Y     = -450.0f;
 static const float TH_PROMPT_Y_PORTRAIT = -570.0f;
 static const float TH_OPT_PORTRAIT_SCALE = 1.6f;
@@ -731,6 +747,15 @@ static bool th_portrait() { return Typer::scaled_window_height > 620.0f; }
 static float th_opt_scale() { return th_portrait() ? TH_OPT_PORTRAIT_SCALE : 1.0f; }
 static float th_opts_y() { return th_portrait() ? TH_OPTS_Y_PORTRAIT : TH_OPTS_Y; }
 static float th_prompt_y() { return th_portrait() ? TH_PROMPT_Y_PORTRAIT : TH_PROMPT_Y; }
+static float th_opt_caption_size() {
+  return th_portrait() ? TH_OPT_CAPTION_SIZE_PORTRAIT : TH_OPT_CAPTION_SIZE;
+}
+static float th_opt_value_size() {
+  return th_portrait() ? TH_OPT_VALUE_SIZE_PORTRAIT : TH_OPT_VALUE_SIZE;
+}
+static float th_opt_value_dy() {
+  return th_portrait() ? TH_OPT_VALUE_DY_PORTRAIT : TH_OPT_VALUE_DY;
+}
 
 static TapBand th_opt_band(float nx, float nx_min, float nx_max) {
   float k = th_opt_scale();
@@ -797,12 +822,11 @@ void Overlay::touch_help(const GLGame *glgame) {
   const char *captions[2] = {"INPUT METHOD", "HANDEDNESS"};
   const char *values[2] = {INPUT_LABELS[one_hand ? 1 : 0],
                            HANDEDNESS_LABELS[hand]};
-  const float k = th_opt_scale();
   for (int i = 0; i < 2; i++) {
     float x = (2.0f * bands[i].nx - 1.0f) * Typer::scaled_window_width;
-    Typer::draw_centered(x, bands[i].y, captions[i], TH_OPT_CAPTION_SIZE * k);
-    Typer::draw_centered(x, bands[i].y - TH_OPT_VALUE_DY * k, values[i],
-                         TH_OPT_VALUE_SIZE * k);
+    Typer::draw_centered(x, bands[i].y, captions[i], th_opt_caption_size());
+    Typer::draw_centered(x, bands[i].y - th_opt_value_dy(), values[i],
+                         th_opt_value_size());
   }
 
   if ((glgame->current_time / 700) % 2 == 0)
