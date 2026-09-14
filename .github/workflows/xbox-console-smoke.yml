@@ -51,11 +51,14 @@ jobs:
 
       # Prebuilt VC development packages are used for their HEADERS only
       # (compile-only job; SDL itself is not built and nothing is linked).
+      # Retried like the EGL fetch below: the release CDN answered a 504 on
+      # the SDL2 zip once (2026-09-14, run 34859020548) and the un-retried
+      # curl took the canary red on a master push that touched no Xbox code.
       - name: Fetch SDL2 + SDL2_mixer headers
         shell: pwsh
         run: |
-          curl -sSfL -o sdl2.zip "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL2_VERSION/SDL2-devel-$env:SDL2_VERSION-VC.zip"
-          curl -sSfL -o mixer.zip "https://github.com/libsdl-org/SDL_mixer/releases/download/release-$env:SDL2_MIXER_VERSION/SDL2_mixer-devel-$env:SDL2_MIXER_VERSION-VC.zip"
+          curl -sSfL --retry 3 --retry-all-errors -o sdl2.zip "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL2_VERSION/SDL2-devel-$env:SDL2_VERSION-VC.zip"
+          curl -sSfL --retry 3 --retry-all-errors -o mixer.zip "https://github.com/libsdl-org/SDL_mixer/releases/download/release-$env:SDL2_MIXER_VERSION/SDL2_mixer-devel-$env:SDL2_MIXER_VERSION-VC.zip"
           Expand-Archive sdl2.zip  -DestinationPath "$env:RUNNER_TEMP\sdl"
           Expand-Archive mixer.zip -DestinationPath "$env:RUNNER_TEMP\sdl"
           $sdlInc   = "$env:RUNNER_TEMP\sdl\SDL2-$env:SDL2_VERSION\include"
