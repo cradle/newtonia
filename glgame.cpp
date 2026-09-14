@@ -1188,6 +1188,26 @@ void GLGame::add_asteroids() {
   }
 }
 
+// add_asteroids scatters the new level's rocks with no overlap test, and
+// the elastic pass moves BOTH rocks of an overlapping pair when either is
+// elastic — by 0.6 of the overlap in one step, which for a reflective giant
+// (radius up to 240; reflective forces invincible, so it draws as the big
+// grey kind) spawned across another rock is a jump of a couple of hundred
+// units. The rollover used to respawn the players between the scatter and
+// that first step, so a spot the grid had just cleared could be under the
+// giant a step later: the pilot came up dead centre in a slow invincible
+// rock (leaderboard replay s1/283142701455224570 at 11:20, 2026-09-14).
+// Run the pass to rest here, before anyone is placed. Each pair
+// over-corrects to separation in one step, so chains settle in a few; the
+// grid is rebuilt between rounds because the pass reads it. Silent — the
+// thud is for contacts the player can see.
+void GLGame::settle_spawn_overlaps() {
+  for (int round = 0; round < SPAWN_SETTLE_ROUNDS; round++) {
+    elastic_asteroid_collisions(/*announce=*/false);
+    grid.update((std::list<Object *>*)objects);
+  }
+}
+
 void GLGame::add_hazards() {
   // Counts scale with generation, mirroring the special-asteroid formulas: the
   // introducing level gets one, later levels accumulate more.
@@ -9568,6 +9588,7 @@ void GLGame::tick(int delta) {
       Asteroid::num_killable = 0;
       add_asteroids();
       grid.update((std::list<Object *>*)objects);
+      settle_spawn_overlaps();
       // From generation 10, spawn a small roaming station with a fresh random
       // heading each generation. Created here, after the new world bounds and
       // asteroids are in place, so it gets a valid random starting position
