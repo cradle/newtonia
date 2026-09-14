@@ -89,9 +89,9 @@
     // the landing page, which lists every way to play.
     var WEB_COOP = false;
     // Store ids, the device sniff, and the ANDROID_PUBLIC flag all come
-    // from the shared store_route.js above. While ANDROID_PUBLIC is false
-    // (Play listing in closed testing, task #145) the Play button stays
-    // hidden — a closed-testing store page dead-ends for non-testers. The
+    // from the shared store_route.js above (true since the Play listing
+    // went public, 2026-09-14; while false the Play button stays hidden —
+    // a non-public store page dead-ends for non-testers). The
     // referrer machinery works either way: the room code rides the store
     // URL's install referrer (&referrer=code%3DXXXX), survives the
     // install, and NewtoniaActivity reads it back on first launch
@@ -158,10 +158,19 @@
         appStoreBtn.classList.remove("hidden");
         subEl.textContent = "Play now, or get the app";
       } else if (STORE && STORE.isAndroid) {
-        // Android app is not on a public store yet — the browser game is the
-        // only path. Give the tap a beat to register, then go.
-        subEl.textContent = "Opening the game…";
-        setTimeout(function () { location.replace(playUrl); }, 1400);
+        if (STORE.ANDROID_PUBLIC) {
+          // Mirror the iOS branch: offer the app (the install referrer
+          // carries the code) beside the instant browser game — no
+          // silent redirect, so the install option stays reachable.
+          playStoreBtn.href = STORE.playStoreUrl("code=" + code);
+          playStoreBtn.classList.remove("hidden");
+          subEl.textContent = "Play now, or get the app";
+        } else {
+          // No public store page — the browser game is the only path.
+          // Give the tap a beat to register, then go.
+          subEl.textContent = "Opening the game…";
+          setTimeout(function () { location.replace(playUrl); }, 1400);
+        }
       } else if (STORE) {
         // Desktop: offer a Steam launch (steam://run/<appid>//+connect <code>).
         // Steam registers the steam:// handler OS-wide; the game consumes the
