@@ -60,7 +60,11 @@ jobs:
           $sha = "DCF28E26EBF442E16FFF05AB869E37534ABD85111C8BFD22401905D647688ADB"
           $zip = "$env:RUNNER_TEMP\gdk.zip"
           ts "downloading $url"
-          & curl.exe -sSfL -o $zip $url
+          # Retried: the release CDN served a transient 504 to the console
+          # smoke's un-retried SDL fetch (2026-09-14); this canary's one
+          # download is the same shape, and the SHA check below still
+          # catches a short or wrong file.
+          & curl.exe -sSfL --retry 3 --retry-all-errors -o $zip $url
           if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $sha) {
             Write-Error "GDK zip SHA256 mismatch"; exit 1
           }
