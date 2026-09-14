@@ -6,9 +6,10 @@ landing page, and the platform handlers in `ios_universal_link.mm` /
 `NewtoniaActivity.java`). They are served static from the site root by
 GitHub Pages (`make web` copies this whole folder into `web/dist/.well-known`).
 
-Both carry a **placeholder that must be filled with a real value before the
-native deep links work** — until then, a tapped link falls through to the
-browser game (`/play/?code=`), which still works everywhere.
+Both are **populated with real values and served live** from master. A
+wrong or missing value breaks nothing visibly — a tapped link just falls
+through to the browser game (`/play/?code=`) — so verify on-device after
+any change. The sections below are the runbook for re-deriving each value.
 
 ## `apple-app-site-association` (iOS Universal Links)
 
@@ -27,12 +28,18 @@ Apple's CDN caches this file aggressively, so allow time after changes.
 
 ## `assetlinks.json` (Android App Links)
 
-Replace `REPLACE_WITH_PLAY_APP_SIGNING_SHA256` with the app's release signing
-certificate **SHA-256 fingerprint**. With Play App Signing, copy it from
-Play Console → the app → **Setup → App integrity → App signing key
-certificate** (`SHA-256 certificate fingerprint`), formatted as
-colon-separated hex (`AB:CD:…`). Multiple fingerprints are allowed (e.g. an
-upload key too) — add them to the array.
+Carries the app's signing certificate **SHA-256 fingerprints**
+(colon-separated hex, `AB:CD:…`; multiple allowed — append, never replace).
+**Field-verified 2026-09-14 on a Play-delivered public install**
+(`adb shell pm list packages -i org.newtonia` →
+`installer=com.android.vending`): the installed package reports the
+array's second fingerprint and `pm get-app-links` answers `verified`, so
+the certificate Google Play signs public installs with (Play App Signing)
+is already listed — no further fingerprint is needed. To read the store's
+certificate without a device: Play Console → the app → **Test and
+release**, scroll to its **Setup** subsection → **App integrity** → App
+signing (the console redesign nested Setup under Test and release; there
+is no top-level Setup any more).
 
 The `package_name` is `org.newtonia` (matches `NewtoniaActivity`). Android
 fetches this at install to verify the `autoVerify` intent-filter in
