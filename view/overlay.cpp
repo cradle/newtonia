@@ -712,13 +712,14 @@ static const TouchHelpRow TOUCH_HELP_TWO_HANDS[] = {
 // (2026-09-14) found the captions unreadable at 1.6x, where a size-9
 // caption lands at 14.4, barely over the table's 13: at 1600 virtual
 // units across a phone's 1080 px that is a 19 px cap height. Portrait
-// draws the caption at 22 and the value at 34, 68 under it (glyphs
-// -320..-364 and -388..-456 — 80 under the box's top, 72 over its
-// bottom). Width is the tight axis in portrait, and the numbers were
+// draws the caption at 18 and the value at 28, 56 under it (glyphs
+// -320..-356 and -376..-432 — 80 under the box's top, 96 over its
+// bottom; a first cut at 22/34 read as a little too big in the field,
+// same day). Width is the tight axis in portrait, and the numbers were
 // counted: the longest value, "TWO HANDS" (9 glyphs, 18 advances at
-// 34 = 612), sits centred at +-400 and ends 94 short of the 800 edge;
-// "INPUT METHOD" (12 glyphs at 22 = 506) and "HANDEDNESS" (462) clear
-// each other by 300+. The size-13 gesture table stays as it is — its
+// 28 = 504), sits centred at +-400 and ends 148 short of the 800 edge;
+// "INPUT METHOD" (12 glyphs at 18 = 414) and "HANDEDNESS" (378) clear
+// each other by 400+. The size-13 gesture table stays as it is — its
 // two columns already run -360..716 of the 800 half-width, so a
 // portrait rescale there is a layout change, not a size bump. Both the
 // draw and the two band getters go through the same helpers, so the
@@ -733,9 +734,9 @@ static const float TH_OPT_BAND_PAD  = 50.0f;
 static const float TH_OPT_CAPTION_SIZE = 9.0f;
 static const float TH_OPT_VALUE_SIZE   = 15.0f;
 static const float TH_OPT_VALUE_DY  = 28.0f;
-static const float TH_OPT_CAPTION_SIZE_PORTRAIT = 22.0f;
-static const float TH_OPT_VALUE_SIZE_PORTRAIT   = 34.0f;
-static const float TH_OPT_VALUE_DY_PORTRAIT  = 68.0f;
+static const float TH_OPT_CAPTION_SIZE_PORTRAIT = 18.0f;
+static const float TH_OPT_VALUE_SIZE_PORTRAIT   = 28.0f;
+static const float TH_OPT_VALUE_DY_PORTRAIT  = 56.0f;
 static const float TH_PROMPT_Y     = -450.0f;
 static const float TH_PROMPT_Y_PORTRAIT = -570.0f;
 static const float TH_OPT_PORTRAIT_SCALE = 1.6f;
