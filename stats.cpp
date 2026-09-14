@@ -1,5 +1,6 @@
 #include "web_fs.h"
 #include "stats.h"
+#include "atomic_file.h"
 #include <SDL.h>
 #include <string>
 #include <cstdio>
@@ -13,9 +14,10 @@
 // savegame.dat: only ever APPEND fields, gated on version at read time, so a
 // v1 file loads under any future version with the new fields defaulted.
 // When a SaveStorage abstraction lands (xbox/PORT_PLAN.md), this module's
-// file I/O moves behind it unchanged. On Steam this file likely needs adding
-// to the depot's Auto-Cloud patterns so lifetime stats persist across
-// installs (ACHIEVEMENTS.md §4).
+// file I/O moves behind it unchanged. On Steam this file IS in the depot's
+// Auto-Cloud patterns (with savegame.dat and highscore.dat — the only three
+// files that roam; ACHIEVEMENTS.md §4, CLAUDE.md "Steam Cloud"), so
+// lifetime stats persist across installs and machines.
 
 static const char *ST_ORG  = "cc.gfm";
 static const char *ST_APP  = "newtonia";
@@ -102,21 +104,26 @@ void load() {
 void save() {
   std::string path = stats_path();
   if (path.empty()) return;
-  FILE *f = fopen(path.c_str(), "wb");
-  if (!f) return;
-  bool ok = fwrite(&ST_MAGIC, sizeof(ST_MAGIC), 1, f) == 1
-         && fwrite(&ST_DISK_VERSION, sizeof(ST_DISK_VERSION), 1, f) == 1
-         && fwrite(&kills, sizeof(kills), 1, f) == 1
-         && fwrite(&special_mask, sizeof(special_mask), 1, f) == 1
-         && fwrite(&shots, sizeof(shots), 1, f) == 1
-         && fwrite(&shipk, sizeof(shipk), 1, f) == 1
-         && fwrite(&death_count, sizeof(death_count), 1, f) == 1
-         && fwrite(&games, sizeof(games), 1, f) == 1
-         && fwrite(&best_level, sizeof(best_level), 1, f) == 1
-         && fwrite(&play_secs, sizeof(play_secs), 1, f) == 1
-         && fwrite(&secondaries, sizeof(secondaries), 1, f) == 1
-         && fwrite(&novas, sizeof(novas), 1, f) == 1;
-  fclose(f);
+  // AtomicFile: the reader takes the trailing fields by fread success, so
+  // a truncated stats.dat is indistinguishable from an older one — every
+  // counter past the cut silently reads as zero, and Auto-Cloud roams that
+  // to every install. The write therefore lands complete or not at all,
+  // and a failure (a full disk surfaces at close) keeps `dirty` and the
+  // pending counters for the next flush instead of dropping them.
+  bool ok = AtomicFile::write(path, [](FILE *f) {
+    return fwrite(&ST_MAGIC, sizeof(ST_MAGIC), 1, f) == 1
+        && fwrite(&ST_DISK_VERSION, sizeof(ST_DISK_VERSION), 1, f) == 1
+        && fwrite(&kills, sizeof(kills), 1, f) == 1
+        && fwrite(&special_mask, sizeof(special_mask), 1, f) == 1
+        && fwrite(&shots, sizeof(shots), 1, f) == 1
+        && fwrite(&shipk, sizeof(shipk), 1, f) == 1
+        && fwrite(&death_count, sizeof(death_count), 1, f) == 1
+        && fwrite(&games, sizeof(games), 1, f) == 1
+        && fwrite(&best_level, sizeof(best_level), 1, f) == 1
+        && fwrite(&play_secs, sizeof(play_secs), 1, f) == 1
+        && fwrite(&secondaries, sizeof(secondaries), 1, f) == 1
+        && fwrite(&novas, sizeof(novas), 1, f) == 1;
+  }, "stats");
   if (!ok) return;
   dirty = false;
   unsaved_kills = 0;

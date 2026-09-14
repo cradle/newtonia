@@ -1,6 +1,7 @@
 #ifndef GL_SHIP_H
 #define GL_SHIP_H
 
+#include "pad.h"
 #include "ship.h"
 #include "point.h"
 #include "gltrail.h"
@@ -42,7 +43,7 @@ public:
   virtual void controller_touchpad_input(SDL_Event event);
   void touch_joystick_input(float nx, float ny);
   void release_controls();
-  bool wasMyController(SDL_JoystickID id);
+  bool wasMyController(PadId id);
 
   void set_keys(const PlayerKeys &k);
   // Strip every keyboard binding (the netplay ghost ship must never respond
@@ -58,6 +59,37 @@ public:
   void set_keymap_slot(int slot) { keymap_slot_ = slot; }
   void set_keyboard_sensitivity(float s) { keyboard_sensitivity = s; }
   void set_camera_smoothing(float s)     { camera_smoothing = s; }
+  // Per-player zoom prefs (Options CAMERA sub-menu), by pointer like the
+  // rotate pref so menu changes apply to a live game. NULL (replay join
+  // ghosts, intro display hulls, shot-harness and video-render ships)
+  // means the classic view: base 1.0, no speed-follow. A netplay ghost
+  // takes the VIEWER's slot-0 prefs (GLGame's set_viewer_zoom_prefs) —
+  // spectating hands it the camera. The smoothed result is folded into
+  // view_angle() by smooth_camera.
+  void set_zoom_prefs(float *base, const float *follow) {
+    zoom_base_pref_ = base;
+    speed_zoom_pref_ = follow;
+    // Snap to the base straight away — the rotation snap's twin: a game
+    // start or CONTINUE opens AT the stored zoom instead of gliding there
+    // from NORMAL over three time constants. The speed-follow part still
+    // eases in from here (the hull's speed isn't restored yet when the
+    // save ctor wires this).
+    view_zoom = base ? *base : 1.0f;
+  }
+  // The in-game touch zoom zones (TouchZone::zoom_*): step the ZOOM pref
+  // one Options step closer (dir < 0) or wider (dir > 0), clamped at the
+  // ends and persisted like the rotate toggle; the eased view_zoom then
+  // glides to the new base, which is the feedback. False when nothing
+  // changed — no pref to step (ghosts, harness ships) or already at that
+  // end (the ring still flashes, so the tap reads as answered).
+  bool step_zoom(int dir);
+  // For the overlay: the pref's current Options step — the classic step
+  // with no pref, so a shot-harness ship still shows the zones a device
+  // has (its taps stay inert) — and the tapped zone's brief pressed-look
+  // flash (ms left, direction).
+  int zoom_step_index() const;
+  int zoom_flash_ms() const { return zoom_flash_ms_; }
+  int zoom_flash_dir() const { return zoom_flash_dir_; }
   // Per-player camera fixed/rotate: adopt the owning player's pref as the
   // initial state and remember where to persist an in-game toggle (the V
   // key / left-stick click). NULL for the remote ghost ship (no local input).
@@ -65,15 +97,40 @@ public:
     if (pref) rotating_view = *pref;
     rotate_view_pref_ = pref;
   }
-  void set_controller(SDL_GameController *game_controller);
+  // Bind a pad by PadId (pad.h) — PAD_NONE strips it. Never an SDL object:
+  // the id may belong to the Steam Input backend.
+  void set_controller(PadId pad);
   bool has_controller() const;
+  // Which button vocabulary this seat's hints use (pad_style.h): the
+  // bound pad's, or — with no pad bound — whatever pad is plugged in.
+  PadStyle pad_style() const;
+  // The label of the position an ACTION sits on for this seat's pad
+  // (pad_action_label): the game's own position on an SDL pad, the
+  // player's layout on a Steam pad — so a remapped A/B follows.
+  const char *pad_hint(PadAction a) const;
+  // Whether the action has a position at all (the zoom rows).
+  bool pad_hint_bound(PadAction a) const;
+  // The seat's pad DISCONNECTED (as opposed to a deliberate
+  // set_controller(PAD_NONE) from the roster): drop the binding and remember the
+  // loss, so the next pad to appear comes back to this seat — a re-added pad
+  // is a NEW SDL device (a USB pad re-paired wireless shares nothing with
+  // the id that left), so recognising a reconnect can only mean remembering
+  // which seat is waiting. The wait ends when this seat's own keys play on
+  // (input()) or any deliberate set_controller lands, so a stale wait can't
+  // capture someone else's later pad. See GLGame::controller_added.
+  void controller_lost();
+  bool awaiting_pad() const { return pad_lost_; }
+  // A bound pad whose handle reports detached: its DEVICEREMOVED never
+  // reached this seat (or the replacement's ADDED outran it) — the purge in
+  // GLGame::controller_added treats it as the loss it is.
+  bool controller_detached() const;
   // The keymap card is up, so it — not the pause text — owns the screen.
   // GLGame gates the pause menu on this (Overlay reads show_help directly
   // as a friend).
   bool showing_help() const { return show_help; }
-  bool is_my_controller_id(SDL_JoystickID id) const;
-  // Instance id of the bound pad, or -1 — the roster names pads by it.
-  SDL_JoystickID controller_id() const { return controller_instance_id; }
+  bool is_my_controller_id(PadId id) const;
+  // The bound pad's id, or PAD_NONE — the roster names pads by it.
+  PadId controller_id() const { return controller_id_; }
   void genForceShield();
   void genRepulsor();
   void genGodShield();
@@ -90,9 +147,17 @@ public:
   //TODO: Clearly there is a Player/View/Controller separation here
   bool rotate_view() const;
   float camera_facing() const;
+  // The camera's effective vertical FOV in degrees: camera_angle with the
+  // eased zoom scale folded in (tan-space, so the scale is a straight
+  // multiplier on the visible span). Every consumer of the visible
+  // rectangle — projection, cull, audio plateau, edge indicators — reads
+  // this; the one deliberate exception is quantum observation, pinned to
+  // the classic view in GLGame::is_point_faced_by_any_player.
   float view_angle() const;
-  // Screenshot harness framing (`zoom`): vertical FOV in degrees (default
-  // 85 — smaller is closer). Nothing in gameplay changes it.
+  // Screenshot harness framing (`zoom`): base vertical FOV in degrees
+  // (default 85 — smaller is closer). Gameplay never changes it; the
+  // player zoom prefs scale OVER it (view_zoom stays 1.0 in the sandboxed
+  // harness, so shot scripts frame exactly as before).
   void set_view_angle(float degrees) { camera_angle = degrees; }
   void snap_camera_to_heading();
   void smooth_camera(int frame_delta);
@@ -143,12 +208,13 @@ protected:
   // Default-constructed empty, so a ship that never gets set_keys (the
   // netplay ghost) matches no keyboard input at all.
   KeyBinding thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
+  KeyBinding zoom_in_key, zoom_out_key;  // step the ZOOM pref (step_zoom)
   float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
   float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
 
   int keymap_slot_ = -1;  // see keymap_slot()
-  SDL_GameController *controller = NULL;
-  SDL_JoystickID controller_instance_id = -1;
+  PadId controller_id_ = PAD_NONE;
+  bool pad_lost_ = false;  // see awaiting_pad()
   bool r2_shoot_active = false;
   bool l2_shoot_active = false;
   bool left_axis_x_active = false;
@@ -162,6 +228,14 @@ protected:
   bool *rotate_view_pref_ = nullptr;  // per-player pref to persist on toggle
   float camera_rotation;
   float camera_angle;
+  // Zoom prefs (see set_zoom_prefs) and the eased current zoom scale.
+  // view_zoom chases base * speed-follow in smooth_camera on the same
+  // simulated clock as the rotation smoothing; 1.0 = the classic view.
+  float *zoom_base_pref_ = nullptr;         // writable: step_zoom persists through it
+  const float *speed_zoom_pref_ = nullptr;
+  float view_zoom = 1.0f;
+  int zoom_flash_ms_ = 0;   // touch zoom zone pressed-look, sim ms left
+  int zoom_flash_dir_ = 0;  // which zone: -1 "+", +1 "-"
 
   std::list<GLTrail*> trails;
 };
@@ -186,9 +260,5 @@ float GLShip::explode_temperature() const {
 inline
 bool GLShip::rotate_view() const {
   return rotating_view;
-}
-inline
-float GLShip::view_angle() const {
-  return camera_angle;
 }
 #endif

@@ -51,11 +51,11 @@ namespace Replay { class Recorder; class Reader; }
 
 class GLGame : public State {
 public:
-  GLGame(SDL_GameController *controller = NULL, bool allow_dev_players = true);
-  GLGame(const Save::GameState &save, SDL_GameController *controller = NULL);
+  GLGame(PadId controller = PAD_NONE, bool allow_dev_players = true);
+  GLGame(const Save::GameState &save, PadId controller = PAD_NONE);
   // Online host: adopts the Ready session from the lobby; the remote peer
   // drives player 2 via INPUT messages and receives 10 Hz snapshots.
-  GLGame(NetSession *session, SDL_GameController *controller);
+  GLGame(NetSession *session, PadId controller);
   // B4b: one waiting-room joiner at hand-off — the session (Ready, its
   // WELCOME seat fixed at construction), the worker joiner id its signal
   // frames are stamped with ("" through the LAN/manual doors), and the
@@ -67,13 +67,13 @@ public:
   };
   // Online host, waiting-room form: adopts EVERY seated session; the
   // single-session ctor above delegates here with one entry.
-  GLGame(const std::vector<NetSeated> &seated, SDL_GameController *controller);
+  GLGame(const std::vector<NetSeated> &seated, PadId controller);
   // Online client: bootstrapped by the lobby from the first complete
   // snapshot (the save-restore constructor rebuilds the world; the lobby
   // then feeds the snapshot's NetExtras through net_apply_extras). This
   // machine's player is the LAST in the list; player 1 is the remote host.
   GLGame(const Save::GameState &snapshot, NetSession *session,
-         SDL_GameController *controller);
+         PadId controller);
   // Host process-death resume (NETPLAY.md): rebuild the hosted world from
   // the online save slot (Save::online_load_game) and boot straight into
   // the mid-game client-loss state — reclaim the room with the persisted
@@ -81,7 +81,7 @@ public:
   // auto-rejoin to meet in the middle. Entered from the menu's RESUME
   // HOSTING row, not the lobby.
   GLGame(const Save::GameState &save, const std::string &room_code,
-         const std::string &room_token, SDL_GameController *controller);
+         const std::string &room_token, PadId controller);
   // Replay playback (REPLAY.md R2): world bootstrapped from the file's
   // first keyframe — the same restore a joining net client gets — then
   // records drive it through the client apply path. Takes ownership of the
@@ -147,8 +147,12 @@ public:
   void focus_lost();
   void focus_gained();
   bool back_pressed() override;
-  void controller_added(SDL_GameController *ctrl);
-  void controller_removed(SDL_JoystickID id);
+  void controller_added(PadId id);
+  void controller_removed(PadId id);
+  // Ship in play; Menu while a cursor screen owns the pads — the pause
+  // menu, the seat roster, the help card, the game-over and disconnect
+  // cards (STEAMINPUT.md §2 set switching).
+  PadActionSet pad_action_set() const override;
 
   list<Asteroid*> *objects;      // alive asteroids (in collision grid)
   list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
@@ -203,6 +207,10 @@ private:
   // Spawn the mid-game hazards this generation calls for (counts scale with
   // generation, like the special-asteroid counts). Appends to `hazards`.
   void add_hazards();
+  // Settle the freshly scattered level's elastic overlaps before anyone
+  // spawns into it (see the definition).
+  static const int SPAWN_SETTLE_ROUNDS = 8;
+  void settle_spawn_overlaps();
   // Break a small asteroid chunk off a comet at its current position, flung
   // outward from its heading. The chunk is a normal killable asteroid.
   void shed_comet_fragment(const Hazard *comet);
@@ -210,7 +218,7 @@ private:
   // burst of hits can't starve the mixer channel pool.
   void play_hazard_hit_sound(Mix_Chunk *snd);
   // The one local-join path (FOURPLAYER.md D6); gated on LOCAL_PLAYER_CAP.
-  void add_local_player(SDL_GameController *ctrl, bool with_keys,
+  void add_local_player(PadId pad, bool with_keys,
                         bool bypass_cap = false);
   // include_asteroids=false skips capturing the asteroid list (the delta
   // path diffs asteroids itself and would otherwise discard the capture).
@@ -222,14 +230,27 @@ private:
   // RESUME — never on the exit row left armed by the last one. PLAYERS
   // (the seat roster) only exists offline, so the row list is 3 or 2 long
   // and pause_row_at maps a selection index onto the right action.
-  enum PauseRow { PAUSE_RESUME = 0, PAUSE_PLAYERS = 1, PAUSE_EXIT = 2,
-                  PAUSE_ROWS = 3 };
+  // CONTROLLER LAYOUT (Steam's overlay configurator for a pad's action
+  // bindings — STEAMINPUT.md §4) sits between PLAYERS and the exit, and
+  // only while a player's pad is a Steam Input pad: an SDL pad has no
+  // panel to show.
+  enum PauseRow { PAUSE_RESUME = 0, PAUSE_PLAYERS = 1, PAUSE_LAYOUT = 2,
+                  PAUSE_EXIT = 3, PAUSE_ROWS = 4 };
   int pause_selection_ = PAUSE_RESUME;
-  int pause_row_count() const { return roster_available() ? 3 : 2; }
-  PauseRow pause_row_at(int sel) const {
-    if (roster_available()) return (PauseRow)sel;
-    return sel <= 0 ? PAUSE_RESUME : PAUSE_EXIT;
+  bool pause_layout_offered() const;
+  int pause_row_count() const {
+    return 2 + (roster_available() ? 1 : 0) + (pause_layout_offered() ? 1 : 0);
   }
+  PauseRow pause_row_at(int sel) const {
+    if (sel <= 0) return PAUSE_RESUME;
+    int i = 1;
+    if (roster_available()) { if (sel == i) return PAUSE_PLAYERS; i++; }
+    if (pause_layout_offered()) { if (sel == i) return PAUSE_LAYOUT; i++; }
+    return PAUSE_EXIT;
+  }
+  // Open the configurator for `src` when it is a player's Steam pad, else
+  // for the first player's Steam pad (a keyboard confirm on the row).
+  void show_pad_layout(PadId src);
 
   // ---- Seat input roster (offline) -----------------------------------
   // A seat's input is a keyboard cluster (a PlayerKeys slot), a pad, or
@@ -242,7 +263,7 @@ private:
     enum Kind { None = 0, Keys, Pad };
     Kind kind = None;
     int slot = -1;              // Keys: index into g_prefs.player_keys
-    SDL_JoystickID pad = -1;    // Pad: instance id
+    PadId pad = PAD_NONE;       // Pad: its PadId (pad.h)
     bool same_as(const SeatInput &o) const {
       return kind == o.kind && slot == o.slot && pad == o.pad;
     }
@@ -262,6 +283,10 @@ private:
   // The trailing BACK row — the way out as a selectable row rather than an
   // "ESC BACK" hint the cursor could not reach.
   bool roster_row_is_exit(int row) const;
+  // The CONTROLLER LAYOUT row (offline, above BACK) while any connected
+  // pad is a Steam Input pad — the same configurator the pause menu opens.
+  bool roster_layout_offered() const;
+  bool roster_row_is_layout(int row) const;
   // Removing needs a deliberate second press — one stray confirm should not
   // end someone's game. -1 = nothing armed; otherwise the armed row.
   int roster_kick_armed_ = -1;
@@ -273,10 +298,12 @@ private:
                                     roster_available(); }
   // Rows: one per seat, plus a trailing ADD row while under MAX_PLAYERS.
   int roster_row_count() const;
-  void roster_nav(unsigned char key);
+  // src: the pad that pressed, for the CONTROLLER LAYOUT row (PAD_NONE
+  // from the keyboard).
+  void roster_nav(unsigned char key, PadId src = PAD_NONE);
   // An unassigned pad takes the highlighted seat by pressing any button —
   // press-to-claim, the couch-co-op idiom. True when it was consumed.
-  bool roster_claim_pad(SDL_JoystickID which);
+  bool roster_claim_pad(PadId which);
   SeatInput roster_seat_input(int seat) const;
   std::string roster_seat_label(int seat) const;
   // Every input this machine can offer a seat, in cycle order.
@@ -297,6 +324,34 @@ private:
   // The band itself, hung above the exit band (which is portrait-aware,
   // so this follows it). One definition for draw and hit-test.
   TapBand roster_manage_band() const;
+  // ---- Touch controls help card ----
+  // A full-window card spelling out the current touch layout's controls —
+  // the one-hand gestures (tap / tap-then-hold / cold long press) are
+  // invisible, so it auto-shows ONCE on the first offline one-hand game
+  // (Preferences::touch_help_done latches) and pauses the game under it;
+  // the pause screen's CONTROLS band (touch, both layouts) reopens it any
+  // time. Under the gesture table it carries the INPUT METHOD and
+  // HANDEDNESS prefs as tap-to-cycle bands (Overlay::touch_help_*_band),
+  // so the layout can be switched mid-game on the screen that explains
+  // it — the table redraws for the picked method on the spot. Any other
+  // tap, or Esc/back, closes it — back to play if it auto-paused, back to
+  // the pause screen otherwise. While up it owns the screen like the
+  // roster: keyboard_up swallows the entry points' synthesized keys,
+  // touch_zoom_active() refuses (killing tap-fire and the zoom zones),
+  // and the pause chrome/exit band are suppressed under its dim.
+  bool touch_help_active() const { return touch_help_active_; }
+  bool touch_help_offer() const;   // pause screen shows the CONTROLS band
+  TapBand controls_band() const;   // under the "Paused" title, centred
+  void touch_help_open(bool resume_on_close);
+  void touch_help_close();
+  // The card's option bands: cycle the pref, save it and re-run the touch
+  // layout (touch_layout_prefs_changed) — the game is paused under the
+  // card, so nothing is mid-gesture when the layout moves.
+  void touch_help_cycle_input();
+  void touch_help_cycle_handedness();
+  bool touch_help_active_ = false;
+  bool touch_help_resume_ = false;  // the card auto-paused: resume on close
+  bool touch_help_tried_ = false;   // first-tick auto-show decided
   // The policy flip the roster's anon row performs — one write site for
   // the ladder's three keys and the touch band.
   void roster_toggle_anonymous();
@@ -310,11 +365,11 @@ private:
   // RESUME / EXIT TO MENU ladder in logical keys, shared by the keyboard
   // and pad paths — the Menu::nav_input pattern, one decision path per
   // screen.
-  void pause_nav(unsigned char key);
+  void pause_nav(unsigned char key, PadId src = PAD_NONE);
   // Is this pad already bound to a player? The pause menu only answers to
   // pads that are playing, so an unknown pad's A still joins player 2.
-  bool is_player_controller(SDL_JoystickID which) const;
-  bool pad_may_command(SDL_JoystickID which) const;
+  bool is_player_controller(PadId which) const;
+  bool pad_may_command(PadId which) const;
   // Every screen whose only move is "leave" — the GAME OVER card, the
   // terminal disconnect card, a finished replay — draws the shared
   // EXIT TO MENU row, so all of them answer like a menu: confirm
@@ -350,6 +405,10 @@ private:
   // (Overlay) and the badge rows' hoist decision (Overlay::net_badges) —
   // the unhoisted local row would print through the band's label.
   bool exit_band_showing() const;
+  // The in-game touch zoom zones (TouchZone::zoom_*) answer and draw only
+  // in live play on the local pilot's own camera — one rule for
+  // Overlay::touch_zoom and touch_tap (the TapBand rule, for the gate).
+  bool touch_zoom_active() const;
   // Co-op revive (revive_pickup.h): put a fully-out partner back on their
   // last life. Called from the pickup collection site and the
   // NEWTONIA_NET_TEST_REVIVE_MS e2e hook.
@@ -366,8 +425,13 @@ private:
   // (MSG_LANCE / MSG_SHOCK): the client stops its lance/shock at an
   // asteroid its local rules say survives, without claiming — the actual
   // outcome (teleport evade, tough chip, ghost/invincible feedback) is
-  // the host's call, made here via the survivor's own kill().
-  void net_resolve_polyline_block(const std::vector<Point> &pts);
+  // the host's call, made here via the survivor's own kill(). With
+  // lance_pass_throughs (MSG_LANCE only) the polyline's INTERIOR vertices
+  // are also checked for ready-to-teleport asteroids: a lance pulse passes
+  // straight through those, so the evade the client could not claim is
+  // triggered from the vertex it left on the rock.
+  void net_resolve_polyline_block(const std::vector<Point> &pts,
+                                  bool lance_pass_throughs = false);
   void draw_map() const;
   // cull_r > 0 skips asteroids further than cull_r + radius from
   // (cam_x, cam_y) — the camera centre in the calling tile's object space —

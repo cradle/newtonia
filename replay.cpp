@@ -2,6 +2,7 @@
 #include "replay.h"
 #include "preferences.h"
 #include "savegame.h"
+#include "atomic_file.h"
 
 #include <SDL.h>
 #include <cstdio>
@@ -359,11 +360,15 @@ uint64_t new_run_id() {
 
 // ── Rotation ─────────────────────────────────────────────────────────────────
 
+// The destination is replaced ATOMICALLY (AtomicFile: a private temporary,
+// checked through close, renamed over `to`): with a plain fopen(to, "wb")
+// the previous best was truncated the moment the copy began, so a copy
+// that failed part-way (full disk, I/O error) destroyed the old best AND
+// left a partial file in its slot — while the promotion log still said
+// "promoted best" (security review 2026-09-08, F5).
 static bool copy_file(const std::string &from, const std::string &to) {
     FILE *src = fopen(from.c_str(), "rb");
     if (!src) return false;
-    FILE *dst = fopen(to.c_str(), "wb");
-    if (!dst) { fclose(src); return false; }
     // HEAP, not stack. This was `uint8_t buf[64 * 1024]` — and emscripten's
     // default stack is 64 KB exactly, so the buffer WAS the whole stack and
     // every call blew it: "Aborted(stack overflow ... stack limits
@@ -376,13 +381,13 @@ static bool copy_file(const std::string &from, const std::string &to) {
     // reports on the itch build showed it as "index out of bounds" and
     // "Aborted()" in the main loop, both immediately after "promoted best".
     std::vector<uint8_t> buf(64 * 1024);
-    size_t n;
-    bool ok = true;
-    while ((n = fread(&buf[0], 1, buf.size(), src)) > 0)
-        if (fwrite(&buf[0], 1, n, dst) != n) { ok = false; break; }
-    ok = ok && !ferror(src);
+    bool ok = AtomicFile::write(to, [&](FILE *dst) {
+        size_t n;
+        while ((n = fread(&buf[0], 1, buf.size(), src)) > 0)
+            if (fwrite(&buf[0], 1, n, dst) != n) return false;
+        return !ferror(src);
+    }, "replay");
     fclose(src);
-    if (fclose(dst) != 0) ok = false;
     return ok;
 }
 
@@ -459,7 +464,18 @@ static void maybe_promote_best(const std::string &from, const Header &h) {
         memcmp(h.game_version, hb.game_version,
                Header::GAME_VERSION_LEN) != 0;
     if (!have_best || season_changed || h.final_score > hb.final_score) {
-        if (copy_file(from, slot)) g_best_promoted_path = slot;
+        // A failed copy leaves the previous best intact (copy_file lands
+        // atomically) and must say so: this log line is a field-triage
+        // anchor (see copy_file), and syncing a promotion that did not
+        // happen only persisted the failure on web.
+        if (!copy_file(from, slot)) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                         "replay: best promotion FAILED (%s score=%u); "
+                         "previous best kept",
+                         h.player_count >= 2 ? "co-op" : "solo", h.final_score);
+            return;
+        }
+        g_best_promoted_path = slot;
         // Sync the promotion itself: the online retirement path
         // (best_check_online) has no later sync of its own, so without
         // this a new best set in the session's last moments never left
@@ -495,8 +511,8 @@ static void rotate_to_recent(const std::string &from) {
     // rename that failed AND a copy that failed left the player with
     // neither run: the previous recent deleted and the new one still
     // sitting in current. rename() overwrites an existing destination on
-    // POSIX and Windows alike, and the copy fallback opens the destination
-    // with "wb", so neither needs the clearing.
+    // POSIX and Windows alike, and the copy fallback replaces the
+    // destination atomically (copy_file), so neither needs the clearing.
     if (std::rename(from.c_str(), recent_path().c_str()) != 0) {
         // Cross-volume or locked-file fallback: copy then delete.
         if (copy_file(from, recent_path())) std::remove(from.c_str());

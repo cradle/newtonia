@@ -323,6 +323,11 @@ bool save_exists();
 bool save_game(const GameState &state);  // returns false on I/O error
 bool load_game(GameState &state);        // returns false if absent or format mismatch
 void delete_save();
+// Moves a save that loaded but failed net_state_sane() aside as
+// savegame.dat.corrupt (kept for recovery, no longer offered as CONTINUE).
+// load_game checks the header and the framing only; the semantic check is
+// the caller's, shared with the netplay/replay ingest paths.
+void quarantine_save();
 
 // Online-host resume slot (NETPLAY.md host process-death resume): the same
 // format in a dedicated online_savegame.dat, written at the hosted game's
@@ -332,6 +337,7 @@ bool online_save_exists();
 bool online_save_game(const GameState &state);
 bool online_load_game(GameState &state);
 void delete_online_save();
+void quarantine_online_save();
 
 // Header-less body serialization: save_game/load_game wrap these with the
 // MAGIC/VERSION header and the save file's path; netplay snapshots call them

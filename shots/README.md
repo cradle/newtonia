@@ -86,6 +86,12 @@ clear                  # empty the generated world (asteroids, hazards,
 hud off                # hide the HUD and minimap
 stars 0.15             # starfield density 0..1, overriding the preference
                        #   (shot mode never writes preferences back; 0 = none)
+one_hand [left|centre|right]   # the ONE HAND touch input method + HANDEDNESS
+                       #   (without the line: two hands / centre, pinned —
+                       #   a shot never follows the machine's INI here,
+                       #   and a new install's default is ONE HAND) — with
+                       #   NEWTONIA_FORCE_TOUCH=1 renders the one-hand ring
+                       #   and its SECONDARY / BOOST / TELEPORT action arc
 transparent            # write RGBA: black becomes full transparency, dim
                        #   stroke edges translucent (logo/text assets)
 noship                 # hold every player unspawned — pure-scenery shots
@@ -158,6 +164,7 @@ Notes:
 | `options.shot` | The desktop OPTIONS list, for legibility checks when a row is added. `key`s through the menu, so it assumes the netless build's row order — see the note in the scene before rendering it against a netplay build |
 | `specials.shot` | Labelled reference card of the special asteroid types |
 | `hazards.shot` | Pulsar, comet, seeker and a black hole, HUD off |
+| `onehand.shot` / `touchhelp.shot` | Touch-layout checks under `NEWTONIA_FORCE_TOUCH=1`: the ONE HAND resting ring + action arc, and the paused game's TOUCH CONTROLS card with its INPUT METHOD / HANDEDNESS bands (`key p`, then a `tap` on the CONTROLS band) |
 | `lens_stress.shot` | An invisible asteroid in front of every ship — WarpPass's worst case, for the 1P-vs-4P render-cost measurement rather than for looking at (TESTING.md, FOURPLAYER.md O6) |
 | `lategame.shot` | Natural generation-14 chaos (station, black hole, full counts) |
 | `steam*.shot` | The five 1920x1080 store screenshots (levels 1, 5 co-op, 5, 14, 20) |
@@ -172,8 +179,12 @@ variant (same layout code the devices run; the desktop OSD guard is
 runtime now, see `touch_osd_enabled()`). `shots/mobile.sh` (Linux/WSL)
 and `shots/mobile.ps1` (Windows; needs a display at least as big as the
 shot) render the store screenshot scenes at Apple's required 6.9" iPhone
-(2868x1320) and 13" iPad (2752x2064) landscape sizes plus Play Store
-phone/tablet sizes into `shots/out/mobile/`. The split-screen co-op scene
+(2868x1320) and 13" iPad (2752x2064) landscape sizes, the optional 6.5"
+iPhone size in both orientations (`iphone65` 2688x1242 landscape,
+`iphone65p` 1242x2688 portrait — the scenes are composed for landscape,
+but the touch OSD and HUD re-lay themselves out and the narrow span
+renders honestly), plus Play Store phone/tablet sizes into
+`shots/out/mobile/`. The split-screen co-op scene
 is deliberately excluded — local split screen doesn't exist on the touch
 platforms. The iPhone's extra-wide aspect can show toroidal wrap twins of
 off-centre rocks in the small early-level worlds; if one bothers you,

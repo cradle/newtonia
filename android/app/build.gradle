@@ -2,23 +2,97 @@ plugins {
     id 'com.android.application'
 }
 
+// SDL's Java sources are compiled from a patched COPY of the sibling
+// checkout (build/generated/sdl-java), so the clone itself stays pristine
+// upstream — the same rule patches/libdatachannel-ws-ca-cert.patch applies
+// to libdatachannel. One patch:
+//
+// SDLActivity's window-style handler (COMMAND_CHANGE_WINDOW_STYLE) writes
+// LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES on every fullscreen toggle from
+// API 28 up. Android 15 deprecated that mode — for an app targeting 35+ the
+// system reads every non-ALWAYS mode as ALWAYS anyway — and the Play
+// Console flags the release for it ("Edge-to-edge may not display for all
+// users", 1.61.0, 2026-09-12; the site it named, i.j.c, is R8's outline of
+// exactly this store, and nothing else in the DEX writes the field — the
+// androidx.activity EdgeToEdge helper that also carries the constant is
+// shrunk out, and calling it would put the constant BACK). The patched
+// line writes LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS on API 30+ (added in 30;
+// what every phone on 15 already gets) and leaves the window's default on
+// 28/29: a fullscreen window there lays out beside the cutout instead of
+// under it — a cosmetic strip on Android 9/10 notch phones, and
+// NewtoniaActivity.updateSafeInsets reports no insets below 30 to match.
+// Keeping SHORT_EDGES for those two releases through a values-v28 theme
+// attribute was considered and dropped: the same scan would likely name it.
+//
+// The task FAILS the build unless the line it patches is found exactly
+// once, so an SDL bump that moves or drops it stops loudly instead of
+// quietly shipping the deprecated write again (re-check on any bump).
+def sdlJavaSrc = file("${rootDir}/../../SDL2/android-project/app/src/main/java")
+def sdlJavaOut = layout.buildDirectory.dir('generated/sdl-java').get().asFile
+def sdlCutoutOld = 'window.getAttributes().layoutInDisplayCutoutMode = ' +
+    'WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;'
+def sdlCutoutNew = 'if (Build.VERSION.SDK_INT >= 30 /* Android 11 (R) */) { ' +
+    'window.getAttributes().layoutInDisplayCutoutMode = ' +
+    'WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS; } ' +
+    '// Newtonia patch: android/app/build.gradle patchSdlJava'
+def sdlCutoutHits = new java.util.concurrent.atomic.AtomicInteger(0)
+
+// Its own task, not a doFirst on the copy: a Copy whose source tree is
+// missing is skipped as NO-SOURCE before any action runs, and the missing
+// clone used to surface only as a page of "package org.libsdl.app does not
+// exist" from javac.
+def checkSdlJava = tasks.register('checkSdlJava') {
+    description = 'Fails with the clone hint when the SDL2 sibling checkout is missing'
+    doLast {
+        if (!sdlJavaSrc.directory) {
+            throw new GradleException("SDL2 Java sources not found at ${sdlJavaSrc} — " +
+                "clone SDL2 beside the repo root first (see .github/workflows/android.yml)")
+        }
+    }
+}
+
+def patchSdlJava = tasks.register('patchSdlJava', Copy) {
+    description = 'Copies the SDL2 Java sources, patching the deprecated display-cutout mode'
+    dependsOn checkSdlJava
+    doFirst { sdlCutoutHits.set(0) }
+    from sdlJavaSrc
+    into sdlJavaOut
+    filesMatching('**/SDLActivity.java') {
+        filter { String line ->
+            if (line.contains(sdlCutoutOld)) {
+                sdlCutoutHits.incrementAndGet()
+                return line.replace(sdlCutoutOld, sdlCutoutNew)
+            }
+            return line
+        }
+    }
+    doLast {
+        if (sdlCutoutHits.get() != 1) {
+            throw new GradleException("patchSdlJava: expected exactly one " +
+                "LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES line in SDLActivity.java, " +
+                "found ${sdlCutoutHits.get()} — the SDL2 checkout changed; update the " +
+                "patch in android/app/build.gradle")
+        }
+    }
+}
+
 android {
-    namespace 'org.newtonia'
-    compileSdk 36
+    namespace = 'org.newtonia'
+    compileSdk = 36
 
     // NDK r28 compiles native libraries with 16 KB-aligned ELF LOAD
     // segments by default (r27 and lower default to 4 KB), which Google
     // Play now requires so the app installs and runs on 16 KB-page-size
     // devices. Pinned here as the single source of truth; the android.yml
     // / deploy-android.yml CI installs this exact revision via sdkmanager.
-    ndkVersion '28.2.13676358'
+    ndkVersion = '28.2.13676358'
 
     defaultConfig {
-        applicationId "org.newtonia"
-        minSdk 21           // Android 5.0 (GLES2 guaranteed)
-        targetSdk 36        // Android 16 (Google Play target-API requirement)
-        versionCode (project.findProperty('versionCode') as Integer) ?: 1
-        versionName project.findProperty('versionName') ?: "0.0.1"
+        applicationId = "org.newtonia"
+        minSdk = 21           // Android 5.0 (GLES2 guaranteed)
+        targetSdk = 36        // Android 16 (Google Play target-API requirement)
+        versionCode = (project.findProperty('versionCode') as Integer) ?: 1
+        versionName = project.findProperty('versionName') ?: "0.0.1"
 
         externalNativeBuild {
             cmake {
@@ -36,8 +110,8 @@ android {
 
     externalNativeBuild {
         cmake {
-            path "${rootDir}/../CMakeLists.txt"
-            version "3.22.1"
+            path = "${rootDir}/../CMakeLists.txt"
+            version = "3.22.1"
         }
     }
 
@@ -58,15 +132,35 @@ android {
     if (sharedDebugKeystore.exists()) {
         signingConfigs {
             debug {
-                storeFile sharedDebugKeystore
-                storePassword 'android'
-                keyAlias 'androiddebugkey'
-                keyPassword 'android'
+                storeFile = sharedDebugKeystore
+                storePassword = 'android'
+                keyAlias = 'androiddebugkey'
+                keyPassword = 'android'
             }
         }
     }
 
+    // BuildConfig.DEBUG_EXTRAS gates NewtoniaActivity's intent-extra ->
+    // environment bridge (the adb `--es NEWTONIA_*` debug knobs). The
+    // activity is exported (it must be: it carries the launcher and App
+    // Links filters), so ANY installed app can start it with extras, and
+    // the bridge honoured every one — including NEWTONIA_SIGNAL_URL,
+    // NEWTONIA_BOARD_URL and NEWTONIA_NET_TLS_INSECURE, which redirect the
+    // credential-carrying sockets or strip their verification (security
+    // review 2026-09-08, F1). True for debug builds and for the
+    // -PdebugSign release CI/tester APK (android.yml's emulator selftest
+    // is driven through the bridge); FALSE for the store build.
+    buildFeatures {
+        buildConfig = true
+    }
+    defaultConfig {
+        buildConfigField "boolean", "DEBUG_EXTRAS", "false"
+    }
+
     buildTypes {
+        debug {
+            buildConfigField "boolean", "DEBUG_EXTRAS", "true"
+        }
         release {
             // R8 on (PLAYQUALITY.md): shrinks the DEX and satisfies the Play
             // Console's per-upload optimization insights ahead of the Feb 2027
@@ -78,7 +172,7 @@ android {
             // resolve their strings via getIdentifier(), which the resource
             // shrinker can't see — it would strip games-ids.xml (PLAYQUALITY.md
             // "resource trap") for a saving of a few icons' worth of bytes.
-            minifyEnabled true
+            minifyEnabled = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                           'proguard-rules.pro'
             // -PdebugSign: sign the minified release build with the debug
@@ -88,7 +182,8 @@ android {
             // Without the property nothing is set here and deploy-android.yml
             // keeps injecting the real release keystore untouched.
             if (project.hasProperty('debugSign')) {
-                signingConfig signingConfigs.debug
+                signingConfig = signingConfigs.debug
+                buildConfigField "boolean", "DEBUG_EXTRAS", "true"
             }
         }
     }
@@ -97,12 +192,22 @@ android {
         main {
             // Game assets (sounds, etc.) are placed in android/app/src/main/assets
             assets.srcDirs = ['src/main/assets']
-            // Include SDL2 Java sources directly from the SDL2 sibling directory so
-            // the build works both locally and in CI without a manual copy step.
-            java.srcDirs += ["${rootDir}/../../SDL2/android-project/app/src/main/java"]
+            // SDL2's Java layer comes from the SDL2 sibling clone (works
+            // locally and in CI with no manual copy step) — through the
+            // patchSdlJava copy above, never straight from the checkout.
+            // A plain directory, not the task: AGP's srcDir() resolves
+            // through Project.file(), which made nothing of a TaskProvider
+            // — the task never ran and javac saw no SDL sources at all
+            // (PR #544's first Android run). The ordering is the explicit
+            // preBuild hook under the android block.
+            java.srcDir(sdlJavaOut)
         }
     }
 }
+
+// Every AGP task runs after preBuild, so this one hook orders the patched
+// copy ahead of javac (and of anything else that walks the source set).
+tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn(patchSdlJava) }
 
 dependencies {
     // Play Games Services v2 — achievements backend (PlayGamesAchievements.java;

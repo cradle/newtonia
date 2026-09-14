@@ -117,7 +117,11 @@ right and is the reference.)
 
 **D6 — One join function.** The Enter-join at glgame.cpp:9437 is a hand-copy
 of `add_player2` that drops `set_black_holes` (a live inconsistency today).
-Phase A extracts `add_local_player(SDL_GameController *ctrl, bool with_keys)`:
+Phase A extracts `add_local_player(SDL_GameController *ctrl, bool with_keys)`
+(now `add_local_player(PadId pad, bool with_keys)` — the pad seam of
+STEAMINPUT.md §1 replaced every SDL handle in game logic with an opaque
+`PadId`, so the Steam Input backend's pads join, claim seats and reconnect
+through exactly these paths):
 allocates the `GLCar`, wires missiles/shock/black-holes/friendly-fire, keys by
 the new player's index, pushes, `update_presence()`. All three join paths call
 it; the black-holes omission is fixed as a side effect.

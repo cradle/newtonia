@@ -38,6 +38,7 @@
 #include "view/overlay.h"
 #include "typer.h"
 #include "touch_controls.h"
+#include "view/tap_band.h"
 #include "net_session.h"
 #include "net_board.h"
 #include "net_identity.h"
@@ -169,6 +170,20 @@ static void set_player_keys(GLShip *gs, int player_index,
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
   gs->set_rotate_view_pref(&k.rotate_view);
+  gs->set_zoom_prefs(&k.camera_zoom, &k.speed_zoom);
+}
+
+// A remote peer's hull carries no bindings, but it CAN become the camera:
+// spectating hands the view to the peer once the local pilot is out, and
+// the viewer keeps their own camera preference there (the rotate pref
+// already does, through the GLShip ctor's legacy-global seed). So every
+// ghost answers to THIS machine's primary pilot's zoom prefs — slot 0 on
+// host and client alike (the client's local seat is wired to slot 0 too).
+// Without this the handoff popped a CLOSEST view to NORMAL and dropped the
+// speed-follow, and the audio plateau shrank with it.
+static void set_viewer_zoom_prefs(GLShip *gs) {
+  PlayerKeys &k = g_prefs.player_keys[0];
+  gs->set_zoom_prefs(&k.camera_zoom, &k.speed_zoom);
 }
 
 const int GLGame::default_world_width = 2500;
@@ -225,7 +240,7 @@ static Pickup *make_pickup(const Save::Pickup &sp) {
 // world — generous by design, it is the fallen player's only way back.
 const float GLGame::revive_pickup_drop_chance = 0.1f;
 
-GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
+GLGame::GLGame(PadId controller, bool allow_dev_players) :
   State(),
   world(Point(default_world_width, default_world_height)),
   current_time(0),
@@ -311,7 +326,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
   // Suppresses achievements for the game like the other cheat paths.
   god_cheat = (SDL_getenv("NEWTONIA_GOD") != NULL);
   if(god_cheat) Achievements::note_cheat_used();
-  if(controller != NULL) {
+  if(controller != PAD_NONE) {
     object->set_controller(controller);
   }
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
@@ -320,6 +335,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
   object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
+  object->ship->set_teleport_hazards(hazards);
   players->push_back(object);
 
   // Dev/testing (beta builds only): NEWTONIA_START_PLAYERS=N starts the game
@@ -338,7 +354,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
       int n = atoi(sp);
       if (n > MAX_PLAYERS) n = MAX_PLAYERS;
       for (int i = (int)players->size(); i < n; i++)
-        add_local_player(NULL, /*with_keys=*/true, /*bypass_cap=*/true);
+        add_local_player(PAD_NONE, /*with_keys=*/true, /*bypass_cap=*/true);
       std::cout << "DEV: starting with " << players->size() << " players"
                 << std::endl;
     }
@@ -504,7 +520,7 @@ GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
   }
 }
 
-GLGame::GLGame(NetSession *session, SDL_GameController *controller)
+GLGame::GLGame(NetSession *session, PadId controller)
   : GLGame(std::vector<NetSeated>(1, NetSeated{session, std::string(),
                                                NetIdentity()}),
            controller) {}
@@ -516,7 +532,7 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
 // net_set_peer_jid / net_apply_peer_attestation hand-over fills them),
 // so at N=1 this is the old body with the peer adoption in a loop.
 GLGame::GLGame(const std::vector<NetSeated> &seated,
-               SDL_GameController *controller)
+               PadId controller)
   : GLGame(controller, /*allow_dev_players=*/false) {
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
@@ -575,7 +591,7 @@ GLGame::GLGame(const std::vector<NetSeated> &seated,
 // a mid-game signal drop (fresh TURN creds ride the reclaim reply), and
 // the client's auto-rejoin retries meet it in the middle.
 GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
-               const std::string &room_token, SDL_GameController *controller)
+               const std::string &room_token, PadId controller)
   : GLGame(save, controller) {
   net_mode_ = NetHost;
   Net::set_net_log_role(true);
@@ -594,8 +610,9 @@ GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
       if (gs->ship->net_seat == 1) continue;
       gs->ship->is_local_player = false;
       gs->clear_keys();
-      gs->set_controller(NULL);
+      gs->set_controller(PAD_NONE);
       gs->ship->net_remote_gun = true;
+      set_viewer_zoom_prefs(gs);  // the spectate camera keeps OUR zoom
     }
     players->front()->ship->net_report_shots = true;
   }
@@ -615,6 +632,11 @@ GLGame::~GLGame() {
   // Stop answering distance queries — no-op if a newer game already took
   // the hook over (states are built before their predecessor is deleted).
   WorldSound::clear_listener(this);
+  // One-hand tap-fire gate off with the game: nothing updates the mirror
+  // once this state is gone, and ' ' doubles as a confirm key in the
+  // menus (touch_controls.h). Harmless if a newer game already re-armed
+  // it — its own tick rewrites the flag every frame.
+  g_touch_controls.one_hand_ingame = false;
   // Deliberate teardown of a hosted room (quit to menu, game over, clean
   // app exit — the send_close below kills the room NOW): the process-death
   // resume ticket and online save go with it. A crash or OS kill never
@@ -763,7 +785,7 @@ GLGame::~GLGame() {
   delete warp_pass_;
 }
 
-GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
+GLGame::GLGame(const Save::GameState &save, PadId controller) :
   State(),
   world(Point(save.world_x, save.world_y)),
   generation(save.generation),
@@ -862,7 +884,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     set_player_keys(gs, (int)players->size());
     // Set before restore_state() so restored weapons attribute correctly.
     gs->ship->is_local_player = true;
-    if (controller != NULL && is_p1) {
+    if (controller != PAD_NONE && is_p1) {
       gs->set_controller(controller);
     }
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
@@ -871,6 +893,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     gs->ship->missiles_seek_players = friendly_fire;
     gs->ship->set_shock_targets(shock_targets);
     gs->ship->set_black_holes(black_holes);
+    gs->ship->set_teleport_hazards(hazards);
     gs->ship->restore_state(sp, grid);
     gs->snap_camera_to_heading();
     players->push_back(gs);
@@ -896,12 +919,12 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   }
 
   // Assign any already-connected controllers to players that don't have one yet
-  // (controller_added only fires for newly connected controllers, not pre-existing ones)
-  for (int i = 0; i < SDL_NumJoysticks(); i++) {
-    if (!SDL_IsGameController(i)) continue;
-    SDL_GameController *ctrl = SDL_GameControllerOpen(i);
-    if (!ctrl) continue;
-    controller_added(ctrl);
+  // (controller_added only fires for newly connected controllers, not
+  // pre-existing ones). Through the pad seam: only pads the entry point
+  // opened count (pad_attached), which is what a seat can actually hold.
+  for (int i = 0; i < pad_count(); i++) {
+    PadId id = pad_id_at(i);
+    if (pad_attached(id)) controller_added(id);
   }
 
   if (save.station.present) {
@@ -990,8 +1013,8 @@ void GLGame::save_progress() {
       // game-over delete below is not gated — a roster can only become
       // all-dead through a running tick, which sets the flag anyway.
       if (save_dirty_) {
-        Save::save_game(build_save_data());
-        save_dirty_ = false;
+        // A failed write still needs saving on the next pause/exit trigger.
+        save_dirty_ = !Save::save_game(build_save_data());
       }
       return;
     }
@@ -1162,6 +1185,26 @@ void GLGame::add_asteroids() {
     objects->push_back(new Asteroid(false, false, false, false, false, true, true));  // armoured+tough: five hits through the rotating gap
     objects->push_back(new Asteroid(false, false, false, true, false, true));         // teleporting+tough: banked cracks keep escaping
     objects->push_back(new Asteroid(false, false, false, false, true, true));         // quantum+tough: observing it is a five-hit commitment
+  }
+}
+
+// add_asteroids scatters the new level's rocks with no overlap test, and
+// the elastic pass moves BOTH rocks of an overlapping pair when either is
+// elastic — by 0.6 of the overlap in one step, which for a reflective giant
+// (radius up to 240; reflective forces invincible, so it draws as the big
+// grey kind) spawned across another rock is a jump of a couple of hundred
+// units. The rollover used to respawn the players between the scatter and
+// that first step, so a spot the grid had just cleared could be under the
+// giant a step later: the pilot came up dead centre in a slow invincible
+// rock (leaderboard replay s1/283142701455224570 at 11:20, 2026-09-14).
+// Run the pass to rest here, before anyone is placed. Each pair
+// over-corrects to separation in one step, so chains settle in a few; the
+// grid is rebuilt between rounds because the pass reads it. Silent — the
+// thud is for contacts the player can see.
+void GLGame::settle_spawn_overlaps() {
+  for (int round = 0; round < SPAWN_SETTLE_ROUNDS; round++) {
+    elastic_asteroid_collisions(/*announce=*/false);
+    grid.update((std::list<Object *>*)objects);
   }
 }
 
@@ -1402,7 +1445,37 @@ bool GLGame::pause_menu_active() const {
   return true;
 }
 
-void GLGame::pause_nav(unsigned char key) {
+bool GLGame::pause_layout_offered() const {
+  if (is_touch_mode()) return false;
+  // Any pad Steam presents, seated or not, adopted or on a template: the
+  // player on the generic template is the one who needs the picker.
+  return pad_has_binding_panel_any();
+}
+
+void GLGame::show_pad_layout(PadId src) {
+  if (pad_has_binding_panel(src) && is_player_controller(src)) {
+    pad_show_binding_panel(src);
+    return;
+  }
+  for (auto *gs : *players) {
+    if (pad_has_binding_panel(gs->controller_id())) {
+      pad_show_binding_panel(gs->controller_id());
+      return;
+    }
+  }
+  // The roster's row can be reached with no seat holding a Steam pad yet
+  // (a spare one plugged in): any Steam pad will do.
+  for (int i = 0; i < pad_count(); i++) {
+    if (pad_has_binding_panel(pad_id_at(i))) {
+      pad_show_binding_panel(pad_id_at(i));
+      return;
+    }
+  }
+  // No adopted pad at all: the one Steam holds on a gamepad template.
+  pad_show_binding_panel_any();
+}
+
+void GLGame::pause_nav(unsigned char key, PadId src) {
   if (MenuSelect::move(key, pause_selection_, pause_row_count())) return;
   if (!MenuSelect::is_confirm(key)) return;
   switch (pause_row_at(pause_selection_)) {
@@ -1412,6 +1485,9 @@ void GLGame::pause_nav(unsigned char key) {
     case PAUSE_PLAYERS:
       roster_active_ = true;
       roster_selection_ = 0;
+      break;
+    case PAUSE_LAYOUT:
+      show_pad_layout(src);
       break;
     default:
       // Exactly what the menu key does — save first, then hand over.
@@ -1447,18 +1523,6 @@ static std::string cluster_label(int slot) {
   return std::string(buf);
 }
 
-// 1-based position among the connected game controllers — stable enough to
-// tell two pads apart on screen, and far shorter than SDL's product names.
-static int pad_number(SDL_JoystickID id) {
-  int n = SDL_NumJoysticks(), num = 0;
-  for (int i = 0; i < n; i++) {
-    if (!SDL_IsGameController(i)) continue;
-    num++;
-    if (SDL_JoystickGetDeviceInstanceID(i) == id) return num;
-  }
-  return 0;
-}
-
 bool GLGame::roster_available() const {
   // Two contexts, one screen (FOURPLAYER.md O3): offline it re-binds local
   // inputs, and on the HOST online it lists the peers with a KICK action.
@@ -1488,6 +1552,85 @@ bool GLGame::roster_touch_offer() const {
 // arithmetic, so keep visual air rather than sharing a formula.
 TapBand GLGame::roster_manage_band() const {
   return TapBand(0.5f, exit_band().y + 170, 12, 16.0f);
+}
+
+// ---- Touch controls help card (see glgame.h) --------------------------
+
+// The pause screen offers the way into the card — the MANAGE band's gates
+// minus the host requirement (every touch pilot has controls), and never
+// in a replay: the playback chrome owns the bottom strip and nobody is
+// flying.
+bool GLGame::touch_help_offer() const {
+  return is_touch_mode() && !running && !touch_help_active_ &&
+         !roster_open() && !all_players_out() && !net_card_owns_input() &&
+         net_mode_ != NetReplay;
+}
+
+// Directly under the "Paused" title block, NOT stacked over the exit
+// band: the band used to ride exit_band().y + 240 at glyph size 12 with
+// a 16 pad — a 56-unit-tall strip two thirds of the way down the screen
+// in landscape and, in portrait (where the exit band anchors to the
+// bottom), buried between the joystick ring and EXIT TO MENU, a screen
+// away from the title (field, 2026-09-14: "too small", "put it closer to
+// the centre so it's more visible"). A fixed Typer anchor keeps it under
+// the title in BOTH orientations: "press play to resume" (size 8 at -40)
+// descends to -56, and the label hangs a gap under that with its finger
+// zone starting right at the subtitle's descent. Gap and pad are both
+// 44 units in landscape (a 120-unit zone, a tenth of the unstretched
+// 1200 height) and SCALE with the portrait stretch (600/aspect, ~1730
+// on a tall phone): at fixed units the label crowded the subtitle in
+// portrait (field, same day) and the zone shrank to a sliver, so both
+// are held as a fraction of the screen instead. It stays clear of the
+// online host's MANAGE PLAYERS band, which keeps its bottom-anchored
+// slot (landscape: its zone tops out at -234, this one bottoms out at
+// -176; portrait: a screen apart), and of the one-hand ring's rest
+// (portrait: ring top ~0.65h, this zone ends ~0.60h).
+TapBand GLGame::controls_band() const {
+  const int size = 16;
+  float stretch = Typer::scaled_window_height / Typer::original_window_height;
+  if (stretch < 1.0f) stretch = 1.0f;  // landscape: exactly the tuned units
+  float gap = 44.0f * stretch, pad = 44.0f * stretch;
+  return TapBand(0.5f, -56.0f - gap, size, pad);
+}
+
+void GLGame::touch_help_open(bool resume_on_close) {
+  touch_help_active_ = true;
+  // Through toggle_pause, not a bare running flip, so the pause
+  // invariants hold under the card (inputs force-released, auto-save,
+  // sound channels paused) — the desktop F1 card's convention: a help
+  // card is the thing that paused the game.
+  touch_help_resume_ = resume_on_close && running;
+  if (running) toggle_pause();
+}
+
+void GLGame::touch_help_close() {
+  touch_help_active_ = false;
+  if (touch_help_resume_ && !running) toggle_pause();
+  touch_help_resume_ = false;
+}
+
+// The card's INPUT METHOD band: TWO HANDS <-> ONE HAND. Saved on the tap
+// like the Options rows are on close, then the shared apply — the layout
+// re-run in place (the paused game under the card resumes into the new
+// OSD) and the web build's HTML OSD hand-off. Safe mid-game: the pause
+// force-released every control, and the entry points' finger-up paths
+// already release a press begun before a mode flip (they had to for the
+// Options toggle). Picking ONE HAND here retires the first-game auto-show
+// — the pilot is reading the card it would have shown.
+void GLGame::touch_help_cycle_input() {
+  g_prefs.touch_one_hand = !g_prefs.touch_one_hand;
+  if (g_prefs.touch_one_hand) g_prefs.touch_help_done = true;
+  save_preferences();
+  touch_layout_prefs_changed();
+}
+
+// The HANDEDNESS band: LEFT -> CENTRE -> RIGHT -> LEFT (the touch Options
+// row's cycle order, Preferences::touch_handedness 0/1/2).
+void GLGame::touch_help_cycle_handedness() {
+  int h = g_prefs.touch_handedness;
+  g_prefs.touch_handedness = (h < 0 || h >= 2) ? 0 : h + 1;
+  save_preferences();
+  touch_layout_prefs_changed();
 }
 
 // True when this row is a remote pilot the host may remove, rather than a
@@ -1535,7 +1678,20 @@ int GLGame::roster_row_count() const {
   // layout ends with the exit row (see roster_row_is_exit).
   if (net_mode_ != NetOff)
     return seats + (roster_has_anon_row() ? 1 : 0) + 1;
-  return (seats < MAX_PLAYERS ? seats + 1 : seats) + 1;
+  return (seats < MAX_PLAYERS ? seats + 1 : seats) +
+         (roster_layout_offered() ? 1 : 0) + 1;
+}
+
+// CONTROLLER LAYOUT: offline, whenever a Steam Input pad is connected
+// (seated or spare — the row is how a spare pad's player finds the
+// configurator before they claim a seat). Drawn just above BACK.
+bool GLGame::roster_layout_offered() const {
+  if (net_mode_ != NetOff || is_touch_mode()) return false;
+  return pad_has_binding_panel_any();
+}
+
+bool GLGame::roster_row_is_layout(int row) const {
+  return roster_layout_offered() && row == roster_row_count() - 2;
 }
 
 // The trailing BACK row. The screen used to end in an "ESC BACK" hint: a
@@ -1598,12 +1754,11 @@ std::vector<GLGame::SeatInput> GLGame::roster_input_options() const {
     in.slot = s;
     out.push_back(in);
   }
-  int n = SDL_NumJoysticks();
+  int n = pad_count();
   for (int i = 0; i < n; i++) {
-    if (!SDL_IsGameController(i)) continue;
     SeatInput in;
     in.kind = SeatInput::Pad;
-    in.pad = SDL_JoystickGetDeviceInstanceID(i);
+    in.pad = pad_id_at(i);
     out.push_back(in);
   }
   return out;
@@ -1618,7 +1773,7 @@ void GLGame::roster_apply(int row, const SeatInput &in) {
     // can fly, so it stays a no-op.
     if (in.kind == SeatInput::None) return;
     if ((int)players->size() >= MAX_PLAYERS) return;
-    add_local_player(NULL, /*with_keys=*/false);
+    add_local_player(PAD_NONE, /*with_keys=*/false);
     if (row >= (int)players->size()) return;  // refused (e.g. p1 out)
   }
   GLShip *target = seat_ship_at(players, row);
@@ -1628,28 +1783,36 @@ void GLGame::roster_apply(int row, const SeatInput &in) {
     if (in.kind == SeatInput::Keys && gs->keymap_slot() == in.slot)
       gs->clear_keys();
     if (in.kind == SeatInput::Pad && gs->is_my_controller_id(in.pad))
-      gs->set_controller(NULL);
+      gs->set_controller(PAD_NONE);
   }
   // Exclusive per seat: picking one input clears the other, so the row says
   // what actually drives the ship.
   target->release_controls();  // a held key/stick must not latch across this
   switch (in.kind) {
     case SeatInput::Keys:
-      target->set_controller(NULL);
+      target->set_controller(PAD_NONE);
       set_player_keys(target, in.slot);
       break;
     case SeatInput::Pad:
       target->clear_keys();
-      target->set_controller(SDL_GameControllerFromInstanceID(in.pad));
+      // A pad the entry point never opened (past the seat cap) can't drive
+      // a seat: bind nothing, as the SDL handle lookup used to.
+      target->set_controller(pad_attached(in.pad) ? in.pad : PAD_NONE);
       break;
     default:
       target->clear_keys();
-      target->set_controller(NULL);
+      target->set_controller(PAD_NONE);
       break;
   }
 }
 
-void GLGame::roster_nav(unsigned char key) {
+void GLGame::roster_nav(unsigned char key, PadId src) {
+  if (roster_row_is_layout(roster_selection_)) {
+    if (MenuSelect::is_confirm(key)) {
+      show_pad_layout(src);
+      return;
+    }
+  }
   // Host rows: left/right picks WHICH removal (kick, which they can come
   // back from, or ban, which they can't) — the same left/right that cycles
   // a local seat's input, on rows where rebinding is meaningless. Confirm
@@ -1728,7 +1891,7 @@ void GLGame::roster_toggle_anonymous() {
   save_preferences();
 }
 
-bool GLGame::roster_claim_pad(SDL_JoystickID which) {
+bool GLGame::roster_claim_pad(PadId which) {
   // Offline only. Press-to-claim binds a LOCAL device to the highlighted
   // row, and online that row is a remote pilot's ship: the host's spare
   // pad would end up driving the peer's hull alongside their INPUT
@@ -1743,7 +1906,7 @@ bool GLGame::roster_claim_pad(SDL_JoystickID which) {
   return true;
 }
 
-bool GLGame::is_player_controller(SDL_JoystickID which) const {
+bool GLGame::is_player_controller(PadId which) const {
   for (auto *gs : *players)
     if (gs->wasMyController(which)) return true;
   return false;
@@ -1753,14 +1916,34 @@ bool GLGame::is_player_controller(SDL_JoystickID which) const {
 // (FOURPLAYER.md A4): GUIDE-pause, BACK-exit and the game-over confirms act
 // only from a player's pad — or from any pad in a game where NO player has
 // one (keyboard players with a couch pad, the long-shipped behaviour).
-bool GLGame::pad_may_command(SDL_JoystickID which) const {
+bool GLGame::pad_may_command(PadId which) const {
   if (is_player_controller(which)) return true;
   for (auto *gs : *players)
     if (gs->has_controller()) return false;
   return true;
 }
 
+// Which Steam Input action set every pad should be in right now
+// (STEAMINPUT.md §2). Ship while the ships take input; Menu whenever a
+// cursor screen owns the pads — the pause screen (menu, roster, help card,
+// the disconnect pause), the game-over card and its leaderboard prompt,
+// the terminal net card. Pause is global, so this is per game, not per
+// pad. The synthesized events are the same SDL vocabulary either way; the
+// set only decides which of the player's LAYOUT bindings apply.
+PadActionSet GLGame::pad_action_set() const {
+  if (!running) return PAD_SET_MENU;
+  if (all_players_out()) return PAD_SET_MENU;
+  if (net_card_owns_input()) return PAD_SET_MENU;
+  return PAD_SET_SHIP;
+}
+
 bool GLGame::back_pressed() {
+  // The touch controls help card is one level deep like the roster below:
+  // back closes it first.
+  if (touch_help_active_) {
+    touch_help_close();
+    return true;
+  }
   // The touch roster is one level deep on the pause screen: back closes
   // it first, exactly like the desktop roster's Esc.
   if (roster_open()) {
@@ -1806,8 +1989,14 @@ void GLGame::focus_lost() {
   Mix_PauseMusic();
 }
 
-void GLGame::controller_added(SDL_GameController *ctrl) {
-  SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+void GLGame::controller_added(PadId id) {
+  if (id == PAD_NONE) return;
+  // Purge zombie bindings first: a seat still holding a pad whose handle
+  // reports detached missed its DEVICEREMOVED (or this pad's ADDED outran
+  // it) and must not read as "driven" below.
+  for(auto* glship : *players) {
+    if(glship->controller_detached()) glship->controller_lost();
+  }
   // Online, the only ship this machine controls is the local player;
   // players->front() is the remote host's ghost on a client (and the
   // remote client's ghost on a host), so binding "the first ship without
@@ -1815,34 +2004,48 @@ void GLGame::controller_added(SDL_GameController *ctrl) {
   if (net_mode_ != NetOff) {
     GLShip *local = local_player();
     if (local && !local->is_my_controller_id(id) && !local->has_controller())
-      local->set_controller(ctrl);
+      local->set_controller(id);
     return;
   }
   // Skip if any player already has this controller
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) return;
   }
-  // Give it back to a seat that has NO input at all — a pad-joined seat
-  // whose pad dropped, which is the reconnect case this exists for. It used
-  // to take the first seat without a CONTROLLER, which on a keyboard game is
+  // Reconnect: a seat whose own pad DROPPED gets the new pad back, keys or
+  // not. Matching the id can never recognise a reconnect — a pad unplugged
+  // from USB and re-paired wireless returns as a brand-new SDL device — so
+  // the seat remembers the loss instead (controller_lost). The no-input
+  // pass below can't cover this: the menu-started P1 and every CONTINUE
+  // seat carry key bindings, so the returning pad stayed free and the
+  // START meant to resume the disconnect pause seated a phantom player 2
+  // (field, Steam Machine, 2026-09-04).
+  for(auto* glship : *players) {
+    if(glship->awaiting_pad()) {
+      glship->set_controller(id);
+      return;
+    }
+  }
+  // Otherwise a seat that has NO input at all — a pad-joined seat left
+  // driverless by any path the awaiting flag doesn't see. It used to take
+  // the first seat without a CONTROLLER, which on a keyboard game is
   // player 1: plugging a pad in (or launching with one already connected)
   // silently glued it onto the keyboard pilot, so two people drove one ship
   // and the pad's owner could never claim a seat of their own — the blocker
-  // for 2 keyboard + 2 pad (field, 2026-08-11). A spare pad now stays free,
-  // which is what START-to-join and the seat roster both want.
+  // for 2 keyboard + 2 pad (field, 2026-08-11). A spare pad still stays
+  // free, which is what START-to-join and the seat roster both want.
   for(auto* glship : *players) {
     if(!glship->has_controller() && !glship->has_keys()) {
-      glship->set_controller(ctrl);
+      glship->set_controller(id);
       return;
     }
   }
 }
 
 bool GLGame::has_free_controller() const {
-  int n = SDL_NumJoysticks();
+  int n = pad_count();
   for(int i = 0; i < n; i++) {
-    if(!SDL_IsGameController(i)) continue;
-    SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
+    PadId id = pad_id_at(i);
+    if(!pad_attached(id)) continue;  // unopened (past the seat cap): not joinable
     bool assigned = false;
     for(auto* glship : *players) {
       if(glship->is_my_controller_id(id)) { assigned = true; break; }
@@ -1852,10 +2055,12 @@ bool GLGame::has_free_controller() const {
   return false;
 }
 
-void GLGame::controller_removed(SDL_JoystickID id) {
+void GLGame::controller_removed(PadId id) {
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) {
-      glship->set_controller(NULL);
+      // controller_lost, not set_controller(PAD_NONE): the seat remembers the
+      // disconnect so controller_added can hand the returning pad back.
+      glship->controller_lost();
       // Don't pause for a player who is already game over (dead, no lives):
       // in two-player their disconnect must not interrupt the survivor.
       bool player_game_over = !glship->ship->is_alive() && glship->ship->lives == 0;
@@ -1870,7 +2075,7 @@ void GLGame::controller_removed(SDL_JoystickID id) {
 // with_keys so the new seat's PlayerKeys slot binds. Gated on
 // LOCAL_PLAYER_CAP, not MAX_PLAYERS — the dark-launch rule (FOURPLAYER.md
 // §3); bypass_cap is the NEWTONIA_START_PLAYERS test hook's door.
-void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
+void GLGame::add_local_player(PadId pad, bool with_keys,
                               bool bypass_cap) {
   if(net_mode_ != NetOff) return;  // extra seats online are Phase B
   if(!bypass_cap && (int)players->size() >= LOCAL_PLAYER_CAP) return;
@@ -1879,7 +2084,7 @@ void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
   if(!p1->is_alive() && !p1->lives) return;
   GLShip* object = make_seat_ship(grid, (int)players->size());
   set_player_keys(object, (int)players->size(), /*with_bindings=*/with_keys);
-  if(ctrl != NULL) object->set_controller(ctrl);
+  if(pad != PAD_NONE) object->set_controller(pad);
   object->ship->is_local_player = true;
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -1888,6 +2093,7 @@ void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
   object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
+  object->ship->set_teleport_hazards(hazards);
   players->push_back(object);
   update_presence();
 }
@@ -1920,12 +2126,14 @@ void GLGame::add_remote_player(uint8_t seat) {
   if((int)players->size() >= net_seat_cap()) return;
   int wire_seat = seat ? (int)seat : (int)players->size() + 1;
   GLShip* object = make_seat_ship(grid, wire_seat - 1);
+  set_viewer_zoom_prefs(object);  // the spectate camera keeps OUR zoom
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
   object->ship->set_missile_ships(ship_objects);
   object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_black_holes(black_holes);
+  object->ship->set_teleport_hazards(hazards);
   players->push_back(object);
   // The Ship constructor creates ships dead (offline player 2 waits out
   // the respawn countdown after pressing Enter to join mid-game). The
@@ -2570,7 +2778,8 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
         replay_record_polyline(Replay::FX_LANCE, firer,
                                firer->lance_pulses.back().points);
         resolve_lance_ship_hits(firer, firer->lance_pulses.back().points);
-        net_resolve_polyline_block(firer->lance_pulses.back().points);
+        net_resolve_polyline_block(firer->lance_pulses.back().points,
+                                   /*lance_pass_throughs=*/true);
         relay_others();  // PB-D4
       }
       continue;
@@ -3021,7 +3230,7 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
     while (boosts--) remote->boost();
     while (weapons--) remote->next_weapon();
     while (secondaries--) remote->next_secondary_weapon();
-    while (teleports--) remote->add_behaviour(new Teleport(remote));
+    while (teleports--) remote->teleport();
   }
 
   // Dead-man switch: no INPUT for 1 s (loss burst, hung tab) — release the
@@ -4867,6 +5076,26 @@ void GLGame::replay_record_shot(float x, float y, uint8_t kind) {
 }
 
 void GLGame::replay_drain_effects() {
+  for (const auto &event : Ship::teleport_events) {
+    uint32_t where = Net::pack_pos(event.second.x(), event.second.y(), world.x(), world.y());
+    if (replay_) replay_->record_event(Net::EV_PLAYER_TELEPORT, where);
+    if (net_mode_ == NetHost)
+      for (NetPeer *peer : net_peers_)
+        // The initiating client already played its predicted teleport.
+        if (peer->seat != event.first)
+          net_send_event_to(*peer, Net::EV_PLAYER_TELEPORT, where, false);
+  }
+  Ship::teleport_events.clear();
+  for (const auto &event : Ship::boost_events) {
+    uint32_t where = Net::pack_pos(event.second.x(), event.second.y(), world.x(), world.y());
+    if (replay_) replay_->record_event(Net::EV_PLAYER_BOOST, where);
+    if (net_mode_ == NetHost)
+      for (NetPeer *peer : net_peers_)
+        // The initiating client already played its predicted boost.
+        if (peer->seat != event.first)
+          net_send_event_to(*peer, Net::EV_PLAYER_BOOST, where, false);
+  }
+  Ship::boost_events.clear();
   if (replay_) {
     for (auto &lf : Ship::replay_lance_flashes)
       replay_record_polyline(Replay::FX_LANCE, lf.first, lf.second);
@@ -5206,7 +5435,7 @@ bool GLGame::board_nav(char key) {
 // that's inert here (ghosts can't earn, and the next real game re-runs the
 // hooks) but noted for honesty.
 GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
-  : GLGame(snapshot, (SDL_GameController *)NULL) {
+  : GLGame(snapshot, PAD_NONE) {
   net_mode_ = NetReplay;
   // Quiet restores, exactly like the net client: every 10 Hz state apply
   // runs restore_state -> respawn -> reset(), and an un-quiet reset()
@@ -5513,6 +5742,8 @@ void GLGame::host_toggle_friendly_fire() {
 // dereference freed ships. Clearing at construction guarantees each game
 // starts from empty regardless of how the previous one ended.
 void GLGame::net_clear_event_outboxes() {
+  Ship::boost_events.clear();
+  Ship::teleport_events.clear();
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
   Ship::net_booms.clear();
@@ -5735,6 +5966,18 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
       NET_LOG("net: friendly fire %s\n", on ? "on" : "off");
       break;
     }
+    case Net::EV_PLAYER_BOOST: {
+      float x, y;
+      Net::unpack_pos(arg, x, y, world.x(), world.y());
+      Ship::play_boost_sound(Point(x, y));
+      break;
+    }
+    case Net::EV_PLAYER_TELEPORT: {
+      float x, y;
+      Net::unpack_pos(arg, x, y, world.x(), world.y());
+      Ship::play_teleport_sound(Point(x, y));
+      break;
+    }
     case Net::EV_ROID_THUD:
     case Net::EV_ROID_TING: {
       // Since PROTO 10 only the gen-20 station-hull deflection sends
@@ -5886,8 +6129,8 @@ void GLGame::net_set_generation_banner(int gen) {
 // ---- client side ---------------------------------------------------------
 
 GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
-               SDL_GameController *controller)
-  : GLGame(snapshot, (SDL_GameController *)NULL) {
+               PadId controller)
+  : GLGame(snapshot, PAD_NONE) {
   net_mode_ = NetClient;
   Net::set_net_log_role(false);  // lobby set it too; belt & braces
   net_peer_make().session = session;
@@ -5954,7 +6197,8 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
       if (gs == local) continue;
       gs->ship->is_local_player = false;
       gs->clear_keys();
-      gs->set_controller(NULL);
+      gs->set_controller(PAD_NONE);
+      set_viewer_zoom_prefs(gs);  // the spectate camera keeps OUR zoom
     }
     set_player_keys(local, 0);
     if (controller) local->set_controller(controller);
@@ -7537,6 +7781,9 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
     uint32_t id = 0;
     Save::Asteroid sa;
     if (!nx_read(in, id) || !Save::read_asteroid(in, sa)) return;
+    // Same bound the keyframe's wholesale apply runs (net_state_sane):
+    // these records never pass through it, and they restore verbatim.
+    if (!net_asteroid_sane(sa)) return;  // hostile/corrupt
     if (by_id.find(id) != by_id.end()) continue;  // already known
     Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
                                sa.teleporting, sa.quantum, sa.tough,
@@ -7576,6 +7823,9 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
     std::unordered_map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
     if (f == by_id.end()) continue;  // unknown id — next keyframe reconciles
     Asteroid *a = f->second;
+    // A tough asteroid's health is a crack-array bound in the drawer
+    // (6 - health lines of five); the host never sends 0 or > 5 for one.
+    if (a->tough && (health < 1 || health > 5)) continue;  // hostile/corrupt
     // Teleporting asteroid relocated on the host this instant (the
     // vulnerable window opens on arrival): play the warp locally.
     bool was_vulnerable = a->teleport_vulnerable;
@@ -7819,6 +8069,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ghost->ship->set_missile_ships(ship_objects);
       ghost->ship->missiles_seek_players = friendly_fire;
       ghost->ship->set_black_holes(black_holes);
+      ghost->ship->set_teleport_hazards(hazards);
       ghost->ship->net_remote_gun = true;
       players->push_back(ghost);
       SDL_Log("replay: player %d joined", (int)players->size());
@@ -8305,6 +8556,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     // instead or the shield ring flickers and the hum plays constantly.
     ship->invincible = ex.time_left_invincible > 0 || ex.god_ms > 0 ||
                        ex.shield != 0;
+    ship->shield_effect_active = ex.shield != 0;
     // The hum is a personal cue: only the LOCAL ship (last in the list on
     // the client) gets it. The remote host's ship respawning far away
     // otherwise plays short full-volume hums that sound random. A replay
@@ -8631,6 +8883,7 @@ void GLGame::tick(int delta) {
     g_touch_controls.mine_available = has_secondary;
     // Boost button feedback: dimmed while Ship's cooldown runs.
     g_touch_controls.boost_ready = lp && lp->ship->boost_ready();
+    g_touch_controls.teleport_ready = lp && lp->ship->teleport_ready();
     // Active-weapon icons for the shoot/mine circles (Save kind values).
     if (lp && !lp->ship->primary_weapons.empty()) {
       int idx_unused;
@@ -8640,6 +8893,27 @@ void GLGame::tick(int delta) {
     g_touch_controls.secondary_kind =
         has_secondary ? (uint8_t)Ship::secondary_kind_of(*lp->ship->secondary)
                       : 0;
+    // One-hand shield toggle truth (touch_controls.h): the SELECTED
+    // secondary's own trigger when it is the shield. Written every tick
+    // like the flags above; the button and long-press gesture both read it.
+    g_touch_controls.shield_engaged =
+        has_secondary &&
+        g_touch_controls.secondary_kind ==
+            (uint8_t)Save::WeaponEntry::Kind::Shield &&
+        (*lp->ship->secondary)->is_shooting();
+    g_touch_controls.shield_empty =
+        has_secondary &&
+        g_touch_controls.secondary_kind == (uint8_t)Save::WeaponEntry::Kind::Shield &&
+        (*lp->ship->secondary)->empty();
+    // One-handed touch: taps fire only in LIVE play. touch_zoom_active()
+    // is exactly that gate (running, not spectating/replay/roster, a local
+    // ship to fire) — deliberately shared, so the tap can never shoot on a
+    // screen the zoom zones would refuse. The flag goes stale-true under
+    // the Intro state (this tick stops running), which is the wanted
+    // behaviour there: a tap IS the fire input that dismisses an intro.
+    // ~GLGame clears it on the way out.
+    g_touch_controls.one_hand_ingame =
+        touch_one_handed() && touch_zoom_active();
 #ifdef __EMSCRIPTEN__
     // The web build's circle buttons are HTML (web/main.ts), so mirror the
     // flag across the same bridge setMenuMode rides, on change only.
@@ -8656,6 +8930,36 @@ void GLGame::tick(int delta) {
       web_boost_last = g_touch_controls.boost_ready;
       EM_ASM({ if (window.setBoostReady) window.setBoostReady($0); },
              g_touch_controls.boost_ready ? 1 : 0);
+    }
+    static bool web_teleport_pushed = false, web_teleport_last = false;
+    if (!web_teleport_pushed || web_teleport_last != g_touch_controls.teleport_ready) {
+      web_teleport_pushed = true;
+      web_teleport_last = g_touch_controls.teleport_ready;
+      EM_ASM({ if (window.setTeleportReady) window.setTeleportReady($0); },
+             g_touch_controls.teleport_ready ? 1 : 0);
+    }
+    // One-hand tap-fire gate for the HTML OSD's gesture layer, on change
+    // only like the flags above. No push from ~GLGame: back in the menu
+    // the full-screen menu overlay owns every tap, so a stale true is
+    // unreachable until a new game's tick rewrites it.
+    static bool web_oh_pushed = false, web_oh_last = false;
+    if (!web_oh_pushed || web_oh_last != g_touch_controls.one_hand_ingame) {
+      web_oh_pushed = true;
+      web_oh_last = g_touch_controls.one_hand_ingame;
+      EM_ASM({ if (window.setTapFire) window.setTapFire($0); },
+             g_touch_controls.one_hand_ingame ? 1 : 0);
+    }
+    // One-hand shield toggle truth for the HTML OSD's gesture layer, on
+    // change only like the rest.
+    static bool web_se_pushed = false, web_se_last = false, web_se_empty = false;
+    if (!web_se_pushed || web_se_last != g_touch_controls.shield_engaged ||
+        web_se_empty != g_touch_controls.shield_empty) {
+      web_se_pushed = true;
+      web_se_last = g_touch_controls.shield_engaged;
+      web_se_empty = g_touch_controls.shield_empty;
+      EM_ASM({ if (window.setShieldEngaged) window.setShieldEngaged($0, $1); },
+             g_touch_controls.shield_engaged ? 1 : 0,
+             g_touch_controls.shield_empty ? 1 : 0);
     }
     // Active-weapon icons on the HTML circle buttons (Save kind values,
     // -1 secondary = none; main.ts maps them to inline SVG backgrounds).
@@ -8677,6 +8981,22 @@ void GLGame::tick(int delta) {
   if (!replay_tried_) {
     replay_tried_ = true;
     if (net_mode_ != NetReplay && !game_over) replay_start();
+  }
+  // First one-hand game on this install: the gestures are invisible, so
+  // the touch controls card shows itself once, pausing the game under it
+  // (any tap resumes). Offline only — an online pause is shared state and
+  // an online pilot already navigated a lobby; the pause screen's
+  // CONTROLS band covers them, and replays are watching, not flying.
+  // Latched at show so it can never nag twice, even if this run is quit
+  // mid-card.
+  if (!touch_help_tried_) {
+    touch_help_tried_ = true;
+    if (is_touch_mode() && touch_one_handed() && !g_prefs.touch_help_done &&
+        net_mode_ == NetOff && !game_over && running) {
+      g_prefs.touch_help_done = true;
+      save_preferences();
+      touch_help_open(true);
+    }
   }
   // Leaderboard game-over flow: poll the qualify/upload socket while the
   // GAME OVER card is up (board_ only exists after the game-over latch).
@@ -9268,6 +9588,7 @@ void GLGame::tick(int delta) {
       Asteroid::num_killable = 0;
       add_asteroids();
       grid.update((std::list<Object *>*)objects);
+      settle_spawn_overlaps();
       // From generation 10, spawn a small roaming station with a fresh random
       // heading each generation. Created here, after the new world bounds and
       // asteroids are in place, so it gets a valid random starting position
@@ -9696,22 +10017,27 @@ void GLGame::tick(int delta) {
       const float min_dist_from_ship = 400.0f;
       const float max_travel = fminf(world.x(), world.y()) * 0.5f;
       const float min_travel = 200.0f;
-      WrappedPoint new_pos;
-      for(int tries = 0; tries < 30; tries++) {
+      // Every try lands on the arrow's ray, so a ship parked along it can
+      // fail all of them — the last draw used to be taken anyway, which
+      // dropped a 170-radius rock onto the hull. No safe spot: the rock
+      // stays put (still vulnerable — the flinch is the player's gain).
+      WrappedPoint new_pos = ast->position;
+      bool found = false;
+      for(int tries = 0; tries < 30 && !found; tries++) {
         float dist = min_travel + (rand() / (float)RAND_MAX) * (max_travel - min_travel);
         float ox = cosf(ast->teleport_angle) * dist;
         float oy = sinf(ast->teleport_angle) * dist;
-        new_pos = WrappedPoint(ast->position.x() + ox, ast->position.y() + oy);
-        new_pos.wrap();
-        bool safe = true;
+        WrappedPoint cand(ast->position.x() + ox, ast->position.y() + oy);
+        cand.wrap();
+        found = true;
         for(auto po = players->begin(); po != players->end(); ++po) {
           if((*po)->ship->is_alive() &&
-             new_pos.distance_to((*po)->ship->position) < min_dist_from_ship) {
-            safe = false;
+             cand.distance_to((*po)->ship->position) < min_dist_from_ship) {
+            found = false;
             break;
           }
         }
-        if(safe) break;
+        if(found) new_pos = cand;
       }
       ast->position = new_pos;
       ast->teleport_vulnerable = true;
@@ -10861,6 +11187,7 @@ void GLGame::draw(void) {
   // cursor). No-op while the game runs.
   Overlay::paused(this);
   Overlay::seat_roster(this);  // replaces the pause menu while it is open
+  Overlay::touch_help(this);   // the touch controls card, over everything
   // Leaderboard prompt/upload/result — its own full-window overlay so the
   // OFFLINE game-over card gets it too (the primary solo case). No-op
   // unless a board flow is live (LEADERBOARD.md).
@@ -11108,8 +11435,16 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
     //   side = component along the right perpendicular of facing
     float fwd  = dx * s->facing.x() + dy * s->facing.y();
     float side = dx * s->facing.y() - dy * s->facing.x();
-    // Viewport rectangle in world units (camera at z=1000, FOV-derived)
-    float fov_deg = glship->view_angle();
+    // Viewport rectangle in world units (camera at z=1000, FOV-derived).
+    // PINNED at the classic default FOV, deliberately NOT view_angle()
+    // (decided 2026-09-01): quantum observation is simulation, and it must
+    // be the same fact for every perspective — a cosmetic zoom pref (or
+    // the speed-follow widen) must not change which rocks are collapsed,
+    // offline, host-side, or in the client's between-snapshot mirror.
+    // Every other rectangle consumer (cull, audio plateau, edge
+    // indicators, the enemy-audio visibility gate) follows the live
+    // view_angle() on purpose: what you can see, you can hear.
+    const float fov_deg = 85.0f;
     float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
     float aspect = (window.x() / (float)num_x_viewports()) /
                    (window.y() / (float)num_y_viewports());
@@ -11256,10 +11591,22 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // capture below: off-screen invisible asteroids must not cost a
   // full-viewport texture copy either.
   float cull_r = sqrtf(cull_r2);
+  // The z=0 passes below (lens masks, objects, front stars, front lensing)
+  // walk as many wrap copies as the plain radius needs — the rear-star
+  // walk's rule, extended: a fixed 3x3 left a strip un-drawn at the far
+  // screen edge whenever the view spans past one world, which the WIDEST
+  // zoom reaches at gen 0 on a 21:9 window (half-width ~2565 vs a 2500
+  // world; 32:9 got there at NORMAL) with the ship hugging a wrap boundary.
+  // The per-tile cull keeps the extra candidates cheap, and the span is 1
+  // again as soon as the world outgrows the view.
+  int span_x = (int)ceilf(cull_r / world.x());
+  int span_y = (int)ceilf(cull_r / world.y());
+  if (span_x < 1) span_x = 1;
+  if (span_y < 1) span_y = 1;
   bool lens_on_screen = false;
   Uint32 lens_t0 = SDL_GetTicks();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();
@@ -11294,8 +11641,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // Game objects: drawn directly each tile (no display list) so draw_batch
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
   pc0 = SDL_GetPerformanceCounter();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       // Nearest distance from camera to tile rect (objects span [0,world) per tile)
       float tmin_x = world.x()*x - position.x();
       float tmax_x = tmin_x + world.x();
@@ -11317,8 +11664,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
   }
   perf_objs_pc_ += SDL_GetPerformanceCounter() - pc0;
   pc0 = SDL_GetPerformanceCounter();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();
@@ -11338,8 +11685,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
   // --- Front star lensing (same void + shift, applied after front stars) ---
   lens_t0 = SDL_GetTicks();
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
+  for(int x = -span_x; x <= span_x; x++) {
+    for(int y = -span_y; y <= span_y; y++) {
       float smin_x = world.x()*x - position.x();
       float smax_x = smin_x + world.x();
       float smin_y = world.y()*y - position.y();
@@ -11634,7 +11981,7 @@ void GLGame::controller(SDL_Event event) {
         roster_claim_pad(event.cbutton.which);
         return;
       }
-      roster_nav(nav_key_from_controller(event));
+      roster_nav(nav_key_from_controller(event), event.cbutton.which);
       return;
     }
     if (event.type == SDL_CONTROLLERAXISMOTION &&
@@ -11662,7 +12009,7 @@ void GLGame::controller(SDL_Event event) {
         return;
       }
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
-        pause_nav('\r');
+        pause_nav('\r', event.cbutton.which);
         return;
       }
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
@@ -11722,8 +12069,8 @@ void GLGame::controller(SDL_Event event) {
           toggle_pause();
         }
       } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
-        SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
-        if(ctrl) add_local_player(ctrl, /*with_keys=*/false);
+        if(pad_attached(event.cbutton.which))
+          add_local_player(event.cbutton.which, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
                event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
@@ -11757,8 +12104,8 @@ void GLGame::controller(SDL_Event event) {
           return;
         }
       } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
-        SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
-        if(ctrl) add_local_player(ctrl, /*with_keys=*/false);
+        if(pad_attached(event.cbutton.which))
+          add_local_player(event.cbutton.which, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
       if(running && pad_may_command(event.cbutton.which)) toggle_pause();
@@ -11859,6 +12206,20 @@ TapBand GLGame::exit_band() const {
   return TapBand(0.5f, vhb + 215, 13, 35.0f);
 }
 
+// Live play only: not paused, not on a GAME OVER / exit-band screen, not
+// spectating (the peer's camera keeps the viewer's zoom, but the OSD is
+// gone with the controls), never in a replay, never under the roster.
+bool GLGame::touch_zoom_active() const {
+  if (!is_touch_mode()) return false;
+  if (!running || net_mode_ == NetReplay) return false;
+  if (exit_band_showing() || is_spectating() || spectate_arming()) return false;
+  if (roster_open()) return false;
+  // The help card owns the screen — this also turns the one-hand
+  // tap-fire gate off under it (one_hand_ingame mirrors this predicate).
+  if (touch_help_active_) return false;
+  return local_player() != NULL;
+}
+
 bool GLGame::exit_band_showing() const {
   if (!is_touch_mode()) return false;
   if (net_mode_ == NetReplay) return false;  // replay chrome owns its bands
@@ -11875,6 +12236,20 @@ bool GLGame::exit_band_showing() const {
 
 void GLGame::touch_tap(float nx, float ny) {
   if (!is_touch_mode()) return;
+  // The touch controls help card owns every tap while it is up: its two
+  // option bands (Overlay::touch_help_*_band — the geometry the card
+  // draws) cycle INPUT METHOD / HANDEDNESS in place, and any other tap
+  // closes it — back to play if it auto-paused the game, back to the
+  // pause screen otherwise.
+  if (touch_help_active_) {
+    if (Overlay::touch_help_input_band().contains(nx, ny))
+      touch_help_cycle_input();
+    else if (Overlay::touch_help_hand_band().contains(nx, ny))
+      touch_help_cycle_handedness();
+    else
+      touch_help_close();
+    return;
+  }
   // Leaderboard prompt on the GAME OVER card: a tap on the EXIT TO MENU
   // band still LEAVES (it is drawn under the prompt), and only taps
   // elsewhere answer YES (left half) / NO (right half) — the New-game
@@ -11951,6 +12326,28 @@ void GLGame::touch_tap(float nx, float ny) {
     roster_kick_armed_ = -1;
     roster_ban_ = false;
     return;
+  }
+  // The pause screen's CONTROLS band — the touch controls help card.
+  if (touch_help_offer() && controls_band().contains(nx, ny)) {
+    touch_help_open(false);
+    return;
+  }
+  // In-game touch zoom zones: "+" above "-" on the right edge
+  // (TouchZone::zoom_*, the geometry Overlay::touch_zoom draws — the
+  // TapBand rule). touch_zoom_active is the shared gate, so a zone can't
+  // answer a tap it isn't showing.
+  if (touch_zoom_active()) {
+    // Placed zones: LEFT-handed one-hand play mirrors the column to the
+    // left edge (the draw and the gesture layer's carve-out read the
+    // same call).
+    if (TouchZone::zoom_in_placed().contains(nx, ny)) {
+      local_player()->step_zoom(-1);
+      return;
+    }
+    if (TouchZone::zoom_out_placed().contains(nx, ny)) {
+      local_player()->step_zoom(+1);
+      return;
+    }
   }
   // The bottom strip is the EXIT TO MENU band the overlay labels (the
   // shared TapBand). It exits to the menu from every state that has no
@@ -12045,28 +12442,43 @@ static const int LANCE_STATION_DAMAGE = 3;
 // its feedback. The guard list is strict so a plain killable rock that
 // happens to sit at a faded bolt's tip can never be destroyed by this —
 // kills only ever arrive as claims.
-void GLGame::net_resolve_polyline_block(const std::vector<Point> &pts) {
+void GLGame::net_resolve_polyline_block(const std::vector<Point> &pts,
+                                        bool lance_pass_throughs) {
   if (pts.size() < 2) return;
-  const Point &end = pts.back();
-  for (Asteroid *ast : *objects) {
-    if (!ast->is_alive()) continue;
-    bool survivor = ast->invincible ||
-                    (ast->teleporting && !ast->teleport_vulnerable) ||
-                    (ast->phasing && ast->phased) ||
-                    (ast->tough && ast->health > 1);
-    if (!survivor) continue;
-    // The endpoint sits ON the blocking surface (the march's segment_hit
-    // entry point / the bolt's stop() collision point), so centre distance
-    // ~= radius; small slack for the client/host position skew at 10 Hz.
-    // Wrapped-world translation first, like every other cross-copy test.
-    Point centre = ast->position.closest_to(end);
-    float dx = centre.x() - end.x(), dy = centre.y() - end.y();
-    float reach = ast->radius + 6.0f;
-    if (dx * dx + dy * dy <= reach * reach) {
-      ast->kill();  // evade / chip / feedback — never a death (see guard)
-      break;
+  // kill() the first SURVIVOR-type asteroid whose surface the vertex sits
+  // on. teleport_only narrows the guard to ready-to-teleport rocks — the
+  // one survivor type a lance passes through (an interior vertex of its
+  // polyline is otherwise a claimed kill's entry point or a reflection
+  // off a neighbour, neither of which may chip or cue anything here).
+  auto resolve_at = [&](const Point &at, bool teleport_only) {
+    for (Asteroid *ast : *objects) {
+      if (!ast->is_alive()) continue;
+      bool evading = ast->teleporting && !ast->teleport_vulnerable;
+      bool survivor = teleport_only
+                          ? evading
+                          : (ast->invincible || evading ||
+                             (ast->phasing && ast->phased) ||
+                             (ast->tough && ast->health > 1));
+      if (!survivor) continue;
+      // The vertex sits ON the surface (the march's segment_hit entry
+      // point / the bolt's stop() collision point), so centre distance
+      // ~= radius; small slack for the client/host position skew at 10 Hz.
+      // Wrapped-world translation first, like every other cross-copy test.
+      Point centre = ast->position.closest_to(at);
+      float dx = centre.x() - at.x(), dy = centre.y() - at.y();
+      float reach = ast->radius + 6.0f;
+      if (dx * dx + dy * dy <= reach * reach) {
+        ast->kill();  // evade / chip / feedback — never a death (see guard)
+        return;
+      }
     }
-  }
+  };
+  // Lance pass-throughs: every interior vertex is a rock the pulse went
+  // through (a kill, a reflection, or a teleport evade); only the evade
+  // needs the host's hand, since the client can't claim it.
+  if (lance_pass_throughs)
+    for (size_t i = 1; i + 1 < pts.size(); i++) resolve_at(pts[i], true);
+  resolve_at(pts.back(), false);
 }
 
 void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts) {
@@ -12562,6 +12974,16 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     return;
   }
 
+  // The touch controls help card owns the screen like the roster below:
+  // the entry points synthesize keys from zones that sit OVER it (the
+  // pause circle's 'p', the legacy '\r' release on every finger-up), so
+  // any key acting here would resume or exit under the tap being
+  // answered. touch_tap closes it; Esc (and Android back) does too.
+  if (touch_help_active_) {
+    if (key == (unsigned char)gk.menu) touch_help_close();
+    return;
+  }
+
   // The seat roster owns input while it is up: Esc backs out to the pause
   // menu instead of quitting the game, and left/right rebind a seat. The
   // pause key still resumes outright (toggle_pause closes the roster).
@@ -12649,7 +13071,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
   // controller-first, and the keyboard has no third layout to hand out.
   if (key == (unsigned char)gk.add_player2 && players->size() < 2)
-    add_local_player(NULL, /*with_keys=*/true);
+    add_local_player(PAD_NONE, /*with_keys=*/true);
 #endif
   // A live board prompt/upload OWNS all game-over input, including the menu
   // key (Esc). Only a key whose DOWN happened while the prompt was up acts

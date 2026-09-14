@@ -1,8 +1,10 @@
 #include "web_fs.h"
 #include "savegame.h"
+#include "atomic_file.h"
 #include "preferences.h"  // MAX_PLAYERS bounds the save's player count
 #include <SDL.h>
 #include <cstdio>
+#include <cerrno>
 #include <cstring>
 #include <string>
 
@@ -633,22 +635,21 @@ static bool save_game_in(const char *file, const Save::GameState &s) {
     std::string path = save_path(file);
     if (path.empty()) return false;
 
-    FILE *fp = fopen(path.c_str(), "wb");
-    if (!fp) return false;
-
-    Save::FileStream f(fp);
-    bool ok = true;
-    uint32_t magic   = Save::GameState::MAGIC;
-    uint16_t version = Save::GameState::VERSION;
-    ok = ok && wv(f, magic);
-    ok = ok && wv(f, version);
-    ok = ok && Save::serialize_game(f, s);
-
-    fclose(fp);
+    // AtomicFile: a private per-process temporary beside the destination,
+    // checked through close, renamed into place — the last good save is
+    // never truncated before the new one is complete, and two instances
+    // sharing one pref path never write through the same temporary.
+    bool ok = AtomicFile::write(path, [&](FILE *fp) {
+        Save::FileStream f(fp);
+        uint32_t magic   = Save::GameState::MAGIC;
+        uint16_t version = Save::GameState::VERSION;
+        return wv(f, magic) && wv(f, version) && Save::serialize_game(f, s);
+    }, "save");
+    if (!ok) return false;
 
     web_fs_sync("savegame");
 
-    return ok;
+    return true;
 }
 
 static bool load_game_in(const char *file, Save::GameState &s) {
@@ -680,12 +681,31 @@ static void delete_save_in(const char *file) {
     web_fs_sync("savegame-delete");
 }
 
+// A save that parsed but failed the semantic check (net_state_sane at the
+// menu's CONTINUE / RESUME HOSTING) is moved aside, not deleted: the player
+// can still recover it by hand, and the menu stops offering a resume that
+// can only crash. Never applied to a version the reader refuses — that is
+// the downgrade case (Steam testers switching branches), and the newer
+// build's file must survive untouched for the switch back.
+static void quarantine_save_in(const char *file) {
+    std::string path = save_path(file);
+    if (path.empty()) return;
+    const std::string aside = path + ".corrupt";
+    if (AtomicFile::replace(path, aside))
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "save: %s failed validation; moved to %s", path.c_str(),
+                     aside.c_str());
+    web_fs_sync("savegame-quarantine");
+}
+
 bool Save::save_exists()                     { return save_exists_in(SG_FILE); }
 bool Save::save_game(const Save::GameState &s) { return save_game_in(SG_FILE, s); }
 bool Save::load_game(Save::GameState &s)     { return load_game_in(SG_FILE, s); }
 void Save::delete_save()                     { delete_save_in(SG_FILE); }
+void Save::quarantine_save()                 { quarantine_save_in(SG_FILE); }
 
 bool Save::online_save_exists()                     { return save_exists_in(SG_ONLINE_FILE); }
 bool Save::online_save_game(const Save::GameState &s) { return save_game_in(SG_ONLINE_FILE, s); }
 bool Save::online_load_game(Save::GameState &s)     { return load_game_in(SG_ONLINE_FILE, s); }
 void Save::delete_online_save()                     { delete_save_in(SG_ONLINE_FILE); }
+void Save::quarantine_online_save()                 { quarantine_save_in(SG_ONLINE_FILE); }

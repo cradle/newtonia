@@ -44,9 +44,9 @@ void State::mouse_move(int x, int y) {
 }
 
 unsigned char State::nav_key_from_controller(const SDL_Event &e,
-                                             SDL_GameController **src) {
+                                             PadId *src) {
   unsigned char key = 0;
-  SDL_JoystickID which = -1;
+  PadId which = PAD_NONE;
   if (e.type == SDL_CONTROLLERBUTTONDOWN) {
     which = e.cbutton.which;
     switch (e.cbutton.button) {
@@ -86,13 +86,13 @@ unsigned char State::nav_key_from_controller(const SDL_Event &e,
     }
   }
   if (key && src)
-    *src = SDL_GameControllerFromInstanceID(which);
+    *src = which;
   return key;
 }
-State::NavPad &State::nav_pad(SDL_JoystickID which) {
+State::NavPad &State::nav_pad(PadId which) {
   for (int i = 0; i < NAV_PADS; i++)
     if (nav_pads_[i].id == which) return nav_pads_[i];
   for (int i = 0; i < NAV_PADS; i++)
-    if (nav_pads_[i].id == -1) { nav_pads_[i].id = which; return nav_pads_[i]; }
+    if (nav_pads_[i].id == PAD_NONE) { nav_pads_[i].id = which; return nav_pads_[i]; }
   return nav_pads_[0];
 }

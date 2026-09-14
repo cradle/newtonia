@@ -14,6 +14,9 @@ build
 /newtonia-arm64
 /newtonia-x86_64
 /selftest.log
+/game_actions_*.vdf
+/controller_*.vdf
+/steam_input_manifest.vdf
 /sigtest.log
 /attempt.log
 /Newtonia-netplay.app/
@@ -69,6 +72,9 @@ xbox/build-*/
 /sdk/
 /steam_appid.txt
 /libsteam_api.*
+/steam-sniper/
+*.sniper.o
+*.sniper.d
 /steam_api64.dll
 /steamworks_sdk.zip
 ## Netplay prebuilt libs (libdatachannel/WebRTC)

@@ -79,7 +79,7 @@ M3-1's reclaim token lives only in the host's memory: backgrounding/wifi blips a
 3. **Worker: unchanged.** The 2-minute `HOST_GRACE_MS` proved sufficient in the e2e (relaunch + menu drive + reclaim + client auto-rejoin completes in ~25 s); reclaim is the same `role=host&code&token` call, no protocol change, no PROTO bump.
 4. **Resume UX**: the menu's first tick (NOT the constructor — a quit-to-menu constructs the Menu before StateManager deletes the outgoing GLGame, whose destructor is what removes the files) scans the ticket; fresh + proto-matching + online save present → "RESUME HOSTING <CODE>" as the TOP row (pre-selected). Picking it loads `online_savegame.dat` into the resume constructor `GLGame(save, code, token, ctrl)`: the save-restore base rebuilds the world, player 2 converts to the remote slot (bindings stripped, `net_remote_gun`, mirror of the client ctor's conversion), and the game boots directly into the mid-game client-loss state — `net_connection_lost_` set, a fresh `NetSignal` with the shared reclaim countdown armed (`net_signal_retry_ms_`), so the existing loss machinery parks the hull, auto-pauses, reopens BOTH rejoin doors (relay offer + LAN re-beacon) and reclaims with the token exactly like a mid-game socket drop. The client's auto-rejoin retries meet it in the middle; expiry (menu tick) and decline (picking any other way into a game) delete both files.
 5. **Cleanup rules**: deliberate teardown deletes ticket + online save — `~GLGame` for a token-bearing host (quit to menu, game over — the dtor's `send_close` kills the room, so the resume dies with it), the room-gone reclaim error, game over via the persist call, and menu decline/expiry. A bare APP EXIT mid-hosted-game deliberately KEEPS them (no `send_close` runs, the relay starts its grace) — an accidental window close is resumable exactly like a crash, and the `atexit` `focus_lost` even refreshes the checkpoint on the way out.
-6. **Verification**: `test/e2e/hostresume.sh` (TESTING.md) — SIGKILL the HOST mid-game after a level march, relaunch within grace, drive the resume row; asserts ticket+save exist while hosting, `resuming hosted room` / `room reclaimed` / `player 2 rejoined`, generation survival via the presence line, and quit-to-menu file deletion. Green headless alongside rejoin.sh/replay_menu.sh/lan.sh.
+6. **Verification**: `test/e2e/hostresume.sh` (TESTING.md) — SIGKILL the HOST mid-game after a level march, relaunch within grace, drive the resume row; asserts ticket+save exist while hosting, `resuming hosted room` / `room reclaimed` / `player 2 rejoined`, generation survival via the presence line, and quit-to-menu file deletion; since the Workers review (2026-09-08) it goes on to SIGKILL the RESUMED host at once and resume a third instance on the same ticket — the reclaim chain the relay's closing-socket guard used to break. Green headless alongside rejoin.sh/replay_menu.sh/lan.sh.
 
 Side fix shaken out by the e2e: **the host RX watchdog fired spuriously on the first tick after any >10 s online pause** — a paused client legitimately stops sending INPUT (`tick_net_client` returns before its send while `!running`) but the host's `current_time` advances through pauses, so the 10 s baseline aged by the whole pause and the unpause killed a healthy session (visible as a loss/rejoin blip; the resume flow's park-until-unpause made it deterministic). The paused host tick now refreshes `net_last_input_time_`, mirroring the client's paused `net_last_rx_time_` refresh; hostresume.sh greps that no watchdog fires across its paused resume.
 
@@ -1064,6 +1064,79 @@ DDoS protection, holds only ephemeral per-room Durable Object state, and never
 touches gameplay packets — a volumetric attack there is Cloudflare's problem,
 not the game binary's.
 
+### Workers review (2026-09-08) — the signal Worker's three findings
+An outside source review of both Workers (the board's six findings are in
+LEADERBOARD.md under the same heading). All fixed; unit-tested without
+wrangler by `signal/test/room_unit_test.mjs`, which drives the real `Room`
+class against a fake DurableObjectState (controlled clock, tagged
+hibernation sockets, storage + alarm) — the wrangler suites cannot reach a
+24 h-old room or a verify paused across a re-host.
+
+- **F3 — alarm deadline order.** `Room.alarm()` re-armed itself at
+  `created + ROOM_TTL_MS` whenever the room was "alive", and a LIVE host
+  past the TTL still counted as alive — so it re-armed at a time already
+  in the past, which fires again immediately: a hot loop for as long as
+  the socket stayed up, spending Durable Object invocations against the
+  Free plan's daily budget with no HTTP request ever arriving to run
+  `fetch()`'s lazy expiry (room creation needs no attestation, so a held
+  socket could do this on purpose). Now TTL is evaluated FIRST, then host
+  liveness (re-arm at the TTL, always a future time), then grace (re-arm at
+  the earlier of grace end and TTL), else clean up. One boundary rule
+  everywhere — `now >= deadline` — so `in_grace` is strict `<` and at
+  exactly the grace deadline the room is finished, not re-armed for the
+  TTL. The review of PR #527 caught the close window that left: the
+  platform's `getWebSockets()` can still return a socket in CLOSING state
+  after `close()`, so for that interval the expired room's host still
+  counted as present while `created` was already 0 (the lazy TTL check
+  off) — `/exists` reported a host and `/join` seated a player into a dead
+  room. Now every liveness read filters on `readyState` (`ws_open`), and
+  `alive()` additionally requires the room to HAVE a host token (minted by
+  `accept_host`, cleared by expiry), so a closing socket never revives a
+  room; `room_unit_test.mjs` keeps its fake sockets registered in CLOSING
+  after `close()` for exactly this case. Round 2: `drop_host`'s
+  superseded-socket guard needed the same filter — a reclaim leaves the
+  old socket CLOSING for a beat, and a new host dropping inside that beat
+  read the old one as "someone else holds the room", skipped the grace
+  stamp, and the next reclaim expired the room on the rightful token. The
+  guard now counts only an OPEN replacement.
+- **F4 — whole-frame bounds.** The per-field caps (`MAX_SDP_LEN`,
+  `MAX_CAND_LEN`) bounded what was stored or relayed, but `JSON.parse` ran
+  on whatever arrived (the platform accepts 32 MiB messages), offers and
+  answers were forwarded as the parsed OBJECT (an extra field of any size
+  rode through to the peer), and `mid` was unbounded and persisted into
+  `host_cands` — the room record is one storage value with a 2 MB cap, so
+  a huge mid bricked every later `save()` of that room. Now:
+  `MAX_FRAME_LEN` (24 KB) is checked on the raw text before parsing;
+  offer/answer/cand frames are REBUILT from allowlisted fields (`t`, `sdp`,
+  `pv`, `from`; `mid` via `mid_of`, ≤ `MAX_MID_LEN` = 64, numbers accepted,
+  anything else "0"); and a per-socket fixed-window budget (`FRAME_LIMIT`
+  300 frames / `FRAME_BYTES_LIMIT` 1 MiB per 10 s, in-memory per socket)
+  closes a flooding socket with 1008. The ceilings sit well above a 4P
+  host's game-start burst (~3 offers + a few dozen candidates + identity).
+  Game-side parsers read exactly the allowlisted fields (`net_signal.cpp`).
+- **F9 — verify bound to the room generation.** `attest_identity` checked
+  the joiner's occupancy epoch after the platform round-trip, but epochs
+  and jids reset with the room: a verify outstanding across an expiry + a
+  fresh host on the SAME code landed the old pilot's attestation on the
+  new room's joiner 1. Rare (random 5-char codes, and the verify has to
+  outlast host-close + grace), cheap to close: `host_token` — minted once
+  per `accept_host`, cleared by `expire` — is captured beside the epoch and
+  re-checked after EVERY non-storage await (the verify, and the
+  `mint_ban_key` digest on both write paths); a mismatch discards the
+  result.
+
+Beside the unit test, two protocol tests prove the same rules on workerd's
+real sockets in `deploy-signal.yml`'s wrangler step: `frame_bounds_test.mjs`
+(F4 — an offer/answer arrives at the peer as exactly the allowlisted fields,
+mids are bounded, an oversized frame is dropped whole with the sender left
+open, a 320-candidate flood and a 70×16 KB byte flood each close the
+flooder with 1008 while the peer keeps its socket and exactly 300 relayed
+candidates) and `reclaim_chain_test.mjs` (the round-2 closing-socket case —
+H2 reclaims, drops at once, J hears host-lost, H3 reclaims on the same
+token and its offer relays; a deliberate close still refuses the next
+reclaim). Not scriptable there: F3's 24 h room (the unit test's clock) and
+F9's same-code reuse (codes are random) stay unit-only.
+
 ## Verification checklist (M1 done =)
 
 Two newtonia.exe on one machine: paste-connect, both ships controllable, remote one-shots work, host kills explode on client, pickups reflect, pause syncs, generation rollover on both, kill-process → CONNECTION LOST → Menu, solo save intact afterward. Then native↔web (Chrome+Firefox clipboard, chunking). CI: all three workflows green each phase.
@@ -1304,6 +1377,10 @@ under the debug flag — the session log below explains how to read each
 one.
 
 ## Session log
+
+- **2026-09-11 (b)**: **macos-dev's artifact is now the netplay bundle (Glenn: "should we make the mac osx dev build netplay enabled?").** It was the one netless macOS build left anywhere: every shipped artifact carries libdatachannel, so the dev artifact could not reproduce the dyld abort in (a) — it ran fine on the very Intel Mac the Steam build crashed on. The runner already built the universal netplay bundle for the relay gate and threw it away at the end of the job. Reordered: the Makefile recipe gates (single-arch `./build_netplay_deps.sh` + `make NETPLAY=1`, then `./build_netplay_deps.sh --universal netplay-libs-uni` + `make osx NETPLAY=1`, each with lipo/floor checks and the loopback self-test) run FIRST, the release compiles link `netplay-libs-uni` with the flags deploy-steam uses, the Bundle step copies + hardened-runtime-signs the fat dylib exactly as deploy-steam does (the `bundle()` walk skips `@rpath` deps), the verify step asserts the binary references it, a loopback self-test runs on the SIGNED bundle, and the relay gate at the end runs from that same bundle instead of a renamed copy. No stash/restore of the universal binary any more, since nothing netless is built.
+
+- **2026-09-11**: **Steam macOS build aborted in dyld at launch on older Macs (Glenn: "the new mac build in steam doesn't work" — `Symbol not found: __ZNSt13exception_ptr31__from_native_exception_pointerEPv, Referenced from libdatachannel.0.dylib, Expected in /usr/lib/libc++.1.dylib`).** The game compiles with `-mmacosx-version-min=12.0` and #540's SDL script pins `CMAKE_OSX_DEPLOYMENT_TARGET=12.0`, but `build_netplay_deps.sh` configured MbedTLS and libdatachannel with NO deployment target, so the dylib targeted whatever OS the `macos-latest` runner was on — now macOS 15, whose SDK libc++ inlines `exception_ptr::__from_native_exception_pointer` (LLVM 18, availability-gated on macOS 15) into `std::make_exception_ptr`/`current_exception` users; 14 and older have no such export. `lipo -verify_arch` can't see it (both slices present), the selftest ran on the runner itself (which has the symbol), and nothing checked minimum-OS load commands. Fix: the script pins `OSX_MIN=12.0` on every Darwin CMake configure (universal and single-arch), and a new `macos/check_min_os.sh <floor> <mach-o>...` reads `vtool -show-build` per slice (both the `LC_BUILD_VERSION minos` and Valve's older `LC_VERSION_MIN_MACOSX version` forms) and fails on anything above the floor — run by deploy-steam's and macos-dev's bundle verify steps, by macos-dev's netplay-bundle gate (so a push catches it, not a tag), and by `make osx`'s prefix check so a stale local `netplay-libs` gets the rebuild hint. Not testable on Linux (no `vtool`); the parser was exercised against captured `vtool` output shapes, and the next macos-dev run is the real gate. **Field-confirmed**: v1.61.2 (the #541 squash, deploy-steam's verify step reading `libdatachannel.0.dylib … minos 12.0` on both slices) launched on the Intel Mac that v1.61.1 aborted on (Glenn: "beta build success", 2026-09-11).
 
 - **2026-08-28**: **pickup_switch_net was a coin flip — the drops were unreachable and the run raced the generation rollover (master E2E red, run 33081365734, both shard attempts).** The 2026-08-21 driver passed for a week on luck. From the CI artifacts: the hook's drops all spent themselves during the ~20 s arm-missiles probe phase, placed "ahead" of a ship that was PARKED — player-ship friction is 0.003/ms, so a coasting hull is nearly stationary ~700 ms after a thrust tap, which also meant the flying phase's tap-thrust rounds never reached them either — and the missile volleys then wiped gen 0's three-asteroid level in one blast (one 25-fragment detonation killed all four rocks), whose rollover swept every pickup, re-armed MINE on both machines via the ALL_WEAPONS respawn re-grant (mine confirms with no grab), and aged the deploys in flight across the rebuild out as "deploy dropped" (8 on attempt 1). Green runs were the ones where the ship happened to drift over the stale drop cluster first. Three-part fix, each mechanism observed working in a local run (prediction + post-switch mine confirms 0.3 s after the FIRST drop, 1 of the 8-drop budget consumed, no rollover): the hook only drops ahead of a MOVING remote ship (lead below two radii = idle → re-check in 500 ms instead of burning budget; the facing-fallback placement is gone — it existed to serve exactly the parked case that can never collect), the driver holds thrust through each round and rotates between them, and the rounds stop the moment a grab was predicted AND a plain-mine confirm arrived after the flying began (the mine greps anchor on "net: " — "giga mine deploy confirmed" contains the plain-mine line). Six presses a round, not twelve, slows the level-clearing that starts the rollover clock. **Tried and reverted, worth remembering:** pinning the world away from the rollover with NEWTONIA_START_GENERATION (2 and 6 both tried, plus NEWTONIA_GOD for the denser field) trades one flake for two — muzzle-adjacent rocks detonate missiles younger than one snapshot slot, so the echo never exists and the deploy reads as "deploy dropped" (a real 10 Hz echo limit, not the divergence the driver guards), and the probe's cycle-through-everything reaches NOVA, which ALL_WEAPONS stocks at 999 — one probe press wiped 11 rocks and forced the rollover anyway. A gen-2 run also showed both giga probes unconfirmed while mine/missile/turret echoed fine (the host's giga demonstrably lived ~3 s — its blast ring recorded) — unexplained, in cheat+dev-start territory the shipped game doesn't visit; if giga echoes ever misbehave in the field, start there. **Follow-up, same day:** on the loaded CI runners (PR #506's run and the post-merge master run alike) the first attempt failed with exactly "1 deploy(s) dropped" and the retry passed — the crossing itself is now deterministic, but the ZERO-dropped assert sat razor-thin against the accepted delayed-INPUT background NET_DEPLOY_GRACE documents (the same class missile_net recalibrated for: an INPUT stalled past the grace while snapshots keep flowing; ~0-1 per loaded run, 0 in four quiet-box runs). The assert now tolerates ≤2 — the divergence it guards drops a windowful (every post-grab press until the rounds run out, ~6+ per round, 19-31 in the original incident), so the populations stay far apart — and prints the dropped lines as a note when nonzero.
 

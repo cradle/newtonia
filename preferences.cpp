@@ -1,12 +1,16 @@
 #include "web_fs.h"
 #include "preferences.h"
+#include "atomic_file.h"
 #include "audio_volume.h"
 #include <SDL.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
+#include <cerrno>
+#include <cmath>
 #include <string>
+#include <sys/stat.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -36,6 +40,8 @@ Preferences::Preferences() {
     p2.teleport       = 'y';
     p2.help               = 136; // F8  (128 + GLUT_KEY_F8)
     p2.toggle_rotate_view = ';'; // right of L, within IJKL cluster
+    p2.zoom_in            = '9'; // number row above I/O; higher digit zooms in
+    p2.zoom_out           = '8';
     // Slots 2+ ship keyboard-inert (FOURPLAYER.md D3): the keyboard has no
     // room for two more clusters, so P3/P4 join by controller. Scalars keep
     // the slot-0 defaults; p3_*/p4_* INI lines can still bind keys by hand.
@@ -44,6 +50,7 @@ Preferences::Preferences() {
         pk.left = pk.right = pk.thrust = pk.shoot = pk.reverse = pk.mine = 0;
         pk.next_weapon = pk.next_secondary = pk.boost = pk.teleport = 0;
         pk.help = pk.toggle_rotate_view = 0;
+        pk.zoom_in = pk.zoom_out = 0;
     }
 }
 
@@ -51,13 +58,59 @@ static const char* PREF_ORG  = "cc.gfm";
 static const char* PREF_APP  = "newtonia";
 static const char* PREF_FILE = "preferences.ini";
 
-static std::string pref_filepath() {
+static std::string pref_dirpath() {
     char *path = SDL_GetPrefPath(PREF_ORG, PREF_APP);
     if (!path) return "";
-    std::string fp = std::string(path) + PREF_FILE;
+    std::string dir(path);
     SDL_free(path);
-    return fp;
+    return dir;
 }
+
+static std::string pref_filepath() {
+    std::string dir = pref_dirpath();
+    return dir.empty() ? dir : dir + PREF_FILE;
+}
+
+// ---- New-install detection ----
+// The touch layout defaults changed on 2026-09-13 (ONE HAND + RIGHT, see
+// first_launch_defaults below) and an install that predates the change
+// must keep the layout it has been playing on. An OLD install is one
+// whose pref path already holds anything of the game's: the INI itself
+// (desktop writes it on every exit; mobile only on a settings change, a
+// first boost/zoom/rotate toggle or the help card — so a mobile pilot who
+// never touched a setting may have none), or any of the other files play
+// leaves behind. stats.dat lands within ~60 s of play and the savegame on
+// the first pause, death or level clear, so an install that has actually
+// been played is never mistaken for a fresh one; only one launched and
+// abandoned before any of that looks new, and there the "old" setting was
+// an untouched default nobody had used. Keep this list in step with the
+// pref-path writers (savegame.cpp, stats.cpp, highscore.cpp,
+// achievement_journal.cpp, net_resume.cpp, replay.cpp).
+static const char *const kPlayerDataEntries[] = {
+    "savegame.dat", "online_savegame.dat", "stats.dat", "highscore.dat",
+    "pending_achievements.dat", "netplay_resume.dat", "replays",
+};
+
+static bool pref_dir_has_player_data(const std::string &dir) {
+    for (size_t i = 0; i < sizeof(kPlayerDataEntries) / sizeof(kPlayerDataEntries[0]); i++) {
+        struct stat st;
+        if (stat((dir + kPlayerDataEntries[i]).c_str(), &st) == 0) return true;
+    }
+    return false;
+}
+
+// What a NEW install starts on, where it differs from the struct defaults
+// (which stay the OLD install's values, so an INI that predates a key
+// still reads as the layout it was written under). Touch layouts only:
+// desktop input has no OSD, so the flag is inert there.
+static void first_launch_defaults() {
+    g_prefs.touch_one_hand   = true;
+    g_prefs.touch_handedness = 2;   // RIGHT
+}
+
+static bool s_first_launch = false;
+
+bool preferences_first_launch() { return s_first_launch; }
 
 // The one named-special-key table (see special_key_name in preferences.h).
 // The HUD's key_label (glship.cpp) uppercases these same names, so a key
@@ -184,6 +237,8 @@ static KeyBinding *binding_for(const char *name) {
     if (strcmp(a, "teleport")           == 0) return &pk->teleport;
     if (strcmp(a, "help")               == 0) return &pk->help;
     if (strcmp(a, "toggle_rotate_view") == 0) return &pk->toggle_rotate_view;
+    if (strcmp(a, "zoom_in")            == 0) return &pk->zoom_in;
+    if (strcmp(a, "zoom_out")           == 0) return &pk->zoom_out;
     return NULL;
 }
 
@@ -221,6 +276,13 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.friendly_fire = (val[0] == '1');
     } else if (strcmp(key, "allow_anonymous") == 0) {
         g_prefs.allow_anonymous = (val[0] == '1');
+    } else if (strcmp(key, "touch_one_hand") == 0) {
+        g_prefs.touch_one_hand = (val[0] == '1');
+    } else if (strcmp(key, "touch_handedness") == 0) {
+        int v = atoi(val);
+        if (v >= 0 && v <= 2) g_prefs.touch_handedness = v;
+    } else if (strcmp(key, "touch_help_done") == 0) {
+        g_prefs.touch_help_done = (val[0] == '1');
     } else if (strcmp(key, "boost_hint_done") == 0) {
         g_prefs.boost_hint_done = (val[0] == '1');
     } else if (strcmp(key, "auto_record_replays") == 0) {
@@ -260,6 +322,12 @@ static void parse_line(const char *key, const char *val) {
             if (v >= 0.0f && v <= 0.1f) pk->camera_smoothing = v;
         } else if (strcmp(a, "rotate_view") == 0) {
             pk->rotate_view = (val[0] == '1');
+        } else if (strcmp(a, "camera_zoom") == 0) {
+            float v = (float)atof(val);
+            if (v >= 0.5f && v <= 2.0f) pk->camera_zoom = v;
+        } else if (strcmp(a, "speed_zoom") == 0) {
+            float v = (float)atof(val);
+            if (v >= 0.0f && v <= 1.0f) pk->speed_zoom = v;
         }
 
     // General keybinds
@@ -277,15 +345,37 @@ static void parse_line(const char *key, const char *val) {
     // Unknown keys are silently ignored so older files stay valid.
 }
 
-void load_preferences() {
+void load_preferences(bool startup) {
     // Start from struct defaults.
     g_prefs = Preferences();
+    s_first_launch = false;
 
-    std::string fp = pref_filepath();
-    if (fp.empty()) return;
+    std::string dir = pref_dirpath();
+    if (dir.empty()) return;
+    std::string fp = dir + PREF_FILE;
 
     FILE *f = fopen(fp.c_str(), "r");
-    if (!f) return;
+    if (!f) {
+        // Only a MISSING INI can mean a fresh install. Any other failure —
+        // a permission or I/O error on a file that exists — must leave it
+        // alone: deciding first launch there would overwrite every saved
+        // setting the moment the directory turned out writable (review,
+        // PR #547). Read errno before anything else can clobber it.
+        const bool missing = errno == ENOENT;
+        // A peek (startup false) stops here on the struct defaults. At
+        // startup, decide whether this pref path is a fresh install (see
+        // kPlayerDataEntries) and, if so, take the new defaults AND write
+        // them straight away: from here on the INI carries the choice
+        // explicitly, so the stats/savegame files this install is about to
+        // create can never make a later launch read it as an old install
+        // and flip the layout back.
+        if (startup && missing && !pref_dir_has_player_data(dir)) {
+            s_first_launch = true;
+            first_launch_defaults();
+            save_preferences();
+        }
+        return;
+    }
 
     char line[256];
     while (fgets(line, sizeof(line), f)) {
@@ -313,8 +403,12 @@ void save_preferences() {
     std::string fp = pref_filepath();
     if (fp.empty()) return;
 
-    FILE *f = fopen(fp.c_str(), "w");
-    if (!f) return;
+    // AtomicFile: the INI is written complete or not at all — a truncated
+    // file still parses (the reader is line-oriented and tolerant), which
+    // is exactly how a full disk used to silently reset half the bindings.
+    // The fprintf results are folded into ferror() at the end of the body;
+    // the helper checks the close.
+    bool ok = AtomicFile::write(fp, [](FILE *f) {
 
     // Scalar preferences
     fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen         ? 1 : 0);
@@ -323,6 +417,9 @@ void save_preferences() {
     fprintf(f, "rotate_view=%d\n",             g_prefs.player_keys[0].rotate_view ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
     fprintf(f, "allow_anonymous=%d\n",         g_prefs.allow_anonymous    ? 1 : 0);
+    fprintf(f, "touch_one_hand=%d\n",          g_prefs.touch_one_hand     ? 1 : 0);
+    fprintf(f, "touch_handedness=%d\n",        g_prefs.touch_handedness);
+    fprintf(f, "touch_help_done=%d\n",         g_prefs.touch_help_done    ? 1 : 0);
     fprintf(f, "boost_hint_done=%d\n",         g_prefs.boost_hint_done    ? 1 : 0);
     fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "leaderboard_prompts=%d\n",     g_prefs.leaderboard_prompts ? 1 : 0);
@@ -368,9 +465,13 @@ void save_preferences() {
         WRITE_PLAYER_BINDING("teleport",       pk.teleport);
         WRITE_PLAYER_BINDING("help",               pk.help);
         WRITE_PLAYER_BINDING("toggle_rotate_view", pk.toggle_rotate_view);
+        WRITE_PLAYER_BINDING("zoom_in",            pk.zoom_in);
+        WRITE_PLAYER_BINDING("zoom_out",           pk.zoom_out);
         fprintf(f, "p%d_keyboard_sensitivity=%.2f\n", p, pk.keyboard_sensitivity);
         fprintf(f, "p%d_camera_smoothing=%.4f\n",     p, pk.camera_smoothing);
         fprintf(f, "p%d_rotate_view=%d\n",            p, pk.rotate_view ? 1 : 0);
+        fprintf(f, "p%d_camera_zoom=%.2f\n",          p, pk.camera_zoom);
+        fprintf(f, "p%d_speed_zoom=%.2f\n",           p, pk.speed_zoom);
     }
 
     // General keybinds
@@ -388,8 +489,23 @@ void save_preferences() {
 #undef WRITE_KEY
 #undef WRITE_PLAYER_BINDING
 
-    fclose(f);
+    return !ferror(f);
+    }, "preferences");
 
     // Persist to IndexedDB so preferences survive a page refresh.
-    web_fs_sync("preferences");
+    if (ok) web_fs_sync("preferences");
+}
+
+const float CAMERA_ZOOM_VALUES[CAMERA_ZOOM_STEPS] = {0.8f, 0.9f, 1.0f, 1.1f, 1.2f};
+const char *const CAMERA_ZOOM_LABELS[CAMERA_ZOOM_STEPS] = {
+    "CLOSEST", "CLOSE", "NORMAL", "WIDE", "WIDEST"};
+
+int camera_zoom_index(float value) {
+    int best = 2;
+    float best_d = 1e6f;
+    for (int i = 0; i < CAMERA_ZOOM_STEPS; i++) {
+        float d = fabsf(value - CAMERA_ZOOM_VALUES[i]);
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return best;
 }

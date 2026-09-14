@@ -29,8 +29,8 @@ private:
   // State::nav_key_from_controller translation, so keyboard and pad behave
   // identically on every menu screen. src is the pad that produced a
   // confirm (bound to player 1), null for real keyboard input.
-  void nav_input(unsigned char key, SDL_GameController *src);
-  void confirm_selection(SDL_GameController *ctrl);
+  void nav_input(unsigned char key, PadId src);
+  void confirm_selection(PadId pad);
   int  max_menu_items() const;
   // RESUME HOSTING row (NETPLAY.md host process-death resume): shown at
   // the top when a fresh NetResume ticket + online save survived a killed
@@ -116,6 +116,10 @@ private:
   // Opened from the options list's AUDIO row; back returns to options.
   void open_audio();
   void close_audio();
+  // CAMERA sub-screen (per-player smoothing/rotation/zoom rows, same
+  // machinery). Opened from the options list's CAMERA row.
+  void open_camera();
+  void close_camera();
   void adjust_active_row(int delta, bool wrap = false);
 
   int currentTime;
@@ -171,10 +175,15 @@ private:
   int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)
   int  camera_index_[MAX_PLAYERS]      = {1, 1, 1, 1};  // per-player: 0=FIXED, 1=ROTATE
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
+  int  input_index_          = 0;       // 0=TWO HANDS, 1=ONE HAND (Preferences::touch_one_hand)
+  int  handedness_index_     = 1;       // 0=LEFT, 1=CENTRE, 2=RIGHT (Preferences::touch_handedness)
   int  leaderboard_index_    = 1;       // 0=OFF, 1=ON (Preferences::leaderboard_prompts)
   int  master_volume_index_  = 4;       // index into VOLUME_VALUES (4=FULL)
   int  music_volume_index_   = 4;       // index into VOLUME_VALUES (4=FULL)
+  int  zoom_index_[MAX_PLAYERS]        = {2, 2, 2, 2};  // per-player index into ZOOM_VALUES (2=NORMAL=1.0)
+  int  speed_zoom_index_[MAX_PLAYERS]  = {1, 1, 1, 1};  // per-player index into SPEED_ZOOM_VALUES (1=SUBTLE=0.25)
   bool audio_mode_ = false;             // AUDIO sub-screen up (options_mode_ stays true under it)
+  bool camera_mode_ = false;            // CAMERA sub-screen up (same nesting)
   int  active_row_ = 0;                 // index into the current row list (options or audio)
   WrappedPoint viewpoint;
   GLStarfield *starfield;

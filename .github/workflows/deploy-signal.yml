@@ -67,6 +67,7 @@ jobs:
           node test/steam_verify_test.mjs
           node test/play_games_verify_test.mjs
           node test/game_center_verify_test.mjs
+          node test/room_unit_test.mjs
 
       # Protocol tests against the real worker code under miniflare — no
       # Cloudflare account involved. wrangler@4's workerd/SQLite mismatch
@@ -101,7 +102,16 @@ jobs:
           node test/grace_broadcast_test.mjs
           node test/host_close_broadcast_test.mjs
           node test/offer_pv_test.mjs
+          node test/frame_bounds_test.mjs
+          node test/reclaim_chain_test.mjs
           kill $DEV_PID
+
+      # The worker's own console output (budget trips, relay errors) is the
+      # other half of any protocol-test failure — without it a FAIL line
+      # can't be told apart from a slow runner (run 50, 2026-09-09).
+      - name: wrangler dev log (on failure)
+        if: failure()
+        run: cat wrangler-dev.log || true
 
   deploy:
     needs: test

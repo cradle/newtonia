@@ -148,7 +148,8 @@ against.
    Stat with unlock value 100.
 3. Add `stats.dat` (plus `highscore.dat`/`savegame.dat` if desired) to the
    depot's **Auto-Cloud** file patterns so lifetime stats roam (§4).
-   **Done — confirmed in the portal 2026-07-18.**
+   **Done — confirmed in the portal 2026-07-18; all three files are in the
+   patterns (`savegame.dat`, `highscore.dat`, `stats.dat` — nothing else).**
 4. Publish the changes, then test on the `beta` branch build — unlocks
    show as overlay toasts. Reset a test account with
    `ISteamUserStats::ResetAllStats(true)` or the Steam console
@@ -499,7 +500,11 @@ The lifetime-kills counter lives in its own small **`stats.dat`** under the
 - **Steam Cloud: decided and done.** `stats.dat` is in the depot's Steam
   Auto-Cloud file patterns (confirmed in the portal 2026-07-18), so
   lifetime stats persist across installs and machines — the achievements
-  roam via Steam, so their backing stats do too.
+  roam via Steam, so their backing stats do too. The full roaming set is
+  `savegame.dat`, `highscore.dat` and `stats.dat` (portal state
+  2026-09-14); `online_savegame.dat`, `netplay_resume.dat`,
+  `pending_achievements.dat`, the preferences INI and `replays/` stay
+  local to the machine (CLAUDE.md, "Steam Cloud").
 
 Implementation status: `SaveStorage` does not exist upstream yet (it is a
 planned abstraction — `xbox/PORT_PLAN.md` Phase 4 / work item 10), so

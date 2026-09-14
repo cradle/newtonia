@@ -85,6 +85,16 @@ class Ship : public CompositeObject {
     void boost();
     bool boost_ready() const { return boost_cooldown_left <= 0.0f; }
     static const float BOOST_COOLDOWN_MS;
+    // Shared by keyboard, controller and host-applied netplay requests.
+    void teleport();
+    bool find_teleport_destination(const Grid &grid);
+    static void play_teleport_sound(Point at);
+    static void play_boost_sound(Point at);
+    static std::vector<std::pair<uint8_t, Point>> boost_events;
+    static std::vector<std::pair<uint8_t, Point>> teleport_events;
+    void set_teleport_hazards(const std::list<class Hazard*> *h) { teleport_hazards = h; }
+    bool teleport_ready() const { return teleport_cooldown_left <= 0.0f; }
+    static const float TELEPORT_COOLDOWN_MS;
     int multiplier() const;
 
     float heading() const;
@@ -270,6 +280,9 @@ class Ship : public CompositeObject {
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
     bool shield_active() const;
+    // The live charge outlasts its inventory item. ShieldBehaviour owns it
+    // locally; snapshot extras mirror the same effect on clients/replays.
+    bool shield_effect_active = false;
     void add_nova_charge(int n);   // call on every asteroid kill
     void add_nova_ammo(int amount);
     void nova_detonate();
@@ -602,6 +615,9 @@ class Ship : public CompositeObject {
 
     float heat_rate, retro_heat_rate, cool_rate, boost_heat;
     float boost_cooldown_left = 0.0f;  // ms until boost() fires again
+    bool teleport_pending = false;
+    const std::list<class Hazard*> *teleport_hazards = nullptr;
+    float teleport_cooldown_left = 0.0f;  // transient, like the boost cooldown
 
     // Forces
     float thrust_force, reverse_force, rotation_force, boost_force;
@@ -623,7 +639,27 @@ class Ship : public CompositeObject {
     friend class ShotScene;
 
   private:
+    // Spawn placement (respawn, first spawn, add-player). A candidate spot
+    // must keep SPAWN_CLEARANCE beyond touching every asteroid, hazard,
+    // other ship and black-hole pull NOW, and every asteroid and hazard
+    // must stay clear of it along its current velocity for the next
+    // SPAWN_LOOKAHEAD_MS — the spawn shield (1500 ms) plus a beat to
+    // react. A static 50-unit margin used to be the whole test, and a
+    // rock cruises at up to max_speed*headroom/radius = 0.2 u/ms, so one
+    // headed the right way put the freshly spawned hull inside it before
+    // the shield ran out (field, 2026-09-14: "respawned inside a large
+    // asteroid"). Bounded: SPAWN_STRICT_TRIES swept candidates, then the
+    // legacy static test for SPAWN_LEGACY_TRIES more, then whatever the
+    // last draw was — a hull is never left with no spot in a crowded
+    // late-game world. try_current keeps a restored pose (savegame resume)
+    // when it passes the legacy static test, as before.
+    static const float SPAWN_CLEARANCE;
+    static const int   SPAWN_LOOKAHEAD_MS;
+    static const int   SPAWN_STRICT_TRIES;
+    static const int   SPAWN_LEGACY_TRIES;
     void safe_position(const Grid &grid, bool try_current = false);
+    bool spawn_spot_legacy_ok(const Grid &grid) const;
+    bool spawn_spot_ok(const Grid &grid) const;
     void tally_nova_kill(const Point &pos);  // call on every asteroid kill; drops pickup every 100
     void fire_lance_pulse(const Grid &grid); // instantaneous lance ray-march (see weapon/lance.h)
     // Central bookkeeping for an asteroid this ship destroyed (score counters,

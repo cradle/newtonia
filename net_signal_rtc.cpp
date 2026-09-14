@@ -114,11 +114,12 @@ private:
     // leaderboard. libdatachannel reaches no OS trust store through MbedTLS
     // (nor through OpenSSL on Windows), which is why the bundle is carried
     // rather than borrowed.
+    NetTlsWsPolicy tls;
+    const bool can_verify = net_tls_ws_policy(tls);
     rtcWsConfiguration cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.disableTlsVerification = net_tls_insecure();
-    const std::string &ca = net_ca_bundle_path();
-    if (!ca.empty()) cfg.caCertificatePemFile = ca.c_str();
+    cfg.disableTlsVerification = tls.disable_verification;
+    cfg.caCertificatePemFile = tls.ca_file;
     // A fresh socket starts clean: these members outlive the previous
     // one (GLGame and NetLobby reconnect on the SAME NetSignal), so a
     // stale flag would fire a spurious Closed here and a stale reason
@@ -134,6 +135,18 @@ private:
       inbox_.clear();
     }
     closed_flag_ = false;
+    if (!can_verify) {
+      // This build cannot verify (Windows, no bundle): refuse, surfacing
+      // the same Closed-with-reason a failed handshake produces on the
+      // MbedTLS platforms, rather than an unverified socket. The lobby's
+      // existing handling takes it from there (manual code entry / LAN).
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_error_ = "no CA bundle on disk; refusing an unverified connection";
+      }
+      closed_flag_ = true;
+      return;
+    }
     ws_ = rtcCreateWebSocketEx(full_url.c_str(), &cfg);
     if (ws_ < 0) {
       closed_flag_ = true;

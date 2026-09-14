@@ -152,9 +152,11 @@ replay.o replay.steam.o: version.stamp
 
 # --- macOS universal bundle ----------------------------------------------
 # Two whole-program compiles (arm64 + x86_64) lipo'd together, mirroring
-# the CI recipe. The x86_64 half links against the Rosetta Homebrew tree
-# (/usr/local) — install it plus sdl2/sdl2_mixer there for local universal
-# builds. The default netplay build needs a UNIVERSAL libdatachannel here:
+# the CI recipe. Build pinned SDL3 + sdl2-compat + SDL2_mixer from source:
+#   ./build_sdl_deps_macos.sh   # arm64 -> /opt/homebrew, x86_64 -> /usr/local
+# Requires Xcode Command Line Tools + CMake, not Intel Homebrew. Optional
+# script prefix arguments must match OSX_SDL_ARM / OSX_SDL_X86 below.
+# The default netplay build needs a UNIVERSAL libdatachannel here:
 #   ./build_netplay_deps.sh --universal
 # and the dylib is embedded in the bundle at Contents/Frameworks.
 OSX_SDL_ARM ?= /opt/homebrew
@@ -169,7 +171,7 @@ endif
 
 newtonia-arm64: OSX_SDL = $(OSX_SDL_ARM)
 newtonia-x86_64: OSX_SDL = $(OSX_SDL_X86)
-newtonia-arm64 newtonia-x86_64: osx-netplay-check FORCE
+newtonia-arm64 newtonia-x86_64: osx-sdl-check osx-netplay-check FORCE
 	$(CC) -O3 -Wall -std=c++11 -arch $(patsubst newtonia-%,%,$@) $(OSX_MIN) \
 	  -DGL_SILENCE_DEPRECATION -Wno-char-subscripts $(OSX_NET_CFLAGS) \
 	  $(VERSION_CFLAGS) \
@@ -177,6 +179,36 @@ newtonia-arm64 newtonia-x86_64: osx-netplay-check FORCE
 	  -o $@ $(ALL_SRCS) macos_window.mm \
 	  -L$(OSX_SDL)/lib -lSDL2 -lSDL2_mixer $(OSX_NET_LIBS) \
 	  -framework GLUT -framework OpenGL -framework AppKit
+
+# A missing SDL prefix used to surface only as a page of "SDL.h file not
+# found" errors per source file (Intel Mac, 2026-09-11) — say what is
+# missing and which script builds it. Each prefix must hold ITS
+# architecture's SDL3 + sdl2-compat + SDL2_mixer (build_sdl_deps_macos.sh
+# lays them out that way; a leftover Homebrew SDL2 in /usr/local or
+# /opt/homebrew is single-arch, may target a newer macOS than the game,
+# and has no libSDL3 for sdl2-compat to dlopen).
+.PHONY: osx-sdl-check
+osx-sdl-check:
+	@for pair in arm64:$(OSX_SDL_ARM) x86_64:$(OSX_SDL_X86); do \
+	  arch=$${pair%%:*}; prefix=$${pair#*:}; \
+	  for f in include/SDL2/SDL.h include/SDL2/SDL_mixer.h \
+	           lib/libSDL2.dylib lib/libSDL2_mixer.dylib lib/libSDL3.dylib; do \
+	    [ -e "$$prefix/$$f" ] || { \
+	      echo "error: $$prefix/$$f is missing — the $$arch SDL stack is not built." ; \
+	      echo "       build it with: ./build_sdl_deps_macos.sh   # arm64 -> $(OSX_SDL_ARM), x86_64 -> $(OSX_SDL_X86)" ; \
+	      exit 1 ; } ; \
+	  done ; \
+	  for f in lib/libSDL2.dylib lib/libSDL2_mixer.dylib lib/libSDL3.dylib; do \
+	    lipo "$$prefix/$$f" -verify_arch $$arch || { \
+	      echo "error: $$prefix/$$f has no $$arch slice — not the build_sdl_deps_macos.sh layout (a Homebrew SDL?)." ; \
+	      echo "       rebuild with: ./build_sdl_deps_macos.sh" ; \
+	      exit 1 ; } ; \
+	    macos/check_min_os.sh $(patsubst -mmacosx-version-min=%,%,$(OSX_MIN)) "$$prefix/$$f" > /dev/null || { \
+	      echo "error: $$prefix/$$f targets a newer macOS than the game — it would abort in dyld on older Macs." ; \
+	      echo "       rebuild with: ./build_sdl_deps_macos.sh" ; \
+	      exit 1 ; } ; \
+	  done ; \
+	done
 
 # A thin (single-arch) libdatachannel from a plain `./build_netplay_deps.sh`
 # run fails the x86_64 link with pages of undefined _rtc* symbols; catch it
@@ -193,9 +225,14 @@ ifeq ($(NETPLAY),1)
 	  echo "error: $(NETPLAY_PREFIX) predates the WS CA patch —" ; \
 	  echo "       rebuild the deps with: ./build_netplay_deps.sh --universal" ; \
 	  exit 1 ; }
+	@macos/check_min_os.sh $(patsubst -mmacosx-version-min=%,%,$(OSX_MIN)) \
+	  $(NETPLAY_PREFIX)/lib/libdatachannel.dylib > /dev/null || { \
+	  echo "error: $(NETPLAY_PREFIX)/lib/libdatachannel.dylib targets a newer macOS than the game —" ; \
+	  echo "       it would abort in dyld on older Macs; rebuild the deps with: ./build_netplay_deps.sh --universal" ; \
+	  exit 1 ; }
 endif
 
-osx: osx-netplay-check newtonia-arm64 newtonia-x86_64
+osx: osx-sdl-check osx-netplay-check newtonia-arm64 newtonia-x86_64
 	lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
 	lipo -info newtonia
 	mkdir -p Newtonia.app/Contents/MacOS
@@ -212,6 +249,14 @@ endif
 
 newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
+
+# Linux/GNU ld: reuse the real engine objects with a windowless test entry.
+.PHONY: test-shield-empty
+test-shield-empty: $(OBJFILES)
+	@set -e; out=$$(mktemp -d); trap 'rm -rf "$$out"' EXIT; \
+	$(CC) $(CFLAGS) -I. test/unit/shield_empty_test.cpp $(OBJFILES) $(LIBS) \
+	  -Wl,--wrap=main -o "$$out/shield_empty_test"; \
+	SDL_AUDIODRIVER=dummy "$$out/shield_empty_test"
 
 clean:
 	rm -rf $(OBJFILES) $(DEPFILES) newtonia newtonia.exe newtonia-arm64 newtonia-x86_64 flavor.stamp
@@ -445,9 +490,13 @@ root, which creates ./sdk/, or point STEAM_SDK at an existing unzip)
   endif
 endif
 STEAM_CFLAGS = $(CFLAGS) -DSTEAM_BUILD -I$(STEAM_SDK)/public
-STEAM_OBJFILES := $(patsubst %.cpp,%.steam.o,$(ALL_SRCS))
+# Object-name tag: `steam` for the host build, `sniper` when
+# build_steam_sniper.sh builds inside Valve's runtime container, so the two
+# never share (glibc-incompatible) objects.
+STEAM_OBJ_TAG ?= steam
+STEAM_OBJFILES := $(patsubst %.cpp,%.$(STEAM_OBJ_TAG).o,$(ALL_SRCS))
 ifeq ($(UNAME), Darwin)
-  STEAM_OBJFILES += macos_window.steam.o
+  STEAM_OBJFILES += macos_window.$(STEAM_OBJ_TAG).o
   STEAM_RUNTIME = libsteam_api.dylib
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/osx/libsteam_api.dylib
   STEAM_LINK = -L. -lsteam_api
@@ -470,7 +519,14 @@ STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 
 .PHONY: steam steam-clean
 
-steam: newtonia-steam steam_appid.txt
+# The Steam Input action manifest rides beside the binary (steam_input.cpp
+# hands Steam its absolute path — STEAMINPUT.md §2).
+STEAM_ACTIONS = game_actions_$(STEAM_APPID).vdf
+# The exported default layouts (steam/controller_*.vdf) ride beside it —
+# the portal names each by its bare file name.
+STEAM_LAYOUTS = $(notdir $(wildcard steam/controller_*.vdf))
+STEAM_MANIFEST = steam_input_manifest.vdf
+steam: newtonia-steam steam_appid.txt $(STEAM_ACTIONS) $(STEAM_MANIFEST) $(STEAM_LAYOUTS)
 ifeq ($(UNAME), Darwin)
 	# Also wrap the Steam binary in Newtonia.app so macOS treats it as a real
 	# app: window activation/focus, Game Mode, and App Nap suppression all key
@@ -490,6 +546,9 @@ ifeq ($(UNAME), Darwin)
 	rm -rf Newtonia.app/Contents/Resources/audio
 	cp -r audio Newtonia.app/Contents/Resources/audio
 	cp steam_appid.txt Newtonia.app/Contents/Resources/steam_appid.txt
+	cp $(STEAM_ACTIONS) Newtonia.app/Contents/Resources/$(STEAM_ACTIONS)
+	cp $(STEAM_MANIFEST) Newtonia.app/Contents/Resources/$(STEAM_MANIFEST)
+	for f in $(STEAM_LAYOUTS); do cp $$f Newtonia.app/Contents/Resources/$$f; done
 	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 	sed 's/$${EXECUTABLE_NAME}/Newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
 	@echo "Bundled Newtonia.app (Steam build) - launch via Steam for overlay/presence."
@@ -507,13 +566,23 @@ newtonia-steam: $(STEAM_OBJFILES) $(STEAM_RUNTIME)
 steam_appid.txt:
 	echo $(STEAM_APPID) > $@
 
-steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app
+$(STEAM_ACTIONS): steam/game_actions_4536720.vdf
+	cp $< $@
 
-%.steam.o: %.cpp
+controller_%.vdf: steam/controller_%.vdf
+	cp $< $@
+
+$(STEAM_MANIFEST): steam/steam_input_manifest.vdf
+	cp $< $@
+
+steam-clean:
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt $(STEAM_ACTIONS) $(STEAM_MANIFEST) $(STEAM_LAYOUTS) Newtonia.app \
+	  $(wildcard *.sniper.o */*.sniper.o *.sniper.d */*.sniper.d)
+
+%.$(STEAM_OBJ_TAG).o: %.cpp
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
 
-%.steam.o: %.mm
+%.$(STEAM_OBJ_TAG).o: %.mm
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
 
 -include $(DEPFILES)

@@ -12,6 +12,7 @@
 #include "presence.h"
 #include "glstarfield.h"
 #include "mat4.h"
+#include "pad.h"
 #include "menu.h"
 #include "menu_select.h"
 #include "net_identity.h"
@@ -352,7 +353,7 @@ NetLobby::NetLobby()
   // getGamepads() is four nulls with nothing connected), so SDL
   // over-counts there — a real pad reveals the picker on its first input.
 #ifndef __EMSCRIPTEN__
-  controller_seen_ = SDL_NumJoysticks() > 0;
+  controller_seen_ = pad_count() > 0;
 #endif
   // Warm the platform verification credential (NETPLAY.md V1): minting a
   // Steam Web-API ticket is async, so kick it off the moment the lobby opens
@@ -1558,7 +1559,7 @@ void NetLobby::waiting_room_start() {
   seated_.clear();  // the sessions are the game's now
   NET_LOG("[lobby] waiting room: starting with %d peer(s)\n",
           (int)peers.size());
-  GLGame *game = new GLGame(peers, (SDL_GameController *)0);
+  GLGame *game = new GLGame(peers, PAD_NONE);
   game->net_set_worker_session(used_worker_);
   game->net_lan_beacon_name_ = lan_beacon_name_;
   if (signal_) {
@@ -2360,7 +2361,7 @@ void NetLobby::tick(int delta) {
           // room open all game so the peer can rejoin (M2-4).
           NetSession *session = session_;
           session_ = nullptr;
-          GLGame *game = new GLGame(session, (SDL_GameController *)0);
+          GLGame *game = new GLGame(session, PAD_NONE);
           game->net_set_worker_session(used_worker_);
           game->net_set_peer_jid(paired_jid_);  // scope in-game Identity events
           game->net_apply_peer_attestation(attested_peer_);
@@ -2475,7 +2476,7 @@ void NetLobby::tick(int delta) {
 
         NetSession *session = session_;
         session_ = nullptr;
-        GLGame *game = new GLGame(s, session, (SDL_GameController *)0);
+        GLGame *game = new GLGame(s, session, PAD_NONE);
         game->net_room_code_ = room_code_;  // enables client auto-rejoin
         game->net_set_worker_session(used_worker_);
         game->net_apply_peer_attestation(attested_peer_);
@@ -2862,12 +2863,22 @@ void NetLobby::draw() {
         // typing AND has its own backspace, so a delete key hint is
         // noise there (Glenn). B still backs out of a highlighted LAN
         // row and deletes a typed char — it's just not advertised.
-        if (controller_seen_ && !floating_kb_up_)
-          Typer::draw_centered(0, -48,
-                               floating_kb_available_
-                                   ? "X - PASTE   Y - KEYBOARD"
-                                   : "A - TYPE   B - DELETE   X - PASTE",
-                               sz);
+        if (controller_seen_ && !floating_kb_up_) {
+          // In the pad's own vocabulary and, under Steam Input, its own
+          // layout (pad.h): a DualShock pilot reads shapes, not letters
+          // that pad doesn't print, and a remapped pad reads its remap.
+          char keys[96];
+          if (floating_kb_available_)
+            snprintf(keys, sizeof(keys), "%s - PASTE   %s - KEYBOARD",
+                     pad_action_label_any(PAD_ACT_PASTE),
+                     pad_action_label_any(PAD_ACT_KEYBOARD));
+          else
+            snprintf(keys, sizeof(keys), "%s - TYPE   %s - DELETE   %s - PASTE",
+                     pad_action_label_any(PAD_ACT_CONFIRM),
+                     pad_action_label_any(PAD_ACT_BACK),
+                     pad_action_label_any(PAD_ACT_PASTE));
+          Typer::draw_centered(0, -48, keys, sz);
+        }
         if (grid) {
           draw_picker();
           // LAN host rows under the picker grid (grid bottom ~ -204):
@@ -2911,11 +2922,12 @@ void NetLobby::draw() {
             // 14 extra under the last row: a SELECTED row's size-18
             // glyphs reach ~36 below their anchor, which left the hint
             // nearly touching the name (Glenn's screenshot).
-            Typer::draw_centered(0, -174.0f - (float)show * 46.0f,
-                                 controller_seen_
-                                     ? "UP/DOWN AND A TO JOIN"
-                                     : "UP/DOWN AND ENTER TO JOIN",
-                                 10);
+            char join[64];
+            snprintf(join, sizeof(join), "UP/DOWN AND %s TO JOIN",
+                     controller_seen_
+                         ? pad_action_label_any(PAD_ACT_CONFIRM)
+                         : "ENTER");
+            Typer::draw_centered(0, -174.0f - (float)show * 46.0f, join, 10);
           }
         }
       }

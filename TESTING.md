@@ -27,11 +27,174 @@ touches the Steam API against it:
 ```sh
 g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 \
     net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp steam_keyboard.cpp \
-    steam_identity.cpp steam_identity_verify.cpp
+    steam_identity.cpp steam_identity_verify.cpp steam_input.cpp pad.cpp glut.cpp
 ```
+
+`steam_input.cpp` is the Steam Input API pad backend (STEAMINPUT.md): it is
+an empty TU outside `STEAM_BUILD`, so this gate is the ONLY compile of it
+short of the deploy. The stub's `ISteamInput` carries every method it calls
+and every `k_EInputActionOrigin_*` / `k_ESteamInputType_*` member its
+origin table names — on an SDK bump re-check those NAMES against the real
+`isteaminput.h` (a renamed enumerator fails the deploy build, not this
+gate, if the stub is left stale).
 
 When adding a Steamworks call: verify the signature against the SDK docs /
 headers first, add it to the stub, then use it in game code.
+
+### Pad glyph vocabulary unit test (no SDL runtime needed)
+
+The pure half of `pad_style.h` — the per-style button-label table and the
+SDL-type / device-name / `NEWTONIA_PAD_STYLE` classifiers — is header-inline,
+so the test links nothing:
+
+```sh
+g++ -std=c++11 -I. -I/usr/include/SDL2 test/unit/pad_style_test.cpp -o /tmp/pad_style_test && /tmp/pad_style_test
+```
+
+It pins the contract `Typer::draw_button` relies on (face buttons are the
+only one-character labels, and the PlayStation shapes are control bytes)
+and the name fallback's edge (`Wireless Controller` is the DualShock 4's
+bare HID name, `Xbox Wireless Controller` is not a DualShock). The runtime
+half — the per-pad cache behind the pad seam (`pad.cpp`) and the Steam
+Input origin lookup — needs a real pad; `NEWTONIA_PAD_STYLE=ps5` forces the
+vocabulary for a screenshot pass without one.
+
+### Pad action vocabulary vs. the Steam Input manifest (no SDL runtime needed)
+
+`pad.h`'s action table (one entry per In-Game Action, in its set, with the
+SDL button the Steam backend synthesizes for it and the SDL path labels it
+with) is pinned against `steam/game_actions_4536720.vdf`, which the game
+reads by NAME at runtime — so a rename on either side fails here rather
+than as an action that silently never fires:
+
+```sh
+g++ -std=c++11 -I. -I/usr/include/SDL2 test/unit/pad_actions_test.cpp -o /tmp/pad_actions_test && /tmp/pad_actions_test
+```
+
+Run from the repo root (it opens the manifest by relative path). It also
+checks that digital actions within a set synthesize distinct SDL buttons,
+that nothing in the manifest is unknown to the game, and the hard-coded
+positions the consumers switch on (fire = A, confirm = A, pause = Start …).
+The Steam side itself — action sets switching with the screen, origins
+following a remap, hot-plug through `GetConnectedControllers` — is
+field-verified through the library entry (STEAMINPUT.md §7 M2/M3 matrix,
+`platform-builds` skill).
+
+### Save write failure regression test (Linux)
+
+```sh
+bash test/unit/savegame.sh
+```
+
+Links the real save serializer (over `atomic_file.cpp`, the shared
+checked-write primitive every pref-path data file goes through) with GNU
+linker wrappers to inject open, write, close and replacement failures, plus
+buffered writes to `/dev/full`.
+For both solo and online saves it checks failure reporting, preservation of
+the previous save, temporary-file cleanup, and successful replacement after
+an interrupted attempt. Uses isolated temporary player data and runs in
+`linux.yml`; only SDL2 development headers and its library are needed.
+
+### New-install touch layout defaults unit test (Linux)
+
+```sh
+bash test/unit/preferences.sh
+```
+
+Links the real `preferences.cpp` (over `atomic_file.cpp`; the mixer and
+IDBFS seams stubbed) and drives `load_preferences()` against a fresh
+`XDG_DATA_HOME` per case: an empty pref path is a NEW install (ONE HAND +
+RIGHT, written to the INI on the spot so the choice survives the
+stats/savegame files play creates next), while an INI without the keys —
+or no INI beside any other game file, the never-changed-a-setting mobile
+install — keeps the classic TWO HANDS + CENTRE and writes nothing; explicit
+values win; an INI that exists but fails to READ (a `--wrap`'d `fopen`
+returning EACCES) is never mistaken for a fresh install and is left
+untouched; the peek mode the shot/video harnesses and the signal self-test
+use never decides or writes. Runs in `linux.yml`.
+
+### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
+
+```sh
+bash test/unit/touch_one_hand.sh
+node test/unit/touch_one_hand_web.cjs  # Node + tsc on PATH
+```
+
+Links the real `touch_controls.cpp` against link-time stubs for the three
+`StateManager` entry points it drives (recorded as an event log), the
+`Preferences` global, the zoom-zone lookups and the safe inset, with
+`SDL_GetTicks` `--wrap`ped to a fake clock so a 500 ms window is stepped in
+one line. Each scenario runs the mobile entry points' loop (events, the
+per-tick joystick apply, `touch_one_hand_tick`) and asserts the held
+deflection (`touch_controls.h`): steer-lift-tap-tap-tap fires one shot per
+tap and selects both joystick axes from the new tap location at the saved
+base. Tapping the old nub preserves its direction; tapping a new location
+updates it. All four diagonals, horizontal inputs and centre-to-neutral
+are covered. Small tap wobble never steers, even outside the ship's deadzone.
+Every steering-finger release immediately clears input,
+including tap/fire-hold and long-press releases. The saved direction remains
+available at 499 ms and expires at 500 ms after each release; long gaps
+cannot leave an input active or restart stale steering. Quick changes immediately
+before lift must remember the latest full deflection, including reversals. Sparse
+motion, short new drags, centred/reversed axes, reset and gate drops exercise the
+handoff. A 450 ms lift-to-tap gap resumes with the ring, joystick nub and action
+buttons at the previous anchor. Taps, neutral releases and deliberate drags
+keep that anchor through the 500 ms window; holding longer than 500 ms does
+not move it. Only a new press after expiry relocates it. Intro-boundary clearing
+is checked with released memory and a stationary resumed finger while
+tap-to-start remains enabled. Second-finger taps and long presses are also
+covered. Native tests
+run in `linux.yml`.
+
+The web test compiles the complete production TypeScript touch UI factory into a
+temporary directory and executes them with a stub DOM and deterministic
+clock. It checks resumed tap chains, long gaps, memory expiry after every release,
+last-moment direction changes, horizontal input, centred/reversed axes,
+sparse motion, fresh drags, cancellation without a shot, and gate drop under a held
+finger. Page-hide and visibility events also clear active input and saved direction with the online
+gameplay gate still open, release gesture ownership when touchcancel never
+arrives, and cancel pending fire gestures. Action-button checks cover multiple
+held fingers, key release on backgrounding, fresh presses after resume, and
+late releases from cancelled fingers. Repositioning the resting joystick
+preserves its held-input indicator. It runs in `web.yml`. Physical phone feel
+needs an on-device check.
+
+One-hand action buttons retain the joystick base for their entire hold and
+for 1000 ms after release. Regression checks cover all three buttons, slow
+trips to the action, long holds, return at 999 ms, expiry at 1000 ms, reset
+and web cancellation, and restoration of the ordinary 500 ms steering window.
+
+The one-hand Shield button toggles the selected shield on press and leaves it
+active after lift; the next press turns it off, using the same engine state as
+the long-press gesture. Its highlight follows that state. Regression checks
+cover toggle on/off, engine resets, equipment changes under the finger, reset
+after lift, the one-second joystick return, web multiple fingers/cancellation,
+and unchanged two-hand hold-to-shield behavior.
+
+`make NETPLAY=0 test-shield-empty` (Linux/GNU ld, desktop dependencies) links
+the real engine objects with a windowless test entry and dummy audio. Linux CI
+runs the same target. It drains a held Shield, then verifies that one deliberate
+press discards it, selects the next secondary or leaves none, never fires the fallback, and preserves the
+last charge's remaining protection. It also covers inventory wraparound,
+already-off empty Shields, nonempty toggles, and unchanged ordinary releases
+(including empty Shields on pause/intro/input reset). It asserts `shield_active()`
+through disposal and expiry, tests snapshot effect restoration and reset, and
+checks host queued-press disposal without firing the fallback. The native and
+web gesture suites verify that an empty-Shield button tap or long press sends
+that deliberate press even while the Shield is toggled on. An integrated case
+runs the real touch button through `StateManager`'s held-key filter into `Ship`:
+toggle on, exhaust, tap to discard, then tap the replacement weapon. The empty
+tap must release the existing key latch before pressing and leave it released
+after disposal. This case reproduced the Android failure when only the press
+was sent; separate gesture-event and inventory tests had missed the filter.
+
+The same suites check the moving one-hand action cluster: relocation at a new
+base, stable placement through drag/lift, correct button key down/up, freezing
+while an action finger is held, and reset/resize recovery. Native geometry is
+swept over a viewport grid in portrait, landscape, and square layouts for all
+handedness settings, checking disjoint hit regions and clearance from the
+stick, edges, zoom and pause. The web test runs the complete production DOM
+factory and checks the button elements and their actual event handlers.
 
 ## 2. In-binary selftests (headless, no display needed beyond Xvfb)
 
@@ -99,10 +262,11 @@ They differ in two ways worth knowing:
   room per run, reclaimed by the relay's TTL, is the cheaper trade.
 - **Whether a PASS is sufficient.** On the MbedTLS rows it is: they fail
   CLOSED, so a completed handshake proves the bundle wrote, parsed and
-  verified. Windows does NOT fail closed — libdatachannel falls back to
-  UNVERIFIED when no CA is supplied — so `windows.yml` additionally greps
-  for the `verifying server certificates against` line, which is the only
-  tell there. That grep needs `2>&1`: the PASS line is `std::cout` but the
+  verified. On Windows libdatachannel itself falls back to UNVERIFIED when
+  no CA is supplied, so the game refuses to connect there without a bundle
+  (`net_tls_ws_policy`, 2026-09-08) — a PASS now proves the bundle too, but
+  `windows.yml` still greps for the `verifying server certificates against`
+  line as the belt-and-braces tell. That grep needs `2>&1`: the PASS line is `std::cout` but the
   TLS line is `SDL_Log`, i.e. stderr. macOS cannot grep it at all — SDL
   routes through NSLog on Apple, which reaches a terminal, not a CI pipe.
 
@@ -243,7 +407,8 @@ Two things to confirm either way:
 1. **The log line** — `net: tls - verifying server certificates against
    <path>`, emitted once by the first socket that opens. Anything else is a
    finding: `no CA bundle on disk` means the write failed (fatal on the
-   MbedTLS rows above, silently UNVERIFIED on Windows), and `VERIFICATION
+   MbedTLS rows above; on Windows the connect is REFUSED, `net_tls_ws_policy`,
+   since libdatachannel would otherwise go unverified), and `VERIFICATION
    DISABLED` means `NEWTONIA_NET_TLS_INSECURE` leaked into the environment.
 2. **The connection actually completes** — a selftest PASS on desktop, a
    room code (or board rows) on mobile. Either way it is a real round trip
@@ -252,9 +417,10 @@ Two things to confirm either way:
    socket that never opens.
 
 What a failure means, by platform: on MbedTLS builds the handshake fails
-CLOSED (no online play at all — loud); on Windows libdatachannel falls back
-to unverified when no CA is supplied, so a failed bundle write is SILENT
-there and the log line is the only tell. MbedTLS is also the likelier place
+CLOSED (no online play at all — loud); on Windows libdatachannel would fall
+back to unverified when no CA is supplied, so since 2026-09-08 the game
+refuses the connect there instead (`net_tls_ws_policy`) — also loud, with a
+`REFUSING to connect` log line beside the `no CA bundle` one. MbedTLS is also the likelier place
 for a surprise: it parses the bundle itself, and `mbedtls_x509_crt_parse_file`
 SKIPS certificates it dislikes rather than failing (libdatachannel throws
 only on a negative return), so a root could go missing with no error at all.
@@ -277,9 +443,11 @@ libdatachannel refuses to verify on at all, so that run is the field proof
 of the patch's SECOND hunk — and the proof is two-sided: the game compiles
 only if `caCertificatePemFile` exists, and `git apply` is atomic, so a
 Windows build that exists at all carries the `#ifdef _WIN32` relaxation too.
-It is also the only row that falls back to UNVERIFIED rather than failing
-closed, which is why the log line is the thing to re-check there after any
-libdatachannel bump: a silent regression looks exactly like success.
+It is also the one row where the LIBRARY falls back to UNVERIFIED rather
+than failing closed — the game refuses the connect itself on that path
+(`net_tls_ws_policy`) — which is why the log line is still the thing to
+re-check there after any libdatachannel bump: a regression in the patch's
+second hunk would look exactly like success.
 
 Xbox shares the MbedTLS trust path proven three times above, and console
 runtime work belongs to the private repo (CLAUDE.md) — the canaries here
@@ -319,6 +487,19 @@ node test/steam_verify_test.mjs          # V1 Steam verifier, mocked Valve (unit
 node test/play_games_verify_test.mjs     # V2 Play Games verifier, mocked Google (unit)
 node test/game_center_verify_test.mjs    # V3 Game Center verifier, real RSA + synthetic
                                          #   Apple cert, mocked fetch (unit)
+node test/room_unit_test.mjs             # Room DO: alarm deadlines, frame bounds/budget,
+                                         #   verify bound to the room generation (unit, no wrangler)
+node test/frame_bounds_test.mjs          # the same bounds on workerd's sockets: allowlisted
+                                         #   offer/answer rebuild, mid cap, oversized frame
+                                         #   dropped (socket stays open), count + byte
+                                         #   floods close 1008 with the peer untouched —
+                                         #   the flood checks WAIT for the close (8 s cap,
+                                         #   inside the 10 s window), never a fixed sleep:
+                                         #   a starved runner failed all three on a fixed
+                                         #   1.5 s (deploy-signal run 50, 2026-09-09)
+node test/reclaim_chain_test.mjs         # reclaim CHAIN: H2 takes over, drops while H1 may
+                                         #   still be closing -> grace, H3 reclaims, relay
+                                         #   intact; a deliberate close still ends the room
 # The identity protocol test needs the FAKE_VERIFY dev flag set on the relay:
 #   npx wrangler dev --local --port 8787 --var FAKE_VERIFY:1
 node test/identity_test.js               # V0 identity attest/broadcast/replay
@@ -340,14 +521,42 @@ see `board/README.md`:
 cd board
 node test/validate_test.mjs        # .nrp header/record-framing validation (unit)
 node test/identity_gate_test.mjs   # attestation admission gate (unit)
+node test/retention_test.mjs       # retention cron + snapshot publish (real SQLite via test/d1_sqlite.mjs)
+node test/snapshot_guard_test.mjs  # site snapshot single-flight / backoff / watermark
+node test/submit_race_test.mjs     # same-run upload race: row/blob consistency (unit)
+node test/submit_storage_test.mjs  # submission storage ownership on real SQLite: racing uploads, commit-safe cleanup
+node test/budget_test.mjs          # per-IP limiter fail-closed + per-connection budgets
+# (the three SQL-driven units run the worker's real statements on node:sqlite —
+#  Node 22.13+; the ExperimentalWarning it prints is expected)
 # Protocol test against the real worker under miniflare (local D1/R2):
 npx wrangler@4 dev --local --port 8788 --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 &
 node test/board_test.mjs           # submit/supersede/dedup/fetch round-trip
+# Site read endpoints + the retention DEMOTE pass, one boot (production
+# season whitelist; --test-scheduled exposes /__scheduled for the cron):
+npx wrangler@4 dev --local --test-scheduled --port 8790 --persist-to .wrangler-site \
+    --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500 &
+node test/site_test.mjs            # snapshot build/staleness/cron refresh, replay GET
+node test/demote_test.mjs          # 102 accounts fill one board; the cron strips the two
+                                   #   rows past the top 100 (WS no-replay, site 404) and
+                                   #   deletes their objects (bucket listed via wrangler's
+                                   #   local explorer API), keeps ranks 1..100 and their
+                                   #   objects, republishes with rev advanced
 ```
 
-Both suites gate `deploy-board.yml`. `SUBMIT_LIMIT` widens the per-IP
-submit window for the test's burst; like `FAKE_VERIFY`, never set it in
+Both suites gate `deploy-board.yml`. `SUBMIT_LIMIT`/`CONN_LIMIT` widen the
+per-IP windows for the tests' bursts; like `FAKE_VERIFY`, never set them in
 production.
+
+`board/test/manual_resubmit.mjs` is a hand tool, not a gate: it submits ONE
+run repeatedly at scores you choose (default 500 → 300 → 700; a real `.nrp`
+path patches the score into a copy of its header) and prints the reply, the
+site snapshot's revision + rows and the bucket's object keys after each step,
+so the worker-side resubmission rules (LEADERBOARD.md "Workers review
+2026-09-08": a lower score refused before any write, a higher one placed under
+a fresh key with the old object deleted and the snapshot current on the next
+view) can be watched directly — the game client never produces a lower
+resubmission itself. Same `wrangler dev --local` boot as above, port 8788
+(`BOARD_PORT`), `BOARD_NAME=OTHER` for a cross-account collision.
 
 ## 4. End-to-end drivers (`test/e2e/`)
 
@@ -420,10 +629,20 @@ test/e2e/hostresume.sh # host process-death resume: SIGKILL the HOST mid-game,
                      # relaunch within the reclaim grace, drive the menu's
                      # RESUME HOSTING row -> room reclaimed, client auto-rejoin
                      # reconnects, generation survives via the online save;
-                     # also guards the paused-unpause RX-watchdog fix and
-                     # asserts quit-to-menu deletes the ticket + online save.
-                     # Per-instance XDG_DATA_HOME (the relaunched host must
-                     # find ITS ticket; the joiner must never see one).
+                     # then the RECLAIM CHAIN: SIGKILL the resumed host the
+                     # moment its reclaim is confirmed and resume a THIRD
+                     # instance on the same ticket -> reclaimed + rejoined
+                     # again (the relay used to refuse the second reclaim
+                     # while the superseded socket was still closing —
+                     # Workers review 2026-09-08; the race itself is pinned
+                     # by signal/test/reclaim_chain_test.mjs, this proves the
+                     # chain end to end on a real relay); also guards the
+                     # paused-unpause RX-watchdog fix and asserts quit-to-menu
+                     # deletes the ticket + online save. Per-instance
+                     # XDG_DATA_HOME (the relaunched host must find ITS
+                     # ticket; the joiner must never see one). Point
+                     # NEWTONIA_SIGNAL_URL at the beta relay to run the chain
+                     # against real Durable Objects.
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
 test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH

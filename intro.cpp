@@ -9,6 +9,7 @@
 #include "asteroid_drawer.h"
 #include "wrapped_point.h"
 #include "view/overlay.h"
+#include "touch_controls.h"
 #include "typer.h"
 
 #include "gl_compat.h"
@@ -25,6 +26,9 @@ Intro::Intro(GLGame *game, Kind kind, const char *name,
   name(name),
   asteroids_(std::move(display_asteroids)),
   hazard_kind(hazard_kind) {
+  // The fire gate stays open so taps can start the level. It therefore
+  // cannot clear remembered steering for us while this state is active.
+  touch_one_hand_clear_hold();
   for (Asteroid *a : asteroids_) {
     // Park the display asteroids at the world centre so the fixed intro
     // camera (which looks at the focus point) keeps them on screen while
@@ -107,6 +111,9 @@ Intro::~Intro() {
 }
 
 void Intro::dismiss() {
+  // Gestures made on the intro can also arm memory. Drop it before the
+  // ship's controls are released, including a stationary resumed nub.
+  touch_one_hand_clear_hold();
   if (music_channel >= 0) {
     Mix_HaltChannel(music_channel);
     music_channel = -1;
@@ -210,7 +217,13 @@ void Intro::draw() {
   glViewport(0, 0, window.x(), window.y());
 
   Point focus_point = focus();
-  float proj[16]; mat4_perspective(proj, 85.0f, window.x() / (float)window.y(), 100.0f, 2000.0f);
+  // Player 1's live FOV (the zoom prefs fold into view_angle()), not a
+  // fixed 85: the frames on either side of this screen are drawn at the
+  // zoomed view, and a hardcoded default made the starfield jump ~20% on
+  // open and dismissal at CLOSEST/WIDEST. Full-window, so no split factor.
+  float fov_deg = game->players->empty() ? 85.0f
+                                         : game->players->front()->view_angle();
+  float proj[16]; mat4_perspective(proj, fov_deg, window.x() / (float)window.y(), 100.0f, 2000.0f);
   float view[16]; mat4_lookat(view, 0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
   float pv[16]; mat4_mul(pv, proj, view);
 
@@ -308,8 +321,14 @@ void Intro::draw() {
     // PAUSED in place of the flashing start prompt.
     Typer::draw_centered(0, top * 0.75f, "PAUSED", 20);
   } else if ((time / 700) % 2 == 0) {
+    // One-handed touch has no fire button — a tap anywhere IS the fire
+    // input there (the gesture layer's stale-true gate, touch_controls.h),
+    // so the prompt says what the finger actually does.
     Typer::draw_centered(0, top * 0.75f,
-                         is_touch_mode() ? "TAP FIRE TO START" : "PRESS FIRE TO START", 20);
+                         is_touch_mode()
+                             ? (touch_one_handed() ? "TAP TO START"
+                                                   : "TAP FIRE TO START")
+                             : "PRESS FIRE TO START", 20);
   }
   Typer::draw_centered(0, -top * 0.5f, name, 26);
 }
@@ -415,10 +434,10 @@ void Intro::focus_gained() {
   if (music_channel >= 0 && !paused) Mix_Resume(music_channel);
 }
 
-void Intro::controller_added(SDL_GameController *ctrl) {
-  if (game != NULL) game->controller_added(ctrl);
+void Intro::controller_added(PadId id) {
+  if (game != NULL) game->controller_added(id);
 }
 
-void Intro::controller_removed(SDL_JoystickID id) {
+void Intro::controller_removed(PadId id) {
   if (game != NULL) game->controller_removed(id);
 }

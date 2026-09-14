@@ -11,8 +11,11 @@
 #include "net_lobby.h"
 #include "net_policy.h"
 #include "net_resume.h"
+#include "net_session.h"  // net_state_sane: the local save is ingest too
+#include "pad.h"
 #include "net_transport.h"
 #include "preferences.h"
+#include "touch_controls.h"
 #include "presence.h"
 #include "replay.h"
 #include "stats.h"
@@ -58,6 +61,24 @@ static const int NUM_VOLUME = 5;
 static const char* CAMERA_LABELS[] = {"FIXED", "ROTATE"};
 static const int NUM_CAMERA = 2;
 
+// The CAMERA sub-menu's zoom rows. camera_zoom scales the visible span in
+// tan-space over the classic 85-degree view (NORMAL is exactly that view);
+// the range is deliberately modest — WIDEST already spans past the gen-0
+// wrap on wide monitors, and quantum observation stays pinned to the
+// classic view either way (GLGame::is_point_faced_by_any_player). The
+// table itself lives in preferences.h: the in-game touch zoom zones step
+// the same five values.
+static const float *const ZOOM_VALUES = CAMERA_ZOOM_VALUES;
+static const char *const *const ZOOM_LABELS = CAMERA_ZOOM_LABELS;
+static const int NUM_ZOOM = CAMERA_ZOOM_STEPS;
+
+// Speed-follow zoom (PlayerKeys::speed_zoom): the view widens with the
+// ship's speed on top of the zoom row, eased on the sim clock
+// (GLShip::smooth_camera). SUBTLE is the default.
+static const float SPEED_ZOOM_VALUES[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+static const char* SPEED_ZOOM_LABELS[] = {"OFF", "SUBTLE", "NORMAL", "HIGH", "MAX"};
+static const int NUM_SPEED_ZOOM = 5;
+
 // Auto-record replays (REPLAY.md): 0 = OFF, 1 = ON. Default is now ON for
 // fresh installs (the low-end field pass cleared the recorder on real
 // hardware, 2026-07-28), so this row is mostly an opt-OUT — and the reason
@@ -66,6 +87,23 @@ static const int NUM_CAMERA = 2;
 // extras), and hand-editing preferences.ini is not a player-facing answer.
 static const char* RECORD_LABELS[] = {"OFF", "ON"};
 static const int NUM_RECORD = 2;
+// Touch input method (Preferences::touch_one_hand): the classic two-hand
+// layout (left-half joystick + shoot/mine/boost buttons) vs the one-hand
+// whole-screen stick (tap fires the primary, a long press the secondary —
+// touch_controls.h). Touch row list only: desktop/controller input has no
+// OSD to re-arrange, and the desktop list sits at its row budget.
+static const char* INPUT_LABELS[] = {"TWO HANDS", "ONE HAND"};
+static const int NUM_INPUT = 2;
+// Handedness (Preferences::touch_handedness), touch list only. One hand:
+// LEFT/RIGHT park the stick's resting ring where that thumb sits, CENTRE
+// keeps it centred. LEFT also MIRRORS the inputs (touch_layout_mirrored):
+// pause + zoom column in one hand, the whole layout in two hands — stick
+// right, shoot/mine/boost left. CENTRE is what old installs sit on (and
+// what an INI without the key means); a new install starts on RIGHT with
+// ONE HAND (load_preferences). RIGHT and CENTRE are both the classic
+// arrangement in two-hand mode.
+static const char* HANDEDNESS_LABELS[] = {"LEFT", "CENTRE", "RIGHT"};
+static const int NUM_HANDEDNESS = 3;
 // leaderboard_prompts: ON = ask at game over (the per-run opt-out), OFF =
 // upload a qualifying best automatically, still showing the card's
 // UPLOADING/UPLOADED status text (decided with Glenn 2026-08-03). Labelled
@@ -75,19 +113,26 @@ static const char* LEADERBOARD_LABELS[] = {"AUTO", "ASK"};
 static const int NUM_LEADERBOARD = 2;
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
-// 2=camera, 3=star density, 4=auto-record replays, 5=leaderboard prompts,
-// 6=master volume, 7=music volume (the two AUDIO sub-menu rows), 8=the
-// AUDIO row itself — a sub-menu OPENER, the options list's first: it
-// cycles nothing, draws no steps, and confirm/tap/left/right all open the
-// audio screen. P2 rows are desktop-only — mobile (touch) shows Player 1
-// plus the shared options. Options is desktop/controller-only today (see
-// Menu::show_options_row), so the touch list is future-proofing.
+// 2=camera fixed/rotate, 3=star density, 4=auto-record replays,
+// 5=leaderboard prompts, 6=master volume, 7=music volume (the two AUDIO
+// sub-menu rows), 8=the AUDIO row itself — a sub-menu OPENER: it cycles
+// nothing, draws no steps, and confirm/tap/left/right all open the audio
+// screen; 9=the CAMERA row, the second opener (its sub-screen holds the
+// per-player smoothing/rotation/zoom rows — four rows per player would
+// blow the flat list's budget, the same reason AUDIO went a level down);
+// 10=zoom, 11=speed-follow zoom (CAMERA sub-menu rows); 12=touch input
+// method, 13=one-hand handedness (touch list only — see INPUT_LABELS /
+// HANDEDNESS_LABELS above). P2 rows are
+// desktop-only — mobile (touch) shows Player 1 plus the shared options.
+// Options is desktop/controller-only today (see Menu::show_options_row),
+// so the touch list is future-proofing.
 namespace { struct OptRow { int kind; int player; const char *name; }; }
 static const OptRow OPT_ROWS_DESKTOP[] = {
-  {0, 0, "P1  SENSITIVITY"}, {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  CAMERA"},
-  {0, 1, "P2  SENSITIVITY"}, {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  CAMERA"},
-  {0, 2, "P3  SENSITIVITY"}, {1, 2, "P3  SMOOTHING"}, {2, 2, "P3  CAMERA"},
-  {0, 3, "P4  SENSITIVITY"}, {1, 3, "P4  SMOOTHING"}, {2, 3, "P4  CAMERA"},
+  {0, 0, "P1  SENSITIVITY"},
+  {0, 1, "P2  SENSITIVITY"},
+  {0, 2, "P3  SENSITIVITY"},
+  {0, 3, "P4  SENSITIVITY"},
+  {9, 0, "CAMERA"},
   {3, 0, "STAR  DENSITY"},
   {8, 0, "AUDIO"},
   {4, 0, "RECORD  REPLAYS"},
@@ -96,12 +141,40 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
-  {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
+  {0, 0, "SENSITIVITY"},
+  {12, 0, "INPUT METHOD"},
+  {13, 0, "HANDEDNESS"},
+  {9, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {8, 0, "AUDIO"},
   {4, 0, "RECORD REPLAYS"},
   {5, 0, "LEADERBOARD UPLOAD"},  // LAST — see the desktop table
 };
+// The CAMERA sub-screen's rows: everything about what the camera shows,
+// per player — follow smoothing, fixed/rotate (named ROTATION here; under
+// a CAMERA heading a row also called CAMERA read as a stutter), base zoom
+// and the speed-follow zoom amount. 16 desktop rows — the flat list's
+// proven budget (the pre-sub-menu options list held exactly 16).
+static const OptRow OPT_ROWS_CAMERA_DESKTOP[] = {
+  {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  ROTATION"}, {10, 0, "P1  ZOOM"}, {11, 0, "P1  SPEED  ZOOM"},
+  {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  ROTATION"}, {10, 1, "P2  ZOOM"}, {11, 1, "P2  SPEED  ZOOM"},
+  {1, 2, "P3  SMOOTHING"}, {2, 2, "P3  ROTATION"}, {10, 2, "P3  ZOOM"}, {11, 2, "P3  SPEED  ZOOM"},
+  {1, 3, "P4  SMOOTHING"}, {2, 3, "P4  ROTATION"}, {10, 3, "P4  ZOOM"}, {11, 3, "P4  SPEED  ZOOM"},
+};
+static const OptRow OPT_ROWS_CAMERA_TOUCH[] = {
+  {1, 0, "SMOOTHING"},
+  {2, 0, "ROTATION"},
+  {10, 0, "ZOOM"},
+  {11, 0, "SPEED ZOOM"},
+};
+static int camera_row_count() {
+  return is_touch_mode()
+             ? (int)(sizeof(OPT_ROWS_CAMERA_TOUCH) / sizeof(OPT_ROWS_CAMERA_TOUCH[0]))
+             : (int)(sizeof(OPT_ROWS_CAMERA_DESKTOP) / sizeof(OPT_ROWS_CAMERA_DESKTOP[0]));
+}
+static const OptRow &camera_row(int r) {
+  return is_touch_mode() ? OPT_ROWS_CAMERA_TOUCH[r] : OPT_ROWS_CAMERA_DESKTOP[r];
+}
 // The AUDIO sub-screen's rows, drawn by the same row loop the options list
 // uses (same columns, same band geometry — a sub-screen that hand-rolled
 // its own layout is exactly the drift menu_select.h exists to prevent).
@@ -277,45 +350,15 @@ static int desktop_confirm_pick(float ny) {
   return y > boundary ? 0 : 1;
 }
 
-static int sensitivity_index_for(float value) {
-  int best = 2;
+// Nearest step to a stored pref value, for every stepped row (hand-edited
+// INIs land on the closest step). One loop over the row's table — this
+// used to be a hand-rolled copy per table, five by the time the zoom rows
+// arrived, differing only in a fallback index no finite value ever reaches.
+static int nearest_value_index(float value, const float *values, int n) {
+  int best = 0;
   float best_dist = 1e6f;
-  for (int i = 0; i < NUM_SENSITIVITY; i++) {
-    float d = value > SENSITIVITY_VALUES[i] ? value - SENSITIVITY_VALUES[i]
-                                             : SENSITIVITY_VALUES[i] - value;
-    if (d < best_dist) { best_dist = d; best = i; }
-  }
-  return best;
-}
-
-static int star_density_index_for(float value) {
-  int best = NUM_STAR_DENSITY - 1;
-  float best_dist = 1e6f;
-  for (int i = 0; i < NUM_STAR_DENSITY; i++) {
-    float d = value > STAR_DENSITY_MULTIPLIERS[i] ? value - STAR_DENSITY_MULTIPLIERS[i]
-                                                   : STAR_DENSITY_MULTIPLIERS[i] - value;
-    if (d < best_dist) { best_dist = d; best = i; }
-  }
-  return best;
-}
-
-static int smoothing_index_for(float value) {
-  int best = 2;
-  float best_dist = 1e6f;
-  for (int i = 0; i < NUM_SMOOTHING; i++) {
-    float d = value > SMOOTHING_VALUES[i] ? value - SMOOTHING_VALUES[i]
-                                           : SMOOTHING_VALUES[i] - value;
-    if (d < best_dist) { best_dist = d; best = i; }
-  }
-  return best;
-}
-
-static int volume_index_for(float value) {
-  int best = NUM_VOLUME - 1;
-  float best_dist = 1e6f;
-  for (int i = 0; i < NUM_VOLUME; i++) {
-    float d = value > VOLUME_VALUES[i] ? value - VOLUME_VALUES[i]
-                                        : VOLUME_VALUES[i] - value;
+  for (int i = 0; i < n; i++) {
+    float d = value > values[i] ? value - values[i] : values[i] - value;
     if (d < best_dist) { best_dist = d; best = i; }
   }
   return best;
@@ -335,15 +378,24 @@ Menu::Menu() :
   // not the game's z=1000 — the star quads size themselves by camera distance.
   starfield(new GLStarfield(Point(default_world_width, default_world_height), star_density_scale(), 0.0f)) {
   for (int i = 0; i < MAX_PLAYERS; i++) {
-    sensitivity_index_[i] = sensitivity_index_for(g_prefs.player_keys[i].keyboard_sensitivity);
-    smoothing_index_[i]   = smoothing_index_for(g_prefs.player_keys[i].camera_smoothing);
+    sensitivity_index_[i] = nearest_value_index(g_prefs.player_keys[i].keyboard_sensitivity,
+                                                SENSITIVITY_VALUES, NUM_SENSITIVITY);
+    smoothing_index_[i]   = nearest_value_index(g_prefs.player_keys[i].camera_smoothing,
+                                                SMOOTHING_VALUES, NUM_SMOOTHING);
     camera_index_[i]      = g_prefs.player_keys[i].rotate_view ? 1 : 0;
+    zoom_index_[i]        = nearest_value_index(g_prefs.player_keys[i].camera_zoom,
+                                                ZOOM_VALUES, NUM_ZOOM);
+    speed_zoom_index_[i]  = nearest_value_index(g_prefs.player_keys[i].speed_zoom,
+                                                SPEED_ZOOM_VALUES, NUM_SPEED_ZOOM);
   }
-  star_density_index_   = star_density_index_for(g_prefs.star_density);
+  star_density_index_   = nearest_value_index(g_prefs.star_density,
+                                              STAR_DENSITY_MULTIPLIERS, NUM_STAR_DENSITY);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
-  master_volume_index_  = volume_index_for(g_prefs.master_volume);
-  music_volume_index_   = volume_index_for(g_prefs.music_volume);
+  input_index_          = g_prefs.touch_one_hand ? 1 : 0;
+  handedness_index_     = g_prefs.touch_handedness;
+  master_volume_index_  = nearest_value_index(g_prefs.master_volume, VOLUME_VALUES, NUM_VOLUME);
+  music_volume_index_   = nearest_value_index(g_prefs.music_volume, VOLUME_VALUES, NUM_VOLUME);
   scan_replays();
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__
@@ -744,13 +796,16 @@ void Menu::draw() {
         currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
-    // The AUDIO sub-screen is the same row machinery over its own table —
-    // same columns, same band, same tap zones; only the heading, the row
-    // source and where BACK leads differ.
+    // The AUDIO and CAMERA sub-screens are the same row machinery over
+    // their own tables — same columns, same band, same tap zones; only the
+    // heading, the row source and where BACK leads differ.
     Typer::draw_centered(0, menu_screen_heading_y(),
-                         audio_mode_ ? "AUDIO" : "OPTIONS", touch ? 30 : 26);
+                         audio_mode_ ? "AUDIO"
+                                     : camera_mode_ ? "CAMERA" : "OPTIONS",
+                         touch ? 30 : 26);
 
-    int n = audio_mode_ ? audio_row_count() : opt_row_count();
+    int n = audio_mode_ ? audio_row_count()
+          : camera_mode_ ? camera_row_count() : opt_row_count();
     // Desktop: one line per option, using the horizontal room — name on the
     // left, numbered choices in the middle, value description on the right.
     // Touch: one big tappable row per option, name left / value right (tap
@@ -782,11 +837,12 @@ void Menu::draw() {
               VALUE_X = 265, CURSOR_R = 457;
 
     for (int row = 0; row < n; row++) {
-      const OptRow &r = audio_mode_ ? audio_row(row) : opt_row(row);
+      const OptRow &r = audio_mode_ ? audio_row(row)
+                      : camera_mode_ ? camera_row(row) : opt_row(row);
 
       int num_steps, cur_idx;
       int rec_override = -1;  // >=0 on the RECORD REPLAYS row when forced
-      bool opener = false;    // the AUDIO row: no steps, no value — it opens
+      bool opener = false;    // the AUDIO/CAMERA rows: no steps, no value — they open
       const char* const *lbl;
       switch (r.kind) {
         case 0: num_steps = NUM_SENSITIVITY;  cur_idx = sensitivity_index_[r.player]; lbl = SENSITIVITY_LABELS;   break;
@@ -796,7 +852,11 @@ void Menu::draw() {
         case 5: num_steps = NUM_LEADERBOARD;  cur_idx = leaderboard_index_;           lbl = LEADERBOARD_LABELS;   break;
         case 6: num_steps = NUM_VOLUME;       cur_idx = master_volume_index_;         lbl = VOLUME_LABELS;        break;
         case 7: num_steps = NUM_VOLUME;       cur_idx = music_volume_index_;          lbl = VOLUME_LABELS;        break;
-        case 8: num_steps = 0; cur_idx = 0; lbl = NULL; opener = true; break;
+        case 8: case 9: num_steps = 0; cur_idx = 0; lbl = NULL; opener = true; break;
+        case 10: num_steps = NUM_ZOOM;        cur_idx = zoom_index_[r.player];        lbl = ZOOM_LABELS;          break;
+        case 11: num_steps = NUM_SPEED_ZOOM;  cur_idx = speed_zoom_index_[r.player];  lbl = SPEED_ZOOM_LABELS;    break;
+        case 12: num_steps = NUM_INPUT;       cur_idx = input_index_;                 lbl = INPUT_LABELS;         break;
+        case 13: num_steps = NUM_HANDEDNESS;  cur_idx = handedness_index_;            lbl = HANDEDNESS_LABELS;    break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -869,12 +929,11 @@ void Menu::draw() {
     // Tappable exit on both layouts — see the replays band note above.
     // Desktop: also the selectable row after the last option (index ==
     // the row count); confirm on it closes, confirm on an option row
-    // cycles that value (matching the touch tap). On the AUDIO sub-screen
-    // the band backs out ONE level, to options, and says so.
+    // cycles that value (matching the touch tap). On the AUDIO/CAMERA
+    // sub-screens the band backs out ONE level, to options, and says so.
     menu_exit_band().draw(
-        audio_mode_
-            ? Typer::cursored("BACK TO OPTIONS",
-                              touch || active_row_ == audio_row_count())
+        (audio_mode_ || camera_mode_)
+            ? Typer::cursored("BACK TO OPTIONS", touch || active_row_ == n)
                   .c_str()
             : touch ? Typer::cursored("EXIT TO MENU", true).c_str()
                     : Typer::cursored("BACK TO MENU",
@@ -979,12 +1038,16 @@ void Menu::draw() {
         if (is_touch_mode()) {
           Typer::draw_centered(0, title_bot - gap, "tap to start", sz);
         } else {
-          bool has_ctrl = false;
-          int nc = SDL_NumJoysticks();
-          for (int i = 0; i < nc; i++) {
-            if (SDL_IsGameController(i)) { has_ctrl = true; break; }
-          }
-          Typer::draw_centered(0, title_bot - gap, has_ctrl ? "press start" : "press enter", sz);
+          bool has_ctrl = pad_count() > 0;
+          // Pad prompt in the plugged-in pad's vocabulary (pad.h): START
+          // on Xbox, OPTIONS on PlayStation — and under Steam Input,
+          // whatever the layout binds the Menu set's start action to.
+          char pad_prompt[48];
+          // Start dismisses it, and so does Confirm — name whichever the
+          // layout binds (pad_action_or).
+          snprintf(pad_prompt, sizeof(pad_prompt), "press %s",
+                   pad_action_label_any(pad_action_or(PAD_NONE, PAD_ACT_START, PAD_ACT_CONFIRM)));
+          Typer::draw_centered(0, title_bot - gap, has_ctrl ? pad_prompt : "press enter", sz);
         }
       }
     } else if (quit_confirm_) {
@@ -1094,28 +1157,27 @@ void Menu::tick(int delta) {
   // event path — a private second latch here made one physical pull confirm
   // twice, once per latch. Max across pads so releasing an idle second pad
   // can't release a latch another pad's held trigger armed.
-  int n = SDL_NumJoysticks();
+  // (A Steam Input pad reads 0 here — its trigger arrives as a
+  // synthesized confirm edge, so the poll has nothing to add.)
+  int n = pad_count();
   if (n > 0) {
-    Sint16 rt_max = 0;
-    SDL_GameController *rt_ctrl = NULL;
-    SDL_JoystickID rt_id = -1;
+    int rt_max = 0;
+    PadId rt_id = PAD_NONE;
     for(int i = 0; i < n; i++) {
-      SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
-      if(!ctrl) continue;
-      Sint16 v = SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+      PadId id = pad_id_at(i);
+      int v = pad_axis(id, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
       if(v > rt_max) {
         rt_max = v;
-        rt_ctrl = ctrl;
-        rt_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+        rt_id = id;
       }
     }
     SDL_Event e;
     e.type = SDL_CONTROLLERAXISMOTION;
     e.caxis.which = rt_id;
     e.caxis.axis = SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
-    e.caxis.value = rt_max;
+    e.caxis.value = (Sint16)rt_max;
     unsigned char k = nav_key_from_controller(e);
-    if(k) nav_input(k, rt_ctrl);
+    if(k) nav_input(k, rt_id);
   }
 }
 
@@ -1124,7 +1186,7 @@ void Menu::controller(SDL_Event event) {
   // through the same ladder the keyboard uses — one decision path per
   // screen, so pad directionals and back work wherever keys do. The pad
   // that confirmed rides along so confirm_selection can bind it to P1.
-  SDL_GameController *src = NULL;
+  PadId src = PAD_NONE;
   unsigned char k = nav_key_from_controller(event, &src);
   if (k) nav_input(k, src);
 }
@@ -1149,14 +1211,14 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   // web_menu_tap() synthesizes a stray keyboard_up('\r') per tap.
   if (is_touch_mode()) return;
 #endif
-  nav_input(key, nullptr);
+  nav_input(key, PAD_NONE);
 #endif
 }
 
 // The single menu decision ladder (see menu.h). Everything that navigates —
 // keyboard, controller buttons/stick, the tick() trigger poll — lands here,
 // so each screen's rules exist exactly once.
-void Menu::nav_input(unsigned char key, SDL_GameController *src) {
+void Menu::nav_input(unsigned char key, PadId src) {
   bool confirm = MenuSelect::is_confirm(key);
   if (attract_mode_) {
     if (confirm) {
@@ -1172,10 +1234,12 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     return;
   }
   if (options_mode_) {
-    // The AUDIO sub-screen shares this ladder over its own row count; the
-    // only structural difference is where back leads (one level up, to
-    // options) — adjust_active_row already reads the right table.
-    int rows = audio_mode_ ? audio_row_count() : opt_row_count();
+    // The AUDIO/CAMERA sub-screens share this ladder over their own row
+    // counts; the only structural difference is where back leads (one
+    // level up, to options) — adjust_active_row already reads the right
+    // table.
+    int rows = audio_mode_ ? audio_row_count()
+             : camera_mode_ ? camera_row_count() : opt_row_count();
     // One extra index past the rows: the BACK band (see draw).
     if (MenuSelect::move(key, active_row_, rows + 1)) {
       // moved
@@ -1185,6 +1249,7 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
       if (active_row_ < rows) adjust_active_row(1);
     } else if (MenuSelect::is_back(key)) {
       if (audio_mode_) close_audio();
+      else if (camera_mode_) close_camera();
       else close_options();
     } else if (confirm) {
       // Confirm on the band exits; on an option row it cycles the value
@@ -1193,6 +1258,7 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
       // useful on.
       if (active_row_ >= rows) {
         if (audio_mode_) close_audio();
+        else if (camera_mode_) close_camera();
         else close_options();
       } else {
         adjust_active_row(1, /*wrap=*/true);
@@ -1310,7 +1376,8 @@ extern void app_move_to_background();
 
 bool Menu::back_pressed() {
   if (options_mode_) {
-    if (audio_mode_) close_audio();  // one level: audio -> options
+    if (audio_mode_) close_audio();          // one level: audio -> options
+    else if (camera_mode_) close_camera();   // one level: camera -> options
     else close_options();            // persists and returns to the menu
     return true;
   }
@@ -1375,10 +1442,12 @@ void Menu::touch_tap(float nx, float ny) {
     // ~-285, band reach tops ~-370).
     if (menu_exit_hit().contains(nx, ny)) {
       if (audio_mode_) close_audio();
+      else if (camera_mode_) close_camera();
       else close_options();
       return;
     }
-    int rows = audio_mode_ ? audio_row_count() : opt_row_count();
+    int rows = audio_mode_ ? audio_row_count()
+             : camera_mode_ ? camera_row_count() : opt_row_count();
     int row = is_touch_mode()
                   ? touch_opt_row_at(ny, rows)
                   : opt_row_at(ny, rows, desk_opt_top(), desk_opt_bottom());
@@ -1452,13 +1521,13 @@ void Menu::touch_tap(float nx, float ny) {
     if (is_touch_mode()) {
       // Left half = YES (wipe save, start fresh), right half = NO (keep save)
       if (nx < 0.5f) {
-        confirm_selection(nullptr);
+        confirm_selection(PAD_NONE);
       } else {
         new_confirm_ = false;
       }
     } else {
       int pick = desktop_confirm_pick(ny);
-      if (pick == 0) confirm_selection(nullptr);
+      if (pick == 0) confirm_selection(PAD_NONE);
       else if (pick == 1) new_confirm_ = false;
     }
     return;
@@ -1483,7 +1552,7 @@ void Menu::touch_tap(float nx, float ny) {
     stats_mode_ = true;
     return;
   }
-  confirm_selection(nullptr);
+  confirm_selection(PAD_NONE);
 }
 
 // The fixed game-entry rows above ONLINE: RESUME HOSTING (when a killed
@@ -1583,6 +1652,21 @@ void Menu::close_audio() {
     if (opt_row(i).kind == 8) { active_row_ = i; break; }
   // The adjusted values are already live (adjust_active_row applies them);
   // persistence rides close_options with everything else.
+}
+
+void Menu::open_camera() {
+  camera_mode_ = true;
+  active_row_ = 0;
+}
+
+void Menu::close_camera() {
+  camera_mode_ = false;
+  // Same round-trip rule as close_audio: land on the CAMERA row.
+  active_row_ = 0;
+  for (int i = 0; i < opt_row_count(); i++)
+    if (opt_row(i).kind == 9) { active_row_ = i; break; }
+  // Persistence rides close_options; the zoom prefs are read by pointer
+  // (GLShip::set_zoom_prefs), so a live game follows close_options' write.
 }
 
 // Build the replays list from disk (REPLAY.md R3). A readable header makes
@@ -2156,7 +2240,9 @@ void Menu::board_poll() {
 }
 
 void Menu::adjust_active_row(int delta, bool wrap) {
-  const OptRow &r = audio_mode_ ? audio_row(active_row_) : opt_row(active_row_);
+  const OptRow &r = audio_mode_ ? audio_row(active_row_)
+                  : camera_mode_ ? camera_row(active_row_)
+                                 : opt_row(active_row_);
   int *idx, num;
   switch (r.kind) {
     case 0: idx = &sensitivity_index_[r.player]; num = NUM_SENSITIVITY;  break;
@@ -2167,10 +2253,17 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 6: idx = &master_volume_index_;         num = NUM_VOLUME;       break;
     case 7: idx = &music_volume_index_;          num = NUM_VOLUME;       break;
     case 8:
-      // The AUDIO row has no value to cycle — every adjust gesture
+      // The opener rows have no value to cycle — every adjust gesture
       // (left/right, confirm, tap) opens the sub-screen instead.
       open_audio();
       return;
+    case 9:
+      open_camera();
+      return;
+    case 10: idx = &zoom_index_[r.player];       num = NUM_ZOOM;         break;
+    case 11: idx = &speed_zoom_index_[r.player]; num = NUM_SPEED_ZOOM;   break;
+    case 12: idx = &input_index_;                num = NUM_INPUT;        break;
+    case 13: idx = &handedness_index_;           num = NUM_HANDEDNESS;   break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2192,18 +2285,27 @@ void Menu::adjust_active_row(int delta, bool wrap) {
 }
 
 void Menu::close_options() {
-  audio_mode_ = false;  // safety: closing options closes its sub-screen too
+  audio_mode_ = false;   // safety: closing options closes its sub-screens too
+  camera_mode_ = false;
   for (int i = 0; i < MAX_PLAYERS; i++) {
     g_prefs.player_keys[i].keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[i]];
     g_prefs.player_keys[i].camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[i]];
     g_prefs.player_keys[i].rotate_view          = (camera_index_[i] == 1);
+    g_prefs.player_keys[i].camera_zoom          = ZOOM_VALUES[zoom_index_[i]];
+    g_prefs.player_keys[i].speed_zoom           = SPEED_ZOOM_VALUES[speed_zoom_index_[i]];
   }
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
   g_prefs.music_volume                 = VOLUME_VALUES[music_volume_index_];
+  g_prefs.touch_one_hand               = (input_index_ == 1);
+  g_prefs.touch_handedness             = handedness_index_;
   save_preferences();
+  // Input method / handedness: the shared apply site (touch_controls.h) —
+  // the layout re-run and the web OSD hand-off, also what the in-game
+  // TOUCH CONTROLS card's option bands call.
+  touch_layout_prefs_changed();
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),
                               STAR_DENSITY_MULTIPLIERS[star_density_index_],
@@ -2246,7 +2348,7 @@ void Menu::decline_net_resume() {
   net_resume_code_.clear();
 }
 
-void Menu::confirm_selection(SDL_GameController *ctrl) {
+void Menu::confirm_selection(PadId pad) {
   if (has_net_resume_ && menu_selection == 0) {
     // RESUME HOSTING: rebuild the hosted world from the online save and
     // hand it a game that reclaims the room and awaits the client's
@@ -2254,7 +2356,17 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
     std::string code, token;
     long long age_ms = 0;
     Save::GameState s;
-    if (NetResume::read(code, token, age_ms) && Save::online_load_game(s)) {
+    // The semantic check every OTHER ingest of this format runs (snapshots,
+    // replays): a save that parses but carries a NaN world or no players
+    // reaches Grid() and the seat tables before anything could recover it.
+    // A failure moves the file aside (kept for recovery) and drops the row.
+    bool resume_ok = NetResume::read(code, token, age_ms) &&
+                     Save::online_load_game(s);
+    if (resume_ok && !net_state_sane(s)) {
+      Save::quarantine_online_save();
+      resume_ok = false;
+    }
+    if (resume_ok) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
@@ -2263,7 +2375,7 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
       // the save ctor: the replay-playback ctor delegates through it, and
       // watching must bank nothing.
       if (!s.cheated) Stats::note_level_reached((uint32_t)s.generation + 1);
-      request_state_change(new GLGame(s, code, token, ctrl));
+      request_state_change(new GLGame(s, code, token, pad));
       return;
     }
     // Unreadable leftovers: drop the row and stay on the menu.
@@ -2278,14 +2390,21 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
   }
   if (has_save_ && menu_selection == continue_row_index()) {
     Save::GameState s;
-    if (Save::load_game(s)) {
+    bool save_ok = Save::load_game(s);
+    if (save_ok && !net_state_sane(s)) {
+      // Same shared validator as RESUME HOSTING above; the file is moved
+      // aside rather than silently overwritten by the next NEW GAME.
+      Save::quarantine_save();
+      save_ok = false;
+    }
+    if (save_ok) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
       decline_net_resume();
       // Same reached-level note as the RESUME HOSTING path above.
       if (!s.cheated) Stats::note_level_reached((uint32_t)s.generation + 1);
-      request_state_change(new GLGame(s, ctrl));
+      request_state_change(new GLGame(s, pad));
       return;
     }
     // Corrupt or missing save — fall through to new game
@@ -2303,5 +2422,5 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
   EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
   decline_net_resume();
-  request_state_change(new GLGame(ctrl));
+  request_state_change(new GLGame(pad));
 }

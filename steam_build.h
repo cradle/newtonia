@@ -13,8 +13,13 @@
 // Call once at startup, before the game is created.
 // Returns false when the Steam client is not running; the caller should log a
 // warning and continue — the game still works in offline / direct-launch mode.
+// NEWTONIA_NO_STEAM=1 skips SteamAPI_Init entirely (every backend then
+// takes its Steam-absent path) — the first bisection step when a launch
+// through Steam misbehaves, since it separates "the Steam API" from
+// "the binary/sandbox". Dev-only; no shipped launch sets it.
 inline bool steam_init() {
 #ifdef STEAM_BUILD
+  if (std::getenv("NEWTONIA_NO_STEAM")) return false;
   return SteamAPI_Init();
 #else
   return true;

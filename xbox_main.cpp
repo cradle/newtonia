@@ -240,7 +240,7 @@ int main(int argc, char *argv[])
         // (load_preferences runs later in normal startup; the selftest
         // resolves the relay URL now, so honour the INI override here.)
         if (ss && ss[0] == '1' && ss[1] == '\0') {
-            load_preferences();
+            load_preferences(false);  // a peek
             SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
             bool ok = net_signal_selftest();
             SDL_Log(ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");
@@ -462,7 +462,7 @@ int main(int argc, char *argv[])
     // Register controllers opened before the StateManager existed (glut.cpp
     // does the same); hot-plugged ones are registered by the event loop.
     for (int i = 0; i < MAX_PLAYERS; i++) {
-        if (s_controllers[i]) s_game->controller_added(s_controllers[i]);
+        if (s_controllers[i]) s_game->controller_added(s_controller_ids[i]);
     }
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
@@ -555,7 +555,7 @@ int main(int argc, char *argv[])
                                 SDL_GameControllerGetJoystick(s_controllers[i]));
                             SDL_Log("Controller %d connected: %s",
                                     i + 1, SDL_GameControllerName(s_controllers[i]));
-                            s_game->controller_added(s_controllers[i]);
+                            s_game->controller_added(s_controller_ids[i]);
                         } else {
                             SDL_Log("SDL_GameControllerOpen failed: %s", SDL_GetError());
                         }

@@ -270,10 +270,44 @@ declare const NewtoniaStore: undefined | {
   // the same bridge setMenuMode rides. Starts false: a fresh ship has no
   // secondary until a pickup grants one.
   let _mineAvailable = false;
+  // One-handed input (Preferences::touch_one_hand, pushed at startup from
+  // web_main.cpp and on options close from Menu::close_options): the whole
+  // screen is one joystick resting centred just below the ship, taps fire
+  // the primary and a long press the secondary; the shoot circle never
+  // shows, while the secondary/boost/teleport circles ride an arc on the
+  // far side of the latest joystick base. Mirrors the native gesture layer in
+  // touch_controls.cpp.
+  let _oneHand = false;
+  // Handedness (Preferences::touch_handedness as -1/0/+1). One-hand:
+  // LEFT/RIGHT rest the ring where that thumb sits (CENTRE keeps it
+  // centred), and LEFT mirrors the pause button + zoom column to the
+  // playing thumb's side. Two-hand: LEFT mirrors the WHOLE layout —
+  // joystick zone right, circle buttons left, pause and the canvas
+  // fallback zones (web_main.cpp) crossing with them; CENTRE/RIGHT are
+  // the classic arrangement.
+  let _hand = 0;
+  // The one-hand tap-fire gate: true only in LIVE play (GLGame::tick
+  // mirrors touch_zoom_active over setTapFire), so pause/game-over/replay
+  // taps never synthesize fire keys. Deliberately left stale-true under
+  // the Intro state, where a tap IS the fire input that dismisses it.
+  let _tapFire = false;
+  // The selected secondary's kind (Save::WeaponEntry::Kind, -1 = none;
+  // kept by setWeaponKinds) and — when it is the SHIELD (5) — its own
+  // trigger truth, mirrored by C++ over setShieldEngaged. The one-hand
+  // long press toggles the shield against this instead of pulsing it:
+  // the shield is hold-to-run, and a pulse would blink it on for a beat
+  // (mirrors oh_long_press_secondary in touch_controls.cpp).
+  let _secondaryKind = -1;
+  let _shieldEngaged = false;
+  let _shieldEmpty = false;
 
+  // One hand hides only the SHOOT circle (tap-fire is the trigger); the
+  // SECONDARY / BOOST / TELEPORT circles move onto the action arc around
+  // the latest joystick base (oneHandArc below), the native OSD's arrangement.
   function applyCircleButtonVisibility(): void {
     for (const el of _circleButtonEls) {
       const hide = _inMenuMode ||
+          (_oneHand && el.classList.contains("touch-shoot")) ||
           (!_mineAvailable && el.classList.contains("touch-mine"));
       el.style.display = hide ? "none" : "";
     }
@@ -282,6 +316,7 @@ declare const NewtoniaStore: undefined | {
   // Called from C++ via EM_ASM when game state changes.
   function setMenuMode(isMenu: boolean): void {
     _inMenuMode = isMenu;
+    if (isMenu) _resetTouchGestures?.();
     applyCircleButtonVisibility();
     for (const el of _joyPlaceholderEls) {
       el.style.display = isMenu ? "none" : "";
@@ -303,6 +338,40 @@ declare const NewtoniaStore: undefined | {
   }
   (window as any).setMineAvailable = setMineAvailable;
 
+  // Called from C++ (web_main.cpp startup, touch_layout_prefs_changed —
+  // the Options rows on close and the in-game TOUCH CONTROLS card's
+  // option bands) with the stored touch input method and handedness side
+  // (-1/0/+1); a change to either rebuilds the whole touch layout. The
+  // rebuild (applyTouchVisibility) lands in menu mode, which is right
+  // from the Options screen but not from the card — the game is paused
+  // under it, its OSD up — so the mode in force is put back afterwards.
+  function setOneHandMode(on: number | boolean, side?: number): void {
+    const v = !!on;
+    const s = typeof side === "number"
+        ? Math.max(-1, Math.min(1, Math.trunc(side))) : _hand;
+    if (v === _oneHand && s === _hand) return;
+    _oneHand = v;
+    _hand = s;
+    const inMenu = _inMenuMode;
+    applyTouchVisibility();
+    if (!inMenu) setMenuMode(false);
+  }
+  (window as any).setOneHandMode = setOneHandMode;
+
+  // The one-hand held deflection's off-gate release (assigned by
+  // buildTouchControls): a remembered manoeuvre must not outlive live
+  // play — the native layer clears it with the gate in
+  // touch_one_hand_tick.
+  let _holdRelease: (() => void) | null = null;
+  let _resetTouchGestures: (() => void) | null = null;
+
+  // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
+  function setTapFire(active: number | boolean): void {
+    _tapFire = !!active;
+    if (!_tapFire) _holdRelease?.();
+  }
+  (window as any).setTapFire = setTapFire;
+
   // Called from C++ via EM_ASM while Ship::boost's cooldown runs — the
   // button dims but stays pressable (presses no-op in Ship::boost()).
   function setBoostReady(ready: number | boolean): void {
@@ -310,6 +379,18 @@ declare const NewtoniaStore: undefined | {
     if (el) el.classList.toggle("cooldown", !ready);
   }
   (window as any).setBoostReady = setBoostReady;
+
+  let _teleportReady = false;
+  function setTeleportReady(ready: number | boolean): void {
+    _teleportReady = !!ready;
+    const el = document.querySelector<HTMLElement>(".touch-teleport");
+    if (el) {
+      el.classList.toggle("cooldown", !_teleportReady);
+      el.setAttribute("aria-disabled", String(!_teleportReady));
+      if (!_teleportReady) el.classList.remove("pressed");
+    }
+  }
+  (window as any).setTeleportReady = setTeleportReady;
 
   // Active-weapon icons on the shoot/mine circles: C++ pushes the selected
   // primary/secondary kinds (Save::WeaponEntry::Kind values; secondary -1 =
@@ -370,10 +451,20 @@ declare const NewtoniaStore: undefined | {
     }
   }
   function setWeaponKinds(primary: number, secondary: number): void {
+    _secondaryKind = secondary;
     applyWeaponIcon(".touch-shoot", primary);
     applyWeaponIcon(".touch-mine", secondary);
   }
   (window as any).setWeaponKinds = setWeaponKinds;
+
+  // Called from C++ via EM_ASM on change (glgame.cpp GLGame::tick).
+  function setShieldEngaged(on: number | boolean, empty: number | boolean = _shieldEmpty): void {
+    _shieldEngaged = !!on;
+    _shieldEmpty = !!empty;
+    document.getElementById("touch-controls")?.querySelector(".touch-mine")
+      ?.classList.toggle("engaged", _oneHand && _shieldEngaged);
+  }
+  (window as any).setShieldEngaged = setShieldEngaged;
 
   // ---- Game-over promo banner ----------------------------------------
   // The web build deliberately has no netplay or leaderboard (LEADERBOARD.md:
@@ -477,6 +568,19 @@ declare const NewtoniaStore: undefined | {
     // ------------------------------------------------------------------
     const joyZone = document.createElement("div");
     joyZone.className = "joy-zone";
+    // One-hand mode: the whole screen is the stick. The pause button and
+    // menu overlay are appended after this zone, so they stay on top and
+    // keep answering their own taps. Two-hand with HANDEDNESS LEFT: the
+    // zone crosses to the right half (the buttons mirror to the left).
+    if (_oneHand) joyZone.style.width = "100%";
+    else if (_hand < 0) joyZone.style.left = "50%";
+    // Joystick radius as a fraction of the short canvas edge. One-hand
+    // deliberately sits just under the web two-hand ring: the throw area
+    // is the whole screen, and the resting ring must fit below the ship
+    // (see positionJoyPlaceholder) with its bottom still near-on-screen
+    // in landscape — the original 1.5x scale-up was field-rejected as
+    // too big (mirrors touch_controls.cpp's 0.22).
+    const JOY_FRAC = _oneHand ? 0.24 : 0.26;
 
     const joyBase = document.createElement("div");
     joyBase.className = "joy-base";
@@ -492,6 +596,220 @@ declare const NewtoniaStore: undefined | {
 
     let joyFinger: number | null = null;
     let joyCX = 0, joyCY = 0, joyRad = 0;
+    let actionAnchor: { x: number; y: number } | null = null;
+    let positionActionButtons: (() => void) | null = null;
+    let layoutWidth = 0, layoutHeight = 0;
+    const activeActionFingers = new Set<number>();
+    const resetButtons: (() => void)[] = [];
+    let shieldHeld = false; // key ownership for reset, never the toggle decision
+
+    // ---- One-hand gesture bookkeeping (mirrors touch_controls.cpp) ----
+    // The joystick finger doubles as the first fire candidate: a press
+    // that never wanders past the tap slop is a FIRE gesture — released
+    // inside the long-press window it taps the primary, held past it the
+    // secondary fires. A second finger while the first steers is a pure
+    // fire candidate that never steals the stick.
+    const OH_LONG_PRESS_MS = 400;
+    // A press landing this close behind a tap-fire becomes a FIRE-HOLD:
+    // the primary goes down at the press edge and stays down until the
+    // finger lifts (automatics stream; the joystick finger still steers),
+    // and releasing refreshes the window so tap-hold-tap-hold stays in
+    // the stream. The secondary keeps needing a COLD long press (mirrors
+    // OH_DOUBLE_TAP_MS in touch_controls.cpp).
+    const OH_DOUBLE_TAP_MS = 250;
+    let joyDownX = 0, joyDownY = 0, joyDownMs = 0;
+    let joySteered = false, joyFired = false, joyPressSeq = 0;
+    let joyFireHold = false;
+    let tapFinger: number | null = null;
+    let tapDownX = 0, tapDownY = 0, tapDownMs = 0;
+    let tapSteered = false, tapFired = false, tapPressSeq = 0;
+    let tapFireHold = false;
+    let lastTapMs = 0;
+    let spaceUpTimer: number | null = null;
+    let secondaryUpTimer: number | null = null;
+    // ---- Held deflection (mirrors touch_controls.h / OH_HOLD_MS) ----
+    // Every release stops input and remembers both axes for 500 ms.
+    // A quick rehold selects direction from its location at the saved base;
+    // releasing again renews the window, never an unattended input latch.
+    const OH_HOLD_MS = 500;
+    const OH_ACTION_RETURN_MS = 1000;
+    let holdValid = false, holdEngaged = false;
+    let holdNx = 0, holdNy = 0;
+    let holdTimer: number | null = null;   // the window; null = held by a finger or no memory
+    let liveNx = 0, liveNy = 0;            // the stick's last applied deflection
+    // Fingers deliberately left to the canvas-tap path (the zoom zones).
+    const passFingers = new Set<number>();
+
+    function keyEvt(key: string, type: string): void {
+      canvas.dispatchEvent(new KeyboardEvent(type, {
+        key,
+        code: key === " " ? "Space" : `Key${key.toUpperCase()}`,
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+
+    // Synthesized fire press. The weapons only sample the trigger in
+    // their sim step, so the keyup is deferred a beat — a down+up in the
+    // same frame would fire nothing (OH_KEY_HOLD_MS's web twin).
+    function fireKey(key: string): void {
+      keyEvt(key, "keydown");
+      if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
+      secondaryUpTimer = window.setTimeout(() => {
+        secondaryUpTimer = null;
+        keyEvt(key, "keyup");
+      }, 70);
+    }
+
+    // The primary's tap pulse tracks its own deferred keyup so a
+    // fire-hold can take the key over cleanly, and opens the double-tap
+    // window.
+    function tapFirePrimary(): void {
+      keyEvt(" ", "keydown");
+      if (spaceUpTimer !== null) window.clearTimeout(spaceUpTimer);
+      spaceUpTimer = window.setTimeout(() => {
+        spaceUpTimer = null;
+        keyEvt(" ", "keyup");
+      }, 70);
+      lastTapMs = Date.now();
+    }
+
+    // True (and the primary pressed AND HELD) when this press lands
+    // inside the double-tap window — the fire-hold's start.
+    function startFireHold(): boolean {
+      if (!_tapFire || !lastTapMs ||
+          Date.now() - lastTapMs > OH_DOUBLE_TAP_MS) return false;
+      // The hold owns the key: a tap's pending deferred release must not
+      // cut the stream short a beat after it starts.
+      if (spaceUpTimer !== null) {
+        window.clearTimeout(spaceUpTimer);
+        spaceUpTimer = null;
+      }
+      keyEvt(" ", "keydown");
+      return true;
+    }
+
+    // The long-press action: a pulse for edge-fired secondaries; the
+    // hold-to-run SHIELD toggles instead — engage holds 'x' down with no
+    // deferred release, disengage releases it, decided against the
+    // mirrored trigger truth (mirrors oh_long_press_secondary in
+    // touch_controls.cpp).
+    function longPressSecondary(): void {
+      if (_secondaryKind === 5) {  // Save::WeaponEntry::Kind::Shield
+        if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
+        secondaryUpTimer = null;
+        if (_shieldEmpty) {
+          // Clear the engine's held-key latch before the disposal press,
+          // then leave it released for the next secondary's first tap.
+          shieldHeld = false;
+          keyEvt("x", "keyup");
+          keyEvt("x", "keydown");
+          keyEvt("x", "keyup");
+          return;
+        }
+        shieldHeld = !_shieldEngaged;
+        keyEvt("x", shieldHeld ? "keydown" : "keyup");
+      } else {
+        fireKey("x");
+      }
+    }
+
+    // Every one-hand release forwards the tap position to touch_tap —
+    // the native entry points do this on every finger-up, and it is what
+    // keeps the zoom zones and the game-over/pause EXIT band reachable
+    // when the joystick zone covers the whole screen.
+    function forwardTap(t: Touch): void {
+      const r = canvas.getBoundingClientRect();
+      (Module as ModuleEx)._web_menu_tap?.(
+        (t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height);
+    }
+
+    // TouchZone::zoom_in_placed / zoom_out_placed (view/tap_band.cpp) in
+    // the normalized coords touch_tap speaks — keep in sync: LEFT-handed
+    // play mirrors the column to the left edge. Only carved out in live
+    // play, exactly like the native layer's one_hand_ingame gate.
+    function inZoomZone(t: Touch): boolean {
+      if (!_tapFire) return false;
+      const r = canvas.getBoundingClientRect();
+      let nx = (t.clientX - r.left) / r.width;
+      const ny = (t.clientY - r.top) / r.height;
+      if (_hand < 0) nx = 1 - nx;
+      return nx >= 0.88 && ny >= 0.40 && ny < 0.60;
+    }
+
+    // Long-press watchdog: fingers that stop moving stop sending events,
+    // so the secondary must fire from a timer, while the press is still
+    // held. The seq token voids a timer whose press already ended.
+    function armLongPress(which: "joy" | "tap", seq: number): void {
+      window.setTimeout(() => {
+        if (!_oneHand || !_tapFire || !_mineAvailable) return;
+        if (which === "joy") {
+          if (joyFinger === null || seq !== joyPressSeq ||
+              joySteered || joyFired || joyFireHold) return;
+          joyFired = true;
+        } else {
+          if (tapFinger === null || seq !== tapPressSeq ||
+              tapSteered || tapFired || tapFireHold) return;
+          tapFired = true;
+        }
+        longPressSecondary();
+      }, OH_LONG_PRESS_MS);
+    }
+
+    function holdClear(): void {
+      holdValid = false; holdEngaged = false;
+      holdNx = 0; holdNy = 0;
+      if (holdTimer !== null) { window.clearTimeout(holdTimer); holdTimer = null; }
+    }
+    function holdArmed(): boolean { return holdValid && (holdEngaged || holdTimer !== null || activeActionFingers.size > 0); }
+    // Forget a release that was not followed by a quick rehold.
+    function holdArmWindow(ms = OH_HOLD_MS): void {
+      if (holdTimer !== null) window.clearTimeout(holdTimer);
+      holdTimer = window.setTimeout(() => {
+        holdTimer = null;
+        if (joyFinger === null && !holdEngaged && activeActionFingers.size === 0) {
+          holdClear();
+          positionJoyPlaceholder();
+        }
+      }, ms);
+    }
+    // Buttons preserve the visible base while held and give the thumb a
+    // fresh return window on release. A late release cannot undo a reset.
+    function actionReturnWindow(arm: boolean): void {
+      if (!_oneHand || !_tapFire || actionAnchor === null || joyFinger !== null ||
+          (!arm && !holdValid)) return;
+      holdValid = true;
+      holdEngaged = false;
+      holdArmWindow(OH_ACTION_RETURN_MS);
+    }
+    // Off the live-play gate (setTapFire false): stop a ship still flying
+    // the memory and forget it, exactly like the native layer's tick.
+    _holdRelease = () => {
+      const wasEngaged = holdEngaged;
+      holdClear();
+      actionAnchor = null;
+      positionActionButtons?.();
+      if (wasEngaged) {
+        liveNx = 0; liveNy = 0;
+        callTouchJoystick(0, 0);
+        if (joyFinger !== null) {
+          joyNub.style.left = `${joyCX}px`;
+          joyNub.style.top = `${joyCY}px`;
+        }
+      }
+      if (joyFinger === null) positionJoyPlaceholder();
+    };
+    // Dim preview of the saved direction during the release-to-rehold
+    // window; the preview does not apply input to the ship.
+    function showHeldStick(): void {
+      if (_inMenuMode) return;
+      const r = canvas.getBoundingClientRect();
+      if (r.width === 0) return;
+      const { px, py, rad } = ringHome(r);
+      const baseSize = rad * 2, nubSize = rad * 0.62;
+      joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.55;`;
+      joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px + holdNx * rad}px;top:${py + holdNy * rad}px;opacity:${holdEngaged ? 0.7 : 0.4};`;
+    }
 
     // Radius is captured at touchstart and reused for the whole drag — avoids
     // a getBoundingClientRect() call on every touchmove.
@@ -512,25 +830,136 @@ declare const NewtoniaStore: undefined | {
       joyNub.style.top  = `${joyCY + ny * joyRad}px`;
       // C++ touch_joystick_input: ny < 0 = thrust, ny > 0 = reverse.
       // Screen dy is already negative when pushing up, so pass ny directly.
+      liveNx = nx; liveNy = ny;
       callTouchJoystick(nx, ny);
     }
 
     function hideJoystick(): void {
       joyFinger = null;
+      liveNx = 0; liveNy = 0;
       callTouchJoystick(0, 0);
       positionJoyPlaceholder();
+    }
+
+    // A hidden page need not deliver touchcancel (and a released stick has
+    // no finger to cancel). Online play keeps its gate open in the
+    // background, so clear gesture ownership directly, before any resume.
+    _resetTouchGestures = () => {
+      actionAnchor = null;
+      resetButtons.forEach(reset => reset());
+      activeActionFingers.clear();
+      positionActionButtons?.();
+      holdClear();
+      hideJoystick();
+      tapFinger = null;
+      passFingers.clear();
+      ++joyPressSeq; ++tapPressSeq;
+      if (joyFireHold || tapFireHold || spaceUpTimer !== null)
+        keyEvt(" ", "keyup");
+      joyFireHold = false; tapFireHold = false;
+      lastTapMs = 0;
+      if (spaceUpTimer !== null) window.clearTimeout(spaceUpTimer);
+      spaceUpTimer = null;
+      if (secondaryUpTimer !== null) keyEvt("x", "keyup");
+      if (secondaryUpTimer !== null) window.clearTimeout(secondaryUpTimer);
+      secondaryUpTimer = null;
+    };
+
+    // Last live base, or the resting home before play/reset, in viewport pixels.
+    // The default one-hand home follows handedness horizontally
+    // per handedness — CENTRE stays centred, LEFT/RIGHT rest the ring
+    // where that thumb sits, its near edge a small margin off its bezel.
+    // Vertically the LOWER of the midpoint between canvas centre and
+    // bottom (0.75h — the portrait thumb rest) and the below-the-ship
+    // anchor — the camera pins the ship to the canvas centre, so the
+    // ring's TOP edge must clear h/2 by a margin, and in landscape that
+    // anchor is the one that binds (mirrors touch_controls.cpp). Shared
+    // by the placeholder and the one-hand action arc, so the two can't
+    // drift apart.
+    function ringHome(r: DOMRect): { px: number; py: number; rad: number } {
+      const rad = Math.min(r.width, r.height) * JOY_FRAC;
+      if (_oneHand && actionAnchor)
+        return { px: actionAnchor.x, py: actionAnchor.y, rad };
+      const sideCx = Math.min(r.width, r.height) * 0.05 + rad;
+      const px = r.left + (!_oneHand
+          ? r.width * (_hand < 0 ? 0.82 : 0.18) // two-hand home, mirrored LEFT
+          : _hand < 0 ? sideCx
+          : _hand > 0 ? r.width - sideCx
+          : r.width * 0.50);
+      const py = _oneHand
+          ? r.top + Math.max(
+                r.height * 0.5 + Math.min(r.width, r.height) * 0.05 + rad,
+                r.height * 0.75)
+          : r.top + r.height * 0.75;
+      return { px, py, rad };
+    }
+
+    // SECONDARY / BOOST / TELEPORT follow the latest live joystick base
+    // and stay there after lift. Prefer the far side of the thumb pivot,
+    // but search the full orbit near screen edges, zoom and pause. Tight
+    // arcs reduce hit radii so neighbouring regions remain disjoint.
+    // Mirrors oh_layout_actions in touch_controls.cpp; this OSD has its
+    // own pause keep-out and joystick radius.
+    function oneHandArc(r: DOMRect, btnR: number):
+        { pts: { x: number; y: number }[]; hit: number } | null {
+      const { px: cx, py: cy, rad: R } = ringHome(r);
+      const minDim = Math.min(r.width, r.height), DEG = Math.PI / 180;
+      const pivotX = _hand === 0 ? cx : _hand < 0 ? r.left : r.left + r.width;
+      const away = Math.atan2(r.top + r.height - cy, cx - pivotX);
+      const zx0 = r.left + r.width * (_hand < 0 ? 0 : 0.88);
+      const zx1 = r.left + r.width * (_hand < 0 ? 0.12 : 1);
+      const zy0 = r.top + r.height * 0.40, zy1 = r.top + r.height * 0.60;
+      const pauseX = r.left + r.width * (_hand < 0 ? 0.125 : 0.875);
+      const pauseY = r.top + r.height * 0.12;
+      const pauseR = minDim * 0.19 * 0.62 * 0.5;
+      // Match native: scan the full orbit so even a stick near a top
+      // corner can have its buttons below/inward, clear of all keep-outs.
+      for (let reach = 0; reach <= 6; ++reach) {
+        const orbit = R + (0.045 + 0.05 * reach) * minDim + btnR;
+        let best = Infinity;
+        let result: { pts: { x: number; y: number }[]; hit: number } | null = null;
+        for (let spread = 60; spread >= 25; spread -= 5) {
+          const hit = Math.min(1.4 * btnR, orbit - R,
+                               orbit * Math.sin(spread * DEG * 0.5) * 0.99);
+          if (hit < btnR) continue;
+          const margin = Math.max(btnR + 0.02 * minDim, hit);
+          const legal = (px: number, py: number): boolean => {
+            if (px < r.left + margin || px > r.left + r.width - margin ||
+                py < r.top + margin || py > r.top + r.height - margin) return false;
+            const dx = Math.max(zx0 - px, px - zx1, 0);
+            const dy = Math.max(zy0 - py, py - zy1, 0);
+            if (dx * dx + dy * dy < hit * hit) return false;
+            const pdx = px - pauseX, pdy = py - pauseY, gap = hit + pauseR;
+            return pdx * pdx + pdy * pdy >= gap * gap;
+          };
+          for (let turn = -180; turn <= 180; ++turn) {
+            const score = Math.abs(turn) + 1.5 * (60 - spread);
+            if (score >= best) continue;
+            const apex = away + turn * DEG, offset = (_hand < 0 ? -spread : spread) * DEG;
+            const pts = [apex + offset, apex, apex - offset].map(th => ({
+              x: cx + orbit * Math.cos(th), y: cy - orbit * Math.sin(th),
+            }));
+            if (!pts.every(p => legal(p.x, p.y))) continue;
+            best = score; result = { pts, hit };
+          }
+        }
+        if (result) return result;
+      }
+      return null;
     }
 
     // Show a faint placeholder at the default position so the user knows
     // where the joystick zone is before touching.
     function positionJoyPlaceholder(): void {
       if (_inMenuMode) return;
+      if (_oneHand && holdValid && joyFinger === null) {
+        showHeldStick();
+        return;
+      }
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
-      const rad = Math.min(r.width, r.height) * 0.26;
+      const { px, py, rad } = ringHome(r);
       const baseSize = rad * 2, nubSize = rad * 0.62;
-      const px = r.left + r.width * 0.18;
-      const py = r.top  + r.height * 0.75;
       joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
       joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
     }
@@ -542,12 +971,50 @@ declare const NewtoniaStore: undefined | {
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
+        if (_oneHand && inZoomZone(t)) {
+          // Live-play zoom zones keep their tap semantics: the release
+          // forwards to touch_tap (the zoom step) instead of the stick.
+          passFingers.add(t.identifier);
+          continue;
+        }
         if (joyFinger === null) {
           joyFinger = t.identifier;
           const r = canvas.getBoundingClientRect();
           // clientX/Y are viewport-relative; touch-controls is position:fixed so no offset needed.
-          showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * 0.26);
-          break;
+          const resume = _oneHand && _tapFire && holdArmed();
+          const anchor = resume && actionAnchor ? actionAnchor : { x: t.clientX, y: t.clientY };
+          showJoystick(anchor.x, anchor.y, Math.min(r.width, r.height) * JOY_FRAC);
+          if (_oneHand) {
+            if (_tapFire) {
+              actionAnchor = anchor;
+              positionActionButtons?.();
+            }
+            joyDownX = t.clientX; joyDownY = t.clientY;
+            joyDownMs = Date.now();
+            joySteered = false; joyFired = false;
+            liveNx = 0; liveNy = 0;
+            // Keep the saved base, but let the new tap position select
+            // the direction. A still tap can fire without counting as a drag.
+            if (resume) {
+              holdEngaged = true;
+              window.clearTimeout(holdTimer!);
+              holdTimer = null;  // this finger holds it now
+              moveJoystick(t.clientX, t.clientY);
+              holdNx = liveNx; holdNy = liveNy;
+            }
+            joyFireHold = startFireHold();
+            armLongPress("joy", ++joyPressSeq);
+          } else {
+            break;
+          }
+        } else if (_oneHand && tapFinger === null) {
+          // Second finger while the first steers: a pure fire candidate.
+          tapFinger = t.identifier;
+          tapDownX = t.clientX; tapDownY = t.clientY;
+          tapDownMs = Date.now();
+          tapSteered = false; tapFired = false;
+          tapFireHold = startFireHold();
+          armLongPress("tap", ++tapPressSeq);
         }
       }
     }, { passive: false });
@@ -557,20 +1024,80 @@ declare const NewtoniaStore: undefined | {
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         if (t.identifier === joyFinger) {
+          // The steered latch is one-way: once a press has been a dodge
+          // it can never late-fire by drifting back over its start.
+          if (_oneHand && !joySteered &&
+              Math.hypot(t.clientX - joyDownX, t.clientY - joyDownY) >
+                  joyRad * 0.12)
+            joySteered = true;
+          // Tap slop classifies the gesture; dragging keeps measuring
+          // against the same base, without relocating it on motion.
+          if (_oneHand && !joySteered) continue;
+          holdEngaged = false;
           moveJoystick(t.clientX, t.clientY);
-          break;
+          if (!_oneHand) break;
+        } else if (_oneHand && t.identifier === tapFinger && !tapSteered) {
+          if (Math.hypot(t.clientX - tapDownX, t.clientY - tapDownY) >
+                  joyRad * 0.12)
+            tapSteered = true;  // wandered — no shot on release
         }
       }
     }, { passive: false });
 
-    const onJoyEnd = (e: TouchEvent) => {
+    // `cancelled`: a touchcancel — the browser took the finger (a system
+    // gesture, a tab switch), so the press is over with no intent behind
+    // its end. The stick stops at once and NOTHING is remembered: the
+    // held deflection is a bridge the pilot builds with a lift-and-tap,
+    // and a cancelled press is neither.
+    const onJoyEnd = (e: TouchEvent, cancelled = false) => {
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === joyFinger) { hideJoystick(); break; }
+        const t = e.changedTouches[i];
+        const id = t.identifier;
+        if (id === joyFinger) {
+          const wasTap = _oneHand && !joyFireHold && !joySteered &&
+                         !joyFired && Date.now() - joyDownMs < OH_LONG_PRESS_MS;
+          // Every lift releases input, including a firing tap/fire-hold.
+          // Retain the base even at neutral so quick reholds cannot relocate it.
+          const releaseNx = liveNx, releaseNy = liveNy;
+          holdClear();
+          hideJoystick();
+          if (_oneHand && _tapFire && !cancelled) {
+            holdValid = true;
+            holdNx = releaseNx; holdNy = releaseNy;
+            holdArmWindow();
+            showHeldStick();
+          }
+          if (_oneHand) {
+            if (!cancelled) forwardTap(t);
+            if (joyFireHold) {
+              joyFireHold = false;
+              keyEvt(" ", "keyup");
+              lastTapMs = cancelled ? 0 : Date.now();  // cancellation breaks the chain
+            } else if (wasTap && _tapFire && !cancelled) {
+              tapFirePrimary();
+            }
+          }
+        } else if (_oneHand && id === tapFinger) {
+          const wasTap = !tapFireHold && !tapSteered && !tapFired &&
+                         Date.now() - tapDownMs < OH_LONG_PRESS_MS;
+          tapFinger = null;
+          if (!cancelled) forwardTap(t);
+          if (tapFireHold) {
+            tapFireHold = false;
+            keyEvt(" ", "keyup");
+            lastTapMs = cancelled ? 0 : Date.now();
+          } else if (wasTap && _tapFire && !cancelled) {
+            tapFirePrimary();
+          }
+        } else if (passFingers.delete(id)) {
+          if (!cancelled) forwardTap(t);  // zoom-zone finger: the plain canvas-tap path
+        }
       }
     };
     joyZone.addEventListener("touchend",    onJoyEnd, { passive: false });
-    joyZone.addEventListener("touchcancel", onJoyEnd, { passive: false });
+    joyZone.addEventListener("touchcancel", (e) => onJoyEnd(e, true),
+                             { passive: false });
 
     // ------------------------------------------------------------------
     // Right half — action buttons with visual press feedback
@@ -581,6 +1108,7 @@ declare const NewtoniaStore: undefined | {
       { label: "",  key: " ", cls: "touch-btn touch-shoot" },
       { label: "",  key: "x", cls: "touch-btn touch-mine"  },
       { label: "",  key: "e", cls: "touch-btn touch-boost" },
+      { label: "", key: "t", cls: "touch-btn touch-teleport" },
       // Pause: the top-right tap zone (web_main.cpp finger_down) existed
       // with NO visual — the comment there called it "the visible
       // top-right button" but nothing ever drew it on web (the native
@@ -605,51 +1133,91 @@ declare const NewtoniaStore: undefined | {
 
       // Track active fingers so multi-finger presses keep the button held.
       const activeFingers = new Set<number>();
+      // Remember the press's semantics even if the equipped weapon changes.
+      let shieldTogglePress = false;
+      resetButtons.push(() => {
+        const wasPressed = activeFingers.size > 0;
+        activeFingers.clear();
+        btn.classList.remove("pressed");
+        if (wasPressed || (key === "x" && (shieldHeld || _shieldEngaged))) dispatchKey("keyup");
+        shieldTogglePress = false;
+        if (key === "x") {
+          shieldHeld = false;
+          setShieldEngaged(false);
+        }
+      });
 
       btn.addEventListener("touchstart", (e) => {
         e.preventDefault();
+        if (key === "t" && !_teleportReady) return;
         for (let i = 0; i < e.changedTouches.length; i++) {
           const id = e.changedTouches[i].identifier;
           if (!activeFingers.has(id)) {
-            if (activeFingers.size === 0) dispatchKey("keydown");
+            if (activeFingers.size === 0) {
+              shieldTogglePress = _oneHand && _tapFire && key === "x" && _secondaryKind === 5;
+              if (shieldTogglePress) longPressSecondary();
+              else dispatchKey("keydown");
+            }
             activeFingers.add(id);
+            if (_oneHand && (key === "x" || key === "e" || key === "t")) {
+              activeActionFingers.add(id);
+              actionReturnWindow(true);
+            }
           }
         }
         btn.classList.add("pressed");
       }, { passive: false });
 
-      const onBtnEnd = (e: TouchEvent) => {
+      const onBtnEnd = (e: TouchEvent, cancelled = false) => {
         e.preventDefault();
+        let released = false;
         for (let i = 0; i < e.changedTouches.length; i++) {
-          activeFingers.delete(e.changedTouches[i].identifier);
+          if (activeFingers.delete(e.changedTouches[i].identifier)) released = true;
+          activeActionFingers.delete(e.changedTouches[i].identifier);
         }
-        if (activeFingers.size === 0) {
-          dispatchKey("keyup");
+        // A late release after reset owns nothing. In particular, do not
+        // synthesize a second pause key-up into the resumed screen.
+        if (released && activeFingers.size === 0) {
+          if (!shieldTogglePress || cancelled) dispatchKey("keyup");
+          if (shieldTogglePress && cancelled) {
+            shieldHeld = false;
+            setShieldEngaged(false);
+          }
+          shieldTogglePress = false;
           btn.classList.remove("pressed");
+          if (!cancelled && (key === "x" || key === "e" || key === "t"))
+            actionReturnWindow(false);
         }
+        if (cancelled && released && activeActionFingers.size === 0 && joyFinger === null) {
+          holdClear();
+          positionJoyPlaceholder();
+        }
+        if (_oneHand && activeActionFingers.size === 0) positionActionButtons?.();
       };
       btn.addEventListener("touchend",    onBtnEnd, { passive: false });
-      btn.addEventListener("touchcancel", onBtnEnd, { passive: false });
+      btn.addEventListener("touchcancel", e => onBtnEnd(e, true), { passive: false });
 
       container.appendChild(btn);
     });
 
     // Capture button elements once; reused by the resize handler to avoid
     // repeated querySelector calls.
-    // Button centres sit clear of the canvas centre-pause zone (x <= 0.60
-    // in web_main.cpp finger_down) — at 0.62 the shoot circle's left edge
-    // was ~0.57, so a near-miss to its left hit the pause zone instead
-    // (Glenn, 2026-07-17). Keep these in sync with touch_to_key's zones.
+    // Match native action geometry in touch_controls_resize, including
+    // portrait spacing and left-handed mirroring. Pause retains its own zone.
+    const bcx = (cx: number) => (_hand < 0 ? 1 - cx : cx);
     const circleButtons = [
-      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75, d: 1.0 },
-      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75, d: 1.0 },
-      // Boost: above and between the pair (the thumb triangle), matching
+      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: bcx(0.70), cy: 0.75, d: 1.0 },
+      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: bcx(0.90), cy: 0.75, d: 1.0 },
+      // Boost: above and between the pair (the top of the diamond), matching
       // the native OSD layout in touch_controls.cpp.
-      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: 0.80, cy: 0.63, d: 1.0 },
-      // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25).
-      { el: container.querySelector<HTMLElement>(".touch-pause")!, cx: 0.875, cy: 0.12, d: 0.62 },
+      { el: container.querySelector<HTMLElement>(".touch-boost")!, cx: bcx(0.80), cy: 0.63, d: 1.0 },
+      { el: container.querySelector<HTMLElement>(".touch-teleport")!, cx: bcx(0.80), cy: 0.87, d: 1.0 },
+      // Pause: centred in the top-right tap zone (x >= 0.75, y < 0.25),
+      // crossing to the top-left under HANDEDNESS LEFT.
+      { el: container.querySelector<HTMLElement>(".touch-pause")!, cx: bcx(0.875), cy: 0.12, d: 0.62 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
+    setTeleportReady(_teleportReady);
 
     // Full-screen overlay active during menu: any tap dispatches Enter to start the game.
     const menuOverlay = document.createElement("div");
@@ -670,10 +1238,46 @@ declare const NewtoniaStore: undefined | {
     function sizeCircleButtons(): void {
       const r = canvas.getBoundingClientRect();
       if (r.width === 0) return; // layout not ready yet
-      const diam = Math.min(r.width, r.height) * 0.19;
-      for (const { el, cx, cy, d } of circleButtons) {
-        el.style.width  = `${diam * d}px`;
-        el.style.height = `${diam * d}px`;
+      const resized = layoutWidth > 0 && (r.width !== layoutWidth || r.height !== layoutHeight);
+      layoutWidth = r.width; layoutHeight = r.height;
+      if (_oneHand && resized) _resetTouchGestures?.();
+      const diam = Math.min(r.width, r.height) * 0.14;
+      const radius = diam / 2;
+      const mineX = Math.min(r.width * 0.90, r.width - 2 * radius);
+      const shootX = Math.min(r.width * 0.75, mineX - 2.5 * radius);
+      const rowY = Math.min(r.height * 0.80, r.height - 3.6 * radius);
+      // One hand: the three action circles sit on the arc around the
+      // latest joystick base (viewport pixels, no handedness re-mirror).
+      const arc = _oneHand && activeActionFingers.size === 0
+          ? oneHandArc(r, radius)?.pts : null;
+      for (const button of circleButtons) {
+        const { el, d } = button;
+        let { cx, cy } = button;
+        // The joystick may move under another finger, but held buttons
+        // remain at the locations their fingers actually pressed.
+        if (_oneHand && !el.classList.contains("touch-pause") && !arc) continue;
+        if (arc && !el.classList.contains("touch-pause")) {
+          const i = el.classList.contains("touch-mine") ? 0
+                  : el.classList.contains("touch-boost") ? 1
+                  : el.classList.contains("touch-teleport") ? 2 : -1;
+          if (i >= 0) {
+            cx = (arc[i].x - r.left) / r.width;
+            cy = (arc[i].y - r.top) / r.height;
+          }
+        } else if (!el.classList.contains("touch-pause")) {
+          let x = (shootX + mineX) / 2;
+          let y = rowY;
+          if (el.classList.contains("touch-shoot")) x = shootX;
+          if (el.classList.contains("touch-mine")) x = mineX;
+          if (el.classList.contains("touch-boost")) y -= 2.2 * radius;
+          if (el.classList.contains("touch-teleport")) y += 2.2 * radius;
+          cx = bcx(x / r.width);
+          cy = y / r.height;
+        }
+        const buttonDiam = el.classList.contains("touch-pause")
+            ? Math.min(r.width, r.height) * 0.19 : diam;
+        el.style.width  = `${buttonDiam * d}px`;
+        el.style.height = `${buttonDiam * d}px`;
         el.style.left   = `${r.left + r.width * cx}px`;
         el.style.top    = `${r.top + r.height * cy}px`;
       }
@@ -682,17 +1286,20 @@ declare const NewtoniaStore: undefined | {
 
     // Use ResizeObserver so buttons are sized correctly on initial layout
     // (requestAnimationFrame fires too early, before the canvas has its final size).
+    positionActionButtons = sizeCircleButtons;
     _resizeObserver?.disconnect();
     _resizeObserver = new ResizeObserver(sizeCircleButtons);
     _resizeObserver.observe(canvas);
     return sizeCircleButtons;
   }
 
+  // TEST-SLICE-END: touch_one_hand_web.cjs
   // Tracks the active resize listener so it can be removed on rebuild.
   let _resizeFn: (() => void) | null = null;
   let _resizeObserver: ResizeObserver | null = null;
 
   function applyTouchVisibility(): void {
+    _resetTouchGestures?.();
     const tc = document.getElementById("touch-controls")!;
     if (_resizeFn) { window.removeEventListener("resize", _resizeFn); _resizeFn = null; }
     _resizeObserver?.disconnect(); _resizeObserver = null;
@@ -705,6 +1312,12 @@ declare const NewtoniaStore: undefined | {
       tc.style.display = "none";
     }
   }
+
+  // Registered once: callbacks always reset the current UI after a rebuild.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) _resetTouchGestures?.();
+  });
+  window.addEventListener("pagehide", () => _resetTouchGestures?.());
 
   TOUCH_MEDIA.addEventListener("change", applyTouchVisibility);
   applyTouchVisibility();

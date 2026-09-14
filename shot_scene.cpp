@@ -11,6 +11,7 @@
 #include "menu.h"
 #include "achievements.h"
 #include "preferences.h"
+#include "touch_controls.h"
 #include "typer.h"
 #include "mat4.h"
 #include "gl_compat.h"
@@ -67,6 +68,12 @@ struct Scene {
   bool hud = true;
   bool no_ship = false;  // hold every player unspawned: pure-scenery shots
   float star_density = -1;  // `stars`: overrides the preference; -1 = keep
+  // `one_hand [left|centre|right]`: the ONE HAND touch input method (and
+  // its HANDEDNESS) for touch-layout shots under NEWTONIA_FORCE_TOUCH.
+  // -1 = keep the (default, two-hand) pref; the layout re-runs after the
+  // prefs are poked, since the window's resize may already have happened.
+  int one_hand = -1;
+  int handedness = 1;       // Preferences::touch_handedness: 0 L, 1 C, 2 R
   // `transparent`: write RGBA with black as full transparency (logo/text
   // assets). Alpha = the brightest channel, colour un-premultiplied, so
   // dim edge pixels become translucent instead of dark.
@@ -164,6 +171,13 @@ bool parse_scene_file(const char *path) {
       if (!(in >> s_scene.star_density) || s_scene.star_density < 0.0f ||
           s_scene.star_density > 1.0f)
         return parse_error(line_no, line, "stars wants 0..1 (density scale)");
+    } else if (cmd == "one_hand") {
+      std::string v;  in >> v;
+      s_scene.one_hand = 1;
+      if (v.empty() || v == "centre" || v == "center") s_scene.handedness = 1;
+      else if (v == "left")  s_scene.handedness = 0;
+      else if (v == "right") s_scene.handedness = 2;
+      else return parse_error(line_no, line, "one_hand wants left|centre|right");
     } else if (cmd == "hud") {
       std::string v;  in >> v;
       s_scene.hud = (v != "off");
@@ -465,6 +479,15 @@ State *ShotScene::build_state() {
   // poking the live pref is scene-scoped by construction. Set before the
   // state constructors read star_density_scale().
   if (s_scene.star_density >= 0.0f) g_prefs.star_density = s_scene.star_density;
+  // Touch input method: the same scene-scoped poke, then re-run the OSD
+  // layout — touch_controls_resize reads the prefs, and the window's first
+  // resize has usually already happened by now.
+  // A scene without a `one_hand` line renders the classic two-hand CENTRE
+  // layout whatever the machine's INI holds (shots must not drift with the
+  // maintainer's own setting, and a new install's default is ONE HAND now).
+  g_prefs.touch_one_hand = s_scene.one_hand > 0;
+  g_prefs.touch_handedness = s_scene.one_hand >= 0 ? s_scene.handedness : 1;
+  touch_controls_relayout();
   if (s_scene.menu_mode) return new Menu();
 
   // A shot game must never touch real player data (see shot_scene.h).
@@ -475,7 +498,7 @@ State *ShotScene::build_state() {
     snprintf(gen, sizeof(gen), "%d", s_scene.generation);
     set_env_both("NEWTONIA_START_GENERATION", gen);
   }
-  GLGame *g = new GLGame((SDL_GameController *)NULL,
+  GLGame *g = new GLGame(PAD_NONE,
                          /*allow_dev_players=*/false);  // scenes own the roster
   g->score_saved = true;    // save_progress() no-ops for the whole run
   g->save_deleted_ = true;  // the game-over savegame delete never fires
@@ -487,7 +510,7 @@ State *ShotScene::build_state() {
   // bypass_cap: composed 3-4P shots must work while the dark-launch gate
   // (LOCAL_PLAYER_CAP) still holds; the harness is sandboxed anyway.
   for (int i = 1; i < s_scene.num_players; i++)
-    g->add_local_player(NULL, /*with_keys=*/true, /*bypass_cap=*/true);
+    g->add_local_player(PAD_NONE, /*with_keys=*/true, /*bypass_cap=*/true);
 
   // Ships start alive and settled (a fresh game's player 1 opens dead in
   // the respawn countdown), with the camera snapped for determinism.
@@ -508,6 +531,10 @@ State *ShotScene::build_state() {
     }
     gs->set_camera_smoothing(0);
     gs->set_rotate_view_pref(&s_cam_rotate);
+    // The zoom prefs are neutralized like smoothing above: a maintainer's
+    // INI zoom (or speed-follow) must never leak into a committed render —
+    // scenes frame with the `zoom` command's explicit FOV below.
+    gs->set_zoom_prefs(NULL, NULL);
     if (s_scene.zoom > 0) gs->set_view_angle(s_scene.zoom);
   }
 

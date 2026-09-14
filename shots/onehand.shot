@@ -1,0 +1,17 @@
+# ONE HAND touch layout check (not a store asset): the resting ring with
+# the SECONDARY / BOOST / TELEPORT action arc on its far side. Render with
+# NEWTONIA_FORCE_TOUCH=1 at phone sizes (shots/mobile.sh onehand, or
+# NEWTONIA_SHOT_SIZE) in both orientations; swap the handedness word to
+# see the tilted arcs. The secondary circle needs a secondary equipped —
+# the mine pickup under the ship is collected during the sim window, once
+# the tap has dismissed the first-game TOUCH CONTROLS help card.
+game 1
+sim 1500
+tap 0.5 0.5 200
+camera fixed
+ship 0 0 0
+pickup mine 0 0
+asteroid 700 400 tough
+asteroid -800 300 armoured
+asteroid 300 -800
+one_hand centre

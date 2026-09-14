@@ -7,10 +7,12 @@
 # render the online chooser instead, so add a second `key down` there. A
 # save file adds CONTINUE on top and shifts it again.
 #
-# Netless also means 14 option rows, not 15 — `net_board_available()`
-# drops LEADERBOARD UPLOAD. For the 15-row worst case (what O5 was judged
-# on) force that predicate true in a local build; the ONLINE row stays
-# hidden either way, since it keys on net_available() instead.
+# Netless also means 8 option rows, not 9 — `net_board_available()`
+# drops LEADERBOARD UPLOAD. For the 9-row list force that predicate true
+# in a local build; the ONLINE row stays hidden either way, since it keys
+# on net_available() instead. The 16-row worst case the D9/O5 row budget
+# was judged on no longer lives here: the zoom work moved the per-player
+# camera rows one level down, and camera.shot renders that sub-screen.
 seed 3
 menu
 sim 1800

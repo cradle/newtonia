@@ -18,6 +18,10 @@
 //    their own chunk volume by music_scale() (master reaches them through
 //    the channel master volume, so the fraction here excludes it).
 //
+// Both sit under a fixed 0.75 HEADROOM scale (audio_volume.cpp): the
+// mix clipped audibly at FULL in the field, so every level is three
+// quarters of what the sliders say, and FULL stays the top of the range.
+//
 // apply() is called from load_preferences() (covers any later pref
 // reload), from the Menu constructor (the one platform-neutral point
 // that is certainly AFTER Mix_OpenAudio — the open RESETS the music

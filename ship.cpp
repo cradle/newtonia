@@ -1,4 +1,6 @@
 #include "ship.h"
+#include "teleport.h"
+#include "hazard.h"
 #include "achievements.h"
 #include "stats.h"
 #include "asset_path.h"
@@ -30,6 +32,8 @@ int Ship::shield_hum_shared_channel = -1;
 std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
 std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
+std::vector<std::pair<uint8_t, Point>> Ship::teleport_events;
+std::vector<std::pair<uint8_t, Point>> Ship::boost_events;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::net_lance_reports;
@@ -851,9 +855,12 @@ int Ship::god_mode_time_remaining() const {
 }
 
 bool Ship::shield_active() const {
+  if (!invincible || god_mode_time_remaining() > 0) return false;
+  // Discarding the spent inventory item does not end its final charge.
+  if (shield_effect_active) return true;
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Shield*>(*it)) {
-      return invincible && god_mode_time_remaining() == 0;
+      return true;
     }
   }
   return false;
@@ -1027,8 +1034,8 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
 
     primary = primary_weapons.begin();
     if (!primary_weapons.empty())
-      std::advance(primary, std::min(p.selected_primary_idx,
-                                     (int)primary_weapons.size() - 1));
+      std::advance(primary, std::max(0, std::min(p.selected_primary_idx,
+                                     (int)primary_weapons.size() - 1)));
     if (p.selected_secondary_idx >= 0 && !secondary_weapons.empty()) {
       secondary = secondary_weapons.begin();
       std::advance(secondary, std::min(p.selected_secondary_idx,
@@ -1086,7 +1093,11 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
     }
   }
   if (!primary_weapons.empty()) {
-    int clamp = std::min(p.selected_primary_idx, (int)primary_weapons.size() - 1);
+    // Clamped from BOTH ends: a negative index walks the list backwards
+    // off begin() (net_state_sane refuses it at the door; this is the
+    // restore-side guard the secondary selection always had).
+    int clamp = std::max(0, std::min(p.selected_primary_idx,
+                                     (int)primary_weapons.size() - 1));
     primary = primary_weapons.begin();
     std::advance(primary, clamp);
   }
@@ -1229,24 +1240,91 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
   }
 }
 
-void Ship::safe_position(const Grid &grid, bool try_current) {
-  auto in_black_hole_pull = [this]() {
-    if(!black_holes) return false;
-    for(const BlackHole *bh : *black_holes) {
+const float Ship::SPAWN_CLEARANCE    = 120.0f;
+const int   Ship::SPAWN_LOOKAHEAD_MS = 2000;
+const int   Ship::SPAWN_STRICT_TRIES = 400;
+const int   Ship::SPAWN_LEGACY_TRIES = 2000;
+
+// Closest the moving body `o` (nearest wrapped copy) comes to `from` over
+// the next `ms` along its current velocity. Constant velocity is a model,
+// not the truth (seekers steer, elastic rocks bounce), which is what the
+// clearance margin is for.
+static float closest_approach(const Point &from, const Object &o, int ms) {
+  Point rel = o.position.closest_to(from) - from;
+  const Point &v = o.velocity;
+  float vv = v.magnitude_squared();
+  float t = 0.0f;
+  if (vv > 1e-12f) {
+    t = -(rel.x() * v.x() + rel.y() * v.y()) / vv;
+    if (t < 0.0f) t = 0.0f;
+    if (t > (float)ms) t = (float)ms;
+  }
+  return (rel + v * t).magnitude();
+}
+
+// The pre-2026-09-14 test: 50 units beyond touching any rock, and outside
+// every black hole's pull. Kept as the fallback and for a restored pose.
+bool Ship::spawn_spot_legacy_ok(const Grid &grid) const {
+  if (grid.collide(*this, 50.0f) != NULL) return false;
+  if (black_holes) {
+    for (const BlackHole *bh : *black_holes) {
       Point diff = bh->position.closest_to(position) - position;
-      if(diff.magnitude_squared() < BlackHole::influence_radius * BlackHole::influence_radius)
-        return true;
+      if (diff.magnitude_squared() < BlackHole::influence_radius * BlackHole::influence_radius)
+        return false;
     }
-    return false;
-  };
-  if(try_current && grid.collide(*this, 50.0f) == NULL && !in_black_hole_pull())
-    return;
-  do {
+  }
+  return true;
+}
+
+bool Ship::spawn_spot_ok(const Grid &grid) const {
+  if (!spawn_spot_legacy_ok(grid)) return false;
+  // Every rock that could reach the spot inside the lookahead: the query
+  // radius covers the fastest rock the sim allows (Asteroid::max_speed,
+  // the black-hole fling), which in practice spans the whole grid — a
+  // few hundred pointer tests per candidate, and spawns are rare.
+  float reach = radius + SPAWN_CLEARANCE + (float)Asteroid::max_radius * 1.3f
+              + (float)Asteroid::max_speed * (float)SPAWN_LOOKAHEAD_MS;
+  std::vector<Object *> near_rocks;
+  grid.query_radius(position, reach, near_rocks);
+  for (const Object *o : near_rocks) {
+    if (!o->alive) continue;
+    if (closest_approach(position, *o, SPAWN_LOOKAHEAD_MS)
+        < radius + o->effective_radius() + SPAWN_CLEARANCE)
+      return false;
+  }
+  if (teleport_hazards) {
+    for (const Hazard *h : *teleport_hazards) {
+      if (!h->is_alive()) continue;
+      if (closest_approach(position, *h, SPAWN_LOOKAHEAD_MS)
+          < radius + h->teleport_clearance() + SPAWN_CLEARANCE)
+        return false;
+    }
+  }
+  // Other hulls (partner, enemies, the stations): body overlap kills
+  // outright and the spawn flash is real bullets under friendly fire.
+  if (missile_ships_list) {
+    for (const Object *o : *missile_ships_list) {
+      if (o == this || !o->is_alive()) continue;
+      if (collide(*o, SPAWN_CLEARANCE)) return false;
+    }
+  }
+  return true;
+}
+
+void Ship::safe_position(const Grid &grid, bool try_current) {
+  if (try_current && spawn_spot_legacy_ok(grid)) return;
+  for (int i = 0; i < SPAWN_STRICT_TRIES; i++) {
     position = WrappedPoint();
-  } while(grid.collide(*this, 50.0f) != NULL || in_black_hole_pull());
+    if (spawn_spot_ok(grid)) return;
+  }
+  for (int i = 0; i < SPAWN_LEGACY_TRIES; i++) {
+    position = WrappedPoint();
+    if (spawn_spot_legacy_ok(grid)) return;
+  }
 }
 
 void Ship::reset(bool was_killed) {
+  shield_effect_active = false;
   velocity = Point(0, 0);
   thrusting = false;
   reversing = false;
@@ -1461,11 +1539,56 @@ void Ship::update_missile_fly_volumes() {
 // See ship.h: the cooldown gates every path — key, pad bumper, touch
 // button, and the host's application of a net client's presses.
 const float Ship::BOOST_COOLDOWN_MS = 2000.0f;
+const float Ship::TELEPORT_COOLDOWN_MS = 5000.0f;
+
+void Ship::play_teleport_sound(Point at) {
+  // Process-lifetime chunk: playback can outlive the ship that triggered it.
+  static Mix_Chunk *sound = Mix_LoadWAV(asset_path("audio/player_teleport.wav").c_str());
+  WorldSound::play(sound, at);
+}
+
+bool Ship::find_teleport_destination(const Grid &grid) {
+  WrappedPoint original = position;
+  // A crowded world must never hang the simulation or force an unsafe jump.
+  for (int attempt = 0; attempt < 512; ++attempt) {
+    position = WrappedPoint();
+    if (grid.collide(*this, 50.0f)) continue;
+    bool blocked = false;
+    if (black_holes) for (const auto *bh : *black_holes)
+      if (position.distance_to(bh->position) < BlackHole::influence_radius + radius)
+        blocked = true;
+    if (teleport_hazards) for (const auto *h : *teleport_hazards) {
+      if (!h->is_alive()) continue;
+      float danger = h->teleport_clearance();
+      if (position.distance_to(h->position) < danger + radius + 50.0f) blocked = true;
+    }
+    if (missile_ships_list) for (const auto *o : *missile_ships_list)
+      if (o != this && o->is_alive() && collide(*o, 50.0f)) blocked = true;
+    if (shock_targets) for (const auto *o : *shock_targets)
+      if (o != this && o->is_alive() && collide(*o, 50.0f)) blocked = true;
+    if (!blocked) return true;
+  }
+  position = original;
+  return false;
+}
+
+void Ship::teleport() {
+  if (!teleport_ready()) return;
+  teleport_cooldown_left = TELEPORT_COOLDOWN_MS;
+  teleport_pending = true;
+}
+
+void Ship::play_boost_sound(Point at) {
+  static Mix_Chunk *sound = Mix_LoadWAV(asset_path("audio/boost_burst.wav").c_str());
+  WorldSound::play(sound, at, 0.75f);
+}
 
 void Ship::boost() {
   if (!boost_ready()) return;
   boost_cooldown_left = BOOST_COOLDOWN_MS;
   net_boost_count++;
+  play_boost_sound(position);
+  boost_events.push_back(std::make_pair(net_seat, Point(position)));
   boosting = true;
 }
 
@@ -1907,8 +2030,10 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   // total path. Killable asteroids along the line die and the pulse continues
   // through them — including TOUGH asteroids, which the lance kills outright;
   // surfaces that reflect bullets (reflective asteroids, armoured faces,
-  // phased ghosts) mirror-reflect it with its remaining distance; anything it
-  // cannot destroy (plain invincible, a teleport evade) blocks it.
+  // phased ghosts) mirror-reflect it with its remaining distance; a
+  // ready-to-teleport asteroid evades the hit but the pulse carries straight
+  // on through it (Glenn's ruling, 2026-09-12 — it used to block like a
+  // rock); only a plain invincible asteroid blocks it.
   float fm = facing.magnitude();
   if(fm <= 0.0f) return;
   Point dir = facing * (1.0f / fm);
@@ -1919,10 +2044,12 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   pulse.ttl = pulse.time_left = 250.0f;
   pulse.points.push_back(Point(pos.x(), pos.y()));
 
-  // PROTO 18 (net client): asteroids this pulse already claimed — they stay
-  // alive until the claim drain kills them later this tick, so the march
-  // must not re-strike them (offline/host kills leave them !is_alive()).
-  vector<Asteroid *> claimed;
+  // Asteroids this pulse already passed through but which are still alive:
+  // PROTO 18 (net client) claimed kills, which stay up until the claim
+  // drain kills them later this tick (offline/host kills leave them
+  // !is_alive()), and teleport evades on every machine, which relocate at
+  // the end of the tick. The march must not re-strike either.
+  vector<Asteroid *> passed;
 
   vector<Object *> candidates;
   const int max_hits = 16;  // safety cap on kills+reflections per pulse
@@ -1940,7 +2067,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
     for(Object *cand : candidates) {
       Asteroid *ast = dynamic_cast<Asteroid *>(cand);
       if(!ast || !ast->is_alive()) continue;
-      if(std::find(claimed.begin(), claimed.end(), ast) != claimed.end()) continue;
+      if(std::find(passed.begin(), passed.end(), ast) != passed.end()) continue;
       Point ast_near = ast->position.closest_to(seg_a);
       float ox = ast_near.x() - ast->position.x();
       float oy = ast_near.y() - ast->position.y();
@@ -2003,15 +2130,31 @@ void Ship::fire_lance_pulse(const Grid &grid) {
 
     explode(Point(hit_world.x(), hit_world.y()), ast_hit->velocity);
 
+    if(ast_hit->teleporting && !ast_hit->teleport_vulnerable) {
+      // Ready-to-teleport: the asteroid evades the hit, but the pulse is
+      // NOT blocked — it carries straight on through, collinearly like a
+      // kill (so resolve_lance_ship_hits' first-reflection rule holds).
+      // Offline/host, kill() runs the evade itself (debris + thud +
+      // teleport_pending; never a death). On the client the evade is the
+      // host's call, made from this pass-through vertex of the MSG_LANCE
+      // polyline in net_resolve_polyline_block — nothing to claim here.
+      // Either way the rock stays alive until the relocation, so it joins
+      // the passed list and the next segment can't re-strike it.
+      if(!net_claim_kills) ast_hit->kill();
+      passed.push_back(ast_hit);
+      pos = WrappedPoint(hit_world.x(), hit_world.y());
+      continue;
+    }
+
     // PROTO 18 (net client, net_claim_kills): predict the outcome without
     // killing locally and queue an MSG_HIT claim (bullet_id 0 — no clone
     // to consume). The claim drain later this tick does the local kill
     // with proper removal bookkeeping, exactly like bullet claims; the
-    // host honors the claim with the same tough/teleport forcing.
+    // host honors the claim with the same tough forcing.
     if(net_claim_kills) {
-      if(ast_hit->invincible ||
-         (ast_hit->teleporting && !ast_hit->teleport_vulnerable)) {
-        // Blocked (a teleport evade is the host's call — don't claim it).
+      if(ast_hit->invincible) {
+        // Blocked: a plain invincible rock is the one thing the lance
+        // cannot pass (never claimed — the host refuses those anyway).
         remaining = 0.0f;
         break;
       }
@@ -2019,7 +2162,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
       c.ast_id = ast_hit->net_id;
       c.bullet_id = 0;  // lance sentinel: honor without a clone consume
       net_kill_claims.push_back(c);
-      claimed.push_back(ast_hit);
+      passed.push_back(ast_hit);
       // Claimed-dead: carry straight on through it (score/kills are
       // host-owned and arrive via the snapshot HUD scalars).
       pos = WrappedPoint(hit_world.x(), hit_world.y());
@@ -2039,8 +2182,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
       continue;
     }
 
-    // Survived the hit (invincible or a teleport evade): the pulse is
-    // blocked here.
+    // Survived the hit (plain invincible): the pulse is blocked here.
     remaining = 0.0f;
     break;
   }
@@ -2190,6 +2332,8 @@ void Ship::shoot(bool on) {
 
 void Ship::fire_secondary(bool on) {
   if(secondary_weapons.empty()) return;
+  // Disposal requires a deliberate press. In particular, pause/intro/input
+  // resets release controls without changing the player's inventory.
   if((*secondary)->empty() && on) {
     auto to_remove = secondary;
     auto next = to_remove;
@@ -2823,6 +2967,12 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta, const Grid &grid) {
+  if (teleport_pending) {
+    teleport_pending = false;
+    uint8_t before = net_teleport_count;
+    if (is_alive()) Teleport(this, grid).step((int)delta);
+    if (net_teleport_count == before) teleport_cooldown_left = 0;
+  }
   toggled = !toggled;
   list<Behaviour *>::iterator vi = behaviours.begin();
   while(vi != behaviours.end()) {
@@ -2840,6 +2990,7 @@ void Ship::step(float delta, const Grid &grid) {
       time_left_invincible -= delta;
       if(time_left_invincible < 0) {
         invincible = false;
+        shield_effect_active = false;
         set_shield_hum(false);
       }
     }
@@ -2886,7 +3037,8 @@ void Ship::step(float delta, const Grid &grid) {
     if(net_queued_secondary_presses > 0) {
       if(secondary_weapons.empty() || secondary == secondary_weapons.end()) {
         net_queued_secondary_presses = 0;  // nothing armed: never block the release
-      } else if(!(*secondary)->is_shooting()) {
+      } else if((*secondary)->empty() || !(*secondary)->is_shooting()) {
+        // An empty held Shield still needs its deliberate disposal press.
         fire_secondary(true);              // replay one press per step
         net_queued_secondary_presses--;
       } else {
@@ -2992,6 +3144,7 @@ void Ship::step(float delta, const Grid &grid) {
     temperature += retro_heat_rate * delta;
 	}
   if(boost_cooldown_left > 0.0f) boost_cooldown_left -= delta;
+  if(teleport_cooldown_left > 0.0f) teleport_cooldown_left -= delta;
   temperature -= cool_rate * delta;
   if(temperature <= 0)
     temperature = 0;

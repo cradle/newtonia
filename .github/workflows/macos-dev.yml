@@ -14,82 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Both brew steps retry with backoff — a transient CDN failure in
-      # `brew update` killed this workflow's x86_64 step outright
-      # (2026-08-03; the SDL_mixer curl below already carried --retry).
-      - name: Install arm64 dependencies
+      - name: Install native build tools
         run: |
           try() { local i; for i in 1 2 3; do
                     if "$@"; then return 0; fi
                     if [ "$i" = 3 ]; then return 1; fi
                     echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          try brew install sdl2 mpg123
+          try brew install cmake openssl@3
 
-      - name: Install x86_64 Homebrew and dependencies
-        run: |
-          try() { local i; for i in 1 2 3; do
-                    if "$@"; then return 0; fi
-                    if [ "$i" = 3 ]; then return 1; fi
-                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
-          install_x86_brew() {
-            arch -x86_64 /bin/bash -c \
-              "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          }
-          try install_x86_brew
-          try arch -x86_64 /usr/local/bin/brew install sdl2 mpg123
-
-      - name: Build SDL2_mixer from source (WAV + MP3 only)
-        run: |
-          SDL_MIXER_VER=2.8.2
-          # --retry 8/15: GitHub's release CDN 504'd through the whole old
-          # 5x10s budget (2026-08-21, PR #490) — cover a ~2 min outage.
-          curl -fSL --retry 8 --retry-delay 15 --retry-all-errors \
-            -o SDL2_mixer.tar.gz \
-            "https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz"
-          tar xzf SDL2_mixer.tar.gz
-          cd SDL2_mixer-${SDL_MIXER_VER}
-
-          cmake_flags=(
-            -DCMAKE_BUILD_TYPE=Release
-            -DSDL2MIXER_VENDORED=OFF
-            -DSDL2MIXER_SAMPLES=OFF
-            -DSDL2MIXER_OGG=OFF
-            -DSDL2MIXER_FLAC=OFF
-            -DSDL2MIXER_MIDI=OFF
-            -DSDL2MIXER_OPUS=OFF
-            -DSDL2MIXER_MOD=OFF
-            -DSDL2MIXER_WAVPACK=OFF
-            -DSDL2MIXER_MP3=ON
-            -DSDL2MIXER_MP3_MPG123=ON
-            -DSDL2MIXER_WAVE=ON
-          )
-
-          # arm64 — build natively on the arm64 runner
-          cmake -B build-arm64 "${cmake_flags[@]}" \
-            -DCMAKE_PREFIX_PATH=/opt/homebrew \
-            -DCMAKE_INSTALL_PREFIX=/opt/homebrew
-          cmake --build build-arm64 -j$(sysctl -n hw.logicalcpu)
-          install_name_tool -id /opt/homebrew/lib/libSDL2_mixer.dylib \
-            build-arm64/libSDL2_mixer.dylib
-          cp build-arm64/libSDL2_mixer.dylib /opt/homebrew/lib/libSDL2_mixer.dylib
-
-          # x86_64 — cross-compile using the native arm64 cmake
-          cmake -B build-x86 "${cmake_flags[@]}" \
-            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_C_FLAGS="-target x86_64-apple-macos12.0" \
-            -DCMAKE_CXX_FLAGS="-target x86_64-apple-macos12.0" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-target x86_64-apple-macos12.0" \
-            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-            -DCMAKE_PREFIX_PATH=/usr/local \
-            -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
-          install_name_tool -id /usr/local/lib/libSDL2_mixer.dylib \
-            build-x86/libSDL2_mixer.dylib
-          cp build-x86/libSDL2_mixer.dylib /usr/local/lib/libSDL2_mixer.dylib
-
-          # Headers (arch-independent)
-          cp include/SDL_mixer.h /opt/homebrew/include/SDL2/SDL_mixer.h
-          cp include/SDL_mixer.h /usr/local/include/SDL2/SDL_mixer.h
+      # Homebrew no longer supports Intel macOS. Source-build the same pinned
+      # SDL stack for both architectures, with WAV + bundled minimp3 decoding.
+      - name: Build SDL dependencies (arm64 + x86_64)
+        run: ./build_sdl_deps_macos.sh
 
       - name: Collect sources
         run: |
@@ -113,6 +49,43 @@ jobs:
             echo "NEWTONIA_VERSION=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
           fi
 
+      # Netplay deps + the two documented Makefile recipes, BEFORE the release
+      # compiles: the universal prefix built here is what those compiles
+      # link, so the uploaded artifact carries the dylib these gates prove
+      # (the artifact used to be the one netless macOS build left anywhere —
+      # it could not reproduce the Steam dyld abort of 2026-09-11 because the
+      # broken dylib was never in it).
+      - name: Netplay deps + Makefile recipe gates
+        run: |
+          # The documented Mac netplay recipe (NETPLAY.md):
+          #   ./build_netplay_deps.sh
+          #   make NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs
+          # then the in-process WebRTC loopback self-test headlessly.
+          ./build_netplay_deps.sh
+          make clean
+          make -j3 NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs
+          otool -L ./newtonia | grep -q libdatachannel
+          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia
+          make clean
+
+          # Universal deps (MbedTLS — Homebrew OpenSSL is single-arch), then
+          # `make osx NETPLAY=1` as the developer-recipe gate: both
+          # architectures asserted, the 12.0 floor asserted, self-test run
+          # from inside the bundle so the embedded
+          # Frameworks/libdatachannel.dylib is what actually loads.
+          ./build_netplay_deps.sh --universal netplay-libs-uni
+          make osx NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs-uni
+          lipo -info newtonia | grep arm64 | grep -q x86_64
+          lipo -info Newtonia.app/Contents/Frameworks/libdatachannel.*.dylib | grep arm64 | grep -q x86_64
+          macos/check_min_os.sh 12.0 Newtonia.app/Contents/MacOS/Newtonia \
+            Newtonia.app/Contents/Frameworks/*.dylib
+          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./Newtonia.app/Contents/MacOS/Newtonia
+          # That bundle was the Makefile gate and is done; the release
+          # bundle below is built from the explicit compiles and carries
+          # the signed SDL stack.
+          rm -rf Newtonia.app
+          make clean
+
       - name: Build arm64
         env:
           MACOSX_DEPLOYMENT_TARGET: "12.0"
@@ -121,10 +94,13 @@ jobs:
             -DGL_SILENCE_DEPRECATION \
             -DNEWTONIA_VERSION_STRING="\"$NEWTONIA_VERSION\"" \
             -mmacosx-version-min=12.0 \
+            -DNEWTONIA_NET_RTC -I./netplay-libs-uni/include \
             -o newtonia-arm64 $(cat srcs.txt) macos_window.mm \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
             -L/opt/homebrew/lib -lSDL2_mixer \
             -I/opt/homebrew/include/SDL2 \
+            -L./netplay-libs-uni/lib -ldatachannel \
+            -Wl,-rpath,@executable_path/../Frameworks \
             -framework GLUT -framework OpenGL -framework AppKit
           lipo -info newtonia-arm64
 
@@ -136,51 +112,18 @@ jobs:
             -DGL_SILENCE_DEPRECATION \
             -DNEWTONIA_VERSION_STRING="\"$NEWTONIA_VERSION\"" \
             -mmacosx-version-min=12.0 \
+            -DNEWTONIA_NET_RTC -I./netplay-libs-uni/include \
             -o newtonia-x86_64 $(cat srcs.txt) macos_window.mm \
             $(/usr/local/bin/sdl2-config --cflags --libs) \
             -L/usr/local/lib -lSDL2_mixer \
             -I/usr/local/include/SDL2 \
+            -L./netplay-libs-uni/lib -ldatachannel \
+            -Wl,-rpath,@executable_path/../Frameworks \
             -framework GLUT -framework OpenGL -framework AppKit
           lipo -info newtonia-x86_64
 
       - name: Create universal binary
         run: lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
-
-      - name: Netplay build + loopback self-test (arm64, brew libdatachannel)
-        run: |
-          # Verifies the documented Mac netplay recipe (NETPLAY.md):
-          #   ./build_netplay_deps.sh
-          #   make NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs
-          # then runs the in-process WebRTC loopback self-test headlessly.
-          # The Makefile writes ./newtonia — stash the universal binary the
-          # bundling steps below need, and restore it afterwards.
-          mv newtonia newtonia-universal
-          ./build_netplay_deps.sh
-          make clean
-          make -j3 NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs
-          otool -L ./newtonia | grep -q libdatachannel
-          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia
-          make clean
-
-          # Universal netplay bundle: fat deps (MbedTLS — Homebrew OpenSSL
-          # is single-arch), `make osx NETPLAY=1`, both architectures
-          # asserted, self-test run from inside the bundle so the embedded
-          # Frameworks/libdatachannel.dylib is what actually loads.
-          ./build_netplay_deps.sh --universal netplay-libs-uni
-          make osx NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs-uni
-          lipo -info newtonia | grep arm64 | grep -q x86_64
-          lipo -info Newtonia.app/Contents/Frameworks/libdatachannel.*.dylib | grep arm64 | grep -q x86_64
-          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./Newtonia.app/Contents/MacOS/Newtonia
-
-          # Renamed, not deleted: the live-relay gate is the LAST step of
-          # this job and runs from this bundle (its embedded MbedTLS dylib
-          # is the whole point — see that step), while the bundling steps
-          # below need the Newtonia.app path free for the RELEASE bundle
-          # they build there.
-          mv Newtonia.app Newtonia-netplay.app
-          rm -rf newtonia-arm64 newtonia-x86_64
-          make clean
-          mv newtonia-universal newtonia
 
       - name: Import Developer ID certificate
         env:
@@ -226,7 +169,7 @@ jobs:
               local name dest arm x86
               name=$(basename "$dep")
               dest="$FW/$name"
-              # Compute the equivalent path in each Homebrew prefix
+              # Compute the equivalent path in each SDL install prefix
               arm=$(echo "$dep" | sed 's|/usr/local/|/opt/homebrew/|g')
               x86=$(echo "$dep" | sed 's|/opt/homebrew/|/usr/local/|g')
               if [ ! -f "$dest" ]; then
@@ -260,6 +203,28 @@ jobs:
           }
 
           bundle Newtonia.app/Contents/MacOS/Newtonia
+
+          # libdatachannel (netplay) is referenced as @rpath/... so the
+          # bundle() walk skips it (@ prefix); the binary's
+          # @executable_path/../Frameworks rpath resolves it. Fat dylib
+          # (MbedTLS statically absorbed), one file per install name — the
+          # recipe deploy-steam.yml ships.
+          cp netplay-libs-uni/lib/libdatachannel.*.dylib "$FW/"
+          for f in "$FW"/libdatachannel*.dylib; do
+            lipo -info "$f" | grep arm64 | grep -q x86_64
+            codesign --sign "Developer ID Application" --force --timestamp \
+              --options runtime "$f"
+          done
+
+          # sdl2-compat dlopens SDL3, so the dependency walk cannot see it.
+          # Its first macOS search path is beside libSDL2 in Frameworks.
+          lipo -create /opt/homebrew/lib/libSDL3.dylib /usr/local/lib/libSDL3.dylib \
+            -output "$FW/libSDL3.dylib"
+          install_name_tool -id "@loader_path/libSDL3.dylib" "$FW/libSDL3.dylib"
+          bundle "$FW/libSDL3.dylib"
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime "$FW/libSDL3.dylib"
+
           codesign --sign "Developer ID Application" --force --timestamp \
             --options runtime \
             --entitlements macos/EntitlementsDevID.plist \
@@ -284,6 +249,16 @@ jobs:
           </plist>
           PLIST
 
+      - name: Verify universal bundle
+        run: |
+          for f in Newtonia.app/Contents/MacOS/Newtonia Newtonia.app/Contents/Frameworks/*.dylib; do
+            lipo -info "$f"
+            lipo "$f" -verify_arch arm64 x86_64
+          done
+          macos/check_min_os.sh 12.0 Newtonia.app/Contents/MacOS/Newtonia \
+            Newtonia.app/Contents/Frameworks/*.dylib
+          otool -L Newtonia.app/Contents/MacOS/Newtonia | grep -q libdatachannel
+
       - name: Sign .app bundle
         run: |
           codesign --sign "Developer ID Application" --force --timestamp \
@@ -295,6 +270,11 @@ jobs:
         run: |
           codesign --verify --deep --strict --verbose=2 Newtonia.app
           spctl --assess --type exec --verbose Newtonia.app || true
+
+      # The loopback self-test on the artifact itself, signed: the embedded
+      # Frameworks/libdatachannel.dylib is what loads.
+      - name: Netplay loopback self-test (release bundle)
+        run: NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./Newtonia.app/Contents/MacOS/Newtonia
 
       - name: Package .app as zip
         run: ditto -c -k --keepParent Newtonia.app newtonia-macos-dev.zip
@@ -356,7 +336,7 @@ jobs:
           for attempt in 1 2 3; do
             : > attempt.log
             NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy \
-              ./Newtonia-netplay.app/Contents/MacOS/Newtonia 2>&1 | tee -a attempt.log || true
+              ./Newtonia.app/Contents/MacOS/Newtonia 2>&1 | tee -a attempt.log || true
             cat attempt.log >> sigtest.log
             grep -q "SIGNAL SELFTEST PASS" attempt.log && { ok=1; break; }
             echo "signal selftest attempt $attempt failed"
@@ -380,7 +360,7 @@ jobs:
           fi
           # NOTE: this gate's strength rests on the universal deps being
           # MbedTLS, which is what build_netplay_deps.sh --universal builds
-          # (-DUSE_MBEDTLS=ON) and why the step above uses that prefix. If
+          # (-DUSE_MBEDTLS=ON) and why the release compiles link that prefix. If
           # those deps ever move to a backend WITH a system trust store, a
           # bare PASS stops proving the carried bundle was used and this
           # gate needs the equivalent of windows.yml's CA-line check.
@@ -393,4 +373,4 @@ jobs:
           # already proves the bundle wrote, parsed and verified the chain.
           # Windows needs its grep precisely because it does NOT fail
           # closed.
-          rm -rf sigtest.log attempt.log Newtonia-netplay.app
+          rm -rf sigtest.log attempt.log

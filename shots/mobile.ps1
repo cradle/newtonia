@@ -21,6 +21,8 @@ if (-not $Scenes -or $Scenes.Count -eq 0) {
 }
 $Devices = @(
   @{ name = "iphone69";   size = "2868x1320" },
+  @{ name = "iphone65";   size = "2688x1242" },
+  @{ name = "iphone65p";  size = "1242x2688" },
   @{ name = "ipad13";     size = "2752x2064" },
   @{ name = "android";    size = "1920x1080" },
   @{ name = "androidtab"; size = "2560x1600" }

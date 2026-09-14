@@ -131,7 +131,7 @@ class SnapshotAssembler {
 
 }  // namespace Net
 
-namespace Save { struct GameState; }
+namespace Save { struct GameState; struct Asteroid; }
 
 // Sanity gate for a GameState deserialized from a host snapshot. The
 // deserializer trusts its input (it was written for local save files), so
@@ -142,6 +142,15 @@ namespace Save { struct GameState; }
 // magnitudes in every position/velocity, which no range comparison catches
 // on its own (see the definition).
 bool net_state_sane(const Save::GameState &s);
+
+// The per-asteroid half of net_state_sane, exported because a MSG_DELTA's
+// NEW-asteroid records are read straight off the wire in the save format
+// and restored without passing through the wholesale check (its asteroid
+// vector is empty by construction there). Covers the pose/shape floats AND
+// the integers the renderer uses as ARRAY BOUNDS — a tough asteroid's
+// health (crack count = 6 - health) and its crack_vertex indices — which
+// no float screen ever saw (security review 2026-09-08, F2).
+bool net_asteroid_sane(const Save::Asteroid &a);
 
 // B4b: the LIVE seat ceiling every online-join gate asks (lobby seats,
 // add_remote_player, the LAN door) — NET_PLAYER_CAP (MAX_PLAYERS since

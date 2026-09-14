@@ -1,6 +1,8 @@
 #ifndef OVERLAY_H
 #define OVERLAY_H
 
+#include "tap_band.h"
+
 class GLShip;
 class GLGame;
 
@@ -41,10 +43,23 @@ public:
   static void paused(const GLGame *glgame);
   // Seat roster (offline), drawn over the pause menu it replaces.
   static void seat_roster(const GLGame *glgame);
+  // Touch controls help card (GLGame::touch_help_*) — full-window over its
+  // own dim, owning the screen like the roster. No-op unless the card is
+  // up.
+  static void touch_help(const GLGame *glgame);
+  // The card's two option bands — INPUT METHOD (left half) and HANDEDNESS
+  // (right half), tap to cycle — as placed by the card's layout for the
+  // current row table and window aspect. ONE definition feeds the draw
+  // above and GLGame::touch_tap's hit test (the TapBand rule).
+  static TapBand touch_help_input_band();
+  static TapBand touch_help_hand_band();
   // Touch OSD (joystick, fire/mine, pause) — public so the intro screen can
   // draw it too; no-op off Android/iOS. Needs a full-window ortho of
   // ±window extents to be current.
   static void touch_controls(const GLGame *glgame, const GLShip *glship);
+  // The in-game touch zoom zones (TouchZone::zoom_*): drawn wherever touch
+  // is the input, native OSD and web alike.
+  static void touch_zoom(const GLGame *glgame, const GLShip *glship);
 
 private:
   static void score(const GLGame *glgame, const GLShip *glship);

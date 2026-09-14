@@ -6,6 +6,7 @@ package org.newtonia;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.media.AudioManager;
@@ -42,11 +43,14 @@ public class NewtoniaActivity extends SDLActivity {
 
     // Display.getCutout() (API 29+) already reflects the current rotation,
     // and is callable synchronously from any lifecycle point — unlike the
-    // window insets, which need a listener and an attached window. Cutout
-    // phones still on API 28 keep 0 insets (cosmetic only: the HUD row
-    // stays at the screen edge there, as it always has).
+    // window insets, which need a listener and an attached window. Below
+    // API 30 the insets stay 0: the window only extends under the cutout
+    // from 30 up (LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS, set by the patched
+    // SDLActivity — android/app/build.gradle patchSdlJava), and on 28/29 a
+    // fullscreen window is laid out beside the notch, so reporting its
+    // depth there would inset the HUD twice.
     private void updateSafeInsets() {
-        if (Build.VERSION.SDK_INT < 29) return;
+        if (Build.VERSION.SDK_INT < 30) return;
         try {
             Display d = getWindowManager().getDefaultDisplay();
             DisplayCutout c = d != null ? d.getCutout() : null;
@@ -161,7 +165,24 @@ public class NewtoniaActivity extends SDLActivity {
     // resume keeps its old environment.) Runs before super.onCreate so the
     // env is set before any native code can read it. getenv is what the
     // native layer uses, so no JNI is needed.
+    //
+    // DEBUG BUILDS ONLY. This activity is exported (launcher + App Links
+    // filters), so any app on the device can start it with extras — and
+    // the knobs include NEWTONIA_SIGNAL_URL / NEWTONIA_BOARD_URL /
+    // NEWTONIA_NET_TLS_INSECURE, which point the credential-carrying
+    // sockets at an attacker or strip their verification. The store build
+    // therefore ignores the bridge entirely (BuildConfig.DEBUG_EXTRAS is
+    // false there; true for debug and the -PdebugSign tester APK), and a
+    // debuggable install accepts it regardless (security review
+    // 2026-09-08, F1). Invite links (handleInviteIntent) are unaffected.
+    private boolean debugExtrasAllowed() {
+        if (BuildConfig.DEBUG_EXTRAS) return true;
+        ApplicationInfo info = getApplicationInfo();
+        return info != null && (info.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+    }
+
     private void applyEnvExtras(Intent intent) {
+        if (!debugExtrasAllowed()) return;
         if (intent == null || intent.getExtras() == null) return;
         Bundle extras = intent.getExtras();
         for (String key : extras.keySet()) {
