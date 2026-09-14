@@ -4,8 +4,9 @@
 # NEWTONIA_FORCE_TOUCH=1 (shots/run.sh shots/touchhelp.shot). The first
 # tap dismisses the first-game auto-shown card (one_hand), `key p`
 # pauses, and the last tap lands on the pause screen's CONTROLS band
-# (landscape: the exit band's -420 anchor + 240 -> Typer -180 -> 0.65 of
-# the height; portrait anchors it to the bottom, ~0.87). Add a tap
+# (a fixed Typer anchor under the "Paused" title; its zone starts at
+# -56 and runs a tenth of the screen down: 0.55..0.65 of the height in
+# landscape, ~0.52..0.62 in portrait, so 0.58 hits it in both). Add a tap
 # anywhere in 0.69..0.84 of the height in landscape (portrait scales the
 # block 1.6x and anchors it lower — 720x1560: 0.57..0.65; the bands are
 # finger-tall on purpose — left half INPUT METHOD, right half
@@ -20,4 +21,4 @@ asteroid 300 -800
 one_hand centre
 tap 0.5 0.5 200
 key p 500
-tap 0.5 0.65 900
+tap 0.5 0.58 900

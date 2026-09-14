@@ -337,7 +337,7 @@ private:
   // and the pause chrome/exit band are suppressed under its dim.
   bool touch_help_active() const { return touch_help_active_; }
   bool touch_help_offer() const;   // pause screen shows the CONTROLS band
-  TapBand controls_band() const;   // above roster_manage_band's slot
+  TapBand controls_band() const;   // under the "Paused" title, centred
   void touch_help_open(bool resume_on_close);
   void touch_help_close();
   // The card's option bands: cycle the pref, save it and re-run the touch

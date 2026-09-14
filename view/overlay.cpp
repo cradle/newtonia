@@ -1590,7 +1590,8 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // pass — a phone host had no way to see or remove the pilots).
   if(glgame->roster_touch_offer() && !glgame->touch_help_active())
     glgame->roster_manage_band().draw("MANAGE PLAYERS");
-  // The way into the touch controls help card, stacked a band above.
+  // The way into the touch controls help card, under the "Paused" title
+  // (a fixed centre anchor, not the exit band's bottom-anchored stack).
   if(glgame->touch_help_offer())
     glgame->controls_band().draw("CONTROLS");
 }

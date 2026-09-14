@@ -1546,11 +1546,33 @@ bool GLGame::touch_help_offer() const {
          net_mode_ != NetReplay;
 }
 
-// Stacked a band above MANAGE PLAYERS' slot (exit_band().y + 170), same
-// portrait-aware anchor idiom; the 70-unit pitch keeps the two finger
-// zones (glyphs + 16 pad) clear of each other when both show.
+// Directly under the "Paused" title block, NOT stacked over the exit
+// band: the band used to ride exit_band().y + 240 at glyph size 12 with
+// a 16 pad — a 56-unit-tall strip two thirds of the way down the screen
+// in landscape and, in portrait (where the exit band anchors to the
+// bottom), buried between the joystick ring and EXIT TO MENU, a screen
+// away from the title (field, 2026-09-14: "too small", "put it closer to
+// the centre so it's more visible"). A fixed Typer anchor keeps it under
+// the title in BOTH orientations: "press play to resume" (size 8 at -40)
+// descends to -56, and this band's finger zone starts right there and
+// runs a tenth of the screen height downward: 120 units (glyph 16 + 44
+// pad each side of the box centre) in landscape, where the virtual
+// height is the unstretched 1200; portrait stretches it (600/aspect,
+// ~3470 on a tall phone), which would shrink the same 120 units to a
+// sliver, so the zone grows BELOW the label by the difference
+// (TapBand::extra_below — below, not around, so the label stays put
+// under the title and the zone never climbs into it). It stays clear of
+// the online host's MANAGE PLAYERS band, which keeps its bottom-anchored
+// slot (landscape: its zone tops out at -234, this one bottoms out at
+// -176; portrait: a screen apart) and of the one-hand ring's rest
+// (portrait: ring top ~0.65h, this zone ends ~0.62h).
 TapBand GLGame::controls_band() const {
-  return TapBand(0.5f, exit_band().y + 240, 12, 16.0f);
+  const int size = 16;
+  const float pad = 44.0f;
+  float zone = 2.0f * (size + pad);                       // 120: landscape
+  float want = 0.10f * 2.0f * Typer::scaled_window_height;  // a tenth of h
+  float extra = want > zone ? want - zone : 0.0f;
+  return TapBand(0.5f, -100, size, pad, false, false, 0.0f, 1.0f, extra);
 }
 
 void GLGame::touch_help_open(bool resume_on_close) {

@@ -24,7 +24,8 @@ float TapBand::bottom_lift() {
 }
 
 TapBand TapBand::lifted(float dy) const {
-  return TapBand(nx, y + dy, size, pad, to_top, to_bottom, nx_min, nx_max);
+  return TapBand(nx, y + dy, size, pad, to_top, to_bottom, nx_min, nx_max,
+                 extra_below);
 }
 
 // Name lines at 230 / 80 / -70 (pitch 150, the touch board list's), the
@@ -58,7 +59,7 @@ TapBand TapBand::for_pointer() const {
   if (is_touch_mode()) return *this;
   // A mouse lands where it is pointed: no finger pad, and no edge run —
   // an edge band exists so a thumb near the bezel still counts, which is
-  // not a thing a cursor does.
+  // not a thing a cursor does. The below-reach is finger geometry too.
   return TapBand(nx, y, size, 6.0f, false, false, nx_min, nx_max);
 }
 
@@ -73,6 +74,6 @@ bool TapBand::contains(float tx, float ty) const {
   float mid = y - size;  // centre of the glyph box (glyphs reach y - 2*size)
   float half = size + pad;
   if (!to_top && vy > mid + half) return false;
-  if (!to_bottom && vy < mid - half) return false;
+  if (!to_bottom && vy < mid - half - extra_below) return false;
   return true;
 }
