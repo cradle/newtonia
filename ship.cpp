@@ -866,6 +866,16 @@ bool Ship::shield_active() const {
   return false;
 }
 
+int Ship::shield_time_remaining_ms() const {
+  if (!shield_effect_active || !invincible || god_mode_time_remaining() > 0) return 0;
+  int ms = time_left_invincible > 0 ? time_left_invincible : 0;
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Shield*>(*it))
+      ms += (*it)->ammo() * 1000;  // ShieldBehaviour's per-charge duration
+  }
+  return ms;
+}
+
 Save::Player Ship::capture_state() const {
   Save::Player p;
   p.score = score;
