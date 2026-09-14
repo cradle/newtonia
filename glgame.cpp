@@ -9996,22 +9996,27 @@ void GLGame::tick(int delta) {
       const float min_dist_from_ship = 400.0f;
       const float max_travel = fminf(world.x(), world.y()) * 0.5f;
       const float min_travel = 200.0f;
-      WrappedPoint new_pos;
-      for(int tries = 0; tries < 30; tries++) {
+      // Every try lands on the arrow's ray, so a ship parked along it can
+      // fail all of them — the last draw used to be taken anyway, which
+      // dropped a 170-radius rock onto the hull. No safe spot: the rock
+      // stays put (still vulnerable — the flinch is the player's gain).
+      WrappedPoint new_pos = ast->position;
+      bool found = false;
+      for(int tries = 0; tries < 30 && !found; tries++) {
         float dist = min_travel + (rand() / (float)RAND_MAX) * (max_travel - min_travel);
         float ox = cosf(ast->teleport_angle) * dist;
         float oy = sinf(ast->teleport_angle) * dist;
-        new_pos = WrappedPoint(ast->position.x() + ox, ast->position.y() + oy);
-        new_pos.wrap();
-        bool safe = true;
+        WrappedPoint cand(ast->position.x() + ox, ast->position.y() + oy);
+        cand.wrap();
+        found = true;
         for(auto po = players->begin(); po != players->end(); ++po) {
           if((*po)->ship->is_alive() &&
-             new_pos.distance_to((*po)->ship->position) < min_dist_from_ship) {
-            safe = false;
+             cand.distance_to((*po)->ship->position) < min_dist_from_ship) {
+            found = false;
             break;
           }
         }
-        if(safe) break;
+        if(found) new_pos = cand;
       }
       ast->position = new_pos;
       ast->teleport_vulnerable = true;

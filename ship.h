@@ -639,7 +639,27 @@ class Ship : public CompositeObject {
     friend class ShotScene;
 
   private:
+    // Spawn placement (respawn, first spawn, add-player). A candidate spot
+    // must keep SPAWN_CLEARANCE beyond touching every asteroid, hazard,
+    // other ship and black-hole pull NOW, and every asteroid and hazard
+    // must stay clear of it along its current velocity for the next
+    // SPAWN_LOOKAHEAD_MS — the spawn shield (1500 ms) plus a beat to
+    // react. A static 50-unit margin used to be the whole test, and a
+    // rock cruises at up to max_speed*headroom/radius = 0.2 u/ms, so one
+    // headed the right way put the freshly spawned hull inside it before
+    // the shield ran out (field, 2026-09-14: "respawned inside a large
+    // asteroid"). Bounded: SPAWN_STRICT_TRIES swept candidates, then the
+    // legacy static test for SPAWN_LEGACY_TRIES more, then whatever the
+    // last draw was — a hull is never left with no spot in a crowded
+    // late-game world. try_current keeps a restored pose (savegame resume)
+    // when it passes the legacy static test, as before.
+    static const float SPAWN_CLEARANCE;
+    static const int   SPAWN_LOOKAHEAD_MS;
+    static const int   SPAWN_STRICT_TRIES;
+    static const int   SPAWN_LEGACY_TRIES;
     void safe_position(const Grid &grid, bool try_current = false);
+    bool spawn_spot_legacy_ok(const Grid &grid) const;
+    bool spawn_spot_ok(const Grid &grid) const;
     void tally_nova_kill(const Point &pos);  // call on every asteroid kill; drops pickup every 100
     void fire_lance_pulse(const Grid &grid); // instantaneous lance ray-march (see weapon/lance.h)
     // Central bookkeeping for an asteroid this ship destroyed (score counters,

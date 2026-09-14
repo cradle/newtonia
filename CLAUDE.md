@@ -323,7 +323,7 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 - **Heat system**: `temperature`, `max_temperature`, `critical_temperature`, `explode_temperature`, `temperature_ratio()`; thrust/reverse build heat, cooling over time
 - **Nova system**: `nova_charge` (0–9), `nova_kill_counter` (0–99), `nova_drops_pending`
 - **Invincibility**: `time_left_invincible`
-- **Respawn**: `respawn_time`, `time_until_respawn`
+- **Respawn**: `respawn_time`, `time_until_respawn`. Placement is `Ship::safe_position` → `spawn_spot_ok`: a random spot must clear every asteroid, hazard, other hull and black-hole pull by `SPAWN_CLEARANCE` (120) NOW and stay clear of every asteroid/hazard swept along its current velocity for `SPAWN_LOOKAHEAD_MS` (2000, the 1500 ms spawn shield plus a beat) — the old static 50-unit test let a rock cruising at up to 0.2 u/ms carry the hull inside it before the shield ran out (field, 2026-09-14). Bounded search (400 swept tries, then 2000 legacy static tries), and a restored save pose still only has to pass the legacy test. The teleporting-asteroid relocation likewise no longer takes its last draw when all 30 miss the 400-unit ship clearance — the rock stays put
 - **Weapon management**: `next_weapon()`, `previous_weapon()`, `add_weapon(index)`, `add_mine_ammo()`, `add_giga_mine_ammo()`, `add_missile_ammo()`, `add_shield_ammo()`, `add_god_mode()`, `add_nova_charge(n)`
 - **Behaviours**: `add_behaviour()`, `disable_behaviours()`
 
