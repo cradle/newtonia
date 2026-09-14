@@ -850,7 +850,23 @@ void GLShip::draw_ship(bool minimap) const {
     if(ship->god_mode_time_remaining() > 0) {
       god_shield.draw();
     } else {
-      force_shield.draw();
+      // End-of-shield warning: over the last 3 s of shield SUPPLY the ring
+      // pulses, one beat rate per second — 2 Hz, then 4 Hz, then 8 Hz for
+      // the final second. Phased off the remaining ms (sim time, never the
+      // wall clock — replays and the video renderer must agree), and each
+      // rate is a whole number of beats per second so the ring is at full
+      // brightness on every boundary: no jump when the rate steps up.
+      int left = ship->shield_time_remaining_ms();
+      if(left > 0 && left <= SHIELD_PULSE_MS) {
+        int sec = (left - 1) / 1000;             // 2, 1, 0
+        float hz = sec == 2 ? 2.0f : sec == 1 ? 4.0f : 8.0f;
+        float t = (float)(left % 1000) / 1000.0f;
+        float beat = 0.5f + 0.5f * cosf(t * hz * 2.0f * (float)M_PI);
+        float a = SHIELD_PULSE_FLOOR + (1.0f - SHIELD_PULSE_FLOOR) * beat;
+        force_shield.draw_tinted(1.0f, 1.0f, 1.0f, a);
+      } else {
+        force_shield.draw();
+      }
     }
   }
 

@@ -280,6 +280,12 @@ class Ship : public CompositeObject {
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
     bool shield_active() const;
+    // Shield supply left in ms: the live charge plus every unspent charge
+    // (1 s each) of a held Shield weapon; 0 when no shield charge is up.
+    // Drives GLShip's end-of-shield pulse, so it is the SUPPLY, not the
+    // charge: a held shield chains 1 s charges, and the warning is that
+    // the chain is about to break.
+    int shield_time_remaining_ms() const;
     // The live charge outlasts its inventory item. ShieldBehaviour owns it
     // locally; snapshot extras mirror the same effect on clients/replays.
     bool shield_effect_active = false;

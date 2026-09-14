@@ -132,6 +132,10 @@ public:
   // The bound pad's id, or PAD_NONE — the roster names pads by it.
   PadId controller_id() const { return controller_id_; }
   void genForceShield();
+  // End-of-shield pulse (draw_ship): the ring beats over the last
+  // SHIELD_PULSE_MS of shield supply, dipping to SHIELD_PULSE_FLOOR alpha.
+  static const int SHIELD_PULSE_MS = 3000;
+  static constexpr float SHIELD_PULSE_FLOOR = 0.15f;
   void genRepulsor();
   void genGodShield();
   void draw(bool minimap = false);
