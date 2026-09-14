@@ -1546,11 +1546,31 @@ bool GLGame::touch_help_offer() const {
          net_mode_ != NetReplay;
 }
 
-// Stacked a band above MANAGE PLAYERS' slot (exit_band().y + 170), same
-// portrait-aware anchor idiom; the 70-unit pitch keeps the two finger
-// zones (glyphs + 16 pad) clear of each other when both show.
+// Directly under the "Paused" title block, NOT stacked over the exit
+// band: the band used to ride exit_band().y + 240 at glyph size 12 with
+// a 16 pad — a 56-unit-tall strip two thirds of the way down the screen
+// in landscape and, in portrait (where the exit band anchors to the
+// bottom), buried between the joystick ring and EXIT TO MENU, a screen
+// away from the title (field, 2026-09-14: "too small", "put it closer to
+// the centre so it's more visible"). A fixed Typer anchor keeps it under
+// the title in BOTH orientations: "press play to resume" (size 8 at -40)
+// descends to -56, and the label hangs a gap under that with its finger
+// zone starting right at the subtitle's descent. Gap and pad are both
+// 44 units in landscape (a 120-unit zone, a tenth of the unstretched
+// 1200 height) and SCALE with the portrait stretch (600/aspect, ~1730
+// on a tall phone): at fixed units the label crowded the subtitle in
+// portrait (field, same day) and the zone shrank to a sliver, so both
+// are held as a fraction of the screen instead. It stays clear of the
+// online host's MANAGE PLAYERS band, which keeps its bottom-anchored
+// slot (landscape: its zone tops out at -234, this one bottoms out at
+// -176; portrait: a screen apart), and of the one-hand ring's rest
+// (portrait: ring top ~0.65h, this zone ends ~0.60h).
 TapBand GLGame::controls_band() const {
-  return TapBand(0.5f, exit_band().y + 240, 12, 16.0f);
+  const int size = 16;
+  float stretch = Typer::scaled_window_height / Typer::original_window_height;
+  if (stretch < 1.0f) stretch = 1.0f;  // landscape: exactly the tuned units
+  float gap = 44.0f * stretch, pad = 44.0f * stretch;
+  return TapBand(0.5f, -56.0f - gap, size, pad);
 }
 
 void GLGame::touch_help_open(bool resume_on_close) {
