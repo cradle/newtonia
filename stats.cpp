@@ -14,9 +14,10 @@
 // savegame.dat: only ever APPEND fields, gated on version at read time, so a
 // v1 file loads under any future version with the new fields defaulted.
 // When a SaveStorage abstraction lands (xbox/PORT_PLAN.md), this module's
-// file I/O moves behind it unchanged. On Steam this file likely needs adding
-// to the depot's Auto-Cloud patterns so lifetime stats persist across
-// installs (ACHIEVEMENTS.md §4).
+// file I/O moves behind it unchanged. On Steam this file IS in the depot's
+// Auto-Cloud patterns (with savegame.dat and highscore.dat — the only three
+// files that roam; ACHIEVEMENTS.md §4, CLAUDE.md "Steam Cloud"), so
+// lifetime stats persist across installs and machines.
 
 static const char *ST_ORG  = "cc.gfm";
 static const char *ST_APP  = "newtonia";
