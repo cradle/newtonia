@@ -9,16 +9,16 @@
 // target. Consumers guard on typeof NewtoniaStore, so a missing copy
 // degrades to their markup default or no store link, never a throw.
 //
-// ANDROID_PUBLIC: flip to true when the Play listing is public (task
-// #145 — NETPLAY.md's publish-day steps). While it's in closed testing
-// a Play Store link dead-ends for non-testers, so Android surfaces
-// offer no store button; /join additionally uses the flag to gate its
-// install->auto-join button (the room code rides the install referrer).
+// ANDROID_PUBLIC: true since 2026-09-14 — the Play listing is public
+// (task #145, NETPLAY.md's publish-day steps). One switch for every
+// Android store surface: the store CTAs on the site leaderboard and the
+// web game's game-over banner, and /join's install->auto-join button
+// (the room code rides the install referrer).
 var NewtoniaStore = (function () {
   var STEAM_APPID = '4536720';
   var ua = navigator.userAgent;
   return {
-    ANDROID_PUBLIC: false,
+    ANDROID_PUBLIC: true,
     STEAM_APPID: STEAM_APPID,
     APP_STORE_URL: 'https://apps.apple.com/app/id6760685759',
     isIOS: /iPhone|iPad|iPod/i.test(ua) ||
