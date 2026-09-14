@@ -19,21 +19,14 @@ struct TapBand {
   float pad;
   bool to_top, to_bottom;
   float nx_min, nx_max;
-  // Extra reach BELOW the padded glyph box (Typer units, hit-test only).
-  // The pad is symmetric, which is right for a band with nothing above
-  // it; a band hung directly under a title needs its zone to start at
-  // the title's descent and grow downward — the pause screen's CONTROLS
-  // band, whose finger zone would otherwise shrink to a sliver of a
-  // portrait screen's stretched height (GLGame::controls_band).
-  float extra_below;
 
   constexpr TapBand(float nx_anchor, float y_anchor, int glyph_size,
                     float finger_pad, bool extend_top = false,
                     bool extend_bottom = false, float min_nx = 0.0f,
-                    float max_nx = 1.0f, float below_extra = 0.0f)
+                    float max_nx = 1.0f)
       : nx(nx_anchor), y(y_anchor), size(glyph_size), pad(finger_pad),
         to_top(extend_top), to_bottom(extend_bottom), nx_min(min_nx),
-        nx_max(max_nx), extra_below(below_extra) {}
+        nx_max(max_nx) {}
 
   // Draws the label on the band's anchor; pass the current time for
   // Typer's flashing variant (0 = steady).
