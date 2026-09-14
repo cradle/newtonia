@@ -16,6 +16,20 @@ make -j                                   # netplay build (the default)
 make clean && make -j NETPLAY=0           # netless stub build
 ```
 
+### Android install-referrer retry regression test (no SDK needed)
+
+```sh
+python3 test/unit/android_install_referrer.py
+```
+
+Requires Python 3 and Java 17. Runs the production referrer methods against
+a fake Play service: a read exception or unavailable service must leave the
+next launch retryable, a recovered invite is delivered once, and successful
+reads without a valid code or an unsupported service are consumed once.
+Checks connection cleanup as well. Runs in `android.yml` after JDK setup;
+the full Android build separately compiles the complete Activity. This
+does not replace a Play-delivered install-to-join check on a device.
+
 ### STEAM_BUILD syntax gate (no SDK needed)
 
 `STEAM_BUILD` code only compiles in the tag-triggered deploy-steam workflow,

@@ -122,7 +122,10 @@ public class NewtoniaActivity extends SDLActivity {
                         definitive = false;  // transient: retry next launch
                     }
                 } catch (Exception ignored) {
-                    // Referrer is best-effort; never let it disturb launch.
+                    // A connected service can still fail during the read
+                    // (e.g. RemoteException). Keep the next launch retryable:
+                    // no referrer was consumed, so this is not definitive.
+                    definitive = false;
                 } finally {
                     if (definitive) {
                         prefs.edit()
