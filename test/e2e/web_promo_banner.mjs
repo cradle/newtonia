@@ -9,8 +9,10 @@
 //    asserts COMPUTED visibility, never the attribute.
 //  - store routing drift: store ids + the ANDROID_PUBLIC flag live once
 //    in web/site/store_route.js, consumed by three surfaces. Each is
-//    checked under desktop / iPhone / Android user agents, including the
-//    Android no-store-button cases while the Play listing is closed.
+//    checked under desktop / iPhone / Android user agents; the Android
+//    expectations track the flag (public since 2026-09-14 — Play CTAs
+//    everywhere, /join's install->auto-join referrer code), so a flag
+//    flip means updating the android: checks alongside it.
 //
 // Needs NO emcc build: serves web/site/ directly and compiles main.ts
 // with tsc if web/main.js is missing or stale (the game banner is plain
@@ -124,7 +126,9 @@ for (const [device, userAgent] of Object.entries(UAS)) {
     check('ios: CTA -> App Store', ctaVis && /COMPETE ON IOS/.test(ctaText) &&
         ctaHref.includes('apps.apple.com/app/id6760685759'), `vis=${ctaVis} text=${ctaText} href=${ctaHref}`);
   if (device === 'android')
-    check('android: CTA hidden (listing closed), text still shows', !ctaVis, 'CTA visible');
+    check('android: CTA -> Google Play', ctaVis && /COMPETE ON ANDROID/.test(ctaText) &&
+        ctaHref.includes('play.google.com/store/apps/details?id=org.newtonia') &&
+        ctaHref.includes('lb_would_place'), `vis=${ctaVis} text=${ctaText} href=${ctaHref}`);
 
   // ---- game-over banner (compiled main.js over the stub page) ----
   await page.goto('http://127.0.0.1:8123/game/', { waitUntil: 'load' });
@@ -134,40 +138,35 @@ for (const [device, userAgent] of Object.entries(UAS)) {
   const rankHref = (await rank.getAttribute('href')) || '';
   check(`${device}: rank link`, /SCORE 12,345/.test(rankText) && rankHref.includes('?score=12345&players=1'),
       `text=${rankText} href=${rankHref}`);
-  const storeCount = await page.locator('#go-banner a.go-store').count();
-  if (device === 'android') {
-    check('android: game banner has no store link', storeCount === 0, `count=${storeCount}`);
-  } else {
-    const sText = (await page.locator('#go-banner a.go-store').textContent()) || '';
-    const sHref = (await page.locator('#go-banner a.go-store').getAttribute('href')) || '';
-    if (device === 'desktop')
-      check('desktop: game banner -> Steam', /GET IT ON STEAM/.test(sText) &&
-          sHref.includes('store.steampowered.com') && sHref.includes('utm_campaign=gameover'),
-          `text=${sText} href=${sHref}`);
-    if (device === 'ios')
-      check('ios: game banner -> App Store', /GET IT ON THE APP STORE/.test(sText) &&
-          sHref.includes('apps.apple.com/app/id6760685759'), `text=${sText} href=${sHref}`);
-  }
+  const sText = (await page.locator('#go-banner a.go-store').textContent()) || '';
+  const sHref = (await page.locator('#go-banner a.go-store').getAttribute('href')) || '';
+  if (device === 'desktop')
+    check('desktop: game banner -> Steam', /GET IT ON STEAM/.test(sText) &&
+        sHref.includes('store.steampowered.com') && sHref.includes('utm_campaign=gameover'),
+        `text=${sText} href=${sHref}`);
+  if (device === 'ios')
+    check('ios: game banner -> App Store', /GET IT ON THE APP STORE/.test(sText) &&
+        sHref.includes('apps.apple.com/app/id6760685759'), `text=${sText} href=${sHref}`);
+  if (device === 'android')
+    check('android: game banner -> Google Play', /GET IT ON GOOGLE PLAY/.test(sText) &&
+        sHref.includes('play.google.com/store/apps/details?id=org.newtonia') &&
+        sHref.includes('gameover'), `text=${sText} href=${sHref}`);
   await page.locator('#go-banner button').click();
   check(`${device}: dismiss hides game banner`, !(await page.locator('#go-banner').isVisible()), 'still visible');
 
   // Zero score: the leaderboard page refuses to place 0 (?score= gate is
-  // digits > 0), so the banner must not promise SEE WHERE YOU'D RANK.
-  // With a store link the banner shows store-only; Android (no store
-  // while the listing is closed) shows nothing at all.
+  // digits > 0), so the banner must not promise SEE WHERE YOU'D RANK —
+  // it shows store-only (every device has a store since the Play listing
+  // went public, 2026-09-14).
   await page.evaluate(() => window.newtGameOver(0, 1));
-  if (device === 'android') {
-    check('android: zero score shows no banner', !(await page.locator('#go-banner').isVisible()), 'banner visible');
-  } else {
-    check(`${device}: zero score hides rank link, keeps store`,
-        (await page.locator('#go-banner').isVisible()) &&
-        !(await rank.isVisible()) &&
-        (await page.locator('#go-banner a.go-store').isVisible()),
-        'wrong visibility mix');
-    // ...and a later scoring run brings the rank link back.
-    await page.evaluate(() => window.newtGameOver(500, 1));
-    check(`${device}: next scoring run restores rank link`, await rank.isVisible(), 'rank still hidden');
-  }
+  check(`${device}: zero score hides rank link, keeps store`,
+      (await page.locator('#go-banner').isVisible()) &&
+      !(await rank.isVisible()) &&
+      (await page.locator('#go-banner a.go-store').isVisible()),
+      'wrong visibility mix');
+  // ...and a later scoring run brings the rank link back.
+  await page.evaluate(() => window.newtGameOver(500, 1));
+  check(`${device}: next scoring run restores rank link`, await rank.isVisible(), 'rank still hidden');
 
   // ---- /join routing (same shared store_route.js) ----
   await page.goto('http://127.0.0.1:8123/join/?code=TESTROOM', { waitUntil: 'load' });
@@ -187,8 +186,11 @@ for (const [device, userAgent] of Object.entries(UAS)) {
   if (device === 'ios')
     check('ios: join -> App Store', appVis && !steamVis && !playVis, `steam=${steamVis} app=${appVis} play=${playVis}`);
   if (device === 'android')
-    check('android: join -> needs-the-app (listing closed)', !steamVis && !appVis && !playVis &&
-        (await page.locator('#sub').textContent()) === 'Joining needs the app',
+    // Deferred deep link: the room code must ride the install referrer.
+    check('android: join -> Google Play with the code', playVis && !steamVis && !appVis &&
+        ((await page.locator('#playStoreBtn').getAttribute('href')) || '')
+            .includes('referrer=code%3DTESTROOM') &&
+        (await page.locator('#sub').textContent()) === 'Get the app to join this game',
         `steam=${steamVis} app=${appVis} play=${playVis} sub=${await page.locator('#sub').textContent()}`);
 
   check(`${device}: no page errors`, errs.length === 0, errs[0] || '');

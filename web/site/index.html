@@ -210,7 +210,9 @@
           <span class="platform-name">iOS</span>
           <span class="platform-detail">Download on the App Store. Harness touch controls.</span>
         </a>
-        <a class="platform" href="https://play.google.com/store/apps/details?id=org.newtonia" target="_blank" rel="noopener">
+        <!-- Play reads campaign attribution from the install referrer,
+             not bare UTM params (store_route.js's playStoreUrl pattern). -->
+        <a class="platform" href="https://play.google.com/store/apps/details?id=org.newtonia&amp;referrer=utm_source%3Dnewtonia_site%26utm_medium%3Dreferral%26utm_campaign%3Dplatforms" target="_blank" rel="noopener">
           <span class="platform-name">Android</span>
           <span class="platform-detail">Get it on Google Play. Harness touch controls.</span>
         </a>

@@ -1729,8 +1729,9 @@ desktop/iPhone/Android user agents. It guards the `[hidden]`-vs-author-
 `display` trap (the empty gold bar + COMPETE CTA that drew on every plain
 visit, field 2026-08-27) by asserting COMPUTED visibility, and the
 device-store routing that lives once in `web/site/store_route.js`
-(including the Android no-store-button cases while the Play listing is
-closed, and the zero-score no-rank-link case).
+(the Android expectations track `ANDROID_PUBLIC` — public since
+2026-09-14, so they assert the Play CTAs and /join's install-referrer
+code — plus the zero-score no-rank-link case).
 
 `web_replay_promote.mjs` guards a bug worth remembering: `copy_file` used a
 64 KB stack buffer, and emscripten's default stack is 64 KB, so promoting a
