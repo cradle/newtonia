@@ -35,14 +35,16 @@ class ReferrerTest {
     static class Context { static final int MODE_PRIVATE = 0; }
     static class SharedPreferences {
         boolean checked, persisted, failCommit;
+        int commits, applies;
         boolean getBoolean(String key, boolean fallback) { return checked; }
         SharedPreferences edit() { return this; }
         SharedPreferences putBoolean(String key, boolean value) {
             checked = value;
             return this;
         }
-        void apply() {}
+        void apply() { applies++; }
         boolean commit() {
+            commits++;
             check(!Thread.holdsLock(this),
                   "Never hold the framework preferences monitor across commit");
             // Android updates the in-memory value even when disk commit fails.
@@ -264,12 +266,16 @@ class ReferrerTest {
             app.checkInstallReferrer();
             check(app.prefs.checked && app.joined == null && InstallReferrerClient.connects == 1,
                   "A successful read without a valid invite is definitive");
+            check(app.prefs.commits == 0 && app.prefs.applies == 1,
+                  "Non-invite referrers must not synchronously write preferences");
         }
         app = fresh(2, false, "code=ABC123");
         app.checkInstallReferrer();
         app.checkInstallReferrer();
         check(app.prefs.checked && app.joined == null && InstallReferrerClient.connects == 1,
               "An unsupported service is definitive");
+        check(app.prefs.commits == 0 && app.prefs.applies == 1,
+              "Permanent setup failures have no invite to commit before delivery");
         System.out.println("Install-referrer retry and one-shot checks passed");
     }
 }

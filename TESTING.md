@@ -34,7 +34,9 @@ healthy launch; readiness is checked again on a delayed callback. An unexpected
 durable commit. Direct App Links share the readiness and JNI guards.
 A recovered invite is delivered once across sequential
 completed attempts; reads without a valid code and an unsupported service are
-also consumed once. The injected `SERVICE_DISCONNECTED` (-1) setup response is
+marked checked with `apply()`, avoiding a synchronous disk write when there is
+no invite. Those paths may harmlessly re-read after a crash before the async
+flush. The injected `SERVICE_DISCONNECTED` (-1) setup response is
 defensive API-code coverage, not evidence that the SDK emits it through that
 callback. The read-exception test covers connection loss during the read.
 The preference fake separates memory from durable state and simulates a

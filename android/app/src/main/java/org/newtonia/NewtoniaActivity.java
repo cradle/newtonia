@@ -145,6 +145,13 @@ public class NewtoniaActivity extends SDLActivity {
                     // but never lock prefs across commit(): on API 21-25 the
                     // framework's disk writer needs that same monitor.
                     if (prefs.getBoolean("install_referrer_checked", false)) return;
+                    if (code == null) {
+                        // Organic installs and permanent setup failures have
+                        // no invite to replay. Avoid blocking the UI on disk;
+                        // re-reading after a crash before flush is harmless.
+                        prefs.edit().putBoolean("install_referrer_checked", true).apply();
+                        return;
+                    }
                     // One small synchronous write, before native handoff:
                     // process death after delivery must not replay it.
                     // A crash between commit and handoff can lose auto-join;
@@ -158,7 +165,7 @@ public class NewtoniaActivity extends SDLActivity {
                         prefs.edit().putBoolean("install_referrer_checked", false).apply();
                         return;
                     }
-                    if (code != null) acceptInviteSafely(code);
+                    acceptInviteSafely(code);
                 } catch (Exception ignored) {
                     // Best-effort: read failures leave the flag unset, while
                     // handoff failures leave the durable flag consumed.
