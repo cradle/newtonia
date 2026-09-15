@@ -555,7 +555,14 @@ Note on the Limiter: `wrangler dev --local` has no `CF-Connecting-IP`, so every
 socket shares the rate-limit key `local` (HOST_LIMIT 10 / 10 min). Repeated
 host-creates across many test runs can trip it (`[lobby] manual fallback:
 rate-limited` in a game log) — `rm -rf signal/.wrangler` resets the persisted
-Limiter DO between heavy runs.
+Limiter DO between heavy runs. That persisted state is also SHARED by every
+`wrangler dev --local` launched from `signal/`, so the e2e drivers that
+self-host their own relay (`nseat_ban_token`, `nseat_anon`, `nseat_kick`,
+`lan_anon`, `identity_attested`, `identity_tick`) each pass `--persist-to` a
+private `mktemp` dir: without it their relay's Limiter loaded the shard
+relay's host-create count and refused the driver's first host as
+rate-limited, with the shard relay logging `SQLITE_BUSY` from the shared
+database (CI, 2026-09-15). `leaderboard.sh`'s board workers already did this.
 
 `SIGNAL_WS=wss://... node test/pv_replay_test.mjs` points a test at another
 relay (e.g. production after a worker deploy).

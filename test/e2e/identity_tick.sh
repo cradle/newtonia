@@ -25,14 +25,19 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 PORT="${TICK_RELAY_PORT:-8790}"
 export NEWTONIA_SIGNAL_URL="ws://127.0.0.1:$PORT/ws"
 
+# A private wrangler state dir (see nseat_ban_token.sh): relays launched
+# from signal/ otherwise share .wrangler/state, and this one's Limiter then
+# counts the shard relay's host-creates against the default limit.
+WSTATE=$(mktemp -d /tmp/identity_tick_wrangler.XXXXXX)
 ( cd "$HERE/../../signal" &&
-  exec npx wrangler@4 dev --local --port "$PORT" --var FAKE_VERIFY:1 ) \
+  exec npx wrangler@4 dev --local --port "$PORT" --persist-to "$WSTATE" \
+       --var FAKE_VERIFY:1 ) \
   > /tmp/tick_wrangler.log 2>&1 &
 WPID=$!
 # kill_tree, not a bare kill: TERMing the npx wrapper leaves its node/
 # workerd children orphaned and holding the port (lib.sh). The plain-kill
 # fallback covers an exit before lib.sh is sourced (the relay-died path).
-trap 'kill_tree $WPID 2>/dev/null || kill $WPID 2>/dev/null' EXIT
+trap 'kill_tree $WPID 2>/dev/null || kill $WPID 2>/dev/null; rm -rf "$WSTATE"' EXIT
 echo "== starting FAKE_VERIFY relay on :$PORT (pid $WPID)"
 for i in $(seq 1 90); do
   curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break
