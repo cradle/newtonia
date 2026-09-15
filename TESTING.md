@@ -24,12 +24,20 @@ python3 test/unit/android_install_referrer.py
 
 Requires Python 3 and Java 17. Runs the production referrer methods against
 a fake Play service: a read exception or unavailable service leaves the next
-launch retryable, while a successful read is consumed even if the subsequent
-invite handoff throws. A recovered invite is delivered once across sequential
+launch retryable. A checked synchronous preference commit must succeed before
+invite handoff; failed writes restore retryable in-memory state and deliver
+nothing. A successful commit stays consumed even if handoff throws, including
+`UnsatisfiedLinkError` when SDL could not load the native library. The same
+JNI guard handles direct App Links. A recovered invite is delivered once across sequential
 completed attempts; reads without a valid code and an unsupported service are
 also consumed once. The injected `SERVICE_DISCONNECTED` (-1) setup response is
 defensive API-code coverage, not evidence that the SDK emits it through that
 callback. The read-exception test covers connection loss during the read.
+The preference fake separates memory from durable state and simulates a
+restart after handoff; this checks ordering and failure handling, not Android
+filesystem crash behavior. Commit-before-handoff deliberately favors avoiding
+duplicate delivery: process death between the two can lose automatic joining,
+and the player can re-tap the original App Link.
 Checks connection cleanup as well. Runs in `android.yml` after JDK setup;
 the full Android build separately compiles the complete Activity. This
 does not cover overlapping callbacks, Activity recreation or races with App

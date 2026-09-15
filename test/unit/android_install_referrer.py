@@ -33,7 +33,7 @@ import java.rmi.RemoteException;
 class ReferrerTest {
     static class Context { static final int MODE_PRIVATE = 0; }
     static class SharedPreferences {
-        boolean checked;
+        boolean checked, persisted, failCommit;
         boolean getBoolean(String key, boolean fallback) { return checked; }
         SharedPreferences edit() { return this; }
         SharedPreferences putBoolean(String key, boolean value) {
@@ -41,13 +41,24 @@ class ReferrerTest {
             return this;
         }
         void apply() {}
+        boolean commit() {
+            // Android updates the in-memory value even when disk commit fails.
+            if (failCommit) return false;
+            persisted = checked;
+            return true;
+        }
+        void restart() { checked = persisted; }
     }
     final SharedPreferences prefs = new SharedPreferences();
     String joined;
     int deliveries;
-    boolean failAfterDelivery;
+    boolean failAfterDelivery, missingNativeLibrary;
+    int nativeCalls;
     SharedPreferences getSharedPreferences(String name, int mode) { return prefs; }
     void nativeAcceptInvite(String code) {
+        nativeCalls++;
+        if (missingNativeLibrary) throw new UnsatisfiedLinkError("Library not loaded");
+        check(prefs.persisted, "Consumption must reach disk before native handoff");
         joined = code;
         deliveries++;
         if (failAfterDelivery) throw new IllegalStateException("Failure after invite handoff");
@@ -116,6 +127,40 @@ class ReferrerTest {
         check(app.prefs.checked && app.deliveries == 1 && InstallReferrerClient.connects == 1,
               "An exception after a successful read must not re-deliver the invite");
         check(InstallReferrerClient.closes == 1, "Close after a delivery exception");
+        // Model process death after the handoff: lose all in-memory prefs.
+        app.prefs.restart();
+        app.checkInstallReferrer();
+        check(app.deliveries == 1 && InstallReferrerClient.connects == 1,
+              "A process restart after handoff must not re-deliver");
+
+        app = fresh(0, false, "code=ABC123");
+        app.missingNativeLibrary = true;
+        app.checkInstallReferrer();
+        app.prefs.restart();
+        app.checkInstallReferrer();
+        check(app.prefs.persisted && app.nativeCalls == 1 && app.deliveries == 0,
+              "Missing JNI library must be swallowed and not retried");
+        check(InstallReferrerClient.closes == 1, "Close after missing JNI library");
+
+        // Direct App Links use the same guard without the referrer marker.
+        app = fresh(0, false, "code=ABC123");
+        app.missingNativeLibrary = true;
+        app.acceptInviteSafely("ABC123");
+        check(app.nativeCalls == 1 && !app.prefs.checked,
+              "The shared JNI guard must also work without a referrer check");
+
+        app = fresh(0, false, "code=ABC123");
+        app.prefs.failCommit = true;
+        app.checkInstallReferrer();
+        check(!app.prefs.checked && !app.prefs.persisted && app.nativeCalls == 0,
+              "Failed persistence must prevent delivery and restore retryable memory");
+        check(InstallReferrerClient.closes == 1, "Close after persistence failure");
+        app.prefs.failCommit = false;
+        app.checkInstallReferrer();
+        app.prefs.restart();
+        app.checkInstallReferrer();
+        check(app.prefs.persisted && app.deliveries == 1 && InstallReferrerClient.connects == 2,
+              "Retry failed persistence and deliver only after a successful commit");
 
         // -1 is defensive API-code coverage, not evidence that the SDK emits
         // it through setup-finished. The read exception above covers a lost

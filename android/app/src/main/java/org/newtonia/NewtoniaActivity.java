@@ -87,7 +87,7 @@ public class NewtoniaActivity extends SDLActivity {
         if (data == null) return;
         String code = data.getQueryParameter("code");
         if (code != null && !code.isEmpty()) {
-            nativeAcceptInvite(code);
+            acceptInviteSafely(code);
         }
     }
 
@@ -101,6 +101,16 @@ public class NewtoniaActivity extends SDLActivity {
     // TRANSIENT service failure leaves the flag unset so the next launch
     // retries (the referrer itself persists ~90 days server-side).
     // TEST-SLICE-BEGIN: android_install_referrer.py
+    private void acceptInviteSafely(String code) {
+        try {
+            nativeAcceptInvite(code);
+        } catch (UnsatisfiedLinkError ignored) {
+            // SDL can return from onCreate after showing its library-load
+            // failure dialog. Keep that dialog up for both App Links and
+            // the asynchronous install-referrer callback.
+        }
+    }
+
     private void checkInstallReferrer() {
         final SharedPreferences prefs =
             getSharedPreferences("newtonia", Context.MODE_PRIVATE);
@@ -110,34 +120,44 @@ public class NewtoniaActivity extends SDLActivity {
         client.startConnection(new InstallReferrerStateListener() {
             @Override
             public void onInstallReferrerSetupFinished(int responseCode) {
-                boolean definitive = false;
                 try {
+                    String code = null;
                     if (responseCode ==
                         InstallReferrerClient.InstallReferrerResponse.OK) {
                         ReferrerDetails details = client.getInstallReferrer();
-                        // The read succeeded. Any later failure must not
-                        // re-deliver a code already handed to native code.
-                        definitive = true;
-                        String code = referrerCode(details.getInstallReferrer());
-                        if (code != null) nativeAcceptInvite(code);
-                    } else if (responseCode !=
+                        code = referrerCode(details.getInstallReferrer());
+                    } else if (responseCode ==
                                InstallReferrerClient.InstallReferrerResponse
-                                   .SERVICE_UNAVAILABLE &&
-                               responseCode !=
+                                   .SERVICE_UNAVAILABLE ||
+                               responseCode ==
                                InstallReferrerClient.InstallReferrerResponse
                                    .SERVICE_DISCONNECTED) {
-                        definitive = true;  // non-transient setup failure
+                        return;  // transient: retry next launch
                     }
-                } catch (Exception ignored) {
-                    // Best-effort: a read failure remains retryable; a
-                    // failure after the read leaves it consumed. Neither
-                    // should disturb launch.
-                } finally {
-                    if (definitive) {
-                        prefs.edit()
+
+                    synchronized (prefs) {
+                        // Another completed callback may have consumed it
+                        // since this connection started.
+                        if (prefs.getBoolean("install_referrer_checked", false)) return;
+                        // One small synchronous write, before native handoff:
+                        // process death after delivery must not replay it.
+                        // A crash between commit and handoff can lose auto-join;
+                        // the player can still re-tap the original App Link.
+                        if (!prefs.edit()
                             .putBoolean("install_referrer_checked", true)
-                            .apply();
+                            .commit()) {
+                            // A failed commit still updates Android's memory
+                            // cache. Restore it so a later attempt can retry;
+                            // never deliver without a confirmed durable flag.
+                            prefs.edit().putBoolean("install_referrer_checked", false).apply();
+                            return;
+                        }
                     }
+                    if (code != null) acceptInviteSafely(code);
+                } catch (Exception ignored) {
+                    // Best-effort: read failures leave the flag unset, while
+                    // handoff failures leave the durable flag consumed.
+                } finally {
                     try { client.endConnection(); } catch (Exception ignored) {}
                 }
             }
