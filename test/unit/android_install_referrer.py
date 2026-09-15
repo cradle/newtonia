@@ -45,8 +45,13 @@ class ReferrerTest {
     final SharedPreferences prefs = new SharedPreferences();
     String joined;
     int deliveries;
+    boolean failAfterDelivery;
     SharedPreferences getSharedPreferences(String name, int mode) { return prefs; }
-    void nativeAcceptInvite(String code) { joined = code; deliveries++; }
+    void nativeAcceptInvite(String code) {
+        joined = code;
+        deliveries++;
+        if (failAfterDelivery) throw new IllegalStateException("Failure after invite handoff");
+    }
 
     interface InstallReferrerStateListener {
         void onInstallReferrerSetupFinished(int responseCode);
@@ -104,6 +109,17 @@ class ReferrerTest {
               "A successful invite must only be consumed once");
         check(InstallReferrerClient.closes == 2, "Close the successful connection");
 
+        app = fresh(0, false, "code=ABC123");
+        app.failAfterDelivery = true;
+        app.checkInstallReferrer();
+        app.checkInstallReferrer();
+        check(app.prefs.checked && app.deliveries == 1 && InstallReferrerClient.connects == 1,
+              "An exception after a successful read must not re-deliver the invite");
+        check(InstallReferrerClient.closes == 1, "Close after a delivery exception");
+
+        // -1 is defensive API-code coverage, not evidence that the SDK emits
+        // it through setup-finished. The read exception above covers a lost
+        // connection during getInstallReferrer().
         for (int response : new int[]{1, -1}) {
             app = fresh(response, false, "code=ABC123");
             app.checkInstallReferrer();

@@ -110,26 +110,28 @@ public class NewtoniaActivity extends SDLActivity {
         client.startConnection(new InstallReferrerStateListener() {
             @Override
             public void onInstallReferrerSetupFinished(int responseCode) {
-                boolean definitive = true;
+                boolean definitive = false;
                 try {
                     if (responseCode ==
                         InstallReferrerClient.InstallReferrerResponse.OK) {
                         ReferrerDetails details = client.getInstallReferrer();
+                        // The read succeeded. Any later failure must not
+                        // re-deliver a code already handed to native code.
+                        definitive = true;
                         String code = referrerCode(details.getInstallReferrer());
                         if (code != null) nativeAcceptInvite(code);
-                    } else if (responseCode ==
+                    } else if (responseCode !=
                                InstallReferrerClient.InstallReferrerResponse
-                                   .SERVICE_UNAVAILABLE ||
-                               responseCode ==
+                                   .SERVICE_UNAVAILABLE &&
+                               responseCode !=
                                InstallReferrerClient.InstallReferrerResponse
                                    .SERVICE_DISCONNECTED) {
-                        definitive = false;  // transient: retry next launch
+                        definitive = true;  // non-transient setup failure
                     }
                 } catch (Exception ignored) {
-                    // A connected service can still fail during the read
-                    // (e.g. RemoteException). Keep the next launch retryable:
-                    // no referrer was consumed, so this is not definitive.
-                    definitive = false;
+                    // Best-effort: a read failure remains retryable; a
+                    // failure after the read leaves it consumed. Neither
+                    // should disturb launch.
                 } finally {
                     if (definitive) {
                         prefs.edit()

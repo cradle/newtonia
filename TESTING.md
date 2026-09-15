@@ -23,10 +23,13 @@ python3 test/unit/android_install_referrer.py
 ```
 
 Requires Python 3 and Java 17. Runs the production referrer methods against
-a fake Play service: a read exception, unavailable service or disconnected
-service must leave the next launch retryable, a recovered invite is delivered
-once across sequential completed attempts, and successful
-reads without a valid code or an unsupported service are consumed once.
+a fake Play service: a read exception or unavailable service leaves the next
+launch retryable, while a successful read is consumed even if the subsequent
+invite handoff throws. A recovered invite is delivered once across sequential
+completed attempts; reads without a valid code and an unsupported service are
+also consumed once. The injected `SERVICE_DISCONNECTED` (-1) setup response is
+defensive API-code coverage, not evidence that the SDK emits it through that
+callback. The read-exception test covers connection loss during the read.
 Checks connection cleanup as well. Runs in `android.yml` after JDK setup;
 the full Android build separately compiles the complete Activity. This
 does not cover overlapping callbacks, Activity recreation or races with App
