@@ -1106,7 +1106,11 @@ void Menu::tick(int delta) {
       // (NEWTONIA_NET_DISABLED web builds): a ?code= deep link must not
       // sit pending forever, and there is no lobby to route it to.
       if (net_available()) {
-        request_state_change(new NetLobby(invite_code));
+        // A tapped invite is a FRESH join, not a mid-game reconnect: fail
+        // fast to the retry screen on a dead/absent room instead of the
+        // rejoin budget's 60 s "waiting for the host" wait.
+        request_state_change(
+            new NetLobby(invite_code, NetLobby::InviteAcceptTag()));
         return;
       }
     }

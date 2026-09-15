@@ -341,6 +341,7 @@ NetLobby::NetLobby()
       rejoin_mode_(false),
       rejoin_retry_ms_(0),
       rejoin_budget_ms_(0),
+      cold_invite_(false),
       connect_wait_ms_(0),
       status_ms_(0),
       currentTime(0),
@@ -407,6 +408,18 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   signal_wait_ms_ = 0;
   screen_ = RoomJoining;
   set_status("RECONNECTING");
+}
+
+// Cold invite / deep-link accept: the room-code ctor's connect setup, but
+// flagged so any failure fails fast (see the header and the cold_invite_
+// gates below). "JOINING THE ROOM" (drawn by the RoomJoining else) reads
+// truer than the rejoin ctor's "RECONNECTING" — nothing was connected to
+// lose. The delegated ctor lands on LobbyFailed if the transport/signal
+// could not even be created, so only relabel a live join attempt.
+NetLobby::NetLobby(const std::string &invite_code, InviteAcceptTag)
+    : NetLobby(invite_code) {
+  cold_invite_ = true;
+  if (screen_ == RoomJoining) set_status("JOINING THE ROOM");
 }
 
 // CodeEntry character picker for controllers: the code alphabet drawn as
@@ -1110,6 +1123,22 @@ void NetLobby::join_unreachable(const char *why) {
   }
   fail_headline_ = "COULD NOT REACH THE ROOM SERVER";
   set_status("CHECK YOUR INTERNET CONNECTION", 2 * STATUS_SHOW_MS);
+  screen_ = LobbyFailed;
+}
+
+void NetLobby::cold_invite_failed(const char *headline) {
+  NET_LOG("[lobby] cold invite failed: %s\n", headline);
+  if (signal_) {
+    signal_->close();
+    delete signal_;
+    signal_ = nullptr;
+  }
+  // The invite code is spent: keep the clipboard auto-join from walking
+  // back into the same dead room on the next visit (mirrors the relay
+  // error path). TRY AGAIN goes to the chooser, where a fresh code works.
+  mark_room_dead(code_entry_);
+  fail_headline_ = headline;
+  set_status("TRY AGAIN OR HOST A NEW ROOM", 2 * STATUS_SHOW_MS);
   screen_ = LobbyFailed;
 }
 
@@ -1945,6 +1974,16 @@ void NetLobby::pump_signal(int delta) {
         break;
       case NetSignal::Event::Error:
         if (rejoin_mode_ && (screen_ == RoomJoining || screen_ == CodeEntry)) {
+          if (cold_invite_) {
+            // A fresh invite: every relay error is terminal — no reconnect
+            // wait. cold_invite_failed deletes signal_, so return (we are
+            // inside the while(signal_->poll) loop).
+            cold_invite_failed(ev.text == "room-full"  ? "THAT ROOM IS FULL"
+                             : ev.text == "host-closed" ? "THE HOST ENDED THE GAME"
+                             : ev.text == "rate-limited" ? "TOO MANY TRIES"
+                             : "THE ROOM IS GONE");
+            return;
+          }
           if (ev.text == "rate-limited") {
             schedule_rejoin_retry("rate-limited", 15000);
           } else if (ev.text == "host-closed") {
@@ -2001,11 +2040,19 @@ void NetLobby::pump_signal(int delta) {
           fall_back_to_manual("socket closed before room");
           return;
         } else if (screen_ == RoomJoining && room_code_.empty()) {
-          if (rejoin_mode_) {
+          if (rejoin_mode_ && !cold_invite_) {
             schedule_rejoin_retry("socket closed", 5000);
             break;
           }
-          // join_unreachable deletes signal_ — the poll loop must stop.
+          // A cold invite that closes before any offer is a dead room —
+          // usually the deep-link message-before-close race swallowing the
+          // worker's no-such-room, leaving only this Closed. Fail fast, do
+          // not retry. Both this and join_unreachable delete signal_, so
+          // the poll loop must stop (return, not break).
+          if (cold_invite_) {
+            cold_invite_failed("THE ROOM IS GONE");
+            return;
+          }
           join_unreachable("socket closed while joining");
           return;
         }
@@ -2019,7 +2066,8 @@ void NetLobby::pump_signal(int delta) {
       rejoin_retry_ms_ <= 0) {
     signal_wait_ms_ += delta;
     if (signal_wait_ms_ > SIGNAL_TIMEOUT_MS) {
-      if (rejoin_mode_) schedule_rejoin_retry("signal timeout", 1000);
+      if (rejoin_mode_ && !cold_invite_) schedule_rejoin_retry("signal timeout", 1000);
+      else if (cold_invite_) cold_invite_failed("THE ROOM IS NOT RESPONDING");
       else if (hosting_) fall_back_to_manual("signal server timeout");
       else join_unreachable("signal server timeout");
     }
@@ -2135,7 +2183,7 @@ void NetLobby::tick(int delta) {
   // the WHOLE time we're hostless — not just between retries — so the
   // countdown the joiner sees is honest and the total wait is bounded
   // even while an attempt is in flight.
-  if (rejoin_mode_ && !session_ && screen_ != LobbyFailed) {
+  if (rejoin_mode_ && !cold_invite_ && !session_ && screen_ != LobbyFailed) {
     rejoin_budget_ms_ -= delta;
     if (rejoin_budget_ms_ <= 0) {
       rejoin_retry_ms_ = 0;
@@ -2934,11 +2982,13 @@ void NetLobby::draw() {
       break;
     }
     case RoomJoining:
-      if (rejoin_mode_) {
+      if (rejoin_mode_ && !cold_invite_) {
         // Honest about what's happening: the room survives the host's
         // socket for the reclaim grace window and we're waiting to see if
         // the host resumes — this is not a stuck join. The countdown is
-        // the rejoin budget (ticks continuously; see the retry loop).
+        // the rejoin budget (ticks continuously; see the retry loop). A
+        // cold invite has no such wait, so it falls to the plain
+        // "JOINING THE ROOM" else below.
         lines.push_back("WAITING FOR THE HOST TO COME BACK");
         char left[40];
         snprintf(left, sizeof(left), "GIVING UP IN %d",

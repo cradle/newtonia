@@ -686,6 +686,9 @@ test/e2e/turnexpiry.sh # REAL TURN expiry on a relay-forced pair (needs UDP egre
 test/e2e/spectate.sh # one player out of lives -> "SPECTATING IN N" -> camera to peer
 test/e2e/spectate_disconnect.sh # joiner spectating -> host process killed -> GAME OVER
 test/e2e/invite.sh   # host re-advertises the open slot on peer loss, clears on menu teardown
+test/e2e/invite_deadroom.sh # a +connect invite to a never-hosted code fast-fails to
+                        # LobbyFailed ("cold invite failed") and never enters the
+                        # rejoin retry/budget loop (the 60 s "waiting for host" hang)
 test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (normal
                         # default netplay build; the driver sets the runtime hook
                         # NEWTONIA_NET_TEST_GRANT_WEAPONS=1 to stock both weapons.

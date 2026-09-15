@@ -51,8 +51,8 @@ shard_drivers() {
     # that decides this job's wall clock (16 min against 12 for this one),
     # and 2m20 of 4-seat flap driver costs nothing here and 2m20 there. It
     # is a loss-and-recovery driver either way.
-    netplay-resilience) echo "rejoin rejoinexit hiccup blackout invite hostresume
-                              spectate spectate_disconnect revive
+    netplay-resilience) echo "rejoin rejoinexit hiccup blackout invite invite_deadroom
+                              hostresume spectate spectate_disconnect revive
                               nseat_rejoin_flap_swap" ;;
     seats-and-soak) echo "nseat nseat_rejoin nseat_rejoin_flap nseat_gameover
                           nseat_swap nseat_soak gensoak nseat_kick nseat_anon" ;;
