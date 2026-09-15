@@ -50,6 +50,17 @@ build separately compiles the complete Activity. Callbacks execute on the
 test thread, not through Android lifecycle events. This does not cover real
 Activity recreation or races with App Link intents, and does not replace a
 Play-delivered install-to-join check on a device.
+**Click-age gate (#559)**: the retry has no natural end, so a code first read
+weeks after install would still arrive; the callback drops one whose store
+click (`getReferrerClickTimestampSeconds`, falling back to
+`getInstallBeginTimestampSeconds` when the click is 0) is older than
+`INVITE_MAX_AGE_SECONDS` = 24 h, the signalling worker's `ROOM_TTL_MS` from
+room creation — the click postdates the room, so an older click names a room
+that is certainly gone. A stale code takes the no-invite path (`apply()`, no
+sync write, no retry, one code-free `Log.i` trace); unknown timestamps or a
+clock that ran backwards never drop an invite. The fake `ReferrerDetails` is
+stamped relative to the real clock for the callback scenarios, and the pure
+`referrerFresh()` boundary is pinned to the second.
 
 ### STEAM_BUILD syntax gate (no SDK needed)
 

@@ -6,7 +6,10 @@ the web gesture harness, extracts the production methods between explicit
 markers. Android CI still compiles the complete Activity. Callbacks run on
 the test thread, either immediately or from an explicit queue. Tests cover
 queued completions and changes to SDL readiness, not real Android lifecycle
-events, filesystem crash behavior or races with App Link intents.
+events, filesystem crash behavior or races with App Link intents. The
+click-age gate (#559) is covered both through the callback, with the fake
+ReferrerDetails stamped relative to the real clock, and as the pure
+referrerFresh() boundary.
 """
 from pathlib import Path
 import subprocess
@@ -77,13 +80,19 @@ class ReferrerTest {
     }
     static class SDLActivity { static boolean mBrokenLibraries; }
     static class Log {
-        static int warnings;
+        static int warnings, infos;
         static Throwable lastError;
         static int w(String tag, String message, Throwable error) {
             check("Newtonia".equals(tag) && !message.contains("ABC123"),
                   "JNI warning must identify the app without logging the room code");
             warnings++;
             lastError = error;
+            return 0;
+        }
+        static int i(String tag, String message) {
+            check("Newtonia".equals(tag) && !message.contains("ABC123"),
+                  "Stale-invite trace must identify the app without logging the room code");
+            infos++;
             return 0;
         }
     }
@@ -94,7 +103,13 @@ class ReferrerTest {
         Uri getData() { return new Uri(); }
     }
     static class ReferrerDetails {
+        // Client-side epoch seconds, 0 = unknown (the referrer API's own
+        // convention). Stamped by the tests relative to the real clock,
+        // which is what the production callback compares against.
+        static long clickSeconds, installSeconds;
         String getInstallReferrer() { return InstallReferrerClient.referrer; }
+        long getReferrerClickTimestampSeconds() { return clickSeconds; }
+        long getInstallBeginTimestampSeconds() { return installSeconds; }
     }
     static class InstallReferrerClient {
         static class InstallReferrerResponse {
@@ -136,7 +151,8 @@ class ReferrerTest {
         InstallReferrerClient.deferCallback = false;
         InstallReferrerClient.pending.clear();
         SDLActivity.mBrokenLibraries = false;
-        Log.warnings = 0;
+        ReferrerDetails.clickSeconds = ReferrerDetails.installSeconds = 0;
+        Log.warnings = Log.infos = 0;
         Log.lastError = null;
         return new ReferrerTest();
     }
@@ -276,7 +292,65 @@ class ReferrerTest {
               "An unsupported service is definitive");
         check(app.prefs.commits == 0 && app.prefs.applies == 1,
               "Permanent setup failures have no invite to commit before delivery");
-        System.out.println("Install-referrer retry and one-shot checks passed");
+        // Click-age gate (#559): a code whose store click predates a room's
+        // maximum lifetime is dropped down the no-invite path — checked with
+        // apply(), no sync write, no jump, one code-free trace line.
+        final long now = System.currentTimeMillis() / 1000;
+        final long maxAge = INVITE_MAX_AGE_SECONDS;
+        check(maxAge == 24 * 60 * 60, "The invite bound must match the worker's 24 h ROOM_TTL_MS");
+
+        app = fresh(0, false, "code=ABC123");
+        ReferrerDetails.clickSeconds = now - 60;
+        ReferrerDetails.installSeconds = now - 2 * maxAge;  // ignored: click is known
+        app.checkInstallReferrer();
+        check("ABC123".equals(app.joined) && app.prefs.persisted && Log.infos == 0,
+              "A fresh click must deliver the invite");
+
+        app = fresh(0, false, "code=ABC123");
+        ReferrerDetails.clickSeconds = now - maxAge - 3600;
+        app.checkInstallReferrer();
+        app.checkInstallReferrer();
+        check(app.joined == null && app.nativeCalls == 0,
+              "A click older than a room's lifetime must not deliver");
+        check(app.prefs.checked && InstallReferrerClient.connects == 1,
+              "A stale invite is definitive: no retry on the next launch");
+        check(app.prefs.commits == 0 && app.prefs.applies == 1,
+              "A stale invite has nothing to replay, so no synchronous write");
+        check(Log.infos == 1, "A stale invite must leave one diagnostic trace");
+        check(InstallReferrerClient.closes == 1, "Close after a stale invite");
+
+        app = fresh(0, false, "code=ABC123");
+        ReferrerDetails.installSeconds = now - 60;  // click unknown (0)
+        app.checkInstallReferrer();
+        check("ABC123".equals(app.joined), "Fall back to a fresh install-begin time when the click is unknown");
+
+        app = fresh(0, false, "code=ABC123");
+        ReferrerDetails.installSeconds = now - maxAge - 3600;  // click unknown (0)
+        app.checkInstallReferrer();
+        check(app.joined == null && app.prefs.checked && Log.infos == 1,
+              "Fall back to a stale install-begin time when the click is unknown");
+
+        app = fresh(0, false, "code=ABC123");
+        app.checkInstallReferrer();  // both timestamps unknown
+        check("ABC123".equals(app.joined), "Unknown timestamps must never drop an invite");
+
+        app = fresh(0, false, "utm_source=newtonia_site");
+        ReferrerDetails.clickSeconds = now - maxAge - 3600;
+        app.checkInstallReferrer();
+        check(app.prefs.checked && Log.infos == 0,
+              "The age gate only speaks when there was a code to drop");
+
+        // The pure boundary.
+        check(referrerFresh(0, 0, now), "Both unknown is fresh");
+        check(referrerFresh(now + 100, 0, now), "A clock that ran backwards is fresh");
+        check(referrerFresh(now - maxAge, 0, now), "Exactly the room lifetime is still fresh");
+        check(!referrerFresh(now - maxAge - 1, 0, now), "One second past the room lifetime is stale");
+        check(!referrerFresh(now - maxAge - 1, now - 60, now),
+              "A known click wins over install-begin, even when the install is fresh");
+        check(referrerFresh(0, now - maxAge, now) && !referrerFresh(0, now - maxAge - 1, now),
+              "Install-begin carries the same boundary");
+
+        System.out.println("Install-referrer retry, one-shot and click-age checks passed");
     }
 }
 """
