@@ -155,7 +155,12 @@ start_relay() {
   # The rate limits are the reason for the overrides: wrangler dev sees no
   # CF-Connecting-IP, so every socket shares the key "local" and production's
   # 10 host-creates / 10 min would refuse a shard's later drivers as
-  # "rate-limited" — which reads exactly like a protocol bug.
+  # "rate-limited" — which reads exactly like a protocol bug. The same
+  # Limiter row bit back the other way: this relay's default state dir
+  # (signal/.wrangler) is shared by ANY wrangler dev launched from signal/,
+  # so a driver's self-hosted relay used to load this relay's host-create
+  # count and judge it against the default limit of 10 — the drivers now
+  # --persist-to private dirs, leaving this relay the directory's only user.
   #
   # Refuse a squatted port instead of adopting it: the readiness probe below
   # only greps for newtonia-signal, so a developer's own :8787 relay would

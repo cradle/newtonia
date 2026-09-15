@@ -21,14 +21,23 @@ export NEWTONIA_SIGNAL_URL="ws://127.0.0.1:$PORT/ws"
 
 # A private FAKE_VERIFY relay: the dev flag attests the claimed identity
 # without contacting any platform backend (never set in production).
+# Check the game and load kill_tree before starting a relay.
+. "$HERE/lib.sh"
+
+# A private wrangler state dir (see nseat_ban_token.sh): relays launched
+# from signal/ otherwise share .wrangler/state, and this one's Limiter then
+# counts the shard relay's host-creates against the default limit.
+WSTATE=$(mktemp -d /tmp/identity_attested_wrangler.XXXXXX) || {
+  echo "FATAL: could not create private relay state"; exit 1;
+}
 ( cd "$HERE/../../signal" &&
-  exec npx wrangler@4 dev --local --port "$PORT" --var FAKE_VERIFY:1 ) \
+  exec npx wrangler@4 dev --local --port "$PORT" --persist-to "$WSTATE" \
+       --var FAKE_VERIFY:1 ) \
   > /tmp/attest_wrangler.log 2>&1 &
 WPID=$!
 # kill_tree, not a bare kill: TERMing the npx wrapper leaves its node/
-# workerd children orphaned and holding the port (lib.sh). The plain-kill
-# fallback covers an exit before lib.sh is sourced (the relay-died path).
-trap 'kill_tree $WPID 2>/dev/null || kill $WPID 2>/dev/null' EXIT
+# workerd children orphaned and holding the port (lib.sh).
+trap 'kill_tree "$WPID" 2>/dev/null; rm -rf "$WSTATE"' EXIT
 echo "== starting FAKE_VERIFY relay on :$PORT (pid $WPID)"
 for i in $(seq 1 90); do
   curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break
@@ -36,7 +45,6 @@ for i in $(seq 1 90); do
   sleep 1
 done
 
-. "$HERE/lib.sh"
 relay_check
 
 # One host+joiner run to a connected game (named both ways: the host is
