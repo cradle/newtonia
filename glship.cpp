@@ -977,7 +977,7 @@ void GLShip::draw_keymap(float fit) const {
     { "CHANGE SECONDARY", &next_secondary_key,     PAD_ACT_NEXT_SECONDARY },
     { "BOOST",            &boost_key,              PAD_ACT_BOOST },
     { "TELEPORT",         &teleport_key,           PAD_ACT_TELEPORT },
-    { "ZOOM / FIXED ROTATE", NULL,                  PAD_ACT_CAMERA },
+    { "ZOOM / ROTATE",    NULL,                    PAD_ACT_CAMERA },
     { "ROTATE VIEW",      &toggle_rotate_view_key, PAD_ACT_ROTATE_VIEW },
     { "ZOOM IN",          &zoom_in_key,            PAD_ACT_ZOOM_IN },
     { "ZOOM OUT",         &zoom_out_key,           PAD_ACT_ZOOM_OUT },
