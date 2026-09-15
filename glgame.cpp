@@ -11535,7 +11535,7 @@ void GLGame::draw_world(GLShip *glship, int vp_index) const {
 void GLGame::draw_perspective(GLShip *glship) const {
   /* Draw the world */
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
-  float direction = (glship == NULL || !glship->rotate_view()) ? 0.0f : glship->camera_facing();
+  float direction = glship == NULL ? 0.0f : glship->camera_facing();
 
   // Starfields are Mesh-based (GPU-resident), drawn directly in each tile.
 

@@ -188,7 +188,7 @@ GLShip::~GLShip() {
 }
 
 float GLShip::camera_facing() const {
-  return -camera_rotation;
+  return rotating_view ? -camera_rotation : -fixed_camera_rotation;
 }
 
 void GLShip::snap_camera_to_heading() {
@@ -241,6 +241,16 @@ float GLShip::view_angle() const {
 }
 
 void GLShip::smooth_camera(int frame_delta) {
+  if (!rotating_view)
+    fixed_camera_rotation = fmodf(fixed_camera_rotation +
+        camera_stick_x * 0.09f * frame_delta, 360.0f);
+  if (camera_zoom_direction && frame_delta > 0) {
+    camera_zoom_repeat_ms -= frame_delta;
+    if (camera_zoom_repeat_ms <= 0) {
+      step_zoom(camera_zoom_direction);
+      camera_zoom_repeat_ms = 300;
+    }
+  }
   // Zoom first: ease view_zoom toward base pref x speed-follow on the same
   // SIMULATED clock as the rotation smoothing below (GLGame::draw banks it
   // in tick() — a wall clock here is exactly the bug the video renderer
@@ -544,14 +554,35 @@ void GLShip::controller_input(SDL_Event event) {
   } else if (event.cbutton.button == PAD_BUTTON_ZOOM_IN && pressed) {
     // The zoom_in/zoom_out pad actions (STEAMINPUT.md §2) — a Steam
     // layout's binding, or an SDL pad's PADDLE1/2 where SDL knows them.
-    step_zoom(+1);
-  } else if (event.cbutton.button == PAD_BUTTON_ZOOM_OUT && pressed) {
     step_zoom(-1);
+  } else if (event.cbutton.button == PAD_BUTTON_ZOOM_OUT && pressed) {
+    step_zoom(+1);
   }
 }
 
 void GLShip::controller_axis_input(SDL_Event event) {
   if(!wasMyController(event.cbutton.which)) {
+    return;
+  }
+  // Camera controls also accept neutral events while the ship is dead.
+  if (event.caxis.axis == SDL_CONTROLLER_AXIS_RIGHTX) {
+    float value = event.caxis.value;
+    float magnitude = (fabsf(value) - 10000.0f) / 22767.0f;
+    if (magnitude < 0.0f) magnitude = 0.0f;
+    if (magnitude > 1.0f) magnitude = 1.0f;
+    camera_stick_x = value < 0 ? -magnitude : magnitude;
+    if (magnitude > 0.0f) last_input_was_controller = true;
+    return;
+  }
+  if (event.caxis.axis == SDL_CONTROLLER_AXIS_RIGHTY) {
+    int direction = event.caxis.value < -10000 ? -1 :
+                    event.caxis.value > 10000 ? 1 : 0;
+    if (direction) last_input_was_controller = true;
+    if (direction != camera_zoom_direction) {
+      camera_zoom_direction = direction;
+      camera_zoom_repeat_ms = 300;
+      if (direction) step_zoom(direction);
+    }
     return;
   }
   if(!ship->is_alive()) {
@@ -702,6 +733,8 @@ void GLShip::controller_touchpad_input(SDL_Event event) {
 // latched on, and a centred stick generates no further SDL events to clear
 // them — the ship flies off on its own until the player re-taps the control.
 void GLShip::release_controls() {
+  camera_stick_x = 0.0f;
+  camera_zoom_direction = camera_zoom_repeat_ms = 0;
   kb_thrust = kb_reverse = kb_rotate_left = kb_rotate_right = false;
   left_axis_x_active = left_axis_y_active = false;
   r2_shoot_active = l2_shoot_active = false;
@@ -944,6 +977,7 @@ void GLShip::draw_keymap(float fit) const {
     { "CHANGE SECONDARY", &next_secondary_key,     PAD_ACT_NEXT_SECONDARY },
     { "BOOST",            &boost_key,              PAD_ACT_BOOST },
     { "TELEPORT",         &teleport_key,           PAD_ACT_TELEPORT },
+    { "ZOOM / ROTATE",    NULL,                    PAD_ACT_CAMERA },
     { "ROTATE VIEW",      &toggle_rotate_view_key, PAD_ACT_ROTATE_VIEW },
     { "ZOOM IN",          &zoom_in_key,            PAD_ACT_ZOOM_IN },
     { "ZOOM OUT",         &zoom_out_key,           PAD_ACT_ZOOM_OUT },

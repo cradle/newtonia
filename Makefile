@@ -258,6 +258,13 @@ test-shield-empty: $(OBJFILES)
 	  -Wl,--wrap=main -o "$$out/shield_empty_test"; \
 	SDL_AUDIODRIVER=dummy "$$out/shield_empty_test"
 
+.PHONY: test-camera-stick
+test-camera-stick: $(OBJFILES)
+	@set -e; out=$$(mktemp -d); trap 'rm -rf "$$out"' EXIT; \
+	$(CC) $(CFLAGS) -I. test/unit/camera_stick_test.cpp $(OBJFILES) $(LIBS) \
+	  -Wl,--wrap=main,--wrap=_Z12pad_attachedi,--wrap=_Z16save_preferencesv -o "$$out/camera_stick_test"; \
+	SDL_AUDIODRIVER=dummy "$$out/camera_stick_test"
+
 clean:
 	rm -rf $(OBJFILES) $(DEPFILES) newtonia newtonia.exe newtonia-arm64 newtonia-x86_64 flavor.stamp
 

@@ -428,6 +428,7 @@ CodeEntry picker, `Intro`). Two action sets; no layers needed yet.
 | `next_weapon` / `next_secondary` | digital | X / Y | |
 | `boost` | digital | LB | |
 | `teleport` | digital | RB | |
+| `camera` | analog | right stick | up/down zoom in/out (hold to repeat); left/right rotate the fixed camera at up to 90 degrees/second |
 | `rotate_view` | digital | L3 | |
 | `help` | digital | R3 | the F1 card |
 | `pause` | digital | Start | also "press start to join" for an unseated pad |

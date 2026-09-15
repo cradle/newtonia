@@ -59,6 +59,7 @@ struct SteamPad {
   // "not yet", not "unbound".
   bool bindings_seen;
   int bindings_poll;          // ticks until the next check while unseen
+  Sint16 camera_x, camera_y;
   Sint16 axis_x, axis_y;      // last emitted stick values
 };
 // An adopted pad whose layout stops using the actions (the player picked a
@@ -211,6 +212,8 @@ void release_all(StateManager *game, SteamPad &p) {
     p.held[a] = false;
     emit_button(game, p.id, pad_action_info((PadAction)a).button, false);
   }
+  if (p.camera_x != 0) { p.camera_x = 0; emit_axis(game, p.id, SDL_CONTROLLER_AXIS_RIGHTX, 0); }
+  if (p.camera_y != 0) { p.camera_y = 0; emit_axis(game, p.id, SDL_CONTROLLER_AXIS_RIGHTY, 0); }
   if (p.axis_x != 0) { p.axis_x = 0; emit_axis(game, p.id, SDL_CONTROLLER_AXIS_LEFTX, 0); }
   if (p.axis_y != 0) { p.axis_y = 0; emit_axis(game, p.id, SDL_CONTROLLER_AXIS_LEFTY, 0); }
 }
@@ -502,8 +505,11 @@ void poll_pad(StateManager *game, SteamPad &p, PadActionSet want) {
       InputAnalogActionData_t d = in->GetAnalogActionData(p.handle, g_analog[a]);
       Sint16 x = d.bActive ? to_sdl(d.x) : 0;
       Sint16 y = d.bActive ? to_sdl(-d.y) : 0;
-      if (axis_changed(p.axis_x, x)) { p.axis_x = x; emit_axis(game, p.id, SDL_CONTROLLER_AXIS_LEFTX, x); }
-      if (axis_changed(p.axis_y, y)) { p.axis_y = y; emit_axis(game, p.id, SDL_CONTROLLER_AXIS_LEFTY, y); }
+      bool camera = a == PAD_ACT_CAMERA;
+      Sint16 &last_x = camera ? p.camera_x : p.axis_x;
+      Sint16 &last_y = camera ? p.camera_y : p.axis_y;
+      if (axis_changed(last_x, x)) { last_x = x; emit_axis(game, p.id, camera ? SDL_CONTROLLER_AXIS_RIGHTX : SDL_CONTROLLER_AXIS_LEFTX, x); }
+      if (axis_changed(last_y, y)) { last_y = y; emit_axis(game, p.id, camera ? SDL_CONTROLLER_AXIS_RIGHTY : SDL_CONTROLLER_AXIS_LEFTY, y); }
       continue;
     }
     InputDigitalActionData_t d = in->GetDigitalActionData(p.handle, g_digital[a]);

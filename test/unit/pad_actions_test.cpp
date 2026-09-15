@@ -136,9 +136,9 @@ int main() {
     CHECKF(!has_key(other, info.name), "%s declared in both sets", info.name);
     // A localization string for the title.
     CHECKF(info.title && *info.title, "%s has no title", info.name);
-    // An analog action rides the left stick's axes; a digital one names a
+    // Analog actions identify their stick; a digital one names a
     // button the consumers can switch on.
-    if (info.analog) CHECK(info.button == PAD_BUTTON_LEFT_STICK);
+    if (info.analog) CHECK(info.button == (a == PAD_ACT_CAMERA ? PAD_BUTTON_RIGHT_STICK : PAD_BUTTON_LEFT_STICK));
     else CHECK(info.button >= 0 && info.button != PAD_BUTTON_LEFT_STICK &&
                info.button != PAD_BUTTON_RIGHT_STICK &&
                info.button != PAD_BUTTON_LEFT_TRIGGER &&
