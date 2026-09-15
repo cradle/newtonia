@@ -16,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.system.Os;
+import android.util.Log;
 import android.view.Display;
 import android.view.DisplayCutout;
 
@@ -83,7 +84,7 @@ public class NewtoniaActivity extends SDLActivity {
     // Pull ?code= out of a https://newtonia.metonymous.com/join?code=XXXX
     // App Link intent and forward it. Safe to call with any intent.
     private void handleInviteIntent(Intent intent) {
-        if (SDLActivity.mBrokenLibraries || intent == null) return;
+        if (intent == null) return;
         Uri data = intent.getData();
         if (data == null) return;
         String code = data.getQueryParameter("code");
@@ -96,9 +97,10 @@ public class NewtoniaActivity extends SDLActivity {
         if (SDLActivity.mBrokenLibraries) return;
         try {
             nativeAcceptInvite(code);
-        } catch (UnsatisfiedLinkError ignored) {
+        } catch (UnsatisfiedLinkError error) {
             // Last resort if JNI is unavailable despite SDL's readiness
             // flag. Known load/version failures are skipped above.
+            Log.w("Newtonia", "Invite handoff failed: native symbol unavailable", error);
         }
     }
 

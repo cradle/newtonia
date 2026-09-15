@@ -74,6 +74,17 @@ class ReferrerTest {
         void onInstallReferrerServiceDisconnected();
     }
     static class SDLActivity { static boolean mBrokenLibraries; }
+    static class Log {
+        static int warnings;
+        static Throwable lastError;
+        static int w(String tag, String message, Throwable error) {
+            check("Newtonia".equals(tag) && !message.contains("ABC123"),
+                  "JNI warning must identify the app without logging the room code");
+            warnings++;
+            lastError = error;
+            return 0;
+        }
+    }
     static class Uri {
         String getQueryParameter(String name) { return "ABC123"; }
     }
@@ -123,6 +134,8 @@ class ReferrerTest {
         InstallReferrerClient.deferCallback = false;
         InstallReferrerClient.pending.clear();
         SDLActivity.mBrokenLibraries = false;
+        Log.warnings = 0;
+        Log.lastError = null;
         return new ReferrerTest();
     }
     public static void main(String[] args) {
@@ -160,6 +173,8 @@ class ReferrerTest {
         check(app.prefs.persisted && app.nativeCalls == 1 && app.deliveries == 0,
               "Missing JNI library must be swallowed and not retried");
         check(InstallReferrerClient.closes == 1, "Close after missing JNI library");
+        check(Log.warnings == 1 && Log.lastError instanceof UnsatisfiedLinkError,
+              "Unexpected JNI failure must leave a diagnostic warning");
 
         // Direct App Links use the same guard without the referrer marker.
         app = fresh(0, false, "code=ABC123");
@@ -167,6 +182,7 @@ class ReferrerTest {
         app.acceptInviteSafely("ABC123");
         check(app.nativeCalls == 1 && !app.prefs.checked,
               "The shared JNI guard must also work without a referrer check");
+        check(Log.warnings == 1, "Direct App Links must share the JNI diagnostic");
 
         app = fresh(0, false, "code=ABC123");
         app.prefs.failCommit = true;
