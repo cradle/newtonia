@@ -75,19 +75,30 @@ public class NewtoniaActivity extends SDLActivity {
     private static native void nativeKeyboardFraction(float fraction);
 
     // Hands a co-op join link's room code to the native invite layer
-    // (android_main.cpp → Invites::note_accepted). super.onCreate has already
-    // loaded libnewtonia by the time we call this, so the symbol resolves.
+    // (android_main.cpp → Invites::note_accepted). Invite entry points first
+    // check SDL's library-load/version status before calling native code.
     private static native void nativeAcceptInvite(String code);
 
+    // TEST-SLICE-BEGIN: android_install_referrer.py
     // Pull ?code= out of a https://newtonia.metonymous.com/join?code=XXXX
     // App Link intent and forward it. Safe to call with any intent.
     private void handleInviteIntent(Intent intent) {
-        if (intent == null) return;
+        if (SDLActivity.mBrokenLibraries || intent == null) return;
         Uri data = intent.getData();
         if (data == null) return;
         String code = data.getQueryParameter("code");
         if (code != null && !code.isEmpty()) {
             acceptInviteSafely(code);
+        }
+    }
+
+    private void acceptInviteSafely(String code) {
+        if (SDLActivity.mBrokenLibraries) return;
+        try {
+            nativeAcceptInvite(code);
+        } catch (UnsatisfiedLinkError ignored) {
+            // Last resort if JNI is unavailable despite SDL's readiness
+            // flag. Known load/version failures are skipped above.
         }
     }
 
@@ -100,18 +111,8 @@ public class NewtoniaActivity extends SDLActivity {
     // flag stops every later launch from re-consuming a stale code, but a
     // TRANSIENT service failure leaves the flag unset so the next launch
     // retries (the referrer itself persists ~90 days server-side).
-    // TEST-SLICE-BEGIN: android_install_referrer.py
-    private void acceptInviteSafely(String code) {
-        try {
-            nativeAcceptInvite(code);
-        } catch (UnsatisfiedLinkError ignored) {
-            // SDL can return from onCreate after showing its library-load
-            // failure dialog. Keep that dialog up for both App Links and
-            // the asynchronous install-referrer callback.
-        }
-    }
-
     private void checkInstallReferrer() {
+        if (SDLActivity.mBrokenLibraries) return;
         final SharedPreferences prefs =
             getSharedPreferences("newtonia", Context.MODE_PRIVATE);
         if (prefs.getBoolean("install_referrer_checked", false)) return;
@@ -121,6 +122,8 @@ public class NewtoniaActivity extends SDLActivity {
             @Override
             public void onInstallReferrerSetupFinished(int responseCode) {
                 try {
+                    // SDL may have been recreated since the bind started.
+                    if (SDLActivity.mBrokenLibraries) return;
                     String code = null;
                     if (responseCode ==
                         InstallReferrerClient.InstallReferrerResponse.OK) {
@@ -135,23 +138,23 @@ public class NewtoniaActivity extends SDLActivity {
                         return;  // transient: retry next launch
                     }
 
-                    synchronized (prefs) {
-                        // Another completed callback may have consumed it
-                        // since this connection started.
-                        if (prefs.getBoolean("install_referrer_checked", false)) return;
-                        // One small synchronous write, before native handoff:
-                        // process death after delivery must not replay it.
-                        // A crash between commit and handoff can lose auto-join;
-                        // the player can still re-tap the original App Link.
-                        if (!prefs.edit()
-                            .putBoolean("install_referrer_checked", true)
-                            .commit()) {
-                            // A failed commit still updates Android's memory
-                            // cache. Restore it so a later attempt can retry;
-                            // never deliver without a confirmed durable flag.
-                            prefs.edit().putBoolean("install_referrer_checked", false).apply();
-                            return;
-                        }
+                    // Lifecycle entry points and Play setup callbacks run on
+                    // the main thread. Recheck for a prior completed callback,
+                    // but never lock prefs across commit(): on API 21-25 the
+                    // framework's disk writer needs that same monitor.
+                    if (prefs.getBoolean("install_referrer_checked", false)) return;
+                    // One small synchronous write, before native handoff:
+                    // process death after delivery must not replay it.
+                    // A crash between commit and handoff can lose auto-join;
+                    // the player can still re-tap the original App Link.
+                    if (!prefs.edit()
+                        .putBoolean("install_referrer_checked", true)
+                        .commit()) {
+                        // A failed commit still updates Android's memory
+                        // cache. Restore it so a later attempt can retry;
+                        // never deliver without a confirmed durable flag.
+                        prefs.edit().putBoolean("install_referrer_checked", false).apply();
+                        return;
                     }
                     if (code != null) acceptInviteSafely(code);
                 } catch (Exception ignored) {

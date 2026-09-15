@@ -3,9 +3,10 @@
 
 Needs Python 3 and Java 17; no Android SDK, emulator or Play account. Like
 the web gesture harness, extracts the production methods between explicit
-markers. Android CI still compiles the complete Activity. The fake callback
-is synchronous: one-shot assertions cover sequential completed attempts, not
-overlapping callbacks, Activity recreation or races with App Link intents.
+markers. Android CI still compiles the complete Activity. Callbacks run on
+the test thread, either immediately or from an explicit queue. Tests cover
+queued completions and changes to SDL readiness, not real Android lifecycle
+events, filesystem crash behavior or races with App Link intents.
 """
 from pathlib import Path
 import subprocess
@@ -42,6 +43,8 @@ class ReferrerTest {
         }
         void apply() {}
         boolean commit() {
+            check(!Thread.holdsLock(this),
+                  "Never hold the framework preferences monitor across commit");
             // Android updates the in-memory value even when disk commit fails.
             if (failCommit) return false;
             persisted = checked;
@@ -53,12 +56,14 @@ class ReferrerTest {
     String joined;
     int deliveries;
     boolean failAfterDelivery, missingNativeLibrary;
+    boolean requireCommittedFlag = true;
     int nativeCalls;
     SharedPreferences getSharedPreferences(String name, int mode) { return prefs; }
     void nativeAcceptInvite(String code) {
         nativeCalls++;
         if (missingNativeLibrary) throw new UnsatisfiedLinkError("Library not loaded");
-        check(prefs.persisted, "Consumption must reach disk before native handoff");
+        check(!requireCommittedFlag || prefs.persisted,
+              "Consumption must reach disk before native handoff");
         joined = code;
         deliveries++;
         if (failAfterDelivery) throw new IllegalStateException("Failure after invite handoff");
@@ -67,6 +72,13 @@ class ReferrerTest {
     interface InstallReferrerStateListener {
         void onInstallReferrerSetupFinished(int responseCode);
         void onInstallReferrerServiceDisconnected();
+    }
+    static class SDLActivity { static boolean mBrokenLibraries; }
+    static class Uri {
+        String getQueryParameter(String name) { return "ABC123"; }
+    }
+    static class Intent {
+        Uri getData() { return new Uri(); }
     }
     static class ReferrerDetails {
         String getInstallReferrer() { return InstallReferrerClient.referrer; }
@@ -77,7 +89,9 @@ class ReferrerTest {
             static final int SERVICE_DISCONNECTED = -1;
         }
         static int response, connects, closes;
-        static boolean failRead;
+        static boolean failRead, deferCallback;
+        static final java.util.ArrayDeque<InstallReferrerStateListener> pending =
+            new java.util.ArrayDeque<>();
         static String referrer;
         static InstallReferrerClient newBuilder(Object context) {
             return new InstallReferrerClient();
@@ -85,8 +99,10 @@ class ReferrerTest {
         InstallReferrerClient build() { return this; }
         void startConnection(InstallReferrerStateListener listener) {
             connects++;
-            listener.onInstallReferrerSetupFinished(response);
+            if (deferCallback) pending.add(listener);
+            else listener.onInstallReferrerSetupFinished(response);
         }
+        static void finish() { pending.remove().onInstallReferrerSetupFinished(response); }
         ReferrerDetails getInstallReferrer() throws RemoteException {
             if (failRead) throw new RemoteException("Play service disconnected during read");
             return new ReferrerDetails();
@@ -104,6 +120,9 @@ class ReferrerTest {
         InstallReferrerClient.failRead = failRead;
         InstallReferrerClient.referrer = referrer;
         InstallReferrerClient.connects = InstallReferrerClient.closes = 0;
+        InstallReferrerClient.deferCallback = false;
+        InstallReferrerClient.pending.clear();
+        SDLActivity.mBrokenLibraries = false;
         return new ReferrerTest();
     }
     public static void main(String[] args) {
@@ -161,6 +180,50 @@ class ReferrerTest {
         app.checkInstallReferrer();
         check(app.prefs.persisted && app.deliveries == 1 && InstallReferrerClient.connects == 2,
               "Retry failed persistence and deliver only after a successful commit");
+
+        app = fresh(0, false, "code=ABC123");
+        SDLActivity.mBrokenLibraries = true;
+        app.checkInstallReferrer();
+        check(InstallReferrerClient.connects == 0 && !app.prefs.checked && app.nativeCalls == 0,
+              "Broken SDL libraries must skip binding and preserve the referrer");
+        app.acceptInviteSafely("ABC123");
+        check(app.nativeCalls == 0, "Broken SDL state must also guard a resolving JNI symbol");
+        SDLActivity.mBrokenLibraries = false;
+        app.checkInstallReferrer();
+        check(app.prefs.persisted && app.deliveries == 1,
+              "Recover the referrer when SDL becomes healthy");
+
+        app = fresh(0, false, "code=ABC123");
+        SDLActivity.mBrokenLibraries = true;
+        app.handleInviteIntent(new Intent());
+        check(app.nativeCalls == 0, "Broken SDL state must skip the direct App Link");
+        SDLActivity.mBrokenLibraries = false;
+        app.requireCommittedFlag = false;  // direct links have no install marker
+        app.handleInviteIntent(new Intent());
+        check(app.nativeCalls == 1 && app.deliveries == 1 && !app.prefs.checked,
+              "Direct App Links must work normally after SDL recovers");
+
+        app = fresh(0, false, "code=ABC123");
+        InstallReferrerClient.deferCallback = true;
+        app.checkInstallReferrer();
+        SDLActivity.mBrokenLibraries = true;
+        InstallReferrerClient.finish();
+        check(!app.prefs.checked && app.nativeCalls == 0 && InstallReferrerClient.closes == 1,
+              "Recheck SDL readiness when a delayed callback arrives and clean up");
+        SDLActivity.mBrokenLibraries = false;
+        app.checkInstallReferrer();
+        InstallReferrerClient.finish();
+        check(app.prefs.persisted && app.deliveries == 1,
+              "A skipped delayed callback must leave a later launch retryable");
+
+        app = fresh(0, false, "code=ABC123");
+        InstallReferrerClient.deferCallback = true;
+        app.checkInstallReferrer();
+        app.checkInstallReferrer();
+        InstallReferrerClient.finish();
+        InstallReferrerClient.finish();
+        check(app.deliveries == 1 && InstallReferrerClient.closes == 2,
+              "Queued callbacks must recheck consumption without locking preferences");
 
         // -1 is defensive API-code coverage, not evidence that the SDK emits
         // it through setup-finished. The read exception above covers a lost

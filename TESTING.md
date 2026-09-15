@@ -26,9 +26,13 @@ Requires Python 3 and Java 17. Runs the production referrer methods against
 a fake Play service: a read exception or unavailable service leaves the next
 launch retryable. A checked synchronous preference commit must succeed before
 invite handoff; failed writes restore retryable in-memory state and deliver
-nothing. A successful commit stays consumed even if handoff throws, including
-`UnsatisfiedLinkError` when SDL could not load the native library. The same
-JNI guard handles direct App Links. A recovered invite is delivered once across sequential
+nothing. The fake rejects a commit while the caller holds the preferences
+monitor, guarding the pre-Oreo framework-writer deadlock. SDL's known broken
+library/version state skips binding and delivery, leaving the referrer for a
+healthy launch; readiness is checked again on a delayed callback. An unexpected
+`UnsatisfiedLinkError` despite SDL reporting ready is still guarded after the
+durable commit. Direct App Links share the readiness and JNI guards.
+A recovered invite is delivered once across sequential
 completed attempts; reads without a valid code and an unsupported service are
 also consumed once. The injected `SERVICE_DISCONNECTED` (-1) setup response is
 defensive API-code coverage, not evidence that the SDK emits it through that
@@ -38,11 +42,12 @@ restart after handoff; this checks ordering and failure handling, not Android
 filesystem crash behavior. Commit-before-handoff deliberately favors avoiding
 duplicate delivery: process death between the two can lose automatic joining,
 and the player can re-tap the original App Link.
-Checks connection cleanup as well. Runs in `android.yml` after JDK setup;
-the full Android build separately compiles the complete Activity. This
-does not cover overlapping callbacks, Activity recreation or races with App
-Link intents, and does not replace a Play-delivered install-to-join check on
-a device.
+Checks connection cleanup and queued callbacks completing after a prior one
+consumed the invite. Runs in `android.yml` after JDK setup; the full Android
+build separately compiles the complete Activity. Callbacks execute on the
+test thread, not through Android lifecycle events. This does not cover real
+Activity recreation or races with App Link intents, and does not replace a
+Play-delivered install-to-join check on a device.
 
 ### STEAM_BUILD syntax gate (no SDK needed)
 
