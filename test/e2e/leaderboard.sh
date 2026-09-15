@@ -128,6 +128,15 @@ clean_best() {
 # cheat flag it sets to keep the run from being promoted. The run is
 # cheat-flagged, which is fine elsewhere too — the upload candidate is the
 # earlier CLEAN best.nrp, not this run.
+#
+# The kill lands ~4.8 s into the run. Player 1 starts dead on a 4000 ms
+# countdown that the fire press below only skips once 1 s of it has run,
+# so a press that arrives a beat too early (a stall right after the new
+# game's build) is ignored and the ship spawns naturally at 4.0 s — with a
+# 1500 ms spawn shield, and the kill fell inside it (master run
+# 34910121078, S5: "never reached game over", then the YES Return seated a
+# player 2 and the run went on for 96 s). The hook now strips the shield
+# before it kills (glgame.cpp force_out), so the timing no longer matters.
 crash_to_game_over() {
   local W=$1 LOG=$2 i
   key "$W" space                               # spawn out of the countdown

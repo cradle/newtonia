@@ -9125,6 +9125,18 @@ void GLGame::tick(int delta) {
         if (who == 1 && gs != players->back()) continue;
         if (who < 0 && (int)gs->ship->net_seat != -who) continue;
         gs->ship->lives = 0;
+        // Object::kill() is a no-op on an INVINCIBLE ship, and a fresh
+        // hull carries a 1500 ms spawn shield: a kill landing inside it
+        // zeroed the lives and left the ship alive, so the run went on
+        // until a rock finished the job (and add_local_player still
+        // seated a player 2, since P1 was alive). The leaderboard driver
+        // touches the file ~4.8 s into a run whose player 1 spawns
+        // naturally at 4000 ms when the fire press comes too early to
+        // skip the countdown — inside the shield by a few hundred ms
+        // (master run 34910121078, S5, 2026-09-15). Forced out means
+        // out: strip the shield (spawn or god mode) before the kill.
+        gs->ship->invincible = false;
+        gs->ship->time_left_invincible = 0;
         gs->ship->kill();
       }
     };
