@@ -482,7 +482,7 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   float scale_x = hw_vis / half_w;
   float scale_y = hh / half_h;
 
-  float dir_deg = glship->rotate_view() ? glship->camera_facing() : 0.0f;
+  float dir_deg = glship->camera_facing();
   float dir_rad = dir_deg * (float)M_PI / 180.0f;
   float cos_d = cosf(dir_rad);
   float sin_d = sinf(dir_rad);

@@ -87,6 +87,18 @@ gate, if the stub is left stale).
 When adding a Steamworks call: verify the signature against the SDK docs /
 headers first, add it to the stub, then use it in game code.
 
+### Right-stick camera regression (Linux)
+
+`make NETPLAY=0 test-camera-stick` exercises the real GLShip input and camera
+code without a window, replacing controller attachment and preference writes.
+Checks seat isolation, zoom direction/repeat/clamping, neutral dead zone,
+fixed-camera rotation, follow-mode isolation, pause release, and disconnect.
+Run `python3 test/unit/steam_camera_layouts.py` to verify the Ship stick
+groups and retained right-stick click in all bundled defaults. Linux CI runs
+both tests, the pad action vocabulary test, and the Steam syntax gate.
+Physical SDL/Steam controller feel and the controls-card layout need a manual
+check: up/down zoom in/out; left/right rotate only in fixed-camera mode.
+
 ### Pad glyph vocabulary unit test (no SDL runtime needed)
 
 The pure half of `pad_style.h` — the per-style button-label table and the
