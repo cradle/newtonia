@@ -16,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.system.Os;
+import android.util.Log;
 import android.view.Display;
 import android.view.DisplayCutout;
 
@@ -75,10 +76,11 @@ public class NewtoniaActivity extends SDLActivity {
     private static native void nativeKeyboardFraction(float fraction);
 
     // Hands a co-op join link's room code to the native invite layer
-    // (android_main.cpp → Invites::note_accepted). super.onCreate has already
-    // loaded libnewtonia by the time we call this, so the symbol resolves.
+    // (android_main.cpp → Invites::note_accepted). Invite entry points first
+    // check SDL's library-load/version status before calling native code.
     private static native void nativeAcceptInvite(String code);
 
+    // TEST-SLICE-BEGIN: android_install_referrer.py
     // Pull ?code= out of a https://newtonia.metonymous.com/join?code=XXXX
     // App Link intent and forward it. Safe to call with any intent.
     private void handleInviteIntent(Intent intent) {
@@ -87,7 +89,18 @@ public class NewtoniaActivity extends SDLActivity {
         if (data == null) return;
         String code = data.getQueryParameter("code");
         if (code != null && !code.isEmpty()) {
+            acceptInviteSafely(code);
+        }
+    }
+
+    private void acceptInviteSafely(String code) {
+        if (SDLActivity.mBrokenLibraries) return;
+        try {
             nativeAcceptInvite(code);
+        } catch (UnsatisfiedLinkError error) {
+            // Last resort if JNI is unavailable despite SDL's readiness
+            // flag. Known load/version failures are skipped above.
+            Log.w("Newtonia", "Invite handoff failed: native symbol unavailable", error);
         }
     }
 
@@ -101,6 +114,7 @@ public class NewtoniaActivity extends SDLActivity {
     // TRANSIENT service failure leaves the flag unset so the next launch
     // retries (the referrer itself persists ~90 days server-side).
     private void checkInstallReferrer() {
+        if (SDLActivity.mBrokenLibraries) return;
         final SharedPreferences prefs =
             getSharedPreferences("newtonia", Context.MODE_PRIVATE);
         if (prefs.getBoolean("install_referrer_checked", false)) return;
@@ -109,26 +123,53 @@ public class NewtoniaActivity extends SDLActivity {
         client.startConnection(new InstallReferrerStateListener() {
             @Override
             public void onInstallReferrerSetupFinished(int responseCode) {
-                boolean definitive = true;
                 try {
+                    // SDL may have been recreated since the bind started.
+                    if (SDLActivity.mBrokenLibraries) return;
+                    String code = null;
                     if (responseCode ==
                         InstallReferrerClient.InstallReferrerResponse.OK) {
                         ReferrerDetails details = client.getInstallReferrer();
-                        String code = referrerCode(details.getInstallReferrer());
-                        if (code != null) nativeAcceptInvite(code);
+                        code = referrerCode(details.getInstallReferrer());
                     } else if (responseCode ==
                                InstallReferrerClient.InstallReferrerResponse
-                                   .SERVICE_UNAVAILABLE) {
-                        definitive = false;  // transient: retry next launch
+                                   .SERVICE_UNAVAILABLE ||
+                               responseCode ==
+                               InstallReferrerClient.InstallReferrerResponse
+                                   .SERVICE_DISCONNECTED) {
+                        return;  // transient: retry next launch
                     }
+
+                    // Lifecycle entry points and Play setup callbacks run on
+                    // the main thread. Recheck for a prior completed callback,
+                    // but never lock prefs across commit(): on API 21-25 the
+                    // framework's disk writer needs that same monitor.
+                    if (prefs.getBoolean("install_referrer_checked", false)) return;
+                    if (code == null) {
+                        // Organic installs and permanent setup failures have
+                        // no invite to replay. Avoid blocking the UI on disk;
+                        // re-reading after a crash before flush is harmless.
+                        prefs.edit().putBoolean("install_referrer_checked", true).apply();
+                        return;
+                    }
+                    // One small synchronous write, before native handoff:
+                    // process death after delivery must not replay it.
+                    // A crash between commit and handoff can lose auto-join;
+                    // the player can still re-tap the original App Link.
+                    if (!prefs.edit()
+                        .putBoolean("install_referrer_checked", true)
+                        .commit()) {
+                        // A failed commit still updates Android's memory
+                        // cache. Restore it so a later attempt can retry;
+                        // never deliver without a confirmed durable flag.
+                        prefs.edit().putBoolean("install_referrer_checked", false).apply();
+                        return;
+                    }
+                    acceptInviteSafely(code);
                 } catch (Exception ignored) {
-                    // Referrer is best-effort; never let it disturb launch.
+                    // Best-effort: read failures leave the flag unset, while
+                    // handoff failures leave the durable flag consumed.
                 } finally {
-                    if (definitive) {
-                        prefs.edit()
-                            .putBoolean("install_referrer_checked", true)
-                            .apply();
-                    }
                     try { client.endConnection(); } catch (Exception ignored) {}
                 }
             }
@@ -153,6 +194,7 @@ public class NewtoniaActivity extends SDLActivity {
         }
         return null;
     }
+    // TEST-SLICE-END: android_install_referrer.py
 
     // Debug bridge: Android processes fork from zygote, so `adb shell` env
     // vars never reach the app. Intent extras named NEWTONIA_* are copied

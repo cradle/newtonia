@@ -49,6 +49,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Install-referrer retry regression test
+        working-directory: newtonia
+        run: python3 test/unit/android_install_referrer.py
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
