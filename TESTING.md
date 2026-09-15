@@ -1112,7 +1112,12 @@ screenshot it to eyeball the full icon set after touching pickup art.
 
 spectate.sh uses the host-only `NEWTONIA_NET_TEST_KILL_MS`/`_WHO` hooks
 (inert without the env vars) to empty a player's lives on a timer — lives are
-host-authoritative, so it is applied on the host and replicates. `_WHO`
+host-authoritative, so it is applied on the host and replicates. Both the
+timer and the `NEWTONIA_NET_TEST_KILL_FILE` trigger (leaderboard.sh) strip
+the ship's invincibility before killing it: `Object::kill()` refuses an
+invincible ship, and a kill landing inside the 1500 ms spawn shield used to
+zero the lives and leave the ship alive, so the run never ended (leaderboard
+S5, master run 34910121078). `_WHO`
 defaults to `remote` (the joiner spectates the host); pass `SPECTATE_WHO=local`
 to make the host spectate the joiner. It burst-screenshots the spectator's
 window across the 5 s countdown and the hand-off; asserts SPECTATE-E2E-OK and a

@@ -128,6 +128,15 @@ clean_best() {
 # cheat flag it sets to keep the run from being promoted. The run is
 # cheat-flagged, which is fine elsewhere too — the upload candidate is the
 # earlier CLEAN best.nrp, not this run.
+#
+# The kill lands ~4.8 s into the run. Player 1 starts dead on a 4000 ms
+# countdown that the fire press below only skips once 1 s of it has run,
+# so a press that arrives a beat too early (a stall right after the new
+# game's build) is ignored and the ship spawns naturally at 4.0 s — with a
+# 1500 ms spawn shield, and the kill fell inside it (master run
+# 34910121078, S5: "never reached game over", then the YES Return seated a
+# player 2 and the run went on for 96 s). The hook now strips the shield
+# before it kills (glgame.cpp force_out), so the timing no longer matters.
 crash_to_game_over() {
   local W=$1 LOG=$2 i
   key "$W" space                               # spawn out of the countdown
@@ -274,7 +283,12 @@ grep -aq "cred=e2e-cred-2" "$OUT/wrangler-reject.log" ||
   fail "S5: retry did not carry a fresh (different) credential"
 alive $P s5
 kill -9 $P; wait $P 2>/dev/null; P=""
-kill $REJECT_PID 2>/dev/null; REJECT_PID=""
+# kill_tree, like the EXIT trap: a bare kill of the npx wrapper orphaned
+# the node/workerd children, which kept port 8796 (and the reject state)
+# alive for as long as the machine did — and with REJECT_PID cleared the
+# trap never got a second chance. A stale worker there would also let a
+# rerun's "came up" check pass against the OLD process (2026-09-15).
+kill_tree $REJECT_PID; REJECT_PID=""
 
 echo "===== S6: mint not landed at submit -> retry waits for it ====="
 # Credential-lifecycle hardening, empty case: the warm's async mint has not
