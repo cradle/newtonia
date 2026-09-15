@@ -100,6 +100,7 @@ public class NewtoniaActivity extends SDLActivity {
     // flag stops every later launch from re-consuming a stale code, but a
     // TRANSIENT service failure leaves the flag unset so the next launch
     // retries (the referrer itself persists ~90 days server-side).
+    // TEST-SLICE-BEGIN: android_install_referrer.py
     private void checkInstallReferrer() {
         final SharedPreferences prefs =
             getSharedPreferences("newtonia", Context.MODE_PRIVATE);
@@ -118,7 +119,10 @@ public class NewtoniaActivity extends SDLActivity {
                         if (code != null) nativeAcceptInvite(code);
                     } else if (responseCode ==
                                InstallReferrerClient.InstallReferrerResponse
-                                   .SERVICE_UNAVAILABLE) {
+                                   .SERVICE_UNAVAILABLE ||
+                               responseCode ==
+                               InstallReferrerClient.InstallReferrerResponse
+                                   .SERVICE_DISCONNECTED) {
                         definitive = false;  // transient: retry next launch
                     }
                 } catch (Exception ignored) {
@@ -156,6 +160,7 @@ public class NewtoniaActivity extends SDLActivity {
         }
         return null;
     }
+    // TEST-SLICE-END: android_install_referrer.py
 
     // Debug bridge: Android processes fork from zygote, so `adb shell` env
     // vars never reach the app. Intent extras named NEWTONIA_* are copied

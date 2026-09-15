@@ -2,8 +2,10 @@
 """Exercise the production referrer callback with a fake Play service.
 
 Needs Python 3 and Java 17; no Android SDK, emulator or Play account. Like
-the web gesture harness, extracts the production methods rather than copying
-their implementation. Android CI still compiles the complete Activity.
+the web gesture harness, extracts the production methods between explicit
+markers. Android CI still compiles the complete Activity. The fake callback
+is synchronous: one-shot assertions cover sequential completed attempts, not
+overlapping callbacks, Activity recreation or races with App Link intents.
 """
 from pathlib import Path
 import subprocess
@@ -13,15 +15,16 @@ ROOT = Path(__file__).resolve().parents[2]
 ACTIVITY = ROOT / "android/app/src/main/java/org/newtonia/NewtoniaActivity.java"
 
 
-def method(source, signature):
-    start = source.index(signature)
-    opening = source.index("{", start)
-    depth = 1
-    end = opening + 1
-    while depth:
-        depth += (source[end] == "{") - (source[end] == "}")
-        end += 1
-    return source[start:end]
+def production_methods(source):
+    begin = "// TEST-SLICE-BEGIN: android_install_referrer.py"
+    end = "// TEST-SLICE-END: android_install_referrer.py"
+    if source.count(begin) != 1 or source.count(end) != 1:
+        raise ValueError(f"{ACTIVITY}: expected exactly one begin/end test marker")
+    start = source.index(begin) + len(begin)
+    stop = source.index(end)
+    if stop <= start:
+        raise ValueError(f"{ACTIVITY}: test markers are out of order")
+    return source[start:stop]
 
 
 HARNESS = r"""
@@ -55,6 +58,7 @@ class ReferrerTest {
     static class InstallReferrerClient {
         static class InstallReferrerResponse {
             static final int OK = 0, SERVICE_UNAVAILABLE = 1, FEATURE_NOT_SUPPORTED = 2;
+            static final int SERVICE_DISCONNECTED = -1;
         }
         static int response, connects, closes;
         static boolean failRead;
@@ -100,12 +104,19 @@ class ReferrerTest {
               "A successful invite must only be consumed once");
         check(InstallReferrerClient.closes == 2, "Close the successful connection");
 
-        app = fresh(1, false, "code=ABC123");
-        app.checkInstallReferrer();
-        check(!app.prefs.checked, "Service unavailable must remain retryable");
-        InstallReferrerClient.response = 0;
-        app.checkInstallReferrer();
-        check("ABC123".equals(app.joined), "Retry unavailable service on next launch");
+        for (int response : new int[]{1, -1}) {
+            app = fresh(response, false, "code=ABC123");
+            app.checkInstallReferrer();
+            check(!app.prefs.checked, "Transient service response must remain retryable: " + response);
+            check(app.deliveries == 0 && InstallReferrerClient.closes == 1,
+                  "Close the transient connection without delivering an invite");
+            InstallReferrerClient.response = 0;
+            app.checkInstallReferrer();
+            app.checkInstallReferrer();
+            check("ABC123".equals(app.joined) && app.deliveries == 1 &&
+                  InstallReferrerClient.connects == 2 && InstallReferrerClient.closes == 2,
+                  "Retry a transient service response and consume the invite once");
+        }
 
         for (String referrer : new String[]{"utm_source=newtonia_site", "code=TOO-LONG-CODE"}) {
             app = fresh(0, false, referrer);
@@ -125,10 +136,7 @@ class ReferrerTest {
 """
 
 source = ACTIVITY.read_text()
-methods = "\n".join(method(source, signature) for signature in (
-    "private void checkInstallReferrer()",
-    "private static String referrerCode(String referrer)",
-))
+methods = production_methods(source)
 with tempfile.TemporaryDirectory(prefix="newtonia-referrer-") as directory:
     harness = Path(directory) / "ReferrerTest.java"
     harness.write_text(HARNESS.replace("// PRODUCTION_METHODS", methods))
