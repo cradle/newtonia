@@ -103,6 +103,10 @@ private:
   // never answered, but a joiner can't do anything by itself — fail to
   // LobbyFailed honestly instead of stranding it on the paste screen.
   void join_unreachable(const char *why);
+  // A cold invite failed definitively (dead room, or the socket closed /
+  // timed out before any offer): fail fast to LobbyFailed. Deletes
+  // signal_, so callers inside the poll loop must return, not break.
+  void cold_invite_failed(const char *headline);
   void code_entry_key(unsigned char key);
   void schedule_rejoin_retry(const char *why, int delay_ms);
   // A rejoin that got as far as a live session (handshake done) but then had
@@ -264,6 +268,18 @@ public:
   // room-code ctor above.
   struct LanRejoinTag {};
   NetLobby(const std::string &lan_host_name, LanRejoinTag);
+  // A cold invite / deep-link accept (Menu, from a tapped join link) is a
+  // FRESH join, not a mid-game reconnect: the room is either up now or
+  // gone, so a failure fails FAST to the retry screen instead of waiting
+  // out the rejoin budget for a host that was never "coming back". Shares
+  // the room-code ctor's connect setup but flips cold_invite_ so the
+  // retry/wait behaviours fall through to a fast fail. (Glenn, Android
+  // deep link: a dead room sat 60 s on "WAITING FOR THE HOST TO COME
+  // BACK"; deep links also hit a native message-before-close race that
+  // loses the worker's explicit no-such-room, leaving only the socket
+  // Closed — which must fail here too, not retry.)
+  struct InviteAcceptTag {};
+  NetLobby(const std::string &invite_code, InviteAcceptTag);
   // A room known to be dead (host said BYE, or the relay reported it
   // closed/gone): the clipboard auto-join refuses it for the rest of this
   // run — typing it manually still works.
@@ -358,6 +374,10 @@ private:
   bool rejoin_mode_;
   int rejoin_retry_ms_;      // >0: next attempt countdown
   int rejoin_budget_ms_;     // total time before giving up
+  // Set only by the InviteAcceptTag ctor: a cold deep-link/invite accept
+  // rides rejoin_mode_'s connect flow but fails FAST — no 60 s budget, no
+  // retry-on-close — since the room is either up now or gone.
+  bool cold_invite_;
   int connect_wait_ms_;  // time in WaitConnect, for the no-relay timeout
   Net::SnapshotAssembler assembler_;  // joiner: reassembles snapshot #1
 
