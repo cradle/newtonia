@@ -632,6 +632,8 @@ cd signal && npx wrangler dev --local --port 8787 &         # relay
 make clean && make -j                                       # netplay build (default)
 
 test/e2e/room.sh     # connect via room code, 3 level skips, both fire 8s
+test/e2e/nseat_pause.sh # shared pause/resume from every seat, including clients;
+                     # checks all bystanders and no echoed transitions (SEATS=3|4)
 test/e2e/lan.sh      # LAN play, NO relay: dead signal URL -> host beacons +
                      # manual fallback, joiner discovers on CodeEntry
                      # (loopback beacon), arrow-selects, blob exchange over

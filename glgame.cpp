@@ -1354,6 +1354,7 @@ void GLGame::toggle_pause(bool broadcast) {
   // terminal for a spectating client).
   if (running && all_players_out()) return;
   running = !running;
+  NET_LOG("net: pause state %s\n", running ? "running" : "paused");
   // The pause menu always opens on RESUME: leaving the highlight where the
   // last pause left it would put EXIT TO MENU under a reflexive confirm.
   // The roster closes with the pause screen for the same reason — every
@@ -5858,10 +5859,13 @@ void GLGame::net_broadcast_seat_identities() {
 void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
   switch (code) {
     case Net::EV_PAUSE:
-      if (running) toggle_pause(false);
+      // Clients only connect to the host: it must broadcast their shared
+      // pause state to the rest of the room. Clients apply without echoing;
+      // the state guards also make the reply to the initiator a no-op.
+      if (running) toggle_pause(net_mode_ == NetHost);
       break;
     case Net::EV_RESUME:
-      if (!running) toggle_pause(false);
+      if (!running) toggle_pause(net_mode_ == NetHost);
       break;
     case Net::EV_GENERATION_START:
       // The world rebuild itself rides the next snapshot (client side);
