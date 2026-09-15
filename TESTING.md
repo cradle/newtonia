@@ -534,7 +534,10 @@ node test/play_games_verify_test.mjs     # V2 Play Games verifier, mocked Google
 node test/game_center_verify_test.mjs    # V3 Game Center verifier, real RSA + synthetic
                                          #   Apple cert, mocked fetch (unit)
 node test/room_unit_test.mjs             # Room DO: alarm deadlines, frame bounds/budget,
-                                         #   verify bound to the room generation (unit, no wrangler)
+                                         #   verify bound to the room generation, host-reported
+                                         #   seats (room_full: free=0 refuses a fresh join,
+                                         #   ?rejoin=1 exempt, not enforced in grace, reclaim
+                                         #   forgets it) (unit, no wrangler)
 node test/frame_bounds_test.mjs          # the same bounds on workerd's sockets: allowlisted
                                          #   offer/answer rebuild, mid cap, oversized frame
                                          #   dropped (socket stays open), count + byte

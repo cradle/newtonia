@@ -283,7 +283,8 @@ which revokes every outstanding credential instantly.
   identity ones need `FAKE_VERIFY`; the full suite in one window needs the
   `--var RATE_HOST_LIMIT:200 --var RATE_JOIN_LIMIT:500` limiter headroom —
   see deploy-signal.yml): `capacity_test.mjs` (cap at 3 + slot reopen +
-  never-reused ids), `relay_isolation_test.mjs` (addressed offers/cands,
+  never-reused ids + the host's `{t:"seats", free}` report refusing fresh
+  joins while a rejoin stays admitted), `relay_isolation_test.mjs` (addressed offers/cands,
   `from` stamps), `jid_buffer_test.mjs` (legacy one-shot replay consumed,
   dropped-jid buffers die), `identity_fanout_test.mjs` (fan-out + per-jid
   late-verify), `grace_broadcast_test.mjs` (host-lost/host-back to all),

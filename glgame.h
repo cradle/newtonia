@@ -1129,6 +1129,12 @@ private:
   // Re-announce the host's identity to the worker (NETPLAY.md V0/V1) after a
   // room reclaim, so it re-attests and re-broadcasts to the (re)joiner.
   void net_send_local_identity();
+  // Tell the relay how many seats this host would still offer (parked
+  // seats awaiting a rejoin or a replacement pilot) so it refuses fresh
+  // joins to a full running game instead of admitting them into a wait
+  // nothing ends. Edge-triggered per tick; re-sent after every Room frame.
+  void net_host_report_seats();
+  int net_seats_reported_ = -1;
   enum NetSignalEventResult {
     NetSigUnhandled,  // not a common event — the caller's loop handles it
     NetSigHandled,    // consumed; keep polling

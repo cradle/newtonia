@@ -3274,6 +3274,25 @@ void GLGame::net_send_local_identity() {
                              net_local_verify_credential());
 }
 
+// In game the only seats the host ever offers through the room are the
+// ones the rejoin door serves — a lost seat whose session is gone
+// (net_door_peer's population; a lost seat still holding a session is a
+// rejoin mid-handshake, or a kick's goodbye drain). Never-used seats are
+// not opened mid-game, so they don't count. The relay enforces the count
+// on fresh joins only; a rejoin is exempt (it can arrive before the
+// watchdog here has flagged the seat), so a low count can't lock a
+// returning pilot out.
+void GLGame::net_host_report_seats() {
+  if (net_mode_ != NetHost || !net_signal_) return;
+  int free = 0;
+  for (const NetPeer *p : net_peers_)
+    if (p->lost && !p->session) free++;
+  if (free == net_seats_reported_) return;
+  net_seats_reported_ = free;
+  NET_LOG("net: seats free %d reported\n", free);
+  net_signal_->send_seats(free);
+}
+
 // Recompose the initial JOINED / "JOINED X SERVER" greeting. The net
 // constructors compose it before the lobby hands over the worker attestation
 // and the worker-session context, so the first composition can never show a
@@ -3536,6 +3555,7 @@ void GLGame::net_host_signal_maintain(int delta) {
       case NetSignal::Event::Room:
         NET_LOG("net: room %s reclaimed\n", net_room_code_.c_str());
         net_send_local_identity();  // re-attest for the (re)joiner
+        net_seats_reported_ = -1;   // the reclaimed room forgot the count
         break;
       case NetSignal::Event::PeerJoin:
         // The client re-entered the room: its transport is dead even if
@@ -3852,6 +3872,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
       net_rehost_offer_sent_ = false;
       net_send_local_identity();  // re-attest for the (re)joiner
+      net_seats_reported_ = -1;   // the reclaimed room forgot the count
     } else if (ev.kind == NetSignal::Event::PeerJoin && net_peers_.size() == 1 &&
                net_session()) {
       // A rejoiner re-entered the room while we ALREADY have a handshaking
@@ -9422,6 +9443,7 @@ void GLGame::tick(int delta) {
       }
       if (pw->session->transport()->failed()) pw->lost = true;
     }
+    net_host_report_seats();
     if (net_signal_ && !net_any_peer_lost()) net_host_signal_maintain(delta);
     if (net_any_peer_lost()) {
       // No door can open (worker-less session, LAN hidden/unavailable)

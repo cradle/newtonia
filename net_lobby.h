@@ -250,6 +250,10 @@ private:
   std::vector<std::pair<NetSession *, int>> closing_;
   int lan_door_serial_ = 0;  // mints the synthetic "lan#N" pending keys
   int next_free_seat() const;         // lowest free 2..cap; 0 = room full
+  // Tell the relay how many seats the waiting room would still offer, on
+  // change and again after every Room frame (NetSignal::send_seats).
+  void host_report_seats();
+  int seats_reported_ = -1;
   void waiting_room_update(int delta);  // pump handshakes + seated liveness
   void waiting_room_start();          // hand every seated session to GLGame
   void drop_pending(const std::string &key, const char *why);
@@ -280,6 +284,13 @@ public:
   // Closed — which must fail here too, not retry.)
   struct InviteAcceptTag {};
   NetLobby(const std::string &invite_code, InviteAcceptTag);
+private:
+  // The shared connect setup behind the two ctors above: `relay_rejoin`
+  // is what the join tells the worker (NetSignal::connect_join) — true
+  // for the mid-game reconnect, false for a cold invite, which is a
+  // fresh join and must be refused when the host says the room is full.
+  NetLobby(const std::string &code, bool relay_rejoin);
+public:
   // A room known to be dead (host said BYE, or the relay reported it
   // closed/gone): the clipboard auto-join refuses it for the rest of this
   // run — typing it manually still works.

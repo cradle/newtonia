@@ -350,6 +350,83 @@ const frame = (o) => JSON.stringify(o);
   check("F9: old sockets were closed by the expiry", !h.open && !j.open && j2.open);
 }
 
+// ---- Host-reported seats (room_full) ----------------------------------------
+// Seated joiners close their relay socket once WebRTC is up, so a running
+// game with every seat taken used to count as an EMPTY room: the socket
+// count is the only capacity a legacy host gives. A host that reports
+// {t:"seats", free} is authoritative while its socket is open; a rejoin
+// (?rejoin=1) is exempt, since the host frees a lost seat only after its
+// own watchdog notices the loss.
+{
+  const { room } = await make_room();
+  const h = await host(room);
+  const join = async (qs = "") => {
+    const r = await room.fetch(new Request("https://room/join?code=ABCDE&ice=%5B%5D" + qs));
+    const se = last_pair && last_pair[1];
+    return { r, se,
+             joined: !!(se && se.of("joined").length),
+             full: !!(se && se.of("err").some((f) => f.reason === "room-full")) };
+  };
+  // Malformed reports are ignored: the count stays unknown.
+  await room.webSocketMessage(h, frame({ t: "seats", free: -1 }));
+  await room.webSocketMessage(h, frame({ t: "seats", free: "0" }));
+  await room.webSocketMessage(h, frame({ t: "seats" }));
+  check("seats: malformed reports leave the count unknown", room.r.seats_free === null,
+        String(room.r.seats_free));
+  let j = await join();
+  check("seats: unknown count admits a fresh join (socket count rules)", j.joined);
+  await room.webSocketClose(j.se);   // the seated joiner drops its relay socket
+  j.se.drop();
+  // The host says the room is full: a fresh join is refused although no
+  // joiner socket is open.
+  await room.webSocketMessage(h, frame({ t: "seats", free: 0 }));
+  check("seats: report stored", room.r.seats_free === 0);
+  j = await join();
+  check("seats: free=0 refuses a fresh join with room-full", j.full && !j.joined,
+        JSON.stringify(j.se && j.se.sent));
+  const ex = await (await room.fetch(new Request("https://room/exists"))).json();
+  check("seats: /exists reports full", ex.full === true && ex.joiners === 0, JSON.stringify(ex));
+  j = await join("&rejoin=1");
+  check("seats: a rejoin is exempt from the host's count", j.joined && !j.full,
+        JSON.stringify(j.se && j.se.sent));
+  await room.webSocketClose(j.se); j.se.drop();
+  // A seat frees (the host noticed a loss): fresh joins flow again.
+  await room.webSocketMessage(h, frame({ t: "seats", free: 1 }));
+  j = await join();
+  check("seats: free=1 admits a fresh join", j.joined && !j.full);
+  await room.webSocketClose(j.se); j.se.drop();
+  // The socket cap still holds whatever the host reports.
+  await room.webSocketMessage(h, frame({ t: "seats", free: 3 }));
+  const open = [];
+  for (let i = 0; i < 3; i++) { const x = await join(); open.push(x); }
+  check("seats: three open joiner sockets", open.every((x) => x.joined) &&
+        room.joinerWss().length === 3);
+  j = await join();
+  check("seats: the socket cap refuses a 4th socket regardless of the report",
+        j.full && !j.joined);
+  for (const x of open) { await room.webSocketClose(x.se); x.se.drop(); }
+  // Host in grace: the stale count is NOT enforced (it can't be refreshed),
+  // so a joiner may wait for the host as before.
+  await room.webSocketMessage(h, frame({ t: "seats", free: 0 }));
+  await room.webSocketClose(h);
+  h.drop();
+  check("seats: host is in grace", room.in_grace(Date.now()) && !room.hostWs());
+  j = await join();
+  check("seats: a stale full count is not enforced while the host is in grace",
+        j.joined && !j.full, JSON.stringify(j.se && j.se.sent));
+  await room.webSocketClose(j.se); j.se.drop();
+  // Reclaim forgets the count until the fresh host re-reports.
+  const h2 = new FakeWs();
+  await room.reclaim_host(h2, "ABCDE", []);
+  check("seats: reclaim resets the count", room.r.seats_free === null);
+  j = await join();
+  check("seats: a reclaimed host with no report admits a fresh join", j.joined);
+  await room.webSocketClose(j.se); j.se.drop();
+  await room.webSocketMessage(h2, frame({ t: "seats", free: 0 }));
+  j = await join();
+  check("seats: the reclaimed host's report is enforced again", j.full && !j.joined);
+}
+
 Date.now = real_now;
 console.log(failures ? `${failures} FAILURE(S)` : "ALL PASS");
 process.exit(failures ? 1 : 0);
