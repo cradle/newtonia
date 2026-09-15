@@ -51,7 +51,6 @@ for _ in $(seq 1 90); do
   sleep 1
 done
 
-
 SEATS=${SEATS:-3}
 [ "$SEATS" -ge 3 ] || { echo "SEATS must be >= 3 (need a bystander)"; exit 1; }
 relay_check

@@ -77,6 +77,9 @@ jobs:
       - name: New-install touch layout defaults unit test
         run: bash test/unit/preferences.sh
 
+      - name: Private relay startup regression test
+        run: python3 test/unit/e2e_relay_startup.py
+
       - name: One-hand touch gesture layer unit test
         run: bash test/unit/touch_one_hand.sh
 
