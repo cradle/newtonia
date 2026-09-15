@@ -24,10 +24,15 @@ cd "$(dirname "$0")"
 PORT="${LAN_ANON_RELAY_PORT:-8793}"
 export NEWTONIA_SIGNAL_URL="ws://127.0.0.1:$PORT/ws"
 export NEWTONIA_LAN_PORT="${NEWTONIA_LAN_PORT:-42623}"
-( cd ../../signal && exec npx wrangler@4 dev --local --port "$PORT" ) \
+# A private wrangler state dir (see nseat_ban_token.sh): relays launched
+# from signal/ otherwise share .wrangler/state, and this one's Limiter then
+# counts the shard relay's host-creates against the default limit.
+WSTATE=$(mktemp -d /tmp/lan_anon_wrangler.XXXXXX)
+( cd ../../signal &&
+  exec npx wrangler@4 dev --local --port "$PORT" --persist-to "$WSTATE" ) \
   > /tmp/lan_anon_wrangler.log 2>&1 &
 WPID=$!
-trap 'kill_tree $WPID 2>/dev/null || kill $WPID 2>/dev/null' EXIT
+trap 'kill_tree $WPID 2>/dev/null || kill $WPID 2>/dev/null; rm -rf "$WSTATE"' EXIT
 echo "== starting relay on :$PORT (pid $WPID)"
 for _ in $(seq 1 90); do
   curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break

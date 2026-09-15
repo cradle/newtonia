@@ -112,7 +112,11 @@ public class NewtoniaActivity extends SDLActivity {
     // same native invite path a tapped App Link uses. One-shot: a stored
     // flag stops every later launch from re-consuming a stale code, but a
     // TRANSIENT service failure leaves the flag unset so the next launch
-    // retries (the referrer itself persists ~90 days server-side).
+    // retries (the referrer itself persists ~90 days server-side). That
+    // retry has no natural end, so a code first read weeks after install
+    // would arrive too — referrerFresh() below drops one whose store click
+    // is older than a room can live, instead of jumping the player into a
+    // dead-room card on a launch where they tapped nothing (#559).
     private void checkInstallReferrer() {
         if (SDLActivity.mBrokenLibraries) return;
         final SharedPreferences prefs =
@@ -131,6 +135,18 @@ public class NewtoniaActivity extends SDLActivity {
                         InstallReferrerClient.InstallReferrerResponse.OK) {
                         ReferrerDetails details = client.getInstallReferrer();
                         code = referrerCode(details.getInstallReferrer());
+                        if (code != null &&
+                            !referrerFresh(details.getReferrerClickTimestampSeconds(),
+                                           details.getInstallBeginTimestampSeconds(),
+                                           System.currentTimeMillis() / 1000)) {
+                            // The room is certainly gone: take the no-invite
+                            // path below (checked with apply(), no jump).
+                            // Logged without the code so a field report of
+                            // "install-to-join did nothing" has a trace.
+                            Log.i("Newtonia",
+                                  "Install referrer invite is older than a room's lifetime; not joining");
+                            code = null;
+                        }
                     } else if (responseCode ==
                                InstallReferrerClient.InstallReferrerResponse
                                    .SERVICE_UNAVAILABLE ||
@@ -193,6 +209,28 @@ public class NewtoniaActivity extends SDLActivity {
             if (v.matches("[A-Z0-9]{1,8}")) return v;
         }
         return null;
+    }
+
+    // How old a deferred invite's store click may be and still be worth a
+    // join. The signalling worker's ROOM_TTL_MS (signal/src/worker.js) is
+    // 24 h from room CREATION, a hard cap that holds even while the host's
+    // socket stays live — and the click that carried the code happened
+    // AFTER the room was created, so a click older than this names a room
+    // that no longer exists. Exact on purpose, no multiple: a longer window
+    // admits only certainly-dead codes, a shorter one could drop a live
+    // invite. Keep in step with the worker if its TTL moves.
+    static final long INVITE_MAX_AGE_SECONDS = 24 * 60 * 60;
+
+    // Click time is the honest "did the player mean this recently" signal;
+    // install-begin time is the fallback when Play reports the click as 0
+    // (unknown). Both unknown, or a device clock that ran backwards, count
+    // as FRESH: the gate exists to drop codes that are certainly dead,
+    // never to lose a live one. Pure, so the harness can pin the boundary.
+    static boolean referrerFresh(long clickSeconds, long installSeconds,
+                                 long nowSeconds) {
+        long stamp = clickSeconds > 0 ? clickSeconds : installSeconds;
+        if (stamp <= 0) return true;
+        return nowSeconds - stamp <= INVITE_MAX_AGE_SECONDS;
     }
     // TEST-SLICE-END: android_install_referrer.py
 
