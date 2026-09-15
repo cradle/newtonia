@@ -283,7 +283,12 @@ grep -aq "cred=e2e-cred-2" "$OUT/wrangler-reject.log" ||
   fail "S5: retry did not carry a fresh (different) credential"
 alive $P s5
 kill -9 $P; wait $P 2>/dev/null; P=""
-kill $REJECT_PID 2>/dev/null; REJECT_PID=""
+# kill_tree, like the EXIT trap: a bare kill of the npx wrapper orphaned
+# the node/workerd children, which kept port 8796 (and the reject state)
+# alive for as long as the machine did — and with REJECT_PID cleared the
+# trap never got a second chance. A stale worker there would also let a
+# rerun's "came up" check pass against the OLD process (2026-09-15).
+kill_tree $REJECT_PID; REJECT_PID=""
 
 echo "===== S6: mint not landed at submit -> retry waits for it ====="
 # Credential-lifecycle hardening, empty case: the warm's async mint has not
