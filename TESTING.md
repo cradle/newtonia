@@ -564,6 +564,16 @@ relay's host-create count and refused the driver's first host as
 rate-limited, with the shard relay logging `SQLITE_BUSY` from the shared
 database (CI, 2026-09-15). `leaderboard.sh`'s board workers already did this.
 
+Private-relay startup also has a dependency-free regression harness:
+`python3 test/unit/e2e_relay_startup.py` (also run by `linux.yml`). It runs
+each driver with fake relay commands, checking that a missing game binary
+or failed `mktemp` exits before starting a relay. Load `lib.sh`
+before launching the worker: its executable check must happen first, and
+its `kill_tree` helper must be available to the EXIT trap. The old ordering
+could leave worker children alive after a missing-binary failure, then
+delete their private storage. This harness covers preflight failures;
+the full drivers still cover real Wrangler startup and gameplay.
+
 `SIGNAL_WS=wss://... node test/pv_replay_test.mjs` points a test at another
 relay (e.g. production after a worker deploy).
 

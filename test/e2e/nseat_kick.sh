@@ -27,27 +27,29 @@ cd "$(dirname "$0")"
 # it the roster would show KICK alone and the right-arrow would do nothing.
 PORT="${KICK_RELAY_PORT:-8789}"
 export NEWTONIA_SIGNAL_URL="ws://127.0.0.1:$PORT/ws"
+# Check the game and load kill_tree before starting a relay.
+. ./lib.sh
+
 # A private wrangler state dir (see nseat_ban_token.sh): relays launched
 # from signal/ otherwise share .wrangler/state, and this one's Limiter then
 # counts the shard relay's host-creates against the default limit.
-WSTATE=$(mktemp -d /tmp/nseat_kick_wrangler.XXXXXX)
+WSTATE=$(mktemp -d /tmp/nseat_kick_wrangler.XXXXXX) || {
+  echo "FATAL: could not create private relay state"; exit 1;
+}
 ( cd ../../signal &&
   exec npx wrangler@4 dev --local --port "$PORT" --persist-to "$WSTATE" \
        --var FAKE_VERIFY:1 ) \
   > /tmp/nseat_kick_wrangler.log 2>&1 &
 WPID=$!
 # kill_tree, not a bare kill: TERMing the npx wrapper leaves its node/
-# workerd children orphaned and holding the port (lib.sh). The plain-kill
-# fallback covers an exit before lib.sh is sourced (the relay-died path).
-trap 'kill_tree $WPID 2>/dev/null || kill $WPID 2>/dev/null; rm -rf "$WSTATE"' EXIT
+# workerd children orphaned and holding the port (lib.sh).
+trap 'kill_tree "$WPID" 2>/dev/null; rm -rf "$WSTATE"' EXIT
 echo "== starting FAKE_VERIFY relay on :$PORT (pid $WPID)"
 for _ in $(seq 1 90); do
   curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break
   kill -0 $WPID 2>/dev/null || { echo "relay died:"; cat /tmp/nseat_kick_wrangler.log; exit 1; }
   sleep 1
 done
-
-. ./lib.sh
 
 SEATS=${SEATS:-3}
 [ "$SEATS" -ge 3 ] || { echo "SEATS must be >= 3 (need a bystander)"; exit 1; }
