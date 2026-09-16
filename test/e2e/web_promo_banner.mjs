@@ -14,6 +14,8 @@
 //    everywhere, /join's install->auto-join referrer code), so a flag
 //    flip means updating the android: checks alongside it.
 //
+// Optional SITE_URL=https://newtonia.metonymous.com tests deployed site pages
+// with a deterministic leaderboard snapshot; OS/store launches are not clicked.
 // Needs NO emcc build: serves web/site/ directly and compiles main.ts
 // with tsc if web/main.js is missing or stale (the game banner is plain
 // DOM). Run from the repo root (playwright resolves from the script's
@@ -55,6 +57,7 @@ const STUB = `<!doctype html><html><body>
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
 const srv = createServer(async (req, res) => {
   let p = req.url.split('?')[0];
+  if (p === '/join') p = '/join/';
   if (p === '/game/') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(STUB); }
   if (p === '/game-main.js') {
     res.writeHead(200, { 'content-type': 'text/javascript' });
@@ -67,7 +70,11 @@ const srv = createServer(async (req, res) => {
     res.end(body);
   } catch { res.writeHead(404); res.end(); }
 });
-await new Promise(r => srv.listen(8123, r));
+await new Promise(r => srv.listen(0, '127.0.0.1', r));
+const LOCAL = `http://127.0.0.1:${srv.address().port}`;
+// SITE_URL checks deployed site pages; the game DOM fixture stays local.
+const BASE = (process.env.SITE_URL || LOCAL).replace(/\/$/, '');
+console.log(`Site under test: ${BASE}; game banner fixture: ${LOCAL}`);
 
 // Two known rows so a handed-over 50000 places #2 and 10 places #3.
 const SNAP = {
@@ -84,10 +91,12 @@ const UAS = {
   android: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
 };
 
-const browser = await chromium.launch({
+const failures = [];
+let browser;
+try {
+browser = await chromium.launch({
   headless: true, ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}),
 });
-const failures = [];
 const check = (label, cond, detail) => {
   console.log(`${cond ? 'ok  ' : 'FAIL'} ${label}${cond ? '' : ' — ' + detail}`);
   if (!cond) failures.push(label);
@@ -102,14 +111,14 @@ for (const [device, userAgent] of Object.entries(UAS)) {
   await page.route('**googletagmanager.com/**', r => r.abort());
 
   // ---- site leaderboard: bar only with a run to place ----
-  await page.goto('http://127.0.0.1:8123/leaderboard/', { waitUntil: 'load' });
+  await page.goto(BASE + '/leaderboard/', { waitUntil: 'load' });
   await page.waitForTimeout(300);
   check(`${device}: plain visit hides bar`, !(await page.locator('#you-banner').isVisible()), 'bar visible');
-  await page.goto('http://127.0.0.1:8123/leaderboard/?score=banana&players=1', { waitUntil: 'load' });
+  await page.goto(BASE + '/leaderboard/?score=banana&players=1', { waitUntil: 'load' });
   await page.waitForTimeout(300);
   check(`${device}: bogus score hides bar`, !(await page.locator('#you-banner').isVisible()), 'bar visible');
 
-  await page.goto('http://127.0.0.1:8123/leaderboard/?score=50000&players=1', { waitUntil: 'load' });
+  await page.goto(BASE + '/leaderboard/?score=50000&players=1', { waitUntil: 'load' });
   await page.waitForTimeout(300);
   const barVis = await page.locator('#you-banner').isVisible();
   const barText = await page.locator('#you-banner-text').textContent();
@@ -131,7 +140,7 @@ for (const [device, userAgent] of Object.entries(UAS)) {
         ctaHref.includes('lb_would_place'), `vis=${ctaVis} text=${ctaText} href=${ctaHref}`);
 
   // ---- game-over banner (compiled main.js over the stub page) ----
-  await page.goto('http://127.0.0.1:8123/game/', { waitUntil: 'load' });
+  await page.goto(LOCAL + '/game/', { waitUntil: 'load' });
   await page.evaluate(() => window.newtGameOver(12345, 1));
   const rank = page.locator('#go-banner a').first();
   const rankText = (await rank.textContent()) || '';
@@ -169,8 +178,8 @@ for (const [device, userAgent] of Object.entries(UAS)) {
   check(`${device}: next scoring run restores rank link`, await rank.isVisible(), 'rank still hidden');
 
   // ---- /join routing (same shared store_route.js) ----
-  await page.goto('http://127.0.0.1:8123/join/?code=TESTROOM', { waitUntil: 'load' });
-  check(`${device}: join shows the code`, (await page.locator('#code').textContent()) === 'TESTROOM', 'code missing');
+  await page.goto(BASE + '/join?code=ABCDE', { waitUntil: 'load' });
+  check(`${device}: join shows the code`, (await page.locator('#code').textContent()) === 'ABCDE', 'code missing');
   const steamVis = await page.locator('#steamBtn').isVisible();
   const appVis = await page.locator('#appStoreBtn').isVisible();
   const playVis = await page.locator('#playStoreBtn').isVisible();
@@ -181,7 +190,7 @@ for (const [device, userAgent] of Object.entries(UAS)) {
   check(`${device}: join keeps itch parked`, !itchVis, 'itch visible');
   if (device === 'desktop')
     check('desktop: join -> Steam launch', steamVis && !appVis && !playVis &&
-        (await page.locator('#steamBtn').getAttribute('href')) === 'steam://run/4536720//+connect%20TESTROOM',
+        (await page.locator('#steamBtn').getAttribute('href')) === 'steam://run/4536720//+connect%20ABCDE',
         `steam=${steamVis} app=${appVis} play=${playVis}`);
   if (device === 'ios')
     check('ios: join -> App Store', appVis && !steamVis && !playVis, `steam=${steamVis} app=${appVis} play=${playVis}`);
@@ -189,14 +198,51 @@ for (const [device, userAgent] of Object.entries(UAS)) {
     // Deferred deep link: the room code must ride the install referrer.
     check('android: join -> Google Play with the code', playVis && !steamVis && !appVis &&
         ((await page.locator('#playStoreBtn').getAttribute('href')) || '')
-            .includes('referrer=code%3DTESTROOM') &&
+            .includes('referrer=code%3DABCDE') &&
         (await page.locator('#sub').textContent()) === 'Get the app to join this game',
         `steam=${steamVis} app=${appVis} play=${playVis} sub=${await page.locator('#sub').textContent()}`);
+
+  check(`${device}: Smart App Banner metadata`,
+      (await page.locator('meta[name="apple-itunes-app"]').getAttribute('content')) === 'app-id=6760685759',
+      'missing/wrong app id (actual Safari banner still needs a device)');
+  if (device === 'android') {
+    const play = new URL(await page.locator('#playStoreBtn').getAttribute('href'));
+    const referrer = new URLSearchParams(play.searchParams.get('referrer'));
+    check('android: exact decoded invite referrer',
+        play.searchParams.get('id') === 'org.newtonia' && referrer.get('code') === 'ABCDE', play.href);
+  }
+  await page.goto(BASE + '/join', { waitUntil: 'load' });
+  check(`${device}: missing code explains failure`,
+      (await page.locator('#sub').textContent()) === 'This link is missing a room code.',
+      await page.locator('#sub').textContent());
+
+  await page.goto(BASE + '/leaderboard/?score=1&players=1', { waitUntil: 'load' });
+  await page.waitForTimeout(300);
+  const note = page.locator('p.note').filter({ hasText: 'Scores upload from' });
+  const links = await note.locator('a').evaluateAll(as => as.map(a => a.href));
+  check(`${device}: upload note links all stores`,
+      links.some(s => s.includes('store.steampowered.com/app/4536720')) &&
+      links.some(s => s.includes('apps.apple.com/app/id6760685759')) &&
+      links.some(s => s.includes('play.google.com/store/apps/details?id=org.newtonia')), JSON.stringify(links));
+  if (device === 'android')
+    check('android: score=1 competes on Android',
+        await page.locator('#you-banner-cta').isVisible() &&
+        (await page.locator('#you-banner-cta').textContent()).includes('COMPETE ON ANDROID'), 'CTA missing');
+
+  await page.goto(BASE + '/', { waitUntil: 'load' });
+  const homePlay = page.locator('a.platform[href*="play.google.com"]');
+  const campaign = new URLSearchParams(new URL(await homePlay.getAttribute('href')).searchParams.get('referrer'));
+  check(`${device}: home Play campaign has no invite`,
+      await homePlay.isVisible() && !campaign.has('code') &&
+      campaign.get('utm_source') === 'newtonia_site' && campaign.get('utm_campaign') === 'platforms', campaign.toString());
 
   check(`${device}: no page errors`, errs.length === 0, errs[0] || '');
   await ctx.close();
 }
 
-await browser.close(); srv.close();
+} finally {
+  if (browser) await browser.close();
+  srv.close();
+}
 console.log(failures.length ? `WEB-PROMO-FAIL (${failures.length})` : 'WEB-PROMO-OK');
 process.exit(failures.length ? 1 : 0);

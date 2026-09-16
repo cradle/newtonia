@@ -546,7 +546,10 @@ node test/play_games_verify_test.mjs     # V2 Play Games verifier, mocked Google
 node test/game_center_verify_test.mjs    # V3 Game Center verifier, real RSA + synthetic
                                          #   Apple cert, mocked fetch (unit)
 node test/room_unit_test.mjs             # Room DO: alarm deadlines, frame bounds/budget,
-                                         #   verify bound to the room generation (unit, no wrangler)
+                                         #   verify bound to the room generation, host-reported
+                                         #   seats (room_full: free=0 refuses a fresh join,
+                                         #   ?rejoin=1 exempt, not enforced in grace, reclaim
+                                         #   forgets it) (unit, no wrangler)
 node test/frame_bounds_test.mjs          # the same bounds on workerd's sockets: allowlisted
                                          #   offer/answer rebuild, mid cap, oversized frame
                                          #   dropped (socket stays open), count + byte
@@ -634,6 +637,11 @@ resubmission itself. Same `wrangler dev --local` boot as above, port 8788
 (`BOARD_PORT`), `BOARD_NAME=OTHER` for a cross-account collision.
 
 ## 4. End-to-end drivers (`test/e2e/`)
+
+The [join-link coverage and manual checklist](test/JOIN_LINK_TESTING.md)
+maps the September 2026 field scenarios to native, Java and browser tests.
+`test/e2e/join_link_scenarios.sh` runs the native contracts on a dedicated
+Xvfb display; the `join-links` CI shard runs it with a local relay.
 
 Two-instance gameplay regressions under Xvfb: real windows, real input via
 xdotool, real relay, assertions greped from `NEWTONIA_NET_DEBUG=1` logs.

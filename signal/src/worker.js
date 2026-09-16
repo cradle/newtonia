@@ -16,6 +16,9 @@
 //                                     joiner->host cands are stamped {from}
 //   host  <- {t:"peer", ev:"join"|"leave", from}
 //   join  <- {t:"peer", ev:"host-lost"|"host-back"}   (broadcast to all)
+//   host  -> {t:"seats", free}        how many seats the host would still
+//                                     OFFER (see room_full below); additive,
+//                                     legacy hosts never send it
 //   any   <- {t:"err", reason:"no-such-room"|"room-full"|"expired"}
 //
 // Rooms hold one host and up to MAX_JOINERS joiners (FOURPLAYER.md PB-D5).
@@ -468,8 +471,12 @@ export default {
         const st = await pre.json();
         if (st.host && !st.full) ice = await turn_ice_servers(env);
       } catch (e) {}
+      // The client's auto-rejoin flags itself so the room's host-reported
+      // seat count doesn't refuse a pilot whose seat the host hasn't yet
+      // noticed is free (Room.room_full).
+      const rejoin = url.searchParams.get("rejoin") === "1" ? "&rejoin=1" : "";
       return room.fetch(new Request(
-          `https://room/join?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}`, request));
+          `https://room/join?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}${rejoin}`, request));
     }
 
     return new Response("bad role", { status: 400 });
@@ -637,6 +644,27 @@ export class Room {
     return !!this.r.host_token && (!!this.hostWs() || this.in_grace(now));
   }
 
+  // Is there a seat for a NEW joiner? Two sources, either refuses:
+  //  - the socket count (MAX_JOINERS open joiner sockets) — the only
+  //    signal a legacy host gives, and the one the waiting room fills;
+  //  - the host's own {t:"seats", free} report, because seated joiners
+  //    CLOSE their relay socket once their WebRTC session is up, so a
+  //    running game with every seat taken counted as an EMPTY room here:
+  //    the fifth player was admitted into it and sat on "JOINING THE ROOM"
+  //    until a client-side timeout, since the host never offers a seat it
+  //    doesn't have (field, 2026-09-15). Enforced only while the host
+  //    socket is OPEN — in grace the host can't refresh the count, and the
+  //    stale one must not shut the door on a rejoiner.
+  //  A REJOIN (?rejoin=1, the client's auto-reconnect) is exempt from the
+  //  host's count: the host frees a seat only once its own watchdog notices
+  //  the loss, and the rejoiner routinely gets here first (the host reads
+  //  that early join AS the loss signal — net_host_signal_maintain).
+  room_full(rejoin) {
+    if (this.joinerWss().length >= MAX_JOINERS) return true;
+    if (rejoin) return false;
+    return this.r.seats_free === 0 && !!this.hostWs();
+  }
+
   async fetch(request) {
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
@@ -659,7 +687,7 @@ export class Room {
       return new Response(
           JSON.stringify({ host: !!this.r.host_token && !!this.hostWs(),
                            joiner: n > 0,
-                           joiners: n, full: n >= MAX_JOINERS }),
+                           joiners: n, full: this.room_full(false) }),
           { headers: { "Content-Type": "application/json" } });
     }
 
@@ -722,7 +750,7 @@ export class Room {
       // CI runners (2026-08-14) while passing everywhere locally.
       if (this.r.closed || !this.alive(now))
         return this.reject_ws(this.r.closed ? "host-closed" : "no-such-room");
-      if (this.joinerWss().length >= MAX_JOINERS)
+      if (this.room_full(url.searchParams.get("rejoin") === "1"))
         return this.reject_ws("room-full");
       const pair = new WebSocketPair();
       await this.accept_joiner(pair[1], ice);
@@ -1026,7 +1054,7 @@ export class Room {
                // the salt).
                ban_salt: crypto.randomUUID(),
                host_lost_at: 0, created: now, closed: false,
-               host_identity: null,
+               host_identity: null, seats_free: null,
                next_jid: 1, jids: {} };
     await this.save();
     await this.state.storage.setAlarm(now + ROOM_TTL_MS);
@@ -1052,6 +1080,9 @@ export class Room {
     this.r.offer_pv = null;
     this.r.host_cands = [];
     this.r.host_lost_at = 0;
+    // The seat count belonged to the dead socket's host too: it re-sends
+    // on the fresh Room frame, and until then the socket count decides.
+    this.r.seats_free = null;
     await this.save();
     this.send_ice(ws, ice);
     this.safeSend(ws, { t: "room", code, token: this.r.host_token });
@@ -1171,6 +1202,18 @@ export class Room {
     // covers real drops.
     if (msg.t === "close") { await this.expire("host-closed"); return; }
     if (msg.t === "identity") { await this.attest_identity("host", msg); return; }
+    if (msg.t === "seats") {
+      // Host-authoritative capacity (room_full): a non-negative integer
+      // count of seats the host would still offer, anything else ignored.
+      if (Number.isInteger(msg.free) && msg.free >= 0) {
+        const free = Math.min(msg.free, MAX_JOINERS);
+        if (this.r.seats_free !== free) {
+          this.r.seats_free = free;
+          await this.save();
+        }
+      }
+      return;
+    }
     // A well-formed addressed frame carries to:"<digits>" (PB-D5); anything
     // else is the legacy unaddressed form.
     const to = typeof msg.to === "string" && /^\d{1,6}$/.test(msg.to)

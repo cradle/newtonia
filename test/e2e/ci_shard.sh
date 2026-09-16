@@ -22,10 +22,11 @@ cd "$ROOT" || exit 1
 # ~9-11 min each, so the whole suite lands in about the time of one shard.
 # turnexpiry.sh is deliberately absent — it needs real Cloudflare TURN
 # credentials and UDP egress, so no runner can host it (TESTING.md).
-SHARDS="solo-replay solo-misc leaderboard lobby-and-lan netplay-core netplay-resilience seats-and-soak"
+SHARDS="solo-replay solo-misc leaderboard lobby-and-lan netplay-core netplay-resilience seats-and-soak join-links"
 
 shard_drivers() {
   case "$1" in
+    join-links) echo "join_link_scenarios" ;;
     solo-replay)  echo "replay_keyframe replay_menu fourplayer replay replay_playback" ;;
     solo-misc)    echo "lan replay_failures video identity_attested identity_tick" ;;
     # leaderboard.sh alone: it stands up its own board worker and plays six
@@ -360,6 +361,7 @@ DRIVER_TIMEOUT="${DRIVER_TIMEOUT:-480}"
 driver_timeout() {
   case "$1" in
     leaderboard) echo 1500 ;;
+    join_link_scenarios) echo 600 ;;
     *)           echo "$DRIVER_TIMEOUT" ;;
   esac
 }

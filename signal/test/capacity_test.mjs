@@ -35,5 +35,28 @@ import { connect, t, check, finish, host_room, join_room } from "./ws_harness.mj
         p5.from !== p1.from && p5.from !== p2.from && p5.from !== p3.from);
 
   host.close(); j1.close(); j3.close(); j5.close();
+
+  // Host-reported seats (Room.room_full): a running game's joiners hold no
+  // relay socket, so the host's own {t:"seats", free} count is what keeps
+  // a fifth player out. A rejoin (?rejoin=1) is exempt.
+  const r2 = await host_room();
+  r2.host.send(JSON.stringify({ t: "seats", free: 0 }));
+  await t(300);
+  const jf = await connect("?role=join&code=" + r2.code);
+  const ef = await jf._recvType("err");
+  check("host reports free=0: fresh join refused room-full",
+        ef && ef.reason === "room-full");
+  const jr = await connect("?role=join&code=" + r2.code + "&rejoin=1");
+  const fr = await jr._recvType("joined");
+  check("host reports free=0: a rejoin is still admitted", !!fr);
+  const pr = await r2.host._recvType("peer");
+  check("the rejoin reaches the host as a join event", pr && pr.ev === "join");
+  jr.close();
+  await t(300);
+  r2.host.send(JSON.stringify({ t: "seats", free: 1 }));
+  await t(300);
+  const j6 = await join_room(r2.code);
+  check("host reports free=1: fresh join admitted", !!j6);
+  r2.host.close(); j6.close();
   finish("CAPACITY-TEST-OK");
 })();

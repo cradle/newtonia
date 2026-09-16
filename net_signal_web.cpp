@@ -107,14 +107,15 @@ public:
     open(url + "?role=host&code=" + code + "&token=" + token);
   }
 
-  void connect_join(const std::string &url, const std::string &code) override {
+  void connect_join(const std::string &url, const std::string &code,
+                    bool rejoin) override {
     std::string upper;
     for (size_t i = 0; i < code.size(); i++) {
       char c = code[i];
       if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
       upper += c;
     }
-    open(url + "?role=join&code=" + upper);
+    open(url + "?role=join&code=" + upper + (rejoin ? "&rejoin=1" : ""));
   }
 
   void send_offer(const std::string &sdp, const std::string &to) override {
@@ -136,6 +137,8 @@ public:
                      const std::string &cred) override {
     send_frame(NetSig::identity_frame(platform, name, cred));
   }
+
+  void send_seats(int free) override { send_frame(NetSig::seats_frame(free)); }
 
   bool poll(Event &ev) override {
     if (!handle_) return false;

@@ -65,8 +65,14 @@ public:
   virtual void connect_host_reclaim(const std::string &url,
                                     const std::string &code,
                                     const std::string &token) = 0;
+  // `rejoin`: this is the client's auto-reconnect to a room it was seated
+  // in (NetLobby's rejoin ctor + retry loop). The worker exempts such a
+  // join from the host's reported seat count, since the host frees a lost
+  // seat only once its own watchdog notices — a fresh join (JOIN screen,
+  // clipboard, invite/deep link) passes false and is refused "room-full"
+  // when the host says every seat is taken.
   virtual void connect_join(const std::string &url,
-                            const std::string &code) = 0;
+                            const std::string &code, bool rejoin) = 0;
 
   // Host side, `to` (PB-D5) addresses a specific joiner id (an Event.peer
   // value); "" keeps the legacy unaddressed single-pair semantics — the
@@ -89,6 +95,14 @@ public:
   // relay to kill the room NOW instead of holding the reclaim grace open
   // for a host that isn't coming back.
   virtual void send_close() = 0;
+  // Host only: how many seats this host would still OFFER a new joiner
+  // (waiting-room free seats; in game, parked seats awaiting a rejoin or a
+  // replacement). Seated joiners close their relay socket once WebRTC is
+  // up, so without this a running game with every seat taken read as an
+  // empty room at the relay and admitted a fifth player into a wait that
+  // nothing could end (field, 2026-09-15). Sent whenever the count changes
+  // and again on every Room frame (a reclaim forgets it).
+  virtual void send_seats(int free) = 0;
 
   // Pops one event (main thread only); false when nothing is pending.
   virtual bool poll(Event &ev) = 0;
@@ -140,6 +154,8 @@ std::string cand_frame(const std::string &mid, const std::string &cand,
 // hex; omitted when empty). The worker stamps the role and verifies.
 std::string identity_frame(uint8_t platform, const std::string &name,
                            const std::string &cred);
+// The host->worker seat report (NetSignal::send_seats).
+std::string seats_frame(int free);
 // Extracts "key":"value" from a one-level object; false if absent.
 bool json_field(const std::string &json, const char *key, std::string &out);
 // Extracts a bare numeric ("key":123) or boolean ("key":true) value from a

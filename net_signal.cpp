@@ -141,6 +141,11 @@ std::string identity_frame(uint8_t platform, const std::string &name,
   return f;
 }
 
+std::string seats_frame(int free) {
+  if (free < 0) free = 0;
+  return "{\"t\":\"seats\",\"free\":" + std::to_string(free) + "}";
+}
+
 // Locate the value text of a bare (unquoted) scalar field "key":<value>.
 // Returns the [begin,end) span of the value, or false if the key is absent
 // or immediately followed by a string (which json_field handles instead).
@@ -362,7 +367,7 @@ bool net_signal_selftest() {
     std::string code = ev.text;
     SDL_Log("net_signal_selftest: room %s", code.c_str());
 
-    join->connect_join(url, code);
+    join->connect_join(url, code, false);
     if (!wait_event(join, NetSignal::Event::Joined, ev, 10000)) break;
 
     host->send_offer("SELFTEST-OFFER\r\nv=0");

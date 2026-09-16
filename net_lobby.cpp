@@ -371,7 +371,11 @@ void NetLobby::fail_online_not_allowed() {
   screen_ = LobbyFailed;
 }
 
-NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
+NetLobby::NetLobby(const std::string &rejoin_code)
+    : NetLobby(rejoin_code, /*relay_rejoin=*/true) {}
+
+NetLobby::NetLobby(const std::string &rejoin_code, bool relay_rejoin)
+    : NetLobby() {
   hosting_ = false;
   // An auto-rejoin arrives from gameplay with the fire trigger plausibly
   // still down, and a fresh state's RT edge would read its next sample as
@@ -404,7 +408,7 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   rejoin_budget_ms_ = 60000;
   transport_->set_trickle(true);  // room flow: live relay carries candidates
   transport_->set_force_relay(s_join_force_relay);  // keep a TURN test relayed
-  signal_->connect_join(net_signal_url(), code_entry_);
+  signal_->connect_join(net_signal_url(), code_entry_, relay_rejoin);
   signal_wait_ms_ = 0;
   screen_ = RoomJoining;
   set_status("RECONNECTING");
@@ -417,7 +421,7 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
 // lose. The delegated ctor lands on LobbyFailed if the transport/signal
 // could not even be created, so only relabel a live join attempt.
 NetLobby::NetLobby(const std::string &invite_code, InviteAcceptTag)
-    : NetLobby(invite_code) {
+    : NetLobby(invite_code, /*relay_rejoin=*/false) {
   cold_invite_ = true;
   if (screen_ == RoomJoining) set_status("JOINING THE ROOM");
 }
@@ -698,7 +702,7 @@ void NetLobby::confirm() {
       // ICE policy) is only built at start_join, so this is in time.
       if (transport_) transport_->set_force_relay(s_join_force_relay);
       NET_LOG("[lobby] joining room %s\n", code_entry_.c_str());
-      signal_->connect_join(net_signal_url(), code_entry_);
+      signal_->connect_join(net_signal_url(), code_entry_, false);
       signal_wait_ms_ = 0;
       screen_ = RoomJoining;
     } else {
@@ -1246,6 +1250,31 @@ int NetLobby::next_free_seat() const {
   return 0;
 }
 
+// The waiting room's capacity, as the relay should enforce it: the seats
+// next_free_seat() would still hand out. Pending joiners hold no seat
+// until their handshake lands (they wait, as before), so the count only
+// moves on seat/unseat — and the relay's own open-socket cap still bounds
+// the crowd at the door. Re-sent after every Room frame: a reclaimed room
+// forgets it (worker.js reclaim_host).
+void NetLobby::host_report_seats() {
+  if (!hosting_ || !signal_ || room_code_.empty() || !waiting_room()) return;
+  int free = 0;
+  for (int s = 2; s <= net_seat_cap(); s++) {
+    bool used = false;
+    for (const SeatedPeer &sp : seated_)
+      if (sp.seat == s) used = true;
+    for (std::map<std::string, PendingJoiner>::const_iterator it =
+             pending_.begin();
+         it != pending_.end(); ++it)
+      if (it->second.session && it->second.seat == s) used = true;
+    if (!used) free++;
+  }
+  if (free == seats_reported_) return;
+  seats_reported_ = free;
+  NET_LOG("[lobby] seats free %d reported\n", free);
+  signal_->send_seats(free);
+}
+
 void NetLobby::install_admit_check(NetSession *s, const std::string &jid) {
   if (!s) return;
   s->set_admit_check([this, jid](const NetIdentity &claimed) {
@@ -1686,6 +1715,7 @@ void NetLobby::pump_signal(int delta) {
       }
       case NetSignal::Event::Room:
         room_code_ = ev.text;
+        seats_reported_ = -1;    // a (re)claimed room has no seat count yet
         room_token_ = ev.text2;  // reclaim proof, handed to the game
         used_worker_ = true;     // a worker is in the session (ONLINE-strict)
         send_local_identity();   // announce ourselves for the worker to attest
@@ -2082,6 +2112,7 @@ void NetLobby::tick(int delta) {
   if (status_ms_ > 0) status_ms_ -= delta;
 
   pump_signal(delta);
+  host_report_seats();
 
   // Deck: bring the picker (and LAN rows) back the MOMENT the floating
   // keyboard is dismissed. The old proof — the next controller event
@@ -2152,8 +2183,14 @@ void NetLobby::tick(int delta) {
   // A joined room whose host never offers (host quit for good — its close
   // frame was lost, or an old relay build without close support): fail
   // out instead of sitting on "JOINING THE ROOM" forever. Rejoin mode has
-  // its own budget; a hostless-grace wait there is legitimate.
-  if (!hosting_ && screen_ == RoomJoining && !rejoin_mode_) {
+  // its own budget; a hostless-grace wait there is legitimate. A COLD
+  // invite rides rejoin mode's connect flow but has no budget (it fails
+  // fast by design), so it takes this timer instead: without it a deep
+  // link into a room the relay admitted but whose host never offered —
+  // every seat taken in a running game, before the host reported its
+  // seats (field, 2026-09-15) — waited forever, since the 12 s signal
+  // timer disarms on the worker's ack.
+  if (!hosting_ && screen_ == RoomJoining && (!rejoin_mode_ || cold_invite_)) {
     join_wait_ms_ += delta;
     // Probing a maybe-our-own room (see the clipboard auto-join): a live
     // host answers in seconds, so a short window is enough — the long
@@ -2161,6 +2198,12 @@ void NetLobby::tick(int delta) {
     int limit = own_room_probe_ ? 8000 : 45000;
     if (join_wait_ms_ > limit) {
       join_wait_ms_ = 0;
+      if (cold_invite_) {
+        // Deletes signal_; nothing below in this tick touches it (the
+        // retry loop is gated on !cold_invite_).
+        cold_invite_failed("THE HOST IS NOT RESPONDING");
+        return;
+      }
       fail_headline_ = own_room_probe_ ? "NO ONE IS HOSTING THAT ROOM"
                                        : "THE HOST IS NOT RESPONDING";
       if (own_room_probe_) {
@@ -2212,7 +2255,9 @@ void NetLobby::tick(int delta) {
         answer_sent_ = false;
         signal_wait_ms_ = 0;
         NET_LOG("[lobby] rejoin retry: joining room %s\n", code_entry_.c_str());
-        signal_->connect_join(net_signal_url(), code_entry_);
+        // The retry loop is the mid-game reconnect (a cold invite never
+        // gets here) — flag it so the host's seat count can't refuse it.
+        signal_->connect_join(net_signal_url(), code_entry_, true);
       }
     }
   }
