@@ -48,6 +48,7 @@ enum PadActionSet { PAD_SET_SHIP = 0, PAD_SET_MENU = 1, PAD_SET_COUNT = 2 };
 enum PadAction {
   // Ship set (in play, and the Intro screen)
   PAD_ACT_STEER = 0,   // analog: left stick -> LEFTX/LEFTY
+  PAD_ACT_CAMERA,      // analog: right stick -> RIGHTX/RIGHTY
   PAD_ACT_THRUST, PAD_ACT_REVERSE, PAD_ACT_TURN_LEFT, PAD_ACT_TURN_RIGHT,
   PAD_ACT_FIRE, PAD_ACT_SECONDARY,
   PAD_ACT_NEXT_WEAPON, PAD_ACT_NEXT_SECONDARY,
@@ -70,7 +71,7 @@ enum PadAction {
 struct PadActionInfo {
   const char *name;     // the manifest key
   PadActionSet set;
-  bool analog;          // joystick_move action -> LEFTX/LEFTY
+  bool analog;          // joystick_move: steer/nav -> left axes, camera -> right
   int button;           // SDL_GameControllerButton / PadPseudoButton the
                         // action synthesizes and the SDL path labels
   int trigger_axis;     // SDL axis that ALSO fires it in the default
@@ -81,6 +82,7 @@ struct PadActionInfo {
 inline const PadActionInfo &pad_action_info(PadAction a) {
   static const PadActionInfo table[PAD_ACT_COUNT] = {
     { "steer",          PAD_SET_SHIP, true,  PAD_BUTTON_LEFT_STICK,                -1, "Steer" },
+    { "camera",         PAD_SET_SHIP, true, PAD_BUTTON_RIGHT_STICK, -1, "Zoom / Fixed Camera Rotation" },
     { "thrust",         PAD_SET_SHIP, false, SDL_CONTROLLER_BUTTON_DPAD_UP,        -1, "Thrust" },
     { "reverse",        PAD_SET_SHIP, false, SDL_CONTROLLER_BUTTON_DPAD_DOWN,      -1, "Reverse" },
     { "turn_left",      PAD_SET_SHIP, false, SDL_CONTROLLER_BUTTON_DPAD_LEFT,      -1, "Turn Left" },

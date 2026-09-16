@@ -52,6 +52,11 @@
 					"title"		"#Action_Steer"
 					"input_mode"		"joystick_move"
 				}
+				"camera"
+				{
+					"title"		"#Action_Camera"
+					"input_mode"		"joystick_move"
+				}
 			}
 			"Button"
 			{
@@ -844,7 +849,7 @@
 		}
 		"gameactions"
 		{
-			"Ship"		"steer"
+			"Ship"		"camera"
 		}
 	}
 	"group"

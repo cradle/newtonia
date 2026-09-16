@@ -12,6 +12,11 @@
 					"title"	"#Action_Steer"
 					"input_mode"	"joystick_move"
 				}
+				"camera"
+				{
+					"title" "#Action_Camera"
+					"input_mode" "joystick_move"
+				}
 			}
 			"AnalogTrigger"
 			{
@@ -73,6 +78,7 @@
 			"Description"	"Official layout for Newtonia"
 			"Set_Ship"	"Ship"
 			"Action_Steer"	"Steer"
+			"Action_Camera" "Zoom / Fixed Camera Rotation"
 			"Action_Thrust"	"Thrust"
 			"Action_Reverse"	"Reverse"
 			"Action_TurnLeft"	"Turn Left"

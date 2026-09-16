@@ -46,7 +46,7 @@ shard_drivers() {
                          lan_anon" ;;
     netplay-core) echo "room weapons_net missile_net pickup_switch_net
                         turret_net shock_net shock_hazards_net hazards_net
-                        timeslow_net impacts replay_online" ;;
+                        timeslow_net impacts replay_online nseat_pause" ;;
     # nseat_rejoin_flap_swap sits here rather than beside its sibling
     # nseat_rejoin_flap for load, not theme: seats-and-soak is the shard
     # that decides this job's wall clock (16 min against 12 for this one),

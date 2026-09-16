@@ -86,6 +86,16 @@ jobs:
       - name: Shield inventory and effect regression test
         run: CPATH=/usr/local/include/SDL2${CPATH:+:$CPATH} make NETPLAY=0 -j4 test-shield-empty
 
+      - name: Right-stick camera regression test
+        run: CPATH=/usr/local/include/SDL2${CPATH:+:$CPATH} make NETPLAY=0 -j4 test-camera-stick
+
+      - name: Steam Input actions and controller layouts
+        run: |
+          g++ -std=c++11 -I. $(sdl2-config --cflags) test/unit/pad_actions_test.cpp -o /tmp/pad_actions_test
+          /tmp/pad_actions_test
+          python3 test/unit/steam_camera_layouts.py
+          g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. $(sdl2-config --cflags) -I/usr/local/include/SDL2 steam_input.cpp
+
       # Netplay (NETPLAY.md): the documented Linux recipe — libdatachannel
       # from source into ./netplay-libs (clone happens in a temp dir; the
       # prefix holds only headers and libs, so the source find below is safe).

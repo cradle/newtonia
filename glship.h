@@ -231,6 +231,10 @@ protected:
   bool rotating_view, show_help, last_input_was_controller;
   bool *rotate_view_pref_ = nullptr;  // per-player pref to persist on toggle
   float camera_rotation;
+  float fixed_camera_rotation = 0.0f;
+  float camera_stick_x = 0.0f;
+  int camera_zoom_direction = 0;
+  int camera_zoom_repeat_ms = 0;
   float camera_angle;
   // Zoom prefs (see set_zoom_prefs) and the eased current zoom scale.
   // view_zoom chases base * speed-follow in smooth_camera on the same
