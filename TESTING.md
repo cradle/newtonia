@@ -626,6 +626,11 @@ resubmission itself. Same `wrangler dev --local` boot as above, port 8788
 
 ## 4. End-to-end drivers (`test/e2e/`)
 
+The [join-link coverage and manual checklist](test/JOIN_LINK_TESTING.md)
+maps the September 2026 field scenarios to native, Java and browser tests.
+`test/e2e/join_link_scenarios.sh` runs the native contracts on a dedicated
+Xvfb display; the `join-links` CI shard runs it with a local relay.
+
 Two-instance gameplay regressions under Xvfb: real windows, real input via
 xdotool, real relay, assertions greped from `NEWTONIA_NET_DEBUG=1` logs.
 

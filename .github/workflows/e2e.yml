@@ -29,6 +29,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  join-site:
+    name: Join links and promo routing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save playwright typescript
+      - run: npx playwright install --with-deps chromium
+      - name: Local site and game banner contracts
+        run: PATH="$PWD/node_modules/.bin:$PATH" node test/e2e/web_promo_banner.mjs
+
   # The worker suites are seconds and gate deploy-signal/deploy-board today —
   # running them per PR just moves that feedback earlier.
   workers:
@@ -273,6 +287,7 @@ jobs:
           - netplay-core
           - netplay-resilience
           - seats-and-soak
+          - join-links
     steps:
       - uses: actions/checkout@v4
 

@@ -97,10 +97,15 @@ class ReferrerTest {
         }
     }
     static class Uri {
-        String getQueryParameter(String name) { return "ABC123"; }
+        final String code;
+        Uri(String code) { this.code = code; }
+        String getQueryParameter(String name) { return "code".equals(name) ? code : null; }
     }
     static class Intent {
-        Uri getData() { return new Uri(); }
+        final Uri data;
+        Intent() { this(new Uri("ABC123")); }
+        Intent(Uri data) { this.data = data; }
+        Uri getData() { return data; }
     }
     static class ReferrerDetails {
         // Client-side epoch seconds, 0 = unknown (the referrer API's own
@@ -237,6 +242,19 @@ class ReferrerTest {
         check(app.nativeCalls == 1 && app.deliveries == 1 && !app.prefs.checked,
               "Direct App Links must work normally after SDL recovers");
 
+        // Ordinary launches and links without a room must not call JNI.
+        app = fresh(0, false, "");
+        app.requireCommittedFlag = false;
+        app.handleInviteIntent(null);
+        app.handleInviteIntent(new Intent(null));
+        app.handleInviteIntent(new Intent(new Uri(null)));
+        app.handleInviteIntent(new Intent(new Uri("")));
+        check(app.nativeCalls == 0 && !app.prefs.checked,
+              "Missing intent/data/code must not deliver or consume a referrer");
+        app.handleInviteIntent(new Intent(new Uri("ABCDE")));
+        check("ABCDE".equals(app.joined) && app.deliveries == 1 && !app.prefs.checked,
+              "An installed-app link forwards its actual code independently of referrer state");
+
         app = fresh(0, false, "code=ABC123");
         InstallReferrerClient.deferCallback = true;
         app.checkInstallReferrer();
@@ -276,7 +294,9 @@ class ReferrerTest {
                   "Retry a transient service response and consume the invite once");
         }
 
-        for (String referrer : new String[]{"utm_source=newtonia_site", "code=TOO-LONG-CODE"}) {
+        for (String referrer : new String[]{null, "", "utm_source=newtonia_site",
+                "utm_source=newtonia_site&utm_medium=referral&utm_campaign=platforms",
+                "code=TOO-LONG-CODE"}) {
             app = fresh(0, false, referrer);
             app.checkInstallReferrer();
             app.checkInstallReferrer();
