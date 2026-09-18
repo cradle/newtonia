@@ -1,0 +1,22 @@
+# HUD SIZE at LARGEST — the desktop Options row for big or far-away
+# screens (field: a 4K display). steam1_level1's scene with the HUD scale
+# at its top step (1.75), for checking that the enlarged rows (LEVEL,
+# score, weapons, lives, the bottom hint) still keep clear of each other
+# on a 16:9 full-width viewport. Overlay::hud_grow caps the factor per
+# viewport, so the same `hud_size 1.75` line on the 2P co-op scene renders
+# the strips at 1.39 and the 2x2 grid untouched: that cap, not this scene,
+# is the split-screen check.
+size 1920 1080
+seed 21
+sim 1300
+game 0
+hud_size 1.75
+camera fixed
+ship 0 -100 20
+hold w 100
+hold space 300
+asteroid -350 750 r=95 v=-20,-40
+asteroid 800 450 tough r=110 v=-25,-10
+asteroid 650 -400 r=70 v=-30,20
+asteroid -700 -350 r=60 v=15,25
+asteroid -950 250 r=75 v=25,-15

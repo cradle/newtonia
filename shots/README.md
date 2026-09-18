@@ -86,6 +86,10 @@ clear                  # empty the generated world (asteroids, hazards,
 hud off                # hide the HUD and minimap
 stars 0.15             # starfield density 0..1, overriding the preference
                        #   (shot mode never writes preferences back; 0 = none)
+hud_size 1.75          # the HUD SIZE option (Preferences::hud_scale, 1..1.75):
+                       #   the in-game HUD text multiplier; without the
+                       #   line a shot renders the classic HUD whatever
+                       #   the machine's INI holds
 one_hand [left|centre|right]   # the ONE HAND touch input method + HANDEDNESS
                        #   (without the line: two hands / centre, pinned —
                        #   a shot never follows the machine's INI here,
@@ -162,6 +166,7 @@ Notes:
 | `hero.shot` | Composed asteroid field + title captions |
 | `menu.shot` | Main menu (attract dismissed via `key enter`) |
 | `options.shot` | The desktop OPTIONS list, for legibility checks when a row is added. `key`s through the menu, so it assumes the netless build's row order — see the note in the scene before rendering it against a netplay build |
+| `hudsize.shot` | `steam1_level1` with the HUD SIZE option at LARGEST (`hud_size 1.75`): the enlarged 1P HUD rows, for checking they keep clear of each other |
 | `specials.shot` | Labelled reference card of the special asteroid types |
 | `hazards.shot` | Pulsar, comet, seeker and a black hole, HUD off |
 | `onehand.shot` / `touchhelp.shot` | Touch-layout checks under `NEWTONIA_FORCE_TOUCH=1`: the ONE HAND resting ring + action arc, and the paused game's TOUCH CONTROLS card with its INPUT METHOD / HANDEDNESS bands (`key p`, then a `tap` on the CONTROLS band) |

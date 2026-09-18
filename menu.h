@@ -173,6 +173,7 @@ private:
   int  sensitivity_index_[MAX_PLAYERS] = {2, 2, 2, 2};  // per-player index into SENSITIVITY_VALUES
   int  smoothing_index_[MAX_PLAYERS]   = {1, 1, 1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
   int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)
+  int  hud_size_index_       = 0;       // index into HUD_SIZE_VALUES (0=NORMAL=1.0)
   int  camera_index_[MAX_PLAYERS]      = {1, 1, 1, 1};  // per-player: 0=FIXED, 1=ROTATE
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
   int  input_index_          = 0;       // 0=TWO HANDS, 1=ONE HAND (Preferences::touch_one_hand)
