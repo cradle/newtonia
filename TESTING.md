@@ -1067,6 +1067,7 @@ test/e2e/tutorial.sh # The first-time pilot's start screen + tutorial
                      # file and no replay recording may exist — then fire
                      # starts a real game that DOES record. Screenshots of
                      # every screen land in $OUT. Prints TUTORIAL-E2E-OK.
+                     # CI: the solo-replay shard (no relay, no wrangler).
 test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # abandon leaves a resumable current.nrp; CONTINUE
                      # appends to the SAME file (one run_id, seam keyframe,
