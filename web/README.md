@@ -98,3 +98,37 @@ On touch devices, on-screen control zones appear automatically.
 ```sh
 make web-clean   # removes web/dist/
 ```
+
+## Web control analytics
+
+The existing GA4 tag receives `game_controls_used` once per page lifetime
+with control activity, and `game_controls_summary` containing aggregate counts
+every 30 seconds with activity, or when the page is hidden/exited. Delivery on
+exit is best-effort. No network requests or GA calls run in input handlers or
+the rendering loop. Input handlers only maintain bounded counters/held state.
+
+Summary parameters: `move`, `fire`, `secondary`, `boost`, `teleport`, `pause`,
+`keyboard_presses`, `touch_presses`, `gamepad_active_samples`. Keyboard events
+use the default web key mapping; held keys count once, not per repeat or shot.
+Touch joystick movement counts neutral-to-deflected transitions (not distance).
+Gamepads are sampled at 4 Hz with a 0.25 axis dead zone, counting at most one
+active sample per tick across four pads; short taps can be missed. These are
+control intentions, not confirmed shots, successful abilities or gameplay time.
+
+Collection requires the production hostname, focused/visible document and
+non-menu UI. Visits with a `replay` query parameter are excluded entirely.
+The menu bridge is not a precise simulation-running signal (e.g. pause/intro),
+so these events must not be presented as measured active play duration. Native
+Steam/iOS/Android controls are unaffected. No raw keys, names, coordinates,
+controller identifiers or player identifiers are added. GA blocking/failures
+do not affect input, and queued analytics is bounded by dropping summaries
+when the existing dataLayer has 1,000 entries.
+
+In GA4, use the Users metric on `game_controls_used` for visitors who used
+controls (its event count is page lifetimes, not unique users). Register the
+nine summary parameters as event-scoped custom metrics to report their sums;
+the summary event count alone counts batches, not actions. Definitions are not
+created automatically by this code. The tag's existing consent setup applies.
+
+Regression checks: `node test/unit/web_analytics.cjs` and
+`node test/unit/touch_one_hand_web.cjs`. Both compile production TypeScript.

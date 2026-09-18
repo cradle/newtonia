@@ -22,6 +22,93 @@ declare const NewtoniaStore: undefined | {
   playStoreUrl(referrer: string): string;
 };
 
+// Aggregate web control intent, never raw keys, pointer coordinates or pad IDs.
+// No GA calls from input handlers: one small summary per 30 seconds, plus exit.
+function createControlAnalytics(isPlaying: () => boolean) {
+  const counts: Record<string, number> = Object.create(null);
+  const held = new Set<string>();
+  const actions: Record<string, string> = {
+    w: 'move', a: 'move', s: 'move', d: 'move',
+    ArrowUp: 'move', ArrowDown: 'move', ArrowLeft: 'move', ArrowRight: 'move',
+    ' ': 'fire', x: 'secondary', e: 'boost', t: 'teleport', p: 'pause',
+  };
+  let joystick = false;
+  let firstPending = false;
+  let firstSent = false;
+  let lastFlush = performance.now();
+  const allowed = () => !document.hidden && document.hasFocus() && isPlaying();
+  const add = (name: string) => { counts[name] = Math.min(1000000, (counts[name] || 0) + 1); };
+  const record = (action: string, source: string) => {
+    if (!allowed()) return;
+    add(action); add(source);
+    if (!firstSent) firstPending = true;
+  };
+  const flush = () => {
+    if (!Object.keys(counts).length) return;
+    const w = window as any;
+    // Drop telemetry if the tag is absent or blocked long enough to fill its
+    // queue. Analytics must never create an unbounded offline retry backlog.
+    const data = { ...counts };
+    for (const key of Object.keys(counts)) delete counts[key];
+    try {
+      if (typeof w.gtag !== 'function' || (w.dataLayer?.length || 0) >= 1000) return;
+      if (firstPending && !firstSent) {
+        w.gtag('event', 'game_controls_used', { send_to: 'G-03BDC6CK12' });
+        firstSent = true;
+        firstPending = false;
+      }
+      w.gtag('event', 'game_controls_summary', { ...data, send_to: 'G-03BDC6CK12' });
+    } catch { /* Analytics failure must not interrupt controls or lifecycle. */ }
+  };
+  const reset = () => { held.clear(); joystick = false; };
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (!Object.prototype.hasOwnProperty.call(actions, key)) return;
+    const id = (e.isTrusted ? 'keyboard' : 'touch') + ':' + key;
+    if (held.has(id)) return;
+    held.add(id);
+    record(actions[key], e.isTrusted ? 'keyboard_presses' : 'touch_presses');
+  }, { passive: true });
+  window.addEventListener('keyup', (e: KeyboardEvent) => {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    held.delete((e.isTrusted ? 'keyboard' : 'touch') + ':' + key);
+  }, { passive: true });
+  window.addEventListener('blur', reset);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { reset(); flush(); lastFlush = performance.now(); }
+  });
+  window.addEventListener('pagehide', () => { reset(); flush(); });
+  // Sample controller activity at 4 Hz, not on every rendering frame. Short
+  // taps may be missed: these are activity samples, NOT button-press counts.
+  window.setInterval(() => {
+    if (!allowed()) return;
+    try {
+      const pads = navigator.getGamepads?.();
+      if (pads) for (let i = 0; i < Math.min(pads.length, 4); i++) {
+        const pad = pads[i];
+        if (pad?.connected && (pad.buttons.some(b => b.pressed) ||
+            pad.axes.some(a => Math.abs(a) > 0.25))) {
+          add('gamepad_active_samples');
+          if (!firstSent) firstPending = true;
+          break;
+        }
+      }
+    } catch { /* Gamepad API can be restricted in embedded builds. */ }
+    if (performance.now() - lastFlush >= 30000) {
+      flush(); lastFlush = performance.now();
+    }
+  }, 250);
+  return {
+    joystick(nx: number, ny: number) {
+      const active = Math.abs(nx) > 0.15 || Math.abs(ny) > 0.15;
+      if (active && !joystick) record('move', 'touch_presses');
+      joystick = active;
+    },
+  };
+}
+// END control analytics
+
 (function () {
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
   const fsBtn = document.getElementById("fullscreen-btn") as HTMLButtonElement;
@@ -256,6 +343,7 @@ declare const NewtoniaStore: undefined | {
   };
 
   function callTouchJoystick(nx: number, ny: number): void {
+    controlAnalytics.joystick(nx, ny);
     (Module as ModuleEx)._web_touch_joystick?.(nx, ny);
   }
 
@@ -265,6 +353,10 @@ declare const NewtoniaStore: undefined | {
   let _joyPlaceholderEls: HTMLElement[] = [];
   let _positionJoyPlaceholder: (() => void) | null = null;
   let _inMenuMode = true;
+  // Do not mix local testing or leaderboard replay controls into live play.
+  const trackControls = window.location.hostname === "newtonia.metonymous.com" &&
+      !new URLSearchParams(window.location.search).has("replay");
+  const controlAnalytics = createControlAnalytics(() => trackControls && !_inMenuMode);
   // The mine button only exists while the local ship has a secondary
   // equipped — C++ pushes changes via EM_ASM (glgame.cpp GLGame::tick),
   // the same bridge setMenuMode rides. Starts false: a fresh ship has no
