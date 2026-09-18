@@ -31,7 +31,11 @@ function createControlAnalytics(query: (key: number) => number) {
   const actions = ['move', 'fire', 'secondary', 'boost', 'teleport', 'pause',
     'weapon_cycle', 'camera'];
   const keyCode = (key: string): number => {
-    if (key.length === 1) return key.toLowerCase().charCodeAt(0);
+    // Mirror web_main.cpp's plain ASCII and SDLK -> GLUT special-key mapping.
+    if (key.length === 1) {
+      if (key.charCodeAt(0) >= 128) return 0;
+      return key.toLowerCase().charCodeAt(0);
+    }
     const specials: Record<string, number> = { ArrowLeft: 228, ArrowUp: 229,
       ArrowRight: 230, ArrowDown: 231, Enter: 13, Escape: 27, Tab: 9,
       Backspace: 8, F1: 129, F4: 132, F8: 136, F11: 139 };
@@ -67,14 +71,19 @@ function createControlAnalytics(query: (key: number) => number) {
   };
   const reset = () => { held.clear(); joystick = false; };
   window.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey ||
+        (e as KeyboardEvent & { newtoniaControlContinuation?: boolean }).newtoniaControlContinuation) return;
     const key = keyCode(e.key);
     if (!key || key > 255 || !allowed()) return;
     const mask = safeQuery(key);
     if (mask <= 0) return;
     const id = (e.isTrusted ? 'keyboard' : 'touch') + ':' + key;
-    if (held.has(id)) return;
-    held.add(id);
+    // Each synthetic down represents a touch action; deferred keyup must
+    // not merge rapid taps. Physical keys still need held/repeat suppression.
+    if (e.isTrusted) {
+      if (held.has(id)) return;
+      held.add(id);
+    }
     for (let i = 0; i < actions.length; i++) if (mask & (1 << i)) add(actions[i]);
     add(e.isTrusted ? 'keyboard_presses' : 'touch_presses');
   }, { passive: true });
@@ -742,13 +751,16 @@ function createControlAnalytics(query: (key: number) => number) {
     // Fingers deliberately left to the canvas-tap path (the zoom zones).
     const passFingers = new Set<number>();
 
-    function keyEvt(key: string, type: string): void {
-      canvas.dispatchEvent(new KeyboardEvent(type, {
+    function keyEvt(key: string, type: string, continuation = false): void {
+      const event = new KeyboardEvent(type, {
         key,
         code: key === " " ? "Space" : `Key${key.toUpperCase()}`,
         bubbles: true,
         cancelable: true,
-      }));
+      });
+      // Taking over a tap's held key is not an additional analytics press.
+      Object.assign(event, { newtoniaControlContinuation: continuation });
+      canvas.dispatchEvent(event);
     }
 
     // Synthesized fire press. The weapons only sample the trigger in
@@ -787,7 +799,7 @@ function createControlAnalytics(query: (key: number) => number) {
         window.clearTimeout(spaceUpTimer);
         spaceUpTimer = null;
       }
-      keyEvt(" ", "keydown");
+      keyEvt(" ", "keydown", true);
       return true;
     }
 

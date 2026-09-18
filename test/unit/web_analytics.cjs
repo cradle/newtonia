@@ -1,17 +1,7 @@
 // Exercise the compiled production collector without contacting Google.
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const vm = require('node:vm');
-const {execFileSync} = require('node:child_process');
-const os = require('node:os');
-const path = require('node:path');
-const root = path.resolve(__dirname, '../..');
-const out = fs.mkdtempSync(path.join(os.tmpdir(), 'newtonia-analytics-'));
-let source;
-try {
-  execFileSync('tsc', ['-p', path.join(root, 'web/tsconfig.json'), '--outDir', out]);
-  source = fs.readFileSync(path.join(out, 'main.js'), 'utf8');
-} finally { fs.rmSync(out, {recursive:true, force:true}); }
+const source = require('./web_test_source.cjs')();
 const start = source.indexOf('function createControlAnalytics(');
 const end = source.indexOf('// END control analytics', start);
 assert.ok(start >= 0 && end > start, 'production collector slice markers missing');
@@ -71,3 +61,19 @@ console.log('review regressions passed');
 h=harness(); h.c.query=()=>{throw Error('runtime not ready');};
 assert.doesNotThrow(()=>h.key(' ')); assert.doesNotThrow(()=>h.tick(30000));
 assert.equal(h.events.length,0);
+
+// Latin-1 characters must not alias special keys, but real arrows still work.
+h=harness(); h.c.query=k=>k>=228 && k<=231 ? 1 : 0;
+for (const key of ['ä','å','æ','ç']) h.key(key);
+h.tick(30000); assert.equal(h.events.length,0);
+h.key('ArrowLeft'); h.tick(30000); assert.equal(h.events[1][2].move,1);
+// Deferred keyup does not collapse touch taps; taking over a hold is not a tap.
+h=harness();
+for(let i=0;i<5;i++) h.key(' ',{isTrusted:false});
+h.key(' ',{isTrusted:false,newtoniaControlContinuation:true});
+h.tick(30000); assert.equal(h.events[1][2].fire,5);
+assert.equal(h.events[1][2].touch_presses,5);
+// Duplicate physical keydown without repeat is still only one press.
+h=harness(); h.key(' '); h.key(' '); h.tick(30000);
+assert.equal(h.events[1][2].keyboard_presses,1);
+console.log('second-review regressions passed');

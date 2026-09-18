@@ -13179,7 +13179,8 @@ int GLGame::control_analytics(int key) const {
       board_prompt_active() || net_card_owns_input() || roster_open() ||
       touch_help_active_ || is_spectating() || spectate_arming()) return -1;
   const GLShip *local = local_player();
-  if (!local || !local->ship->is_alive()) return -1;
+  // A dead P1 must not gate surviving local players or the global pause key.
+  if (!local) return -1;
   if (!key) return 0;
   int mask = key == g_prefs.general_keys.pause ? 32 : 0;
   for (const auto *player : *players) {

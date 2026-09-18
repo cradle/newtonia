@@ -171,6 +171,19 @@ returning EACCES) is never mistaken for a fresh install and is left
 untouched; the peek mode the shot/video harnesses and the signal self-test
 use never decides or writes. Runs in `linux.yml`.
 
+### Web control analytics unit test
+
+```sh
+node test/unit/web_analytics.cjs  # Node + tsc on PATH
+```
+
+Runs the production collector against a fake clock, input events, gamepad API,
+and live-binding query. Covers batching, lifecycle flushes, readiness/failure
+handling, keyboard repeats, ASCII/special-key separation, touch taps and hold
+continuations, remaps, and gamepad sampling. Both web JavaScript tests compile
+into a temporary directory when run standalone. In web CI they reuse the
+preceding TypeScript step's output via `NEWTONIA_WEB_JS=web/main.js`.
+
 ### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
 
 ```sh
