@@ -4,7 +4,7 @@
 # score, weapons, lives, the bottom hint) still keep clear of each other
 # on a 16:9 full-width viewport. Overlay::hud_grow caps the factor per
 # viewport, so the same `hud_size 1.75` line on the 2P co-op scene renders
-# the strips at 1.39 and the 2x2 grid untouched: that cap, not this scene,
+# the strips at 1.24 and the 2x2 grid untouched: that cap, not this scene,
 # is the split-screen check.
 size 1920 1080
 seed 21

@@ -99,11 +99,13 @@ static bool viewport_is_grid_cell(const GLGame *glgame) {
 // answers. Capped per viewport so the top row still fits: LEVEL is centred
 // (8 glyphs at 12f, half-width 96f) and the score is right-aligned against
 // the corner inset (six digits at 20f, 240f wide, starting at vw -
-// CORNER_INSET - 240f), so f <= (vw - INSET - gap) / 336 keeps them apart
-// (vw is the viewport's HALF-width in Typer units: 1067 on a 16:9 full
-// window, 800 at 4:3). A full-width viewport holds every step — 2.98 at
-// 16:9, 2.19 at 4:3 — so the cap bites only on the 2P side-by-side
-// strips: 1.39 at 16:9, and exactly 1.0 at 4:3, where the pref therefore
+// CORNER_INSET - 240f), with a 48f gap between them — two LEVEL-glyph
+// advances, the least that reads as two items (a 10-unit gap rendered as
+// "LEVEL 1999999" on a 2P strip) — so f <= (vw - INSET) / 384 keeps them
+// apart (vw is the viewport's HALF-width in Typer units: 1067 on a 16:9
+// full window, 800 at 4:3). A full-width viewport holds every step — 2.6
+// at 16:9, 1.9 at 4:3 — so the cap bites only on the 2P side-by-side
+// strips: 1.24 at 16:9, and exactly 1.0 at 4:3, where the pref therefore
 // does nothing (a layout that was tight before it existed is never
 // shrunk by it either). The 2x2 grid is excluded outright: its cells
 // already run the 0.75 shrink below, with CLEARED dropped to just clear
@@ -114,7 +116,7 @@ static bool viewport_is_grid_cell(const GLGame *glgame) {
 static float hud_grow(const GLGame *glgame) {
   if (is_touch_mode() || viewport_is_grid_cell(glgame)) return 1.0f;
   float vw = Typer::scaled_window_width / glgame->num_x_viewports();
-  float cap = (vw - Overlay::CORNER_INSET - 10.0f) / (6 * 40.0f + 96.0f);
+  float cap = (vw - Overlay::CORNER_INSET) / (6 * 40.0f + 96.0f + 48.0f);
   float grow = g_prefs.hud_scale;
   if (grow > cap) grow = cap;
   return grow < 1.0f ? 1.0f : grow;
@@ -126,6 +128,16 @@ static float hud_grow(const GLGame *glgame) {
 // both 2P splits are untouched — there this is just the HUD SIZE growth.
 static float hud_fit(const GLGame *glgame) {
   return viewport_is_grid_cell(glgame) ? 0.75f : hud_grow(glgame);
+}
+
+// The centre column's top anchor: LEVEL and the god-mode/time-slow stack
+// under it. The join hint sits ABOVE this row (title_text, at vh - 40)
+// and grows with the HUD too, so its glyphs reach 16 units deeper per
+// unit of growth — at LARGEST they printed straight through LEVEL's top
+// (worst-case render, 2026-09-18). Drop the column by exactly that depth.
+// Centre only: the score and weapons list share no column with the hint.
+static float centre_hud_y(const GLGame *glgame) {
+  return top_hud_y(glgame) - 16.0f * (hud_grow(glgame) - 1.0f);
 }
 
 // The bottom hint row's anchor (the show/hide-controls hint, the boost
@@ -1037,7 +1049,7 @@ void Overlay::seat_roster(const GLGame *glgame) {
 void Overlay::level(const GLGame *glgame, const GLShip *glship) {
   char buf[20];
   snprintf(buf, sizeof(buf), "LEVEL %d", glgame->generation + 1);
-  Typer::draw_centered(0, top_hud_y(glgame), buf, 12 * hud_fit(glgame));
+  Typer::draw_centered(0, centre_hud_y(glgame), buf, 12 * hud_fit(glgame));
 }
 
 // Is the always-on room line on screen? Shared by the banner itself and by
@@ -1077,7 +1089,7 @@ float Overlay::room_line_drop(const GLGame *glgame) {
   float row_centre = H - H * (2 * row + 1) / ny;
   float bottom = (line_y - row_centre) - 2.0f * ROOM_LINE_SZ;  // ink's floor
   float f = hud_fit(glgame);
-  float first = top_hud_y(glgame) - 62 * f;    // the god-mode label's anchor
+  float first = centre_hud_y(glgame) - 62 * f; // the god-mode label's anchor
   float drop = first - (bottom - 10.0f);       // ...plus a gap
   return drop > 0.0f ? drop : 0.0f;
 }
@@ -1105,7 +1117,7 @@ void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
   // One drop for the whole stack, not a per-line nudge: shifting the block
   // as a unit keeps the god-mode/time-slow spacing that stops THOSE two
   // overlapping when both run at once.
-  float base_y = top_hud_y(glgame) - room_line_drop(glgame);
+  float base_y = centre_hud_y(glgame) - room_line_drop(glgame);
   Typer::draw_centered(0, base_y - 62 * f, "God mode", 10 * f);
   Typer::draw_centered(0, base_y - 100 * f, remaining / 1000, 10 * f);
 }
@@ -1118,7 +1130,7 @@ void Overlay::time_slow(const GLGame *glgame, const GLShip *glship) {
   int remaining = glgame->time_slow_wall_ms_remaining();
   if(remaining <= 0) return;
   float f = hud_fit(glgame);
-  float base_y = top_hud_y(glgame) - room_line_drop(glgame);
+  float base_y = centre_hud_y(glgame) - room_line_drop(glgame);
   Typer::draw_centered(0, base_y - 137 * f, "Time slow", 10 * f);
   Typer::draw_centered(0, base_y - 175 * f, (remaining + 999) / 1000, 10 * f);
 }

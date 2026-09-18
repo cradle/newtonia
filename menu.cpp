@@ -56,7 +56,7 @@ static const int NUM_STAR_DENSITY = 5;
 // weapons list (secondary row + NEXT chip) stays clear of the CLEARED
 // banner's corner; a 2x step reached into it. Overlay::hud_grow caps the
 // effective value per viewport on top of that, so on a 2P strip LARGEST
-// reads "as large as this layout holds" (1.39 at 16:9), not 1.75.
+// reads "as large as this layout holds" (1.24 at 16:9), not 1.75.
 static const float HUD_SIZE_VALUES[] = {1.0f, 1.25f, 1.5f, 1.75f};
 static const char* HUD_SIZE_LABELS[] = {"NORMAL", "LARGE", "LARGER", "LARGEST"};
 static const int NUM_HUD_SIZE = 4;
