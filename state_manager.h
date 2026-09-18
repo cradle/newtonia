@@ -35,6 +35,7 @@ public:
   // toggle — must not fire on keystrokes meant for the text field (the
   // Deck's floating keyboard typing F flickered fullscreen; Glenn).
   bool text_entry_active();
+  int control_analytics(int key) const; // -1 outside live play, otherwise action bitmask
   bool back_pressed();
   void focus_lost();
   void focus_gained();

@@ -13170,3 +13170,21 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     (*object)->input(key, false);
   }
 }
+
+// Queried by the web collector on input / at 4 Hz, never pushed per frame.
+// StateManager owns the current state, so Menu, Intro and NetLobby gate off,
+// and all GLGame entry paths (including online host/join) use the same signal.
+int GLGame::control_analytics(int key) const {
+  if (!running || game_over || net_mode_ == NetReplay ||
+      board_prompt_active() || net_card_owns_input() || roster_open() ||
+      touch_help_active_ || is_spectating() || spectate_arming()) return -1;
+  const GLShip *local = local_player();
+  if (!local || !local->ship->is_alive()) return -1;
+  if (!key) return 0;
+  int mask = key == g_prefs.general_keys.pause ? 32 : 0;
+  for (const auto *player : *players) {
+    if (player->has_keys() && player->ship->is_alive())
+      mask |= player->control_analytics((unsigned char)key);
+  }
+  return mask;
+}

@@ -183,3 +183,8 @@ void StateManager::focus_gained() {
   }
   focus_muted = false;
 }
+
+int StateManager::control_analytics(int key) const {
+  const GLGame *game = dynamic_cast<const GLGame *>(state);
+  return game ? game->control_analytics(key) : -1;
+}

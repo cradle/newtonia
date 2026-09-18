@@ -299,6 +299,11 @@ static void main_loop() {
     SDL_GL_SwapWindow(s_window);
 }
 
+// Read-only analytics query. No strings or player identifiers cross this bridge.
+extern "C" EMSCRIPTEN_KEEPALIVE int web_control_analytics(int key) {
+    return s_game ? s_game->control_analytics(key) : -1;
+}
+
 // Called from JS touch controls to apply analog joystick input directly.
 // nx/ny are normalised [-1, 1]; ny positive = down on screen = reverse thrust.
 extern "C" EMSCRIPTEN_KEEPALIVE void web_touch_joystick(float nx, float ny) {

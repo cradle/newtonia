@@ -24,38 +24,43 @@ declare const NewtoniaStore: undefined | {
 
 // Aggregate web control intent, never raw keys, pointer coordinates or pad IDs.
 // No GA calls from input handlers: one small summary per 30 seconds, plus exit.
-function createControlAnalytics(isPlaying: () => boolean) {
+function createControlAnalytics(query: (key: number) => number) {
   const counts: Record<string, number> = Object.create(null);
   const held = new Set<string>();
-  const actions: Record<string, string> = {
-    w: 'move', a: 'move', s: 'move', d: 'move',
-    ArrowUp: 'move', ArrowDown: 'move', ArrowLeft: 'move', ArrowRight: 'move',
-    ' ': 'fire', x: 'secondary', e: 'boost', t: 'teleport', p: 'pause',
+  // Bit order shared with GLShip::control_analytics / GLGame::control_analytics.
+  const actions = ['move', 'fire', 'secondary', 'boost', 'teleport', 'pause',
+    'weapon_cycle', 'camera'];
+  const keyCode = (key: string): number => {
+    if (key.length === 1) return key.toLowerCase().charCodeAt(0);
+    const specials: Record<string, number> = { ArrowLeft: 228, ArrowUp: 229,
+      ArrowRight: 230, ArrowDown: 231, Enter: 13, Escape: 27, Tab: 9,
+      Backspace: 8, F1: 129, F4: 132, F8: 136, F11: 139 };
+    return specials[key] || 0;
   };
   let joystick = false;
-  let firstPending = false;
   let firstSent = false;
   let lastFlush = performance.now();
-  const allowed = () => !document.hidden && document.hasFocus() && isPlaying();
+  const safeQuery = (key: number) => {
+    try { return query(key); } catch { return -1; }
+  };
+  const allowed = () => !document.hidden && document.hasFocus() && safeQuery(0) >= 0;
   const add = (name: string) => { counts[name] = Math.min(1000000, (counts[name] || 0) + 1); };
   const record = (action: string, source: string) => {
     if (!allowed()) return;
     add(action); add(source);
-    if (!firstSent) firstPending = true;
   };
   const flush = () => {
     if (!Object.keys(counts).length) return;
     const w = window as any;
-    // Drop telemetry if the tag is absent or blocked long enough to fill its
-    // queue. Analytics must never create an unbounded offline retry backlog.
+    // The shell sets readiness only after gtag.js loads. Drop summaries
+    // before that point, rather than filling the inline stub queue.
     const data = { ...counts };
     for (const key of Object.keys(counts)) delete counts[key];
     try {
-      if (typeof w.gtag !== 'function' || (w.dataLayer?.length || 0) >= 1000) return;
-      if (firstPending && !firstSent) {
+      if (typeof w.gtag !== 'function' || !w.newtoniaAnalyticsReady) return;
+      if (!firstSent) {
         w.gtag('event', 'game_controls_used', { send_to: 'G-03BDC6CK12' });
         firstSent = true;
-        firstPending = false;
       }
       w.gtag('event', 'game_controls_summary', { ...data, send_to: 'G-03BDC6CK12' });
     } catch { /* Analytics failure must not interrupt controls or lifecycle. */ }
@@ -63,15 +68,18 @@ function createControlAnalytics(isPlaying: () => boolean) {
   const reset = () => { held.clear(); joystick = false; };
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (!Object.prototype.hasOwnProperty.call(actions, key)) return;
+    const key = keyCode(e.key);
+    if (!key || key > 255 || !allowed()) return;
+    const mask = safeQuery(key);
+    if (mask <= 0) return;
     const id = (e.isTrusted ? 'keyboard' : 'touch') + ':' + key;
     if (held.has(id)) return;
     held.add(id);
-    record(actions[key], e.isTrusted ? 'keyboard_presses' : 'touch_presses');
+    for (let i = 0; i < actions.length; i++) if (mask & (1 << i)) add(actions[i]);
+    add(e.isTrusted ? 'keyboard_presses' : 'touch_presses');
   }, { passive: true });
   window.addEventListener('keyup', (e: KeyboardEvent) => {
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const key = keyCode(e.key);
     held.delete((e.isTrusted ? 'keyboard' : 'touch') + ':' + key);
   }, { passive: true });
   window.addEventListener('blur', reset);
@@ -82,22 +90,21 @@ function createControlAnalytics(isPlaying: () => boolean) {
   // Sample controller activity at 4 Hz, not on every rendering frame. Short
   // taps may be missed: these are activity samples, NOT button-press counts.
   window.setInterval(() => {
+    if (performance.now() - lastFlush >= 30000) {
+      flush(); lastFlush = performance.now();
+    }
     if (!allowed()) return;
     try {
       const pads = navigator.getGamepads?.();
       if (pads) for (let i = 0; i < Math.min(pads.length, 4); i++) {
         const pad = pads[i];
         if (pad?.connected && (pad.buttons.some(b => b.pressed) ||
-            pad.axes.some(a => Math.abs(a) > 0.25))) {
+            (pad.mapping === 'standard' && pad.axes.slice(0, 4).some(a => Math.abs(a) > 0.25)))) {
           add('gamepad_active_samples');
-          if (!firstSent) firstPending = true;
           break;
         }
       }
     } catch { /* Gamepad API can be restricted in embedded builds. */ }
-    if (performance.now() - lastFlush >= 30000) {
-      flush(); lastFlush = performance.now();
-    }
   }, 250);
   return {
     joystick(nx: number, ny: number) {
@@ -356,7 +363,10 @@ function createControlAnalytics(isPlaying: () => boolean) {
   // Do not mix local testing or leaderboard replay controls into live play.
   const trackControls = window.location.hostname === "newtonia.metonymous.com" &&
       !new URLSearchParams(window.location.search).has("replay");
-  const controlAnalytics = createControlAnalytics(() => trackControls && !_inMenuMode);
+  const controlAnalytics = createControlAnalytics((key) => {
+    if (!trackControls) return -1;
+    return (Module as any)._web_control_analytics?.(key) ?? -1;
+  });
   // The mine button only exists while the local ship has a secondary
   // equipped — C++ pushes changes via EM_ASM (glgame.cpp GLGame::tick),
   // the same bridge setMenuMode rides. Starts false: a fresh ship has no

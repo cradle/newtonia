@@ -93,6 +93,7 @@ public:
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
+  int control_analytics(int key) const;
   void draw() override;
   void tick(int delta) override;
   void keyboard(unsigned char key, int x, int y) override;
