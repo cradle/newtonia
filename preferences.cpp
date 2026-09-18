@@ -101,11 +101,15 @@ static bool pref_dir_has_player_data(const std::string &dir) {
 
 // What a NEW install starts on, where it differs from the struct defaults
 // (which stay the OLD install's values, so an INI that predates a key
-// still reads as the layout it was written under). Touch layouts only:
-// desktop input has no OSD, so the flag is inert there.
+// still reads as the layout it was written under). The touch rows are
+// inert off touch (desktop input has no OSD); the tutorial latch applies
+// everywhere.
 static void first_launch_defaults() {
     g_prefs.touch_one_hand   = true;
     g_prefs.touch_handedness = 2;   // RIGHT
+    // A fresh install has never flown: the menu opens on the new-player
+    // start screen until the tutorial is done or skipped (tutorial.h).
+    g_prefs.tutorial_done    = false;
 }
 
 static bool s_first_launch = false;
@@ -285,6 +289,8 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.touch_help_done = (val[0] == '1');
     } else if (strcmp(key, "boost_hint_done") == 0) {
         g_prefs.boost_hint_done = (val[0] == '1');
+    } else if (strcmp(key, "tutorial_done") == 0) {
+        g_prefs.tutorial_done = (val[0] == '1');
     } else if (strcmp(key, "auto_record_replays") == 0) {
         g_prefs.auto_record_replays = (val[0] == '1');
     } else if (strcmp(key, "leaderboard_prompts") == 0) {
@@ -421,6 +427,7 @@ void save_preferences() {
     fprintf(f, "touch_handedness=%d\n",        g_prefs.touch_handedness);
     fprintf(f, "touch_help_done=%d\n",         g_prefs.touch_help_done    ? 1 : 0);
     fprintf(f, "boost_hint_done=%d\n",         g_prefs.boost_hint_done    ? 1 : 0);
+    fprintf(f, "tutorial_done=%d\n",           g_prefs.tutorial_done      ? 1 : 0);
     fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "leaderboard_prompts=%d\n",     g_prefs.leaderboard_prompts ? 1 : 0);
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);

@@ -46,12 +46,25 @@ using namespace std;
 class NetSession;
 class NetTransport;
 class NetBoard;
+class Tutorial;
 namespace Net { class SnapshotAssembler; struct Reader; }
 namespace Replay { class Recorder; class Reader; }
 
 class GLGame : public State {
 public:
-  GLGame(PadId controller = PAD_NONE, bool allow_dev_players = true);
+  // tutorial: the first-time pilot's walk-through (tutorial.h) — an
+  // offline game on an EMPTY field whose persistence paths are all cut;
+  // use start_tutorial().
+  GLGame(PadId controller = PAD_NONE, bool allow_dev_players = true,
+         bool tutorial = false);
+  static GLGame *start_tutorial(PadId controller) {
+    return new GLGame(controller, /*allow_dev_players=*/false,
+                      /*tutorial=*/true);
+  }
+  // True for the tutorial game: no save, high score, stats, replay, level
+  // clear, intro, join or leaderboard prompt — see the gates named on
+  // tutorial_ below.
+  bool in_tutorial() const { return tutorial_ != nullptr; }
   GLGame(const Save::GameState &save, PadId controller = PAD_NONE);
   // Online host: adopts the Ready session from the lobby; the remote peer
   // drives player 2 via INPUT messages and receives 10 Hz snapshots.
@@ -131,6 +144,9 @@ public:
   int  spectate_countdown_secs() const;  // N in "SPECTATING IN N" (5..1)
 
   friend class Overlay;
+  // The tutorial reads the ship and spawns its beacons/rocks/crate into
+  // the object lists directly (tutorial.cpp).
+  friend class Tutorial;
   // The between-level intro state adopts the game while it runs (drawing the
   // frozen world's starfield/objects) and hands it back on dismissal.
   friend class Intro;
@@ -1565,6 +1581,14 @@ private:
   // presence-transition apply.
   void drop_station_and_enemies();
   list<Object*> *shock_targets; // enemies + stations (as Object*) for shock-bolt seeking
+  // The tutorial (tutorial.h), owned; NULL in every other game. Gates:
+  // the ctor's stats count + the dev spawn hooks, add_asteroids (an empty
+  // field), replay_start, the level-clear latch, maybe_start_intro,
+  // save_progress, the game-over high score + leaderboard prompt, the
+  // P2 join paths, and the touch help auto-show. Its CAMERA prompt owns
+  // input (owns_input) like the pause menu: tick freezes the sim, the
+  // input entry points route nav keys to it, pad_action_set says Menu.
+  Tutorial *tutorial_ = nullptr;
   bool all_weapons_cheat = false;  // NEWTONIA_ALL_WEAPONS: grant full arsenal each life
   int all_weapons_ammo = 999;      // rounds per weapon; a numeric env value > 1 overrides
   // NEWTONIA_GOD: debug cheat keeping every player permanently invincible

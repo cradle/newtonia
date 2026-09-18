@@ -1441,7 +1441,9 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // every strip (field, 2026-08-11) — anchored to the window's height, which
   // on a 2x2 grid is above the cell entirely.
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
-  if((int)glgame->players->size() < LOCAL_PLAYER_CAP) {
+  // No join offer in the tutorial: it is one pilot's lesson (the join
+  // paths are gated too), and the banner owns the top of the screen.
+  if((int)glgame->players->size() < LOCAL_PLAYER_CAP && !glgame->in_tutorial()) {
     // -40 (not -10): a real margin inside the title-safe edge, matching the
     // bottom-row hints (Xbox compliance) — pulled down further by the
     // cutout inset so this row stays aligned with the LEVEL/score/weapons

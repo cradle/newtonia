@@ -14,6 +14,12 @@ echo "e2e output: $OUT"
 # so the drivers never touch the developer's real savegame/prefs (and a
 # fresh dir means a known menu layout: NEW GAME + ONLINE, no CONTINUE).
 export XDG_DATA_HOME="$OUT/xdg"
+# A fresh pref dir is a NEW INSTALL, and a new install's menu is the
+# new-player start screen (TUTORIAL / PLAY / OPTIONS — tutorial.h), not
+# the row layout nav_host/nav_join encode. This override reads the pilot
+# as tutorial-done without touching the INI, so the drivers keep the
+# classic NEW GAME / ONLINE / OPTIONS layout they were written against.
+export NEWTONIA_TUTORIAL=0
 export SDL_AUDIODRIVER=dummy          # no sound device in CI/containers
 export NEWTONIA_NET_DEBUG=1           # the assertions grep NET_LOG output
 export NEWTONIA_SIGNAL_URL="${NEWTONIA_SIGNAL_URL:-ws://127.0.0.1:8787/ws}"
