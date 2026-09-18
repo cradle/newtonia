@@ -27,7 +27,8 @@ export SDL_AUDIODRIVER=dummy       # no sound device in the container
 sleep 3
 W=$(xdotool search --name . | tail -1)          # the game window id
 xdotool key --window $W Return                  # dismiss attract screen
-xdotool key --window $W Return                  # select NEW GAME
+xdotool key --window $W Return                  # select NEW GAME (see the
+                                                # NEWTONIA_TUTORIAL note below)
 xdotool key --window $W n                       # skip level (see gotcha below)
 kill -0 $PID || { wait $PID; echo "CRASHED status=$?"; }   # 139 = SIGSEGV
 xwd -id $W -out shot.xwd && convert shot.xwd shot.png      # screenshot
@@ -50,6 +51,11 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
 ```
 
 **Gotchas learned the hard way:**
+- A fresh pref dir (a new `XDG_DATA_HOME`) is a NEW INSTALL, and a new
+  install's menu is the new-player start screen — TUTORIAL / PLAY / OPTIONS
+  (tutorial.h) — so the first Return above starts the tutorial, not a game.
+  Export `NEWTONIA_TUTORIAL=0` (lib.sh does) for the classic NEW GAME /
+  ONLINE / OPTIONS layout; `=1` forces the start screen.
 - Screenshot the game window with `xwd -id $W` + `convert`; `import -window
   root` captures black under Xvfb once the GL window is gone (and a black
   root capture usually means the game already crashed).

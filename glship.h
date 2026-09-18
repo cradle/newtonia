@@ -128,6 +128,12 @@ public:
   // GLGame gates the pause menu on this (Overlay reads show_help directly
   // as a friend).
   bool showing_help() const { return show_help; }
+  // The pilot's last input was a pad: hints name buttons, not keys (the
+  // tutorial banner's vocabulary switch; Overlay reads the flag directly).
+  bool using_pad() const { return last_input_was_controller; }
+  // A key code's HUD name ("SPACE", "F1", "ESC", "W") — the keymap card's
+  // own label, shared so the tutorial's hints spell keys the same way.
+  static std::string key_name(int key);
   bool is_my_controller_id(PadId id) const;
   // The bound pad's id, or PAD_NONE — the roster names pads by it.
   PadId controller_id() const { return controller_id_; }

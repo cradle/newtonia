@@ -6,6 +6,9 @@
 # seat, and a 4P save must survive a quit/relaunch/CONTINUE cycle.
 # Prints FOURPLAYER-E2E-OK on success. See TESTING.md.
 set -u
+# Fresh prefs open on the new-player start screen (tutorial.h); this
+# driver walks the classic NEW GAME row layout, so read the pilot as done.
+export NEWTONIA_TUTORIAL=0
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1400x900x24" "$0" "$@"
 fi
