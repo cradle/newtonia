@@ -16,6 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The shipped WAVs are generated: this fails the build when
+      # generate_sounds.py changed without its output being regenerated,
+      # naming the stale files and the one command that fixes them.
+      - name: Check audio assets are in sync with generate_sounds.py
+        run: python3 generate_sounds.py --check
+
       # Network fetches retry with backoff, wiping partial state between
       # attempts — one transient GitHub 503 wave took out four workflow
       # runs at once (2026-08-03).
