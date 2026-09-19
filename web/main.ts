@@ -1255,14 +1255,7 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
       btn.className = cls;
       btn.textContent = label;
 
-      const dispatchKey = (type: string) => {
-        canvas.dispatchEvent(new KeyboardEvent(type, {
-          key,
-          code: key === " " ? "Space" : `Key${key.toUpperCase()}`,
-          bubbles: true,
-          cancelable: true,
-        }));
-      };
+      const dispatchKey = (type: string) => keyEvt(key, type);
 
       // Track active fingers so multi-finger presses keep the button held.
       const activeFingers = new Set<number>();

@@ -227,7 +227,7 @@ private:
   void save_progress();   // save only when at least one player is alive or has lives
   // broadcast=false suppresses the network echo; user_action=false excludes
   // automatic/remote transitions from web control analytics.
-  void toggle_pause(bool broadcast = true, bool user_action = true);
+  void toggle_pause(bool broadcast = true, bool user_action = false);
   // Pause-screen menu, drawn by Overlay::paused. Every pause opens on
   // RESUME — never on the exit row left armed by the last one. PLAYERS
   // (the seat roster) only exists offline, so the row list is 3 or 2 long

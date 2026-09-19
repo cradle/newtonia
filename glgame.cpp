@@ -1493,7 +1493,7 @@ void GLGame::pause_nav(unsigned char key, PadId src) {
   if (!MenuSelect::is_confirm(key)) return;
   switch (pause_row_at(pause_selection_)) {
     case PAUSE_RESUME:
-      toggle_pause();
+      toggle_pause(true, true);
       break;
     case PAUSE_PLAYERS:
       roster_active_ = true;
@@ -1972,7 +1972,7 @@ bool GLGame::back_pressed() {
   // old direct exit stands.
   if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
       !all_players_out()) {
-    toggle_pause();
+    toggle_pause(true, true);
     return true;
   }
   save_progress();
@@ -12014,7 +12014,7 @@ void GLGame::controller(SDL_Event event) {
       }
     }
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause();
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause(true, true);
       else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
                (replay_exit_offered() &&
                 is_exit_key(nav_key_from_controller(event))))
@@ -12067,7 +12067,7 @@ void GLGame::controller(SDL_Event event) {
         // screen; here that closes the pause menu (resume). It used to do
         // nothing while paused (field, 2026-08-08). BACK below stays the
         // quit-to-menu shortcut, START still resumes directly.
-        toggle_pause();
+        toggle_pause(true, true);
         return;
       }
     } else if (event.type == SDL_CONTROLLERAXISMOTION &&
@@ -12116,7 +12116,7 @@ void GLGame::controller(SDL_Event event) {
             request_state_change(new Menu());
           }
         } else {
-          toggle_pause();
+          toggle_pause(true, true);
         }
       } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
         if(pad_attached(event.cbutton.which))
@@ -12158,7 +12158,7 @@ void GLGame::controller(SDL_Event event) {
           add_local_player(event.cbutton.which, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
-      if(running && pad_may_command(event.cbutton.which)) toggle_pause();
+      if(running && pad_may_command(event.cbutton.which)) toggle_pause(true, true);
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK &&
                pad_may_command(event.cbutton.which)) {
       // Exactly what the keyboard menu key (and back_pressed) does — save
@@ -12170,7 +12170,7 @@ void GLGame::controller(SDL_Event event) {
       // the room — the exit is the menu's EXIT TO MENU row.
       if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
           !all_players_out()) {
-        toggle_pause();
+        toggle_pause(true, true);
       } else {
         save_progress();
         request_state_change(new Menu());
@@ -12416,7 +12416,7 @@ void GLGame::touch_tap(float nx, float ny) {
     // invariant is only held if both sides transform alike.
     float lift = TapBand::bottom_lift();
     if (TapBand::replay_pause.lifted(lift).contains(nx, ny)) {
-      toggle_pause();
+      toggle_pause(true, true);
       return;
     }
     if (TapBand::replay_slower.lifted(lift).contains(nx, ny)) {
@@ -13011,7 +13011,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       request_state_change(new Menu());
       return;
     }
-    if (key == (unsigned char)gk.pause) { toggle_pause(); return; }
+    if (key == (unsigned char)gk.pause) { toggle_pause(true, true); return; }
     // Paused, the pause menu owns w/s and confirm — the same ladder the
     // offline pause screen uses, so the drawn rows answer here too.
     if (pause_menu_active()) {
@@ -13051,7 +13051,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // confirm-close the roster out from under the tap that was just
     // answered. BACK (the band, or Android back) is the way out.
     if (is_touch_mode()) return;
-    if (key == (unsigned char)gk.pause) { toggle_pause(); return; }
+    if (key == (unsigned char)gk.pause) { toggle_pause(true, true); return; }
     roster_nav(nav_key(key));
     return;
   }
@@ -13122,7 +13122,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     Achievements::note_cheat_used();
   }
   if (host_keys && key == (unsigned char)gk.time_reset) time_between_steps = step_size;
-  if (key == (unsigned char)gk.pause) toggle_pause();
+  if (key == (unsigned char)gk.pause) toggle_pause(true, true);
 #if !defined(__ANDROID__) && !defined(__IOS__)
   // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
   // controller-first, and the keyboard has no third layout to hand out.
@@ -13176,7 +13176,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // refuse anyway) and Esc keeps meaning leave.
     if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
         !all_players_out()) {
-      toggle_pause();
+      toggle_pause(true, true);
       return;
     }
     save_progress();

@@ -55,7 +55,7 @@ struct GLGame : State {
   bool net_all_peers_lost() const { return false; }
   void net_send_event(int) {}
   void release_player_controls() {}
-  void toggle_pause(bool broadcast = true, bool user_action = true);
+  void toggle_pause(bool broadcast = true, bool user_action = false);
 };
 struct StateManager {
   State *state = nullptr;
@@ -65,7 +65,7 @@ struct StateManager {
   void keyboard_up(unsigned char key, int, int) {
     if (key == 'p') {
       GLGame *game = dynamic_cast<GLGame*>(state);
-      if (game && !game->touch_help_active_) game->toggle_pause();
+      if (game && !game->touch_help_active_) game->toggle_pause(true, true);
     }
   }
   bool consume_controls = false;
@@ -205,20 +205,23 @@ int main() {
   assert(recorded.empty() && !game.running);
   manager.consume_controls = false; game.touch_help_active_ = false;
   // Both Enter/RESUME and roster-p reach this same successful transition.
-  game.toggle_pause();
+  game.toggle_pause(true, true);
   game.running = false; game.roster = true;
-  game.toggle_pause();
+  game.toggle_pause(true, true);
   assert(recorded == std::vector<int>({32, 32}));
   game.roster = false; recorded.clear();
+  // An unclassified new caller must not count as player input.
+  game.toggle_pause();
+  assert(recorded.empty());
   // Focus, disconnect, help-card and remote changes explicitly opt out.
   game.toggle_pause(true, false); game.toggle_pause(false, false);
   assert(recorded.empty());
   game.game_over = true; game.running = true;
-  game.toggle_pause();
+  game.toggle_pause(true, true);
   assert(game.running && recorded.empty());
   game.game_over = false;
-  game.net_mode_ = NetReplay; game.toggle_pause();
-  game.net_mode_ = NetOff; game.spectator = true; game.toggle_pause();
+  game.net_mode_ = NetReplay; game.toggle_pause(true, true);
+  game.net_mode_ = NetOff; game.spectator = true; game.toggle_pause(true, true);
   assert(recorded.empty());
   game.spectator = false;
   game.seats.clear();
