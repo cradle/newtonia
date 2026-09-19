@@ -16,7 +16,7 @@ function harness() {
   vm.createContext(c); vm.runInContext(code+'\nthis.collector=createControlAnalytics(k => query(k));',c);
   const key=(name, extra={})=>wh.keydown({key:name,isTrusted:true,repeat:false,...extra});
   return {c,w,d,wh,dh,events,key, playing(v){playing=v;}, focus(v){focus=v;},
-    tick(ms){now+=ms;timer();}, release(k){wh.keyup({key:k,isTrusted:true});}};
+    tick(ms){now+=ms;timer();}, release(k, extra={}){wh.keyup({key:k,isTrusted:true,...extra});}};
 }
 let h=harness();
 h.key(' '); for(let i=0;i<10000;i++) h.key(' ',{repeat:true});
@@ -76,4 +76,20 @@ assert.equal(h.events[1][2].touch_presses,5);
 // Duplicate physical keydown without repeat is still only one press.
 h=harness(); h.key(' '); h.key(' '); h.tick(30000);
 assert.equal(h.events[1][2].keyboard_presses,1);
+
+// Shifted key labels use the stable physical code for lookup and release.
+h=harness(); h.c.query=k=>k===50 ? 128 : 0;
+h.key('@',{code:'Digit2',shiftKey:true}); h.release('@',{code:'Digit2',shiftKey:true});
+h.key('2',{code:'Digit2'}); h.tick(30000);
+assert.equal(h.events[1][2].camera,2);
+assert.equal(h.events[1][2].keyboard_presses,2);
+
+// Direct C++ touch paths report semantic masks through the same batch.
+h=harness(); h.c.collector.direct(2); h.c.collector.direct(32);
+h.c.collector.direct(128); h.tick(30000);
+assert.equal(h.events[1][2].fire,1);
+assert.equal(h.events[1][2].pause,1);
+assert.equal(h.events[1][2].camera,1);
+assert.equal(h.events[1][2].touch_presses,3);
+
 console.log('second-review regressions passed');
