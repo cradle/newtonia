@@ -68,6 +68,7 @@ struct Scene {
   bool hud = true;
   bool no_ship = false;  // hold every player unspawned: pure-scenery shots
   float star_density = -1;  // `stars`: overrides the preference; -1 = keep
+  float hud_scale = -1;     // `hud_size`: the HUD SIZE pref (1..1.75); -1 = classic
   // `one_hand [left|centre|right]`: the ONE HAND touch input method (and
   // its HANDEDNESS) for touch-layout shots under NEWTONIA_FORCE_TOUCH.
   // -1 = keep the (default, two-hand) pref; the layout re-runs after the
@@ -171,6 +172,10 @@ bool parse_scene_file(const char *path) {
       if (!(in >> s_scene.star_density) || s_scene.star_density < 0.0f ||
           s_scene.star_density > 1.0f)
         return parse_error(line_no, line, "stars wants 0..1 (density scale)");
+    } else if (cmd == "hud_size") {
+      if (!(in >> s_scene.hud_scale) || s_scene.hud_scale < 1.0f ||
+          s_scene.hud_scale > 1.75f)
+        return parse_error(line_no, line, "hud_size wants 1..1.75 (HUD text scale)");
     } else if (cmd == "one_hand") {
       std::string v;  in >> v;
       s_scene.one_hand = 1;
@@ -479,6 +484,10 @@ State *ShotScene::build_state() {
   // poking the live pref is scene-scoped by construction. Set before the
   // state constructors read star_density_scale().
   if (s_scene.star_density >= 0.0f) g_prefs.star_density = s_scene.star_density;
+  // HUD SIZE: the same scene-scoped poke. A scene without a `hud_size` line
+  // renders the classic HUD whatever the machine's INI holds — the store
+  // shots must not drift with the maintainer's own setting.
+  g_prefs.hud_scale = s_scene.hud_scale >= 1.0f ? s_scene.hud_scale : 1.0f;
   // Touch input method: the same scene-scoped poke, then re-run the OSD
   // layout — touch_controls_resize reads the prefs, and the window's first
   // resize has usually already happened by now.
