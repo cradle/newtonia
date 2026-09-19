@@ -30,16 +30,23 @@ function createControlAnalytics(query: (key: number) => number) {
   // Bit order shared with GLShip::control_analytics / GLGame::control_analytics.
   const actions = ['move', 'fire', 'secondary', 'boost', 'teleport', 'pause',
     'weapon_cycle', 'camera'];
-  const keyCode = (key: string): number => {
+  const keyCode = (e: KeyboardEvent): number => {
+    // SDL reports the unshifted key symbol. Use code for letters/digits so
+    // Shift cannot change the lookup or strand an entry in the held set.
+    const code = e.code || '';
+    if (code.startsWith('Key') && code.length === 4)
+      return code.charCodeAt(3) + 32;
+    if (code.startsWith('Digit') && code.length === 6)
+      return code.charCodeAt(5);
     // Mirror web_main.cpp's plain ASCII and SDLK -> GLUT special-key mapping.
-    if (key.length === 1) {
-      if (key.charCodeAt(0) >= 128) return 0;
-      return key.toLowerCase().charCodeAt(0);
+    if (e.key.length === 1) {
+      const key = e.key.toLowerCase().charCodeAt(0);
+      return key < 128 ? key : 0;
     }
     const specials: Record<string, number> = { ArrowLeft: 228, ArrowUp: 229,
       ArrowRight: 230, ArrowDown: 231, Enter: 13, Escape: 27, Tab: 9,
       Backspace: 8, F1: 129, F4: 132, F8: 136, F11: 139 };
-    return specials[key] || 0;
+    return specials[e.key] || 0;
   };
   let joystick = false;
   let firstSent = false;
@@ -47,7 +54,8 @@ function createControlAnalytics(query: (key: number) => number) {
   const safeQuery = (key: number) => {
     try { return query(key); } catch { return -1; }
   };
-  const allowed = () => !document.hidden && document.hasFocus() && safeQuery(0) >= 0;
+  const focused = () => !document.hidden && document.hasFocus();
+  const allowed = () => focused() && safeQuery(0) >= 0;
   const add = (name: string) => { counts[name] = Math.min(1000000, (counts[name] || 0) + 1); };
   const record = (action: string, source: string) => {
     if (!allowed()) return;
@@ -63,21 +71,21 @@ function createControlAnalytics(query: (key: number) => number) {
     try {
       if (typeof w.gtag !== 'function' || !w.newtoniaAnalyticsReady) return;
       if (!firstSent) {
-        w.gtag('event', 'game_controls_used', { send_to: 'G-03BDC6CK12' });
+        w.gtag('event', 'game_controls_used');
         firstSent = true;
       }
-      w.gtag('event', 'game_controls_summary', { ...data, send_to: 'G-03BDC6CK12' });
+      w.gtag('event', 'game_controls_summary', data);
     } catch { /* Analytics failure must not interrupt controls or lifecycle. */ }
   };
   const reset = () => { held.clear(); joystick = false; };
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.repeat || e.ctrlKey || e.metaKey || e.altKey ||
         (e as KeyboardEvent & { newtoniaControlContinuation?: boolean }).newtoniaControlContinuation) return;
-    const key = keyCode(e.key);
-    if (!key || key > 255 || !allowed()) return;
+    const key = keyCode(e);
+    if (!key || !focused()) return;
     const mask = safeQuery(key);
     if (mask <= 0) return;
-    const id = (e.isTrusted ? 'keyboard' : 'touch') + ':' + key;
+    const id = (e.isTrusted ? 'keyboard:' + (e.code || key) : 'touch:' + key);
     // Each synthetic down represents a touch action; deferred keyup must
     // not merge rapid taps. Physical keys still need held/repeat suppression.
     if (e.isTrusted) {
@@ -88,8 +96,8 @@ function createControlAnalytics(query: (key: number) => number) {
     add(e.isTrusted ? 'keyboard_presses' : 'touch_presses');
   }, { passive: true });
   window.addEventListener('keyup', (e: KeyboardEvent) => {
-    const key = keyCode(e.key);
-    held.delete((e.isTrusted ? 'keyboard' : 'touch') + ':' + key);
+    const key = keyCode(e);
+    held.delete(e.isTrusted ? 'keyboard:' + (e.code || key) : 'touch:' + key);
   }, { passive: true });
   window.addEventListener('blur', reset);
   document.addEventListener('visibilitychange', () => {
@@ -120,6 +128,11 @@ function createControlAnalytics(query: (key: number) => number) {
       const active = Math.abs(nx) > 0.15 || Math.abs(ny) > 0.15;
       if (active && !joystick) record('move', 'touch_presses');
       joystick = active;
+    },
+    direct(mask: number) {
+      if (!allowed() || mask <= 0) return;
+      for (let i = 0; i < actions.length; i++) if (mask & (1 << i)) add(actions[i]);
+      add('touch_presses');
     },
   };
 }
@@ -376,6 +389,7 @@ function createControlAnalytics(query: (key: number) => number) {
     if (!trackControls) return -1;
     return (Module as any)._web_control_analytics?.(key) ?? -1;
   });
+  (window as any).newtoniaRecordTouchControl = (mask: number) => controlAnalytics.direct(mask);
   // The mine button only exists while the local ship has a secondary
   // equipped — C++ pushes changes via EM_ASM (glgame.cpp GLGame::tick),
   // the same bridge setMenuMode rides. Starts false: a fresh ship has no
