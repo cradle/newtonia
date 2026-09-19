@@ -90,6 +90,19 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
     }
 }
 
+static void record_touch_control(int mask) {
+    if (mask <= 0) return;
+    EM_ASM({
+        if (window.newtoniaRecordTouchControl)
+            window.newtoniaRecordTouchControl($0);
+    }, mask);
+}
+
+static void record_touch_key(unsigned char key) {
+    if (s_game && key)
+        record_touch_control(s_game->control_analytics(key));
+}
+
 static void finger_down(SDL_FingerID id, float x, float y) {
     // Beta skip corner, BEFORE the pause zones — the corner sits inside the
     // pause hit region, so with pause first the skip tap only ever paused.
@@ -105,6 +118,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     if(!s_pause_active && fx >= 0.75f && y < 0.25f) {
         s_pause_active = true;
         s_pause_finger = id;
+        record_touch_control(32);
         s_game->keyboard('\r', 0, 0);
         return;
     }
@@ -120,6 +134,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     if(!s_pause_active && fx >= 0.38f && fx <= 0.60f && y >= 0.30f && y <= 0.60f) {
         s_pause_active = true;
         s_pause_finger = id;
+        record_touch_control(32);
         s_game->keyboard('\r', 0, 0);
         return;
     }
@@ -127,6 +142,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     unsigned char key = touch_to_key(x, y);
     if (!key) return;
     s_finger_keys[s_finger_count++] = {id, key};
+    record_touch_key(key);
     s_game->keyboard(key, 0, 0);
 }
 
@@ -231,6 +247,7 @@ static void main_loop() {
                     if (s_finger_keys[i].key != new_key) {
                         s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
                         s_finger_keys[i].key = new_key;
+                        record_touch_key(new_key);
                         s_game->keyboard(new_key, 0, 0);
                     }
                     break;
