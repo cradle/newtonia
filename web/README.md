@@ -114,6 +114,11 @@ Summary parameters: `move`, `fire`, `secondary`, `boost`, `teleport`, `pause`,
 Touch joystick movement counts neutral-to-deflected transitions (not distance).
 Canvas fallback controls count finger-downs, not zone crossings during a drag.
 Direct canvas pause and zoom taps are included in `pause` and `camera`.
+`pause` counts successful local player pause/resume transitions, including
+Enter on RESUME and resume from the roster, rather than attempted keys/taps.
+Automatic focus/disconnect/help-card changes, remote changes and replay controls
+are excluded. Pause transitions do not increment a device press counter because
+the shared transition does not infer whether its caller was keyboard, touch or pad.
 Gamepads are sampled at 4 Hz; only standard-mapped stick axes use a 0.25 dead zone
 (unknown mappings use buttons only, avoiding idle trigger axes at -1), counting at most one
 active sample per tick across four pads; short taps can be missed. These are
@@ -124,15 +129,18 @@ focused/visible document. **itch.io embeds and local builds are intentionally
 excluded** from this site's metrics. Visits with a `replay` query parameter are
 excluded entirely. The read-only game-state query gates on the current live
 GLGame, including online host/join, and excludes menus, intros, replay,
-spectating and blocking overlays. While paused, only pause/resume presses
-(including the online menu key and canvas pause zones) are counted.
+spectating and blocking overlays. While paused, only successful player resume
+transitions are counted; a touch consumed by CONTROLS does not count as resume.
 It is queried on input / at 4 Hz, never
 pushed per rendering frame. Buffered counts still flush after leaving play.
 These events do not measure active gameplay duration. Native builds send no
 analytics. No raw keys, names, coordinates, controller IDs or player IDs are
-added. The shell marks readiness after the existing GA script loads; summaries
-before that are dropped, without filling the inline tag stub or inspecting
-`dataLayer.length`. Errors in sending do not affect gameplay.
+added. The shell marks readiness after the existing GA script loads; bounded
+counters remain in memory until then and flush on the readiness event or next
+timer/lifecycle flush, without filling the inline tag stub or inspecting
+`dataLayer.length`. Leaving the page before the tag can load still prevents
+delivery; counters are not persisted across visits. Errors in sending do not
+affect gameplay.
 
 In GA4, use the Users metric on `game_controls_used` for visitors who used
 controls (its event count is page lifetimes, not unique users). Register the

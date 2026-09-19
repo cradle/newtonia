@@ -33,14 +33,17 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
   const specials: Record<string, number> = { ArrowLeft: 228, ArrowUp: 229,
     ArrowRight: 230, ArrowDown: 231, Enter: 13, Escape: 27, Tab: 9,
     Backspace: 8, F1: 129, F4: 132, F8: 136, F11: 139 };
+  const punctuation: Record<number, number> = { 59: 59, 61: 61, 173: 45,
+    186: 59, 187: 61, 188: 44, 189: 45, 190: 46, 191: 47, 192: 96,
+    219: 91, 220: 92, 221: 93, 222: 39 };
   const keyCode = (e: KeyboardEvent): number => {
-    // SDL reports the unshifted key symbol. Use code for letters/digits so
-    // Shift cannot change the lookup or strand an entry in the held set.
-    const code = e.code || '';
-    if (code.startsWith('Key') && code.length === 4)
-      return code.charCodeAt(3) + 32;
-    if (code.startsWith('Digit') && code.length === 6)
-      return code.charCodeAt(5);
+    // SDL 2.32.10 Emscripten_MapKeyCode uses the DOM legacy keyCode table,
+    // not the physical code's US letter. Keep code only for held identity.
+    // https://github.com/libsdl-org/SDL/blob/release-2.32.10/src/video/emscripten/SDL_emscriptenevents.c
+    if (e.location === 3) return 0; // SDL keypad symbols are not forwarded by web_main.
+    if (e.keyCode >= 65 && e.keyCode <= 90) return e.keyCode + 32;
+    if (e.keyCode >= 48 && e.keyCode <= 57) return e.keyCode;
+    if (punctuation[e.keyCode]) return punctuation[e.keyCode];
     // Mirror web_main.cpp's plain ASCII and SDLK -> GLUT special-key mapping.
     if (e.key.length === 1) {
       const key = e.key.toLowerCase().charCodeAt(0);
@@ -57,20 +60,19 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
   const focused = () => enabled && !document.hidden && document.hasFocus();
   const allowed = () => focused() && safeQuery(0) >= 0;
   const add = (name: string) => { counts[name] = Math.min(1000000, (counts[name] || 0) + 1); };
-  const addMask = (mask: number, source: string) => {
+  const addMask = (mask: number, source?: string) => {
     if (mask <= 0) return;
     for (let i = 0; i < actions.length; i++) if (mask & (1 << i)) add(actions[i]);
-    add(source);
+    if (source) add(source);
   };
   const flush = () => {
     if (!Object.keys(counts).length) return;
     const w = window as any;
-    // The shell sets readiness only after gtag.js loads. Drop summaries
-    // before that point, rather than filling the inline stub queue.
-    const data = { ...counts };
-    for (const key of Object.keys(counts)) delete counts[key];
+    // Retain the bounded counters until the tag loads; never queue at its stub.
     try {
       if (typeof w.gtag !== 'function' || !w.newtoniaAnalyticsReady) return;
+      const data = { ...counts };
+      for (const key of Object.keys(counts)) delete counts[key];
       if (!firstSent) {
         w.gtag('event', 'game_controls_used');
         firstSent = true;
@@ -104,6 +106,7 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
     if (document.hidden) { reset(); flush(); lastFlush = performance.now(); }
   });
   window.addEventListener('pagehide', () => { reset(); flush(); });
+  window.addEventListener('newtonia-analytics-ready', flush);
   // Sample controller activity at 4 Hz, not on every rendering frame. Short
   // taps may be missed: these are activity samples, NOT button-press counts.
   window.setInterval(() => {
@@ -129,11 +132,12 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
       if (active && !joystick && allowed()) addMask(1, 'touch_presses');
       joystick = active;
     },
-    direct(mask: number) {
+    direct(mask: number, touch = true) {
       // C++ has already checked the live game/action, including pause resume.
       // Keep the independent hostname/replay and document gates here.
       if (!focused()) return;
-      addMask(mask, 'touch_presses');
+      // Semantic pause transitions have no inferred device/source counter.
+      addMask(mask, touch ? 'touch_presses' : undefined);
     },
   };
 }
@@ -390,7 +394,7 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
     if (!trackControls) return -1;
     return (Module as any)._web_control_analytics?.(key) ?? -1;
   }, trackControls);
-  (window as any).newtoniaRecordTouchControl = (mask: number) => controlAnalytics.direct(mask);
+  (window as any).newtoniaRecordTouchControl = (mask: number, touch = true) => controlAnalytics.direct(mask, touch);
   // The mine button only exists while the local ship has a secondary
   // equipped — C++ pushes changes via EM_ASM (glgame.cpp GLGame::tick),
   // the same bridge setMenuMode rides. Starts false: a fresh ship has no

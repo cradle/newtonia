@@ -61,6 +61,7 @@ static SDL_GameController *s_controller = nullptr;
 // The main loop skips tick/draw until this flag is set.
 static bool             s_idb_ready = false;
 
+// TEST-SLICE-BEGIN: analytics_fingers
 static unsigned char touch_to_key(float norm_x, float norm_y) {
     // HANDEDNESS LEFT mirrors the two-hand layout (main.ts moves the HTML
     // joystick zone and circle buttons across); mirroring the coordinate
@@ -111,7 +112,6 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     if(!s_pause_active && fx >= 0.75f && y < 0.25f) {
         s_pause_active = true;
         s_pause_finger = id;
-        record_touch_key(g_prefs.general_keys.pause);
         s_game->keyboard('\r', 0, 0);
         return;
     }
@@ -127,7 +127,6 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     if(!s_pause_active && fx >= 0.38f && fx <= 0.60f && y >= 0.30f && y <= 0.60f) {
         s_pause_active = true;
         s_pause_finger = id;
-        record_touch_key(g_prefs.general_keys.pause);
         s_game->keyboard('\r', 0, 0);
         return;
     }
@@ -156,6 +155,8 @@ static void finger_up(SDL_FingerID id, float x, float y) {
         }
     }
 }
+
+// TEST-SLICE-END: analytics_fingers
 
 // Stroke weight vs display density.  The emulated thick-line core
 // (gles2_compat.cpp) is measured in PHYSICAL buffer pixels, and the buffer is
@@ -233,6 +234,7 @@ static void main_loop() {
         case SDL_FINGERUP:
             finger_up(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
             break;
+        // TEST-SLICE-BEGIN: analytics_motion
         case SDL_FINGERMOTION: {
             unsigned char new_key = touch_to_key(e.tfinger.x, e.tfinger.y);
             for (int i = 0; i < s_finger_count; i++) {
@@ -249,6 +251,7 @@ static void main_loop() {
             break;
         }
 
+        // TEST-SLICE-END: analytics_motion
         case SDL_WINDOWEVENT:
             if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
                 // Don't trust data1/data2: depending on the SDL emscripten

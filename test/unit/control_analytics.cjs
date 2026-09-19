@@ -6,31 +6,24 @@ const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
-function method(file, signature) {
+function slice(file, name) {
   const source = fs.readFileSync(path.join(root, file), 'utf8');
-  const start = source.indexOf(signature);
-  assert.ok(start >= 0, `${file}: missing ${signature}`);
-  const open = source.indexOf('{', start);
-  let depth = 1, end = open + 1;
-  for (; end < source.length && depth; end++) {
-    if (source[end] === '{') depth++;
-    if (source[end] === '}') depth--;
-  }
-  assert.equal(depth, 0, `${file}: unterminated ${signature}`);
-  return source.slice(start, end);
+  const begin = `// TEST-SLICE-BEGIN: ${name}`;
+  const finish = `// TEST-SLICE-END: ${name}`;
+  const start = source.indexOf(begin), end = source.indexOf(finish);
+  assert.ok(start >= 0 && end > start, `${file}: missing/reversed markers for ${name}`);
+  assert.equal(source.indexOf(begin, start + begin.length), -1, `${name}: duplicate begin`);
+  assert.equal(source.indexOf(finish, end + finish.length), -1, `${name}: duplicate end`);
+  return source.slice(start + begin.length, end);
 }
 const methods = [
-  method('glship.cpp', 'int GLShip::control_analytics('),
-  method('glgame.cpp', 'int GLGame::control_analytics('),
-  method('state_manager.cpp', 'int StateManager::control_analytics('),
+  slice('glship.cpp', 'analytics_ship'),
+  slice('glgame.cpp', 'analytics_game'),
+  slice('state_manager.cpp', 'analytics_state'),
+  slice('glgame.cpp', 'analytics_pause'),
 ].join('\n');
-const fingerMethods = [
-  method('web_main.cpp', 'static unsigned char touch_to_key('),
-  method('web_main.cpp', 'static void record_touch_key('),
-  method('web_main.cpp', 'static void finger_down('),
-  method('web_main.cpp', 'static void finger_up('),
-].join('\n');
-const motion = method('web_main.cpp', 'case SDL_FINGERMOTION:').replace('case SDL_FINGERMOTION:', '');
+const fingerMethods = slice('web_main.cpp', 'analytics_fingers');
+const motion = slice('web_main.cpp', 'analytics_motion').replace('case SDL_FINGERMOTION:', '');
 const fixture = fs.readFileSync(path.join(__dirname, 'control_analytics_fixture.cpp'), 'utf8');
 assert.ok(fixture.includes('// PRODUCTION_METHODS'));
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'newtonia-analytics-cpp-'));

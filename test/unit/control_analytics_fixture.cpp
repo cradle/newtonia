@@ -4,6 +4,18 @@
 #include <cassert>
 #include <cstdio>
 #include <vector>
+#define __EMSCRIPTEN__ 1 // Compile the production pause notification branch.
+#define NET_LOG(...) ((void)0)
+static void web_record_touch_control(int mask, bool touch = true);
+namespace Net { enum { EV_PAUSE, EV_RESUME }; }
+namespace AudioVolume { static float music_scale() { return 1.0f; } }
+enum { PAUSE_RESUME, MIX_MAX_VOLUME = 128 };
+static void Mix_HaltChannel(int) {}
+static void Mix_Resume(int) {}
+static void Mix_Pause(int) {}
+static void Mix_VolumeChunk(void*, int) {}
+static int Mix_PlayChannel(int, void*, int) { return 0; }
+struct ReplayFixture { void flush() {} };
 
 Preferences::Preferences() {} // No per-seat defaults or persistence needed here.
 Preferences g_prefs;
@@ -33,6 +45,17 @@ struct GLGame : State {
   bool is_spectating() const { return spectator; }
   bool spectate_arming() const { return arming; }
   int control_analytics(int key) const;
+  bool all_players_out() const { return game_over; }
+  int pause_selection_ = 0, pause_music_channel = -1;
+  bool roster_active_ = false;
+  void *pause_music_sound = nullptr;
+  ReplayFixture *replay_ = nullptr;
+  void save_progress() {}
+  bool net_session() const { return false; }
+  bool net_all_peers_lost() const { return false; }
+  void net_send_event(int) {}
+  void release_player_controls() {}
+  void toggle_pause(bool broadcast = true, bool user_action = true);
 };
 struct StateManager {
   State *state = nullptr;
@@ -42,10 +65,13 @@ struct StateManager {
   void keyboard_up(unsigned char key, int, int) {
     if (key == 'p') {
       GLGame *game = dynamic_cast<GLGame*>(state);
-      if (game) game->running = !game->running;
+      if (game && !game->touch_help_active_) game->toggle_pause();
     }
   }
-  void touch_tap(float, float) {}
+  bool consume_controls = false;
+  void touch_tap(float, float) {
+    if (consume_controls) static_cast<GLGame*>(state)->touch_help_active_ = true;
+  }
 };
 
 // PRODUCTION_METHODS
@@ -61,7 +87,7 @@ static StateManager *s_game = nullptr;
 static struct { bool mine_available = true; } g_touch_controls;
 static bool touch_layout_mirrored() { return false; }
 static std::vector<int> recorded;
-static void web_record_touch_control(int mask) {
+static void web_record_touch_control(int mask, bool) {
   if (mask > 0) recorded.push_back(mask);
 }
 
@@ -106,24 +132,24 @@ int main() {
   p1.body.alive = false;
   assert(game.control_analytics('z') == 0);
   assert(game.control_analytics('i') == 1);
-  assert(game.control_analytics('p') == 32);
+  assert(game.control_analytics('p') == 0);
   p2.keyed = false;
   assert(game.control_analytics('i') == 0);
   p2.keyed = true;
   game.running = false;
   assert(game.control_analytics(0) == -1);
   assert(game.control_analytics('i') == -1);
-  assert(game.control_analytics('p') == 32);
+  assert(game.control_analytics('p') == -1);
   assert(game.control_analytics(27) == -1);
   for (int mode : {NetHost, NetClient}) {
     game.net_mode_ = mode;
-    assert(game.control_analytics(27) == 32);
-    assert(game.control_analytics('p') == 32);
+    assert(game.control_analytics(27) == -1);
+    assert(game.control_analytics('p') == -1);
     game.running = true;
-    assert(game.control_analytics(27) == 32);
+    assert(game.control_analytics(27) == 0);
     game.running = false;
   }
-  // Exclusions dominate both the running and paused pause-key exceptions.
+  // Raw input queries never admit paused/blocked gameplay.
   for (bool running : {false, true}) {
     game.running = running;
     for (bool *flag : {&game.game_over, &game.board, &game.card, &game.roster,
@@ -164,13 +190,37 @@ int main() {
     finger_down(4, x, y); finger_up(4, x, y);
     assert(game.running);
     assert(recorded == std::vector<int>({32, 32}));
-    game.roster = true;
+    game.touch_help_active_ = true;
     recorded.clear();
     finger_down(5, x, y); finger_up(5, x, y);
     assert(recorded.empty());
-    game.roster = false;
+    game.touch_help_active_ = false;
     game.running = true;
   }
+  // The controls band consumes the release: no pause at finger-down or keyup.
+  recorded.clear(); game.running = false; manager.consume_controls = true;
+  finger_down(6, 0.5f, 0.4f);
+  assert(recorded.empty());
+  finger_up(6, 0.5f, 0.4f);
+  assert(recorded.empty() && !game.running);
+  manager.consume_controls = false; game.touch_help_active_ = false;
+  // Both Enter/RESUME and roster-p reach this same successful transition.
+  game.toggle_pause();
+  game.running = false; game.roster = true;
+  game.toggle_pause();
+  assert(recorded == std::vector<int>({32, 32}));
+  game.roster = false; recorded.clear();
+  // Focus, disconnect, help-card and remote changes explicitly opt out.
+  game.toggle_pause(true, false); game.toggle_pause(false, false);
+  assert(recorded.empty());
+  game.game_over = true; game.running = true;
+  game.toggle_pause();
+  assert(game.running && recorded.empty());
+  game.game_over = false;
+  game.net_mode_ = NetReplay; game.toggle_pause();
+  game.net_mode_ = NetOff; game.spectator = true; game.toggle_pause();
+  assert(recorded.empty());
+  game.spectator = false;
   game.seats.clear();
   assert(manager.control_analytics('p') == -1);
   std::puts("C++ control analytics: gates, seats, remaps and alternates passed");

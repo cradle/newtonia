@@ -39,7 +39,9 @@ h.tick(250); h.tick(30000); assert.equal(h.events[1][2].gamepad_active_samples,1
 h.c.navigator.getGamepads=()=>{throw Error('denied');}; assert.doesNotThrow(()=>h.tick(30000));
 h=harness(); h.w.gtag=()=>{throw Error('blocked');}; h.key(' '); assert.doesNotThrow(()=>h.tick(30000));
 h=harness(); h.w.newtoniaAnalyticsReady=false; h.key(' '); h.tick(30000); assert.equal(h.events.length,0);
-h.w.newtoniaAnalyticsReady=true; h.tick(30000); assert.equal(h.events.length,0); // dropped, not retried
+h.w.newtoniaAnalyticsReady=true; h.wh['newtonia-analytics-ready']();
+assert.equal(h.events.length,2); assert.equal(h.events[1][2].fire,1);
+h.tick(30000); assert.equal(h.events.length,2); // sent once after readiness
 console.log('web analytics: batching, repeat suppression, lifecycle, privacy, touch and gamepad tests passed');
 
 // Summaries flush even after game-over or loss of focus, without new sampling.
@@ -80,25 +82,25 @@ assert.equal(h.events[1][2].keyboard_presses,1);
 
 // Shifted key labels use the stable physical code for lookup and release.
 h=harness(); h.c.query=k=>k===50 ? 128 : 0;
-h.key('@',{code:'Digit2',shiftKey:true}); h.release('@',{code:'Digit2',shiftKey:true});
+h.key('@',{code:'Digit2',keyCode:50,shiftKey:true}); h.release('@',{code:'Digit2',keyCode:50,shiftKey:true});
 h.key('2',{code:'Digit2'}); h.tick(30000);
 assert.equal(h.events[1][2].camera,2);
 assert.equal(h.events[1][2].keyboard_presses,2);
 
-// Direct C++ touch paths report semantic masks through the same batch.
-h=harness(); h.c.collector.direct(2); h.c.collector.direct(32);
+// Direct touch actions and source-independent pause transitions share a batch.
+h=harness(); h.c.collector.direct(2); h.c.collector.direct(32,false);
 h.c.collector.direct(128); h.tick(30000);
 assert.equal(h.events[1][2].fire,1);
 assert.equal(h.events[1][2].pause,1);
 assert.equal(h.events[1][2].camera,1);
-assert.equal(h.events[1][2].touch_presses,3);
+assert.equal(h.events[1][2].touch_presses,2);
 
 console.log('second-review regressions passed');
 
 // A C++-validated touch resume must survive the generic paused query gate.
-h=harness(); h.playing(false); h.c.collector.direct(32); h.tick(30000);
+h=harness(); h.playing(false); h.c.collector.direct(32,false); h.tick(30000);
 assert.equal(h.events[1][2].pause,1);
-assert.equal(h.events[1][2].touch_presses,1);
+assert.equal(h.events[1][2].touch_presses,undefined);
 // Direct reporting still respects the page exclusions, focus and visibility.
 for (const gate of ['disabled', 'hidden', 'unfocused']) {
   h=harness(gate !== 'disabled');
@@ -110,3 +112,19 @@ for (const gate of ['disabled', 'hidden', 'unfocused']) {
 h=harness(); h.c.collector.direct(-1); h.c.collector.direct(0); h.tick(30000);
 assert.equal(h.events.length,0);
 console.log('touch resume and direct collection gates passed');
+
+// SDL's layout keycode, not the physical US letter, determines the action.
+h=harness(); h.c.query=k=>k===113 ? 64 : k===97 ? 1 : 0;
+h.key('q',{code:'KeyA',keyCode:81}); h.release('Q',{code:'KeyA',keyCode:81});
+h.key('a',{code:'KeyQ',keyCode:65}); h.tick(30000);
+assert.equal(h.events[1][2].weapon_cycle,1);
+assert.equal(h.events[1][2].move,1);
+assert.equal(h.events[1][2].keyboard_presses,2);
+// Retain a short session through a slow tag load, even if the page was hidden.
+h=harness(); h.w.newtoniaAnalyticsReady=false; h.key(' ');
+h.d.hidden=true; h.dh.visibilitychange(); h.wh.pagehide();
+assert.equal(h.events.length,0);
+h.w.newtoniaAnalyticsReady=true; h.wh['newtonia-analytics-ready']();
+assert.equal(h.events[1][2].fire,1);
+h.wh['newtonia-analytics-ready'](); assert.equal(h.events.length,2);
+console.log('layout keycodes and deferred readiness passed');
