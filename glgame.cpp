@@ -12380,10 +12380,18 @@ void GLGame::touch_tap(float nx, float ny) {
     // same call).
     if (TouchZone::zoom_in_placed().contains(nx, ny)) {
       local_player()->step_zoom(-1);
+#ifdef __EMSCRIPTEN__
+      EM_ASM({ if (window.newtoniaRecordTouchControl)
+        window.newtoniaRecordTouchControl(128); });
+#endif
       return;
     }
     if (TouchZone::zoom_out_placed().contains(nx, ny)) {
       local_player()->step_zoom(+1);
+#ifdef __EMSCRIPTEN__
+      EM_ASM({ if (window.newtoniaRecordTouchControl)
+        window.newtoniaRecordTouchControl(128); });
+#endif
       return;
     }
   }
@@ -13175,14 +13183,18 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 // StateManager owns the current state, so Menu, Intro and NetLobby gate off,
 // and all GLGame entry paths (including online host/join) use the same signal.
 int GLGame::control_analytics(int key) const {
-  if (!running || game_over || net_mode_ == NetReplay ||
+  const bool pause_key = key == g_prefs.general_keys.pause ||
+      (net_mode_ != NetOff && key == g_prefs.general_keys.menu);
+  // Pause/resume is still a live-game interaction while the simulation is
+  // stopped. Online uses the menu key for the same pause screen.
+  if ((!running && !pause_key) || game_over || net_mode_ == NetReplay ||
       board_prompt_active() || net_card_owns_input() || roster_open() ||
       touch_help_active_ || is_spectating() || spectate_arming()) return -1;
   const GLShip *local = local_player();
   // A dead P1 must not gate surviving local players or the global pause key.
   if (!local) return -1;
   if (!key) return 0;
-  int mask = key == g_prefs.general_keys.pause ? 32 : 0;
+  int mask = pause_key ? 32 : 0;
   for (const auto *player : *players) {
     if (player->has_keys() && player->ship->is_alive())
       mask |= player->control_analytics((unsigned char)key);
