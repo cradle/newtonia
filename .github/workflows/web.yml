@@ -52,8 +52,18 @@ jobs:
         working-directory: web
         run: tsc
 
+      - name: Web control analytics regression test
+        run: node test/unit/web_analytics.cjs
+        env:
+          NEWTONIA_WEB_JS: web/main.js
+
+      - name: C++ control analytics regression test
+        run: node test/unit/control_analytics.cjs
+
       - name: One-hand web gesture regression test
         run: node test/unit/touch_one_hand_web.cjs
+        env:
+          NEWTONIA_WEB_JS: web/main.js
 
       - name: Install Emscripten SDK
         run: |

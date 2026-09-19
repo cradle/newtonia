@@ -183,3 +183,10 @@ void StateManager::focus_gained() {
   }
   focus_muted = false;
 }
+
+// TEST-SLICE-BEGIN: analytics_state
+int StateManager::control_analytics(int key) const {
+  const GLGame *game = dynamic_cast<const GLGame *>(state);
+  return game ? game->control_analytics(key) : -1;
+}
+// TEST-SLICE-END: analytics_state

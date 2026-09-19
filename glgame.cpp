@@ -45,6 +45,7 @@
 #include "replay.h"
 #include "teleport.h"
 #include "world_sound.h"
+#include "web_control_analytics.h"
 #include <math.h>
 #include <cmath>
 #include <SDL.h>
@@ -1345,7 +1346,8 @@ bool GLGame::all_players_out() const {
   return true;
 }
 
-void GLGame::toggle_pause(bool broadcast) {
+// TEST-SLICE-BEGIN: analytics_pause
+void GLGame::toggle_pause(bool broadcast, bool user_action) {
   // A finished game can't be paused: the GAME OVER card owns the screen and
   // the only input that matters is fire-for-menu — pausing would stack the
   // "Paused" overlay on top of the card (seen on a net client, but the pause
@@ -1354,6 +1356,14 @@ void GLGame::toggle_pause(bool broadcast) {
   // terminal for a spectating client).
   if (running && all_players_out()) return;
   running = !running;
+#ifdef __EMSCRIPTEN__
+  // Count the successful local transition, not a key/tap that a menu may consume.
+  if (user_action && !game_over && net_mode_ != NetReplay && local_player() &&
+      !is_spectating() && !spectate_arming())
+    web_record_touch_control(32, false);
+#else
+  (void)user_action;
+#endif
   NET_LOG("net: pause state %s\n", running ? "running" : "paused");
   // The pause menu always opens on RESUME: leaving the highlight where the
   // last pause left it would put EXIT TO MENU under a reflexive confirm.
@@ -1400,6 +1410,8 @@ void GLGame::toggle_pause(bool broadcast) {
     }
   }
 }
+
+// TEST-SLICE-END: analytics_pause
 
 // A replay ends in one of two ways, and BOTH draw the shared RETURN TO
 // MENU row: the recorded run died (GAME OVER, after its 3 s grace so a
@@ -1481,7 +1493,7 @@ void GLGame::pause_nav(unsigned char key, PadId src) {
   if (!MenuSelect::is_confirm(key)) return;
   switch (pause_row_at(pause_selection_)) {
     case PAUSE_RESUME:
-      toggle_pause();
+      toggle_pause(true, true);
       break;
     case PAUSE_PLAYERS:
       roster_active_ = true;
@@ -1601,12 +1613,12 @@ void GLGame::touch_help_open(bool resume_on_close) {
   // sound channels paused) — the desktop F1 card's convention: a help
   // card is the thing that paused the game.
   touch_help_resume_ = resume_on_close && running;
-  if (running) toggle_pause();
+  if (running) toggle_pause(true, false);
 }
 
 void GLGame::touch_help_close() {
   touch_help_active_ = false;
-  if (touch_help_resume_ && !running) toggle_pause();
+  if (touch_help_resume_ && !running) toggle_pause(true, false);
   touch_help_resume_ = false;
 }
 
@@ -1960,7 +1972,7 @@ bool GLGame::back_pressed() {
   // old direct exit stands.
   if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
       !all_players_out()) {
-    toggle_pause();
+    toggle_pause(true, true);
     return true;
   }
   save_progress();
@@ -1979,7 +1991,7 @@ void GLGame::focus_lost() {
   // Online the sim must keep running while unfocused — the peer's game
   // doesn't stop. Sound still mutes below.
   if(running && net_mode_ == NetOff) {
-    toggle_pause();
+    toggle_pause(true, false);
     // toggle_pause refuses when the game is over — only remember an
     // auto-pause that actually took, or focus regain would pause a
     // running game-over screen.
@@ -2065,7 +2077,7 @@ void GLGame::controller_removed(PadId id) {
       // Don't pause for a player who is already game over (dead, no lives):
       // in two-player their disconnect must not interrupt the survivor.
       bool player_game_over = !glship->ship->is_alive() && glship->ship->lives == 0;
-      if(running && !player_game_over) toggle_pause();
+      if(running && !player_game_over) toggle_pause(true, false);
       return;
     }
   }
@@ -3684,7 +3696,7 @@ void GLGame::net_host_rejoin_park_peer(NetPeer &p, bool keep_session) {
   if (net_all_peers_lost() && !net_rejoin_parked_) {
     net_rejoin_parked_ = true;
     if (running) {
-      toggle_pause(false);
+      toggle_pause(false, false);
       NET_LOG("net: paused awaiting rejoin\n");
     }
   }
@@ -5883,10 +5895,10 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
       // Clients only connect to the host: it must broadcast their shared
       // pause state to the rest of the room. Clients apply without echoing;
       // the state guards also make the reply to the initiator a no-op.
-      if (running) toggle_pause(net_mode_ == NetHost);
+      if (running) toggle_pause(net_mode_ == NetHost, false);
       break;
     case Net::EV_RESUME:
-      if (!running) toggle_pause(net_mode_ == NetHost);
+      if (!running) toggle_pause(net_mode_ == NetHost, false);
       break;
     case Net::EV_GENERATION_START:
       // The world rebuild itself rides the next snapshot (client side);
@@ -8816,7 +8828,7 @@ void GLGame::focus_gained() {
     net_client_rejoin_ms_ = 300;
   Mix_ResumeMusic();
   if(auto_paused) {
-    toggle_pause();
+    toggle_pause(true, false);
     auto_paused = false;
   } else if(pause_music_channel >= 0) {
     // Manually paused before the focus loss: bring the pause tune back.
@@ -12002,7 +12014,7 @@ void GLGame::controller(SDL_Event event) {
       }
     }
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause();
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause(true, true);
       else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
                (replay_exit_offered() &&
                 is_exit_key(nav_key_from_controller(event))))
@@ -12055,7 +12067,7 @@ void GLGame::controller(SDL_Event event) {
         // screen; here that closes the pause menu (resume). It used to do
         // nothing while paused (field, 2026-08-08). BACK below stays the
         // quit-to-menu shortcut, START still resumes directly.
-        toggle_pause();
+        toggle_pause(true, true);
         return;
       }
     } else if (event.type == SDL_CONTROLLERAXISMOTION &&
@@ -12104,7 +12116,7 @@ void GLGame::controller(SDL_Event event) {
             request_state_change(new Menu());
           }
         } else {
-          toggle_pause();
+          toggle_pause(true, true);
         }
       } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
         if(pad_attached(event.cbutton.which))
@@ -12146,7 +12158,7 @@ void GLGame::controller(SDL_Event event) {
           add_local_player(event.cbutton.which, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
-      if(running && pad_may_command(event.cbutton.which)) toggle_pause();
+      if(running && pad_may_command(event.cbutton.which)) toggle_pause(true, true);
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK &&
                pad_may_command(event.cbutton.which)) {
       // Exactly what the keyboard menu key (and back_pressed) does — save
@@ -12158,7 +12170,7 @@ void GLGame::controller(SDL_Event event) {
       // the room — the exit is the menu's EXIT TO MENU row.
       if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
           !all_players_out()) {
-        toggle_pause();
+        toggle_pause(true, true);
       } else {
         save_progress();
         request_state_change(new Menu());
@@ -12380,10 +12392,16 @@ void GLGame::touch_tap(float nx, float ny) {
     // same call).
     if (TouchZone::zoom_in_placed().contains(nx, ny)) {
       local_player()->step_zoom(-1);
+#ifdef __EMSCRIPTEN__
+      if (control_analytics(0) >= 0) web_record_touch_control(128);
+#endif
       return;
     }
     if (TouchZone::zoom_out_placed().contains(nx, ny)) {
       local_player()->step_zoom(+1);
+#ifdef __EMSCRIPTEN__
+      if (control_analytics(0) >= 0) web_record_touch_control(128);
+#endif
       return;
     }
   }
@@ -12398,7 +12416,7 @@ void GLGame::touch_tap(float nx, float ny) {
     // invariant is only held if both sides transform alike.
     float lift = TapBand::bottom_lift();
     if (TapBand::replay_pause.lifted(lift).contains(nx, ny)) {
-      toggle_pause();
+      toggle_pause(true, true);
       return;
     }
     if (TapBand::replay_slower.lifted(lift).contains(nx, ny)) {
@@ -12993,7 +13011,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       request_state_change(new Menu());
       return;
     }
-    if (key == (unsigned char)gk.pause) { toggle_pause(); return; }
+    if (key == (unsigned char)gk.pause) { toggle_pause(true, true); return; }
     // Paused, the pause menu owns w/s and confirm — the same ladder the
     // offline pause screen uses, so the drawn rows answer here too.
     if (pause_menu_active()) {
@@ -13033,7 +13051,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // confirm-close the roster out from under the tap that was just
     // answered. BACK (the band, or Android back) is the way out.
     if (is_touch_mode()) return;
-    if (key == (unsigned char)gk.pause) { toggle_pause(); return; }
+    if (key == (unsigned char)gk.pause) { toggle_pause(true, true); return; }
     roster_nav(nav_key(key));
     return;
   }
@@ -13104,7 +13122,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     Achievements::note_cheat_used();
   }
   if (host_keys && key == (unsigned char)gk.time_reset) time_between_steps = step_size;
-  if (key == (unsigned char)gk.pause) toggle_pause();
+  if (key == (unsigned char)gk.pause) toggle_pause(true, true);
 #if !defined(__ANDROID__) && !defined(__IOS__)
   // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
   // controller-first, and the keyboard has no third layout to hand out.
@@ -13158,7 +13176,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // refuse anyway) and Esc keeps meaning leave.
     if ((net_mode_ == NetHost || net_mode_ == NetClient) &&
         !all_players_out()) {
-      toggle_pause();
+      toggle_pause(true, true);
       return;
     }
     save_progress();
@@ -13170,3 +13188,24 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     (*object)->input(key, false);
   }
 }
+
+// Queried by the web collector on input / at 4 Hz, never pushed per frame.
+// StateManager owns the current state, so Menu, Intro and NetLobby gate off,
+// and all GLGame entry paths (including online host/join) use the same signal.
+// TEST-SLICE-BEGIN: analytics_game
+int GLGame::control_analytics(int key) const {
+  if (!running || game_over || net_mode_ == NetReplay ||
+      board_prompt_active() || net_card_owns_input() || roster_open() ||
+      touch_help_active_ || is_spectating() || spectate_arming()) return -1;
+  const GLShip *local = local_player();
+  // A dead P1 must not gate surviving local players.
+  if (!local) return -1;
+  if (!key) return 0;
+  int mask = 0; // Pause is recorded only by successful toggle_pause transitions.
+  for (const auto *player : *players) {
+    if (player->has_keys() && player->ship->is_alive())
+      mask |= player->control_analytics((unsigned char)key);
+  }
+  return mask;
+}
+// TEST-SLICE-END: analytics_game
