@@ -27,6 +27,7 @@
 #include "replay.h"
 #include "touch_controls.h"
 #include "world_sound.h"
+#include "web_control_analytics.h"
 
 #include <cmath>
 #include <cstdio>
@@ -90,17 +91,9 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
     }
 }
 
-static void record_touch_control(int mask) {
-    if (mask <= 0) return;
-    EM_ASM({
-        if (window.newtoniaRecordTouchControl)
-            window.newtoniaRecordTouchControl($0);
-    }, mask);
-}
-
 static void record_touch_key(unsigned char key) {
     if (s_game && key)
-        record_touch_control(s_game->control_analytics(key));
+        web_record_touch_control(s_game->control_analytics(key));
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
@@ -118,7 +111,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     if(!s_pause_active && fx >= 0.75f && y < 0.25f) {
         s_pause_active = true;
         s_pause_finger = id;
-        record_touch_control(32);
+        record_touch_key(g_prefs.general_keys.pause);
         s_game->keyboard('\r', 0, 0);
         return;
     }
@@ -134,7 +127,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     if(!s_pause_active && fx >= 0.38f && fx <= 0.60f && y >= 0.30f && y <= 0.60f) {
         s_pause_active = true;
         s_pause_finger = id;
-        record_touch_control(32);
+        record_touch_key(g_prefs.general_keys.pause);
         s_game->keyboard('\r', 0, 0);
         return;
     }
@@ -247,7 +240,7 @@ static void main_loop() {
                     if (s_finger_keys[i].key != new_key) {
                         s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
                         s_finger_keys[i].key = new_key;
-                        record_touch_key(new_key);
+                        // Same finger press: changing zones is not a new tap.
                         s_game->keyboard(new_key, 0, 0);
                     }
                     break;

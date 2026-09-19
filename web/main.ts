@@ -24,12 +24,15 @@ declare const NewtoniaStore: undefined | {
 
 // Aggregate web control intent, never raw keys, pointer coordinates or pad IDs.
 // No GA calls from input handlers: one small summary per 30 seconds, plus exit.
-function createControlAnalytics(query: (key: number) => number) {
+function createControlAnalytics(query: (key: number) => number, enabled = true) {
   const counts: Record<string, number> = Object.create(null);
   const held = new Set<string>();
   // Bit order shared with GLShip::control_analytics / GLGame::control_analytics.
   const actions = ['move', 'fire', 'secondary', 'boost', 'teleport', 'pause',
     'weapon_cycle', 'camera'];
+  const specials: Record<string, number> = { ArrowLeft: 228, ArrowUp: 229,
+    ArrowRight: 230, ArrowDown: 231, Enter: 13, Escape: 27, Tab: 9,
+    Backspace: 8, F1: 129, F4: 132, F8: 136, F11: 139 };
   const keyCode = (e: KeyboardEvent): number => {
     // SDL reports the unshifted key symbol. Use code for letters/digits so
     // Shift cannot change the lookup or strand an entry in the held set.
@@ -43,9 +46,6 @@ function createControlAnalytics(query: (key: number) => number) {
       const key = e.key.toLowerCase().charCodeAt(0);
       return key < 128 ? key : 0;
     }
-    const specials: Record<string, number> = { ArrowLeft: 228, ArrowUp: 229,
-      ArrowRight: 230, ArrowDown: 231, Enter: 13, Escape: 27, Tab: 9,
-      Backspace: 8, F1: 129, F4: 132, F8: 136, F11: 139 };
     return specials[e.key] || 0;
   };
   let joystick = false;
@@ -54,12 +54,13 @@ function createControlAnalytics(query: (key: number) => number) {
   const safeQuery = (key: number) => {
     try { return query(key); } catch { return -1; }
   };
-  const focused = () => !document.hidden && document.hasFocus();
+  const focused = () => enabled && !document.hidden && document.hasFocus();
   const allowed = () => focused() && safeQuery(0) >= 0;
   const add = (name: string) => { counts[name] = Math.min(1000000, (counts[name] || 0) + 1); };
-  const record = (action: string, source: string) => {
-    if (!allowed()) return;
-    add(action); add(source);
+  const addMask = (mask: number, source: string) => {
+    if (mask <= 0) return;
+    for (let i = 0; i < actions.length; i++) if (mask & (1 << i)) add(actions[i]);
+    add(source);
   };
   const flush = () => {
     if (!Object.keys(counts).length) return;
@@ -92,8 +93,7 @@ function createControlAnalytics(query: (key: number) => number) {
       if (held.has(id)) return;
       held.add(id);
     }
-    for (let i = 0; i < actions.length; i++) if (mask & (1 << i)) add(actions[i]);
-    add(e.isTrusted ? 'keyboard_presses' : 'touch_presses');
+    addMask(mask, e.isTrusted ? 'keyboard_presses' : 'touch_presses');
   }, { passive: true });
   window.addEventListener('keyup', (e: KeyboardEvent) => {
     const key = keyCode(e);
@@ -126,13 +126,14 @@ function createControlAnalytics(query: (key: number) => number) {
   return {
     joystick(nx: number, ny: number) {
       const active = Math.abs(nx) > 0.15 || Math.abs(ny) > 0.15;
-      if (active && !joystick) record('move', 'touch_presses');
+      if (active && !joystick && allowed()) addMask(1, 'touch_presses');
       joystick = active;
     },
     direct(mask: number) {
-      if (!allowed() || mask <= 0) return;
-      for (let i = 0; i < actions.length; i++) if (mask & (1 << i)) add(actions[i]);
-      add('touch_presses');
+      // C++ has already checked the live game/action, including pause resume.
+      // Keep the independent hostname/replay and document gates here.
+      if (!focused()) return;
+      addMask(mask, 'touch_presses');
     },
   };
 }
@@ -388,7 +389,7 @@ function createControlAnalytics(query: (key: number) => number) {
   const controlAnalytics = createControlAnalytics((key) => {
     if (!trackControls) return -1;
     return (Module as any)._web_control_analytics?.(key) ?? -1;
-  });
+  }, trackControls);
   (window as any).newtoniaRecordTouchControl = (mask: number) => controlAnalytics.direct(mask);
   // The mine button only exists while the local ship has a secondary
   // equipped — C++ pushes changes via EM_ASM (glgame.cpp GLGame::tick),

@@ -6,14 +6,15 @@ const start = source.indexOf('function createControlAnalytics(');
 const end = source.indexOf('// END control analytics', start);
 assert.ok(start >= 0 && end > start, 'production collector slice markers missing');
 const code = source.slice(start, end);
-function harness() {
+function harness(enabled = true) {
   const wh = {}, dh = {}, events = [];
   let now = 0, playing = true, focus = true, timer;
   const w = {newtoniaAnalyticsReady:true, dataLayer: [], gtag: (...args) => events.push(args),
     addEventListener: (n, f) => wh[n] = f, setInterval(f, ms) {assert.equal(ms,250); timer=f;}};
   const d = {hidden:false, hasFocus:()=>focus, addEventListener:(n,f)=>dh[n]=f};
   const c = {window:w,document:d,navigator:{getGamepads:()=>[]},performance:{now:()=>now},query:k=>!playing ? -1 : ({32:2,119:1,120:4,101:8,116:16,112:32}[k] || 0)};
-  vm.createContext(c); vm.runInContext(code+'\nthis.collector=createControlAnalytics(k => query(k));',c);
+  c.enabled = enabled;
+  vm.createContext(c); vm.runInContext(code+'\nthis.collector=createControlAnalytics(k => query(k), enabled);',c);
   const key=(name, extra={})=>wh.keydown({key:name,isTrusted:true,repeat:false,...extra});
   return {c,w,d,wh,dh,events,key, playing(v){playing=v;}, focus(v){focus=v;},
     tick(ms){now+=ms;timer();}, release(k, extra={}){wh.keyup({key:k,isTrusted:true,...extra});}};
@@ -93,3 +94,19 @@ assert.equal(h.events[1][2].camera,1);
 assert.equal(h.events[1][2].touch_presses,3);
 
 console.log('second-review regressions passed');
+
+// A C++-validated touch resume must survive the generic paused query gate.
+h=harness(); h.playing(false); h.c.collector.direct(32); h.tick(30000);
+assert.equal(h.events[1][2].pause,1);
+assert.equal(h.events[1][2].touch_presses,1);
+// Direct reporting still respects the page exclusions, focus and visibility.
+for (const gate of ['disabled', 'hidden', 'unfocused']) {
+  h=harness(gate !== 'disabled');
+  if (gate === 'hidden') h.d.hidden=true;
+  if (gate === 'unfocused') h.focus(false);
+  h.c.collector.direct(32); h.c.collector.direct(128); h.tick(30000);
+  assert.equal(h.events.length,0,gate);
+}
+h=harness(); h.c.collector.direct(-1); h.c.collector.direct(0); h.tick(30000);
+assert.equal(h.events.length,0);
+console.log('touch resume and direct collection gates passed');

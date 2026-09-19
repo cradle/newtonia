@@ -45,6 +45,7 @@
 #include "replay.h"
 #include "teleport.h"
 #include "world_sound.h"
+#include "web_control_analytics.h"
 #include <math.h>
 #include <cmath>
 #include <SDL.h>
@@ -12381,16 +12382,14 @@ void GLGame::touch_tap(float nx, float ny) {
     if (TouchZone::zoom_in_placed().contains(nx, ny)) {
       local_player()->step_zoom(-1);
 #ifdef __EMSCRIPTEN__
-      EM_ASM({ if (window.newtoniaRecordTouchControl)
-        window.newtoniaRecordTouchControl(128); });
+      if (control_analytics(0) >= 0) web_record_touch_control(128);
 #endif
       return;
     }
     if (TouchZone::zoom_out_placed().contains(nx, ny)) {
       local_player()->step_zoom(+1);
 #ifdef __EMSCRIPTEN__
-      EM_ASM({ if (window.newtoniaRecordTouchControl)
-        window.newtoniaRecordTouchControl(128); });
+      if (control_analytics(0) >= 0) web_record_touch_control(128);
 #endif
       return;
     }

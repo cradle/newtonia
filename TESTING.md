@@ -173,6 +173,17 @@ use never decides or writes. Runs in `linux.yml`.
 
 ### Web control analytics unit test
 
+`node test/unit/control_analytics.cjs` (Node + a C++11 compiler; `CXX`
+overrides `g++`) compiles the production GLGame, GLShip and StateManager
+analytics methods against stub game/player state and the real KeyBinding type.
+Checks pause/resume and online menu keys, dead P1/live P2, dead or non-keyboard
+seats, replay/spectate/roster/help/board exclusions, non-game states, remaps,
+alternates and combined action masks. Also executes the production canvas
+finger handlers: a held drag crossing zones counts once, a fresh finger counts
+again, and both pause zones report pause/resume but reject blocking overlays.
+Runs in web CI. State predicates, player lifetime and keyboard side effects
+are fixtures; this is not a gameplay integration test.
+
 ```sh
 node test/unit/web_analytics.cjs  # Node + tsc on PATH
 ```
