@@ -27,6 +27,7 @@
 #include "replay.h"
 #include "touch_controls.h"
 #include "world_sound.h"
+#include "web_control_analytics.h"
 
 #include <cmath>
 #include <cstdio>
@@ -60,6 +61,7 @@ static SDL_GameController *s_controller = nullptr;
 // The main loop skips tick/draw until this flag is set.
 static bool             s_idb_ready = false;
 
+// TEST-SLICE-BEGIN: analytics_fingers
 static unsigned char touch_to_key(float norm_x, float norm_y) {
     // HANDEDNESS LEFT mirrors the two-hand layout (main.ts moves the HTML
     // joystick zone and circle buttons across); mirroring the coordinate
@@ -88,6 +90,11 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
         // still answer taps.
         return g_touch_controls.mine_available ? 'x' : 0;  // mine
     }
+}
+
+static void record_touch_key(unsigned char key) {
+    if (s_game && key)
+        web_record_touch_control(s_game->control_analytics(key));
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
@@ -127,6 +134,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     unsigned char key = touch_to_key(x, y);
     if (!key) return;
     s_finger_keys[s_finger_count++] = {id, key};
+    record_touch_key(key);
     s_game->keyboard(key, 0, 0);
 }
 
@@ -147,6 +155,8 @@ static void finger_up(SDL_FingerID id, float x, float y) {
         }
     }
 }
+
+// TEST-SLICE-END: analytics_fingers
 
 // Stroke weight vs display density.  The emulated thick-line core
 // (gles2_compat.cpp) is measured in PHYSICAL buffer pixels, and the buffer is
@@ -224,6 +234,7 @@ static void main_loop() {
         case SDL_FINGERUP:
             finger_up(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
             break;
+        // TEST-SLICE-BEGIN: analytics_motion
         case SDL_FINGERMOTION: {
             unsigned char new_key = touch_to_key(e.tfinger.x, e.tfinger.y);
             for (int i = 0; i < s_finger_count; i++) {
@@ -231,6 +242,7 @@ static void main_loop() {
                     if (s_finger_keys[i].key != new_key) {
                         s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
                         s_finger_keys[i].key = new_key;
+                        // Same finger press: changing zones is not a new tap.
                         s_game->keyboard(new_key, 0, 0);
                     }
                     break;
@@ -239,6 +251,7 @@ static void main_loop() {
             break;
         }
 
+        // TEST-SLICE-END: analytics_motion
         case SDL_WINDOWEVENT:
             if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
                 // Don't trust data1/data2: depending on the SDL emscripten
@@ -297,6 +310,11 @@ static void main_loop() {
     s_game->draw();
 
     SDL_GL_SwapWindow(s_window);
+}
+
+// Read-only analytics query. No strings or player identifiers cross this bridge.
+extern "C" EMSCRIPTEN_KEEPALIVE int web_control_analytics(int key) {
+    return s_game ? s_game->control_analytics(key) : -1;
 }
 
 // Called from JS touch controls to apply analog joystick input directly.

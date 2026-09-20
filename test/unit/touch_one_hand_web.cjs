@@ -1,19 +1,8 @@
 // Exercise the compiled production touch controls with a fake DOM/clock.
 // No WASM or browser required. Run: node test/unit/touch_one_hand_web.cjs
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
 const vm = require('node:vm');
-const { execFileSync } = require('node:child_process');
-const root = path.resolve(__dirname, '../..');
-const out = fs.mkdtempSync(path.join(os.tmpdir(), 'newtonia-touch-web-'));
-let source;
-try {
-  execFileSync('tsc', ['-p', path.join(root, 'web/tsconfig.json'), '--outDir', out]);
-  source = fs.readFileSync(path.join(out, 'main.js'), 'utf8');
-} finally { fs.rmSync(out, { recursive: true, force: true }); }
-// Execute the complete production factory, including moving button DOM.
+const source = require('./web_test_source.cjs')();
 const start = source.indexOf('function buildTouchControls()');
 const end = source.indexOf('// TEST-SLICE-END: touch_one_hand_web.cjs', start);
 assert.ok(start >= 0 && end > start);
@@ -28,7 +17,7 @@ assert.ok(shieldStart >= 0 && shieldEnd > shieldStart);
 const shieldCode = source.slice(shieldStart, shieldEnd);
 function harness(width=1000, height=600, hand=0) {
   let now = 1000, seq = 0;
-  const timers = new Map(), joystick = [], keys = [];
+  const timers = new Map(), joystick = [], keys = [], keyEvents = [];
   const element = () => {
     const el = { style: {}, handlers: {}, children: [], className: '',
       appendChild(child) { this.children.push(child); },
@@ -51,7 +40,7 @@ function harness(width=1000, height=600, hand=0) {
     document: { getElementById: () => container, createElement: element, hidden: false,
       handlers: {}, addEventListener(k, f) { this.handlers[k] = f; } },
     canvas: { getBoundingClientRect: () => bounds,
-      dispatchEvent: e => keys.push([e.type, e.key]) },
+      dispatchEvent: e => { keys.push([e.type, e.key]); keyEvents.push(e); } },
     window: { setTimeout(f, ms) { timers.set(++seq, { f, at: now + ms }); return seq; },
       clearTimeout(i) { timers.delete(i); },
       handlers: {}, addEventListener(k, f) { this.handlers[k] = f; } },
@@ -71,7 +60,7 @@ function harness(width=1000, height=600, hand=0) {
   context.zone = container.querySelector(".joy-zone");
   context.resizeControls();
   return {
-    context, keys, container, bounds,
+    context, keys, keyEvents, container, bounds,
     button(cls, type, id) {
       container.querySelector('.' + cls).handlers[type]({ preventDefault() {},
         changedTouches:[{ identifier:id }] });
@@ -475,3 +464,16 @@ for (const gesture of [false, true]) {
   assert.deepEqual(h.keys, [['keyup', 'x'], ['keydown', 'x'], ['keyup', 'x']]);
 }
 console.log('touch_one_hand_web: all checks passed');
+
+// The fire-hold takeover stays a gameplay keydown but is marked as an
+// analytics continuation of the preceding tap, even after its keyup fired.
+for (const gap of [50, 100]) {
+  const h = harness(); steer(h); h.send('touchend'); h.advance(100);
+  h.send('touchstart',500,400-.4*r); h.advance(20); h.send('touchend');
+  h.advance(gap); h.send('touchstart',500,400-.4*r);
+  const downs = h.keyEvents.filter(e => e.type === 'keydown' && e.key === ' ');
+  assert.equal(downs.length,2);
+  assert.equal(downs[0].newtoniaControlContinuation,false);
+  assert.equal(downs[1].newtoniaControlContinuation,true);
+}
+console.log('touch analytics continuation checks passed');

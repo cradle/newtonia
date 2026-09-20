@@ -46,6 +46,7 @@ public:
   bool wasMyController(PadId id);
 
   void set_keys(const PlayerKeys &k);
+  int control_analytics(unsigned char key) const;
   // Strip every keyboard binding (the netplay ghost ship must never respond
   // to this machine's keys).
   void clear_keys();
