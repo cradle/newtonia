@@ -88,6 +88,11 @@ void Tutorial::enter_step(GLGame &g, Step s) {
   step_ = s;
   step_ms_ = 0;
   aligned_ms_ = 0;
+  // Only TURN and THRUST fly at a beacon; every other step starts with
+  // none (it used to be cleared on CAMERA's entry alone, so the touch
+  // path — THRUST straight to FIRE — kept the thrust beacon on screen
+  // through the practice rocks; field, 2026-09-21).
+  beacon_on_ = false;
   GLShip *gs = pilot(g);
   SDL_Log("tutorial: step %s", step_name(s));
   switch (s) {
@@ -102,7 +107,6 @@ void Tutorial::enter_step(GLGame &g, Step s) {
       place_beacon(g, 0.0f, THRUST_BEACON_DIST);  // straight ahead
       break;
     case CAMERA:
-      beacon_on_ = false;
       prompt_open_ = true;
       prompt_sel_ = 0;
       // The prompt takes the keys; a thrust held into it must not stay
