@@ -10,6 +10,7 @@
 #include "mesh.h"
 #include "mat4.h"
 #include "gl_compat.h"
+#include "gles2_compat.h"
 #include "view/overlay.h"
 #include <SDL.h>
 #include <SDL_mixer.h>
@@ -597,18 +598,25 @@ static void draw_card(float top, float bottom, float half_w) {
   mb.end();
   mesh.upload(mb, GL_DYNAMIC_DRAW);
   mesh.draw();
+  // The outline is a glyph stroke: the text colour at full strength, at
+  // Typer's own line width and thin core weight (pre_draw's 1.1 * scale
+  // and the 0.1 core it pins around every text draw), so the frame reads
+  // as part of the lettering rather than a box drawn around it.
   const float *c = Typer::text_colour();
   mb.clear();
   mb.begin(GL_LINES);
-  mb.color(c[0], c[1], c[2], 0.35f);
+  mb.color(c[0], c[1], c[2], 1.0f);
   mb.vertex(x0, y0); mb.vertex(x1, y0);
   mb.vertex(x1, y0); mb.vertex(x1, y1);
   mb.vertex(x1, y1); mb.vertex(x0, y1);
   mb.vertex(x0, y1); mb.vertex(x0, y0);
   mb.end();
   mesh.upload(mb, GL_DYNAMIC_DRAW);
-  glLineWidth(1.0f);
+  float saved_core = gles2_get_line_core_scale();
+  gles2_set_line_core_scale(0.1f);
+  glLineWidth(1.1f * k);
   mesh.draw();
+  gles2_set_line_core_scale(saved_core);
 }
 
 void Tutorial::draw_world(const GLGame &g) const {
