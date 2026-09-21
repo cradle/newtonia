@@ -51,10 +51,20 @@ static const int   TUTORIAL_LIVES     = 4;
 
 static const float DEG = (float)M_PI / 180.0f;
 
-Tutorial::Tutorial() {}
+Tutorial::Tutorial() {
+  // Touch opens on the layout question; the sim is frozen under it from
+  // the first tick (nothing is pressed yet, so no controls to release).
+  if (is_touch_mode()) {
+    step_ = INPUT;
+    prompt_open_ = true;
+    prompt_sel_ = touch_one_handed() ? 0 : 1;
+    SDL_Log("tutorial: step INPUT");
+  }
+}
 
 const char *Tutorial::step_name(Step s) {
   switch (s) {
+    case INPUT:     return "INPUT";
     case LAUNCH:    return "LAUNCH";
     case TURN:      return "TURN";
     case THRUST:    return "THRUST";
@@ -85,6 +95,8 @@ void Tutorial::enter_step(GLGame &g, Step s) {
   // names it), and the calibration re-run goes with the prompt — THRUST
   // hands straight on to FIRE.
   if (s == CAMERA && is_touch_mode()) s = FIRE;
+  // And the layout question only exists on touch.
+  if (s == INPUT && !is_touch_mode()) s = LAUNCH;
   step_ = s;
   step_ms_ = 0;
   aligned_ms_ = 0;
@@ -105,6 +117,11 @@ void Tutorial::enter_step(GLGame &g, Step s) {
     case THRUST:
       thrust_ms_ = 0;
       place_beacon(g, 0.0f, THRUST_BEACON_DIST);  // straight ahead
+      break;
+    case INPUT:
+      prompt_open_ = true;
+      prompt_sel_ = touch_one_handed() ? 0 : 1;
+      g.release_player_controls();
       break;
     case CAMERA:
       prompt_open_ = true;
@@ -144,7 +161,11 @@ void Tutorial::complete_step(GLGame &g) {
 }
 
 void Tutorial::skip_step(GLGame &g) {
-  if (prompt_open_) { apply_camera_choice(g, /*keep=*/true); return; }
+  if (prompt_open_) {
+    if (step_ == INPUT) apply_input_choice(g, touch_one_handed());
+    else apply_camera_choice(g, /*keep=*/true);
+    return;
+  }
   if (step_ == DONE) return;
   complete_step(g);
 }
@@ -337,18 +358,29 @@ bool Tutorial::crate_in_world(const GLGame &g) const {
   return false;
 }
 
-// ---- the CAMERA prompt --------------------------------------------------
+// ---- the prompts (INPUT, CAMERA) -----------------------------------------
 
-// Defined with the drawing below; the prompt's tap rows share them.
-static float text_half_w(const std::string &t, float size);
-static float card_scale(float widest_half_w);
+// Defined with the drawing below; the prompt's tap rows share it.
+static float text_scale();
 
 TapBand Tutorial::prompt_row(int i) {
   // Two stacked rows under the question; finger pads meet halfway. The
-  // rows ride the prompt's scale (the widest line is its title, so the
-  // cap never bites here).
-  float s = card_scale(text_half_w("CAMERA", 22));
+  // rows ride the plain text scale, as the prompt's draw does — every
+  // prompt line is short enough that the width cap never bites, so the
+  // two can't disagree.
+  float s = text_scale();
   return TapBand(0.5f, (i == 0 ? 10.0f : -50.0f) * s, (int)(15 * s), 14 * s);
+}
+
+void Tutorial::apply_input_choice(GLGame &g, bool one_hand) {
+  prompt_open_ = false;
+  if (g_prefs.touch_one_hand != one_hand) {
+    g_prefs.touch_one_hand = one_hand;
+    save_preferences();
+    touch_layout_prefs_changed();  // the ONE apply site (touch_controls.h)
+  }
+  SDL_Log("tutorial: input %s", one_hand ? "ONE HAND" : "TWO HANDS");
+  enter_step(g, LAUNCH);
 }
 
 void Tutorial::apply_camera_choice(GLGame &g, bool keep) {
@@ -375,17 +407,26 @@ void Tutorial::apply_camera_choice(GLGame &g, bool keep) {
   enter_step(g, TURN);
 }
 
+// Row i of the open prompt picked (INPUT: 0 = one hand; CAMERA: 0 = keep);
+// -1 backs out, keeping what is set.
+void Tutorial::prompt_pick(GLGame &g, int row) {
+  if (step_ == INPUT)
+    apply_input_choice(g, row < 0 ? touch_one_handed() : row == 0);
+  else
+    apply_camera_choice(g, row <= 0);
+}
+
 void Tutorial::nav(GLGame &g, unsigned char key) {
   if (!prompt_open_) return;
   if (MenuSelect::move(key, prompt_sel_, 2)) return;
-  if (MenuSelect::is_confirm(key)) apply_camera_choice(g, prompt_sel_ == 0);
-  else if (MenuSelect::is_back(key)) apply_camera_choice(g, true);
+  if (MenuSelect::is_confirm(key)) prompt_pick(g, prompt_sel_);
+  else if (MenuSelect::is_back(key)) prompt_pick(g, -1);
 }
 
 bool Tutorial::touch_tap(GLGame &g, float nx, float ny) {
   if (!prompt_open_) return false;
-  if (prompt_row(0).contains(nx, ny)) apply_camera_choice(g, true);
-  else if (prompt_row(1).contains(nx, ny)) apply_camera_choice(g, false);
+  if (prompt_row(0).contains(nx, ny)) prompt_pick(g, 0);
+  else if (prompt_row(1).contains(nx, ny)) prompt_pick(g, 1);
   return true;  // the prompt owns every tap while it is up
 }
 
@@ -598,7 +639,7 @@ static float text_half_w(const std::string &t, float size) {
 // phone height over the 1200-unit landscape height: 16 px glyphs), so it
 // draws at 1.5x. The banner WRAPS a line the scale would push past the
 // edge (wrap_line) rather than shrinking the card, so the size holds;
-// the cap here is the CAMERA prompt's backstop, whose lines are short.
+// the prompts' lines are short by construction and never need it.
 static bool portrait() { return Typer::scaled_window_height > 620.0f; }
 // The widest a centred line may be (half-width): the screen edge less
 // the card's padding and a margin.
@@ -606,11 +647,6 @@ static float line_limit() { return Typer::scaled_window_width - 30.0f - 24.0f; }
 static float text_scale() {
   if (portrait()) return 2.0f;
   return is_touch_mode() ? 1.5f : 1.0f;
-}
-static float card_scale(float widest_half_w) {
-  float s = text_scale();
-  if (widest_half_w * s > line_limit()) s = line_limit() / widest_half_w;
-  return s;
 }
 // Append `t` to `out` at `size`, split where it would run past the line
 // limit: at the " - " nearest the middle (the copy's control/goal seam),
@@ -713,32 +749,42 @@ void Tutorial::draw(const GLGame &g) const {
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
     bool rotate = gs ? gs->rotate_view() : true;
-    const char *question = rotate ? "the view turned with you"
+    bool input = step_ == INPUT;
+    const char *title = input ? "CONTROLS" : "CAMERA";
+    const char *question = input  ? "one thumb, or stick and buttons?"
+                         : rotate ? "the view turned with you"
                                   : "the view held still";
     const char *rows[2] = {
-        rotate ? "KEEP ROTATING" : "KEEP FIXED",
-        rotate ? "TRY FIXED" : "TRY ROTATING"};
-    std::string later = touch
-        ? "later: OPTIONS > CAMERA"
-        : label(g, A_ROTATE) + " switches it in play";
+        input ? "ONE HAND" : rotate ? "KEEP ROTATING" : "KEEP FIXED",
+        input ? "TWO HANDS" : rotate ? "TRY FIXED" : "TRY ROTATING"};
+    std::string later = input ? "change later: pause > CONTROLS"
+                      : touch ? "later: OPTIONS > CAMERA"
+                              : label(g, A_ROTATE) + " switches it in play";
+    // The INPUT rows wear the cursor on touch too: it marks the layout
+    // in force, the one a tap elsewhere keeps. The CAMERA rows carry it
+    // only where a cursor moves (its question is keep-or-try, not
+    // which-is-set).
+    bool cursor = input || !touch;
     // The card spans the title's anchor to the hint's glyph floor, as
-    // wide as the widest line (a desktop row wears its "> " and " <").
-    // Widths at 1x pick the scale; everything then draws through it.
-    float w = text_half_w("CAMERA", 22);
+    // wide as the widest line (a cursored row wears its "> " and " <").
+    // Every line here is short, so the width cap never bites and the
+    // plain text scale is the card's scale — the same one prompt_row
+    // sizes the tap rows with.
+    float s = text_scale();
+    float w = text_half_w(title, 22);
     w = std::max(w, text_half_w(question, 9));
     for (int i = 0; i < 2; i++)
-      w = std::max(w, text_half_w(Typer::cursored(rows[i], !touch), 15));
+      w = std::max(w, text_half_w(Typer::cursored(rows[i], cursor), 15));
     w = std::max(w, text_half_w(later, 8));
-    float s = card_scale(w);
     draw_card(140.0f * s, (-120.0f - 16.0f) * s, w * s, s);
-    Typer::draw_centered(0, 140 * s, "CAMERA", 22 * s);
+    Typer::draw_centered(0, 140 * s, title, 22 * s);
     Typer::draw_centered(0, 85 * s, question, 9 * s);
     for (int i = 0; i < 2; i++) {
       TapBand b = prompt_row(i);
-      if (touch)
-        Typer::draw_centered(0, b.y, rows[i], b.size);
-      else
+      if (cursor)
         MenuSelect::draw_row(b.y, rows[i], b.size, prompt_sel_ == i);
+      else
+        Typer::draw_centered(0, b.y, rows[i], b.size);
     }
     Typer::draw_centered(0, -120 * s, later.c_str(), 8 * s);
     return;

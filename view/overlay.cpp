@@ -10,6 +10,7 @@
 #include "../glship.h"
 #include "../pad_style.h"
 #include "../glgame.h"
+#include "../tutorial.h"
 #include "../typer.h"
 #include "../ship.h"
 #include "../touch_controls.h"
@@ -1224,6 +1225,10 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
   if(!glship->ship->is_alive() && glship->ship->lives <= 0 &&
      (glgame->net_active() || glgame->board_phase_ != GLGame::BoardOff))
     return;
+  // And under a tutorial prompt (the touch INPUT question opens on the
+  // first life): the frozen ship's READY printed straight through the
+  // card, centre-screen where both draw.
+  if (glgame->tutorial_ && glgame->tutorial_->owns_input()) return;
   if(glgame->running && !glship->show_help) {
     float saved[16]; gles2_get_mvp(saved);
     float vp[16]; mat4_scale(vp, saved, 20.0f, 20.0f, 1.0f);

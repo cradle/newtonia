@@ -16,6 +16,12 @@ class GLShip;
 // the control in the pilot's own vocabulary (keyboard binding, pad
 // button, or touch gesture) and a completion test read off the ship:
 //
+//   INPUT      TOUCH ONLY, first: the layout question — ONE HAND or TWO
+//              HANDS (Preferences::touch_one_hand), on the CAMERA
+//              prompt's card; the pick applies on the spot through the
+//              one layout-apply site, so the WELCOME card that follows
+//              speaks the chosen layout's gestures. Off touch it is
+//              skipped (enter_step forwards it to LAUNCH)
 //   LAUNCH     press fire (the ordinary first-life READY prompt)
 //   TURN       turn the nose onto two beacons, one each side — the camera
 //              CALIBRATION, Halo-style: it runs on whatever camera is set
@@ -46,8 +52,8 @@ class GLShip;
 // FIRE step.
 class Tutorial {
 public:
-  enum Step { LAUNCH = 0, TURN, THRUST, CAMERA, FIRE, BOOST, SECONDARY, WRAP,
-              DONE, STEP_COUNT };
+  enum Step { INPUT = 0, LAUNCH, TURN, THRUST, CAMERA, FIRE, BOOST, SECONDARY,
+              WRAP, DONE, STEP_COUNT };
 
   Tutorial();
 
@@ -61,8 +67,8 @@ public:
   // The banner / the CAMERA prompt: one full-window ortho pass from
   // GLGame::draw, after the pause chrome.
   void draw(const GLGame &g) const;
-  // True while the CAMERA prompt is up: the sim is frozen, the ships take
-  // no input, and nav keys answer the prompt through nav().
+  // True while a prompt (INPUT, CAMERA) is up: the sim is frozen, the
+  // ships take no input, and nav keys answer the prompt through nav().
   bool owns_input() const { return prompt_open_; }
   // Prompt navigation in logical keys (State::nav_key / the pad
   // translator's output): up/down move, confirm picks, back = keep.
@@ -85,6 +91,8 @@ private:
   void spawn_crate(GLGame &g);
   bool crate_in_world(const GLGame &g) const;
   void apply_camera_choice(GLGame &g, bool keep);
+  void apply_input_choice(GLGame &g, bool one_hand);
+  void prompt_pick(GLGame &g, int row);   // the open prompt's row (-1 = back)
   // The pilot's word for a control: the keyboard binding's name, the pad
   // button's label, per the last input device used.
   std::string label(const GLGame &g, int action) const;
@@ -93,10 +101,11 @@ private:
                     std::string &l2, std::string &l3) const;
   bool pad_pilot(const GLGame &g) const;
   static GLShip *pilot(const GLGame &g);
-  // The prompt's two rows — ONE definition for draw and tap (TapBand rule).
+  // A prompt's two rows — ONE definition for draw and tap (TapBand rule);
+  // INPUT and CAMERA share the geometry.
   static TapBand prompt_row(int i);
 
-  Step step_ = LAUNCH;
+  Step step_ = LAUNCH;      // INPUT on touch (the ctor)
   int time_ = 0;            // ms in the tutorial (beacon animation)
   int step_ms_ = 0;         // ms in the current step
   // TURN: the beacon and how long the nose has held on it.
@@ -113,9 +122,9 @@ private:
   WrappedPoint skip_beacon_ = WrappedPoint(0.0f, 0.0f);
   // THRUST: how long the thrusters have run (for the drift line).
   int thrust_ms_ = 0;
-  // CAMERA: the prompt.
+  // INPUT / CAMERA: the prompt.
   bool prompt_open_ = false;
-  int prompt_sel_ = 0;      // 0 = keep, 1 = switch
+  int prompt_sel_ = 0;      // INPUT: 0 = one hand, 1 = two; CAMERA: 0 = keep, 1 = switch
   int camera_rounds_ = 0;   // switches so far (the wording says "again")
   // FIRE: kills at entry — three more end the step.
   int kills_at_entry_ = 0;
