@@ -65,6 +65,7 @@ Tutorial::Tutorial() {
 const char *Tutorial::step_name(Step s) {
   switch (s) {
     case INPUT:     return "INPUT";
+    case HAND:      return "HAND";
     case LAUNCH:    return "LAUNCH";
     case TURN:      return "TURN";
     case THRUST:    return "THRUST";
@@ -95,8 +96,8 @@ void Tutorial::enter_step(GLGame &g, Step s) {
   // names it), and the calibration re-run goes with the prompt — THRUST
   // hands straight on to FIRE.
   if (s == CAMERA && is_touch_mode()) s = FIRE;
-  // And the layout question only exists on touch.
-  if (s == INPUT && !is_touch_mode()) s = LAUNCH;
+  // And the layout questions only exist on touch.
+  if ((s == INPUT || s == HAND) && !is_touch_mode()) s = LAUNCH;
   step_ = s;
   step_ms_ = 0;
   aligned_ms_ = 0;
@@ -123,6 +124,17 @@ void Tutorial::enter_step(GLGame &g, Step s) {
       prompt_sel_ = touch_one_handed() ? 0 : 1;
       g.release_player_controls();
       break;
+    case HAND: {
+      prompt_open_ = true;
+      // The cursor marks the setting in force: L/C/R under one hand;
+      // under two hands CENTRE and RIGHT are the same arrangement, so
+      // both read as the RIGHT row.
+      int hand = g_prefs.touch_handedness;
+      if (hand < 0 || hand > 2) hand = 1;
+      prompt_sel_ = touch_one_handed() ? hand : (hand == 0 ? 0 : 1);
+      g.release_player_controls();
+      break;
+    }
     case CAMERA:
       prompt_open_ = true;
       prompt_sel_ = 0;
@@ -161,11 +173,7 @@ void Tutorial::complete_step(GLGame &g) {
 }
 
 void Tutorial::skip_step(GLGame &g) {
-  if (prompt_open_) {
-    if (step_ == INPUT) apply_input_choice(g, touch_one_handed());
-    else apply_camera_choice(g, /*keep=*/true);
-    return;
-  }
+  if (prompt_open_) { prompt_pick(g, -1); return; }  // keep what is set
   if (step_ == DONE) return;
   complete_step(g);
 }
@@ -363,13 +371,19 @@ bool Tutorial::crate_in_world(const GLGame &g) const {
 // Defined with the drawing below; the prompt's tap rows share it.
 static float text_scale();
 
-TapBand Tutorial::prompt_row(int i) {
-  // Two stacked rows under the question; finger pads meet halfway. The
-  // rows ride the plain text scale, as the prompt's draw does — every
-  // prompt line is short enough that the width cap never bites, so the
-  // two can't disagree.
+TapBand Tutorial::prompt_row(int i, int n) {
+  // n stacked rows under the question on a 60-unit pitch, the two-row
+  // block at 10 / -50 and a third row extending it downward; finger pads
+  // meet halfway. The rows ride the plain text scale, as the prompt's
+  // draw does — every prompt line is short enough that the width cap
+  // never bites, so the two can't disagree.
   float s = text_scale();
-  return TapBand(0.5f, (i == 0 ? 10.0f : -50.0f) * s, (int)(15 * s), 14 * s);
+  float y = 10.0f + 30.0f * (n - 2) - 60.0f * i;
+  return TapBand(0.5f, y * s, (int)(15 * s), 14 * s);
+}
+
+int Tutorial::prompt_row_count() const {
+  return step_ == HAND && touch_one_handed() ? 3 : 2;
 }
 
 void Tutorial::apply_input_choice(GLGame &g, bool one_hand) {
@@ -380,6 +394,18 @@ void Tutorial::apply_input_choice(GLGame &g, bool one_hand) {
     touch_layout_prefs_changed();  // the ONE apply site (touch_controls.h)
   }
   SDL_Log("tutorial: input %s", one_hand ? "ONE HAND" : "TWO HANDS");
+  enter_step(g, HAND);
+}
+
+void Tutorial::apply_hand_choice(GLGame &g, int handedness) {
+  static const char *NAMES[3] = {"LEFT", "CENTRE", "RIGHT"};
+  prompt_open_ = false;
+  if (g_prefs.touch_handedness != handedness) {
+    g_prefs.touch_handedness = handedness;
+    save_preferences();
+    touch_layout_prefs_changed();
+  }
+  SDL_Log("tutorial: hand %s", NAMES[handedness]);
   enter_step(g, LAUNCH);
 }
 
@@ -407,26 +433,39 @@ void Tutorial::apply_camera_choice(GLGame &g, bool keep) {
   enter_step(g, TURN);
 }
 
-// Row i of the open prompt picked (INPUT: 0 = one hand; CAMERA: 0 = keep);
-// -1 backs out, keeping what is set.
+// Row `row` of the open prompt picked (INPUT: 0 = one hand; HAND: the
+// handedness, L/C/R or L/R; CAMERA: 0 = keep); -1 backs out, keeping
+// what is set.
 void Tutorial::prompt_pick(GLGame &g, int row) {
-  if (step_ == INPUT)
-    apply_input_choice(g, row < 0 ? touch_one_handed() : row == 0);
-  else
-    apply_camera_choice(g, row <= 0);
+  switch (step_) {
+    case INPUT:
+      apply_input_choice(g, row < 0 ? touch_one_handed() : row == 0);
+      break;
+    case HAND: {
+      int hand = g_prefs.touch_handedness;
+      if (hand < 0 || hand > 2) hand = 1;
+      if (row >= 0) hand = touch_one_handed() ? row : (row == 0 ? 0 : 2);
+      apply_hand_choice(g, hand);
+      break;
+    }
+    default:
+      apply_camera_choice(g, row <= 0);
+      break;
+  }
 }
 
 void Tutorial::nav(GLGame &g, unsigned char key) {
   if (!prompt_open_) return;
-  if (MenuSelect::move(key, prompt_sel_, 2)) return;
+  if (MenuSelect::move(key, prompt_sel_, prompt_row_count())) return;
   if (MenuSelect::is_confirm(key)) prompt_pick(g, prompt_sel_);
   else if (MenuSelect::is_back(key)) prompt_pick(g, -1);
 }
 
 bool Tutorial::touch_tap(GLGame &g, float nx, float ny) {
   if (!prompt_open_) return false;
-  if (prompt_row(0).contains(nx, ny)) prompt_pick(g, 0);
-  else if (prompt_row(1).contains(nx, ny)) prompt_pick(g, 1);
+  int n = prompt_row_count();
+  for (int i = 0; i < n; i++)
+    if (prompt_row(i, n).contains(nx, ny)) { prompt_pick(g, i); break; }
   return true;  // the prompt owns every tap while it is up
 }
 
@@ -749,22 +788,41 @@ void Tutorial::draw(const GLGame &g) const {
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
     bool rotate = gs ? gs->rotate_view() : true;
-    bool input = step_ == INPUT;
-    const char *title = input ? "CONTROLS" : "CAMERA";
-    const char *question = input  ? "one thumb, or stick and buttons?"
-                         : rotate ? "the view turned with you"
-                                  : "the view held still";
-    const char *rows[2] = {
-        input ? "ONE HAND" : rotate ? "KEEP ROTATING" : "KEEP FIXED",
-        input ? "TWO HANDS" : rotate ? "TRY FIXED" : "TRY ROTATING"};
-    std::string later = input ? "change later: pause > CONTROLS"
-                      : touch ? "later: OPTIONS > CAMERA"
-                              : label(g, A_ROTATE) + " switches it in play";
-    // The INPUT rows wear the cursor on touch too: it marks the layout
+    bool one_hand = touch_one_handed();
+    const char *title, *question;
+    const char *rows[3] = {NULL, NULL, NULL};
+    std::string later = "change later: pause > CONTROLS";
+    switch (step_) {
+      case INPUT:
+        title = "CONTROLS";
+        question = "one thumb, or stick and buttons?";
+        rows[0] = "ONE HAND"; rows[1] = "TWO HANDS";
+        break;
+      case HAND:
+        title = "HANDEDNESS";
+        if (one_hand) {
+          question = "which thumb steers?";
+          rows[0] = "LEFT"; rows[1] = "CENTRE"; rows[2] = "RIGHT";
+        } else {
+          question = "which thumb fires?";
+          rows[0] = "LEFT"; rows[1] = "RIGHT";
+        }
+        break;
+      default:
+        title = "CAMERA";
+        question = rotate ? "the view turned with you" : "the view held still";
+        rows[0] = rotate ? "KEEP ROTATING" : "KEEP FIXED";
+        rows[1] = rotate ? "TRY FIXED" : "TRY ROTATING";
+        later = touch ? "later: OPTIONS > CAMERA"
+                      : label(g, A_ROTATE) + " switches it in play";
+        break;
+    }
+    int n = prompt_row_count();
+    // The layout rows wear the cursor on touch too: it marks the setting
     // in force, the one a tap elsewhere keeps. The CAMERA rows carry it
     // only where a cursor moves (its question is keep-or-try, not
     // which-is-set).
-    bool cursor = input || !touch;
+    bool cursor = step_ != CAMERA || !touch;
     // The card spans the title's anchor to the hint's glyph floor, as
     // wide as the widest line (a cursored row wears its "> " and " <").
     // Every line here is short, so the width cap never bites and the
@@ -773,20 +831,24 @@ void Tutorial::draw(const GLGame &g) const {
     float s = text_scale();
     float w = text_half_w(title, 22);
     w = std::max(w, text_half_w(question, 9));
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < n; i++)
       w = std::max(w, text_half_w(Typer::cursored(rows[i], cursor), 15));
     w = std::max(w, text_half_w(later, 8));
-    draw_card(140.0f * s, (-120.0f - 16.0f) * s, w * s, s);
-    Typer::draw_centered(0, 140 * s, title, 22 * s);
-    Typer::draw_centered(0, 85 * s, question, 9 * s);
-    for (int i = 0; i < 2; i++) {
-      TapBand b = prompt_row(i);
+    // A third row grows the card half a pitch each way, so it stays
+    // centred where the two-row card sits.
+    float grow = 30.0f * (n - 2);
+    float top_y = 140.0f + grow, hint_y = -120.0f - grow;
+    draw_card(top_y * s, (hint_y - 16.0f) * s, w * s, s);
+    Typer::draw_centered(0, top_y * s, title, 22 * s);
+    Typer::draw_centered(0, (85.0f + grow) * s, question, 9 * s);
+    for (int i = 0; i < n; i++) {
+      TapBand b = prompt_row(i, n);
       if (cursor)
         MenuSelect::draw_row(b.y, rows[i], b.size, prompt_sel_ == i);
       else
         Typer::draw_centered(0, b.y, rows[i], b.size);
     }
-    Typer::draw_centered(0, -120 * s, later.c_str(), 8 * s);
+    Typer::draw_centered(0, hint_y * s, later.c_str(), 8 * s);
     return;
   }
 
