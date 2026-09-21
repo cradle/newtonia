@@ -14,6 +14,7 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 #include <cmath>
+#include <algorithm>
 #include <cstdio>
 
 // The controls the banner names, in the pilot's own vocabulary (label()).
@@ -565,6 +566,51 @@ static void draw_beacon(float cx, float cy, float phase, bool skip) {
   }
 }
 
+// Half the ink width of a centred Typer line, in virtual units: n glyphs
+// at a 2*size advance with 1*size of ink each span (2n - 1) * size (the
+// centring skips apostrophes, so the count does too).
+static float text_half_w(const std::string &t, float size) {
+  int n = 0;
+  for (size_t i = 0; i < t.size(); i++)
+    if (t[i] != '\'') n++;
+  return n > 0 ? size * (n - 0.5f) : 0.0f;
+}
+
+// A translucent black card behind a block of centred text — the banner
+// and the CAMERA prompt read poorly straight over a starfield (field,
+// 2026-09-21). Edges in Typer virtual units (a glyph box runs from its
+// anchor y down 2*size), converted through Typer::scale to the ortho the
+// text is drawn in; a faint outline in the text colour gives the card an
+// edge. Drawn BEFORE the text it backs.
+static void draw_card(float top, float bottom, float half_w) {
+  const float pad_x = 30.0f, pad_y = 14.0f;
+  float k = Typer::scale;
+  float x0 = (-half_w - pad_x) * k, x1 = (half_w + pad_x) * k;
+  float y0 = (bottom - pad_y) * k, y1 = (top + pad_y) * k;
+  static MeshBuilder mb;
+  static Mesh mesh;
+  mb.clear();
+  mb.begin(GL_TRIANGLES);
+  mb.color(0.0f, 0.0f, 0.0f, 0.65f);
+  mb.vertex(x0, y0); mb.vertex(x1, y0); mb.vertex(x1, y1);
+  mb.vertex(x0, y0); mb.vertex(x1, y1); mb.vertex(x0, y1);
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+  const float *c = Typer::text_colour();
+  mb.clear();
+  mb.begin(GL_LINES);
+  mb.color(c[0], c[1], c[2], 0.35f);
+  mb.vertex(x0, y0); mb.vertex(x1, y0);
+  mb.vertex(x1, y0); mb.vertex(x1, y1);
+  mb.vertex(x1, y1); mb.vertex(x0, y1);
+  mb.vertex(x0, y1); mb.vertex(x0, y0);
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  glLineWidth(1.0f);
+  mesh.draw();
+}
+
 void Tutorial::draw_world(const GLGame &g) const {
   (void)g;
   float phase = time_ * 0.004f;
@@ -590,21 +636,34 @@ void Tutorial::draw(const GLGame &g) const {
     static Mesh mesh;
     mb.clear();
     mb.begin(GL_TRIANGLES);
-    mb.color(0.0f, 0.0f, 0.0f, 0.6f);
+    mb.color(0.0f, 0.0f, 0.0f, 0.4f);
     mb.vertex(-hw, -hh); mb.vertex(hw, -hh); mb.vertex(hw, hh);
     mb.vertex(-hw, -hh); mb.vertex(hw, hh); mb.vertex(-hw, hh);
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
     bool rotate = gs ? gs->rotate_view() : true;
-    Typer::draw_centered(0, 140, "CAMERA", 22);
-    Typer::draw_centered(0, 85,
-                         rotate ? "the view turned with your ship"
-                                : "your ship turned - the view held still",
-                         9);
+    const char *question = rotate ? "the view turned with your ship"
+                                  : "your ship turned - the view held still";
     const char *rows[2] = {
         rotate ? "KEEP ROTATING CAMERA" : "KEEP FIXED CAMERA",
         rotate ? "TRY FIXED CAMERA" : "TRY ROTATING CAMERA"};
+    std::string later = touch
+        ? "change it later under OPTIONS, then CAMERA"
+        : "switch any time in play with " + label(g, A_ROTATE);
+    // The card spans the title's anchor to the hint's glyph floor, as
+    // wide as the widest line (a desktop row wears its "> " and " <").
+    {
+      float w = text_half_w("CAMERA", 22);
+      w = std::max(w, text_half_w(question, 9));
+      for (int i = 0; i < 2; i++)
+        w = std::max(w, text_half_w(Typer::cursored(rows[i], !touch),
+                                    prompt_row(i).size));
+      w = std::max(w, text_half_w(later, 8));
+      draw_card(140.0f, -120.0f - 16.0f, w);
+    }
+    Typer::draw_centered(0, 140, "CAMERA", 22);
+    Typer::draw_centered(0, 85, question, 9);
     for (int i = 0; i < 2; i++) {
       TapBand b = prompt_row(i);
       if (touch)
@@ -612,9 +671,6 @@ void Tutorial::draw(const GLGame &g) const {
       else
         MenuSelect::draw_row(b.y, rows[i], b.size, prompt_sel_ == i);
     }
-    std::string later = touch
-        ? "change it later under OPTIONS, then CAMERA"
-        : "switch any time in play with " + label(g, A_ROTATE);
     Typer::draw_centered(0, -120, later.c_str(), 8);
     return;
   }
@@ -624,11 +680,35 @@ void Tutorial::draw(const GLGame &g) const {
   // Under the top HUD row (LEVEL/score), above the ship: title at H-150
   // (size 18 descends 36), then three hint-register lines.
   float H = Typer::scaled_window_height;
+  // The lines flow: an empty middle line closes up rather than leaving a
+  // hole in the card. Title anchor H-150 (size 18), then a 27-unit pitch.
+  const std::string *lines[3] = {&l1, &l2, &l3};
+  const float sizes[3] = {9.0f, 9.0f, 8.0f};
+  float ys[3];
+  int n = 0;
+  for (int i = 0; i < 3; i++) {
+    if (lines[i]->empty()) continue;
+    ys[i] = H - 205 - 27.0f * n;
+    n++;
+  }
+  // The card: from the title's anchor down to the lowest line's glyph
+  // floor, as wide as the widest line. Sized on the title, not the GOOD
+  // flash, so it holds still while the flash alternates.
+  {
+    float w = text_half_w(title, 18);
+    float bottom = H - 150 - 2 * 18;
+    for (int i = 0; i < 3; i++) {
+      if (lines[i]->empty()) continue;
+      w = std::max(w, text_half_w(*lines[i], sizes[i]));
+      bottom = ys[i] - 2 * sizes[i];
+    }
+    draw_card(H - 150, bottom, w);
+  }
   if (flash_ms_ > 0 && (flash_ms_ / 150) % 2 == 0)
     Typer::draw_centered(0, H - 150, "GOOD", 18);
   else
     Typer::draw_centered(0, H - 150, title.c_str(), 18);
-  if (!l1.empty()) Typer::draw_centered(0, H - 205, l1.c_str(), 9);
-  if (!l2.empty()) Typer::draw_centered(0, H - 232, l2.c_str(), 9);
-  if (!l3.empty()) Typer::draw_centered(0, H - 259, l3.c_str(), 8);
+  for (int i = 0; i < 3; i++)
+    if (!lines[i]->empty())
+      Typer::draw_centered(0, ys[i], lines[i]->c_str(), sizes[i]);
 }
