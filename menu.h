@@ -73,6 +73,10 @@ private:
   // honest answer on a fresh install.
   bool show_stats_row() const { return true; }
   int  stats_row_index() const;    // -1 when hidden
+  // The HIGH SCORE block under the rows: only with a score to show, and
+  // never on the new-player start screen (stat-free by design; the
+  // tutorial nudge sits in its slot).
+  bool show_high_score() const { return high_score > 0 && !new_player_; }
   // Structured board-screen geometry (one definition for draw AND taps):
   // a compact control pair up top, a fixed-pitch score table under column
   // headers, the UPLOAD action and status footer anchored at the bottom —

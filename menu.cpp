@@ -1046,9 +1046,12 @@ void Menu::draw() {
         currentTime);
   } else {
     Typer::draw_centered(0, menu_title_y(), "Newtonia", 80);
-    if (high_score > 0) {
+    if (show_high_score()) {
       // Below the row band, above the copyright (portrait-aware anchors —
-      // touch sits a little lower, its row band being taller).
+      // touch sits a little lower, its row band being taller). Not on the
+      // start screen: a stat-free screen by design, and the tutorial
+      // nudge takes this slot (a kept highscore.dat beside a fresh INI
+      // used to draw both on top of each other).
       Typer::draw_centered(0, menu_high_score_y(), "HIGH SCORE", 14);
       Typer::draw_centered(0, menu_high_score_num_y(), high_score, 18);
     }
@@ -1126,7 +1129,7 @@ void Menu::draw() {
     }
   }
   if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_)
-    Typer::draw_centered(0, menu_copyright_y(high_score > 0),
+    Typer::draw_centered(0, menu_copyright_y(show_high_score()),
                          "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
