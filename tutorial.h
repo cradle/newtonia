@@ -25,7 +25,9 @@ class GLShip;
 //   CAMERA     the question: keep this camera, or switch? A switch flips
 //              the P1 pref, snaps the camera and RE-RUNS the two flying
 //              steps under the other mode, then asks again — so the
-//              choice is always made after trying the mode it names
+//              choice is always made after trying the mode it names.
+//              Skipped on TOUCH (THRUST goes straight to FIRE): the phone
+//              keeps its pref, and the wrap-up names OPTIONS > CAMERA
 //   FIRE       three STATIONARY practice asteroids appear beside the
 //              ship — the only rocks the tutorial ever spawns
 //   BOOST      one boost

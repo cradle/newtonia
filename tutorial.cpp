@@ -80,6 +80,11 @@ bool Tutorial::pad_pilot(const GLGame &g) const {
 // ---- step machine ---------------------------------------------------
 
 void Tutorial::enter_step(GLGame &g, Step s) {
+  // No camera question on touch (field, 2026-09-21): the phone keeps the
+  // pref it has, the setting lives under OPTIONS > CAMERA (the wrap-up
+  // names it), and the calibration re-run goes with the prompt — THRUST
+  // hands straight on to FIRE.
+  if (s == CAMERA && is_touch_mode()) s = FIRE;
   step_ = s;
   step_ms_ = 0;
   aligned_ms_ = 0;
