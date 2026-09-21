@@ -680,18 +680,22 @@ void Tutorial::draw(const GLGame &g) const {
 
   std::string title, l1, l2, l3;
   banner_lines(g, title, l1, l2, l3);
-  // Under the top HUD row (LEVEL/score), above the ship: title at H-150
-  // (size 18 descends 36), then three hint-register lines.
+  // Under the top HUD row (LEVEL/score), above the ship: title at H-TOP
+  // (size 18 descends 36), then three hint-register lines. TOP clears the
+  // LEVEL line's glyph floor (and the card's own top padding) with real
+  // air even at HUD SIZE LARGEST — at 150 the card crowded it (field,
+  // 2026-09-21).
+  const float TOP = 180.0f;
   float H = Typer::scaled_window_height;
   // The lines flow: an empty middle line closes up rather than leaving a
-  // hole in the card. Title anchor H-150 (size 18), then a 27-unit pitch.
+  // hole in the card. Title anchor H-TOP (size 18), then a 27-unit pitch.
   const std::string *lines[3] = {&l1, &l2, &l3};
   const float sizes[3] = {9.0f, 9.0f, 8.0f};
   float ys[3];
   int n = 0;
   for (int i = 0; i < 3; i++) {
     if (lines[i]->empty()) continue;
-    ys[i] = H - 205 - 27.0f * n;
+    ys[i] = H - TOP - 55 - 27.0f * n;
     n++;
   }
   // The card: from the title's anchor down to the lowest line's glyph
@@ -699,20 +703,20 @@ void Tutorial::draw(const GLGame &g) const {
   // flash, so it holds still while the flash alternates.
   {
     float w = text_half_w(title, 18);
-    float bottom = H - 150 - 2 * 18;
+    float bottom = H - TOP - 2 * 18;
     for (int i = 0; i < 3; i++) {
       if (lines[i]->empty()) continue;
       w = std::max(w, text_half_w(*lines[i], sizes[i]));
       bottom = ys[i] - 2 * sizes[i];
     }
-    draw_card(H - 150, bottom, w);
+    draw_card(H - TOP, bottom, w);
   }
   // A steady GOOD for the flash, then the next title: alternating the
   // two every 150 ms read as a flicker (field, 2026-09-21).
   if (flash_ms_ > 0)
-    Typer::draw_centered(0, H - 150, "GOOD", 18);
+    Typer::draw_centered(0, H - TOP, "GOOD", 18);
   else
-    Typer::draw_centered(0, H - 150, title.c_str(), 18);
+    Typer::draw_centered(0, H - TOP, title.c_str(), 18);
   for (int i = 0; i < 3; i++)
     if (!lines[i]->empty())
       Typer::draw_centered(0, ys[i], lines[i]->c_str(), sizes[i]);
