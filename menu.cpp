@@ -1110,7 +1110,7 @@ void Menu::draw() {
         rows.push_back("OPTIONS");
         draw_menu_rows(rows);
         Typer::draw_centered(0, menu_high_score_y(),
-                             "new here? the tutorial takes two minutes",
+                             "new here? try the tutorial",
                              is_touch_mode() ? 10 : 8);
       } else {
         if (has_net_resume_) rows.push_back("RESUME HOSTING " + net_resume_code_);

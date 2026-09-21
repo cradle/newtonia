@@ -425,46 +425,43 @@ void Tutorial::banner_lines(const GLGame &g, std::string &title,
   bool one_hand = touch && touch_one_handed();
   bool pad = pad_pilot(g);
   bool rotate = gs ? gs->rotate_view() : true;
-  // The way out, on every step but the last two (which name it themselves).
-  std::string leave = touch ? "" : label(g, A_MENU) + " leaves any time";
-  if (skip_on_) {
-    leave = touch ? "fly into the red beacon to skip"
-                  : "fly into the red beacon to skip - " + leave;
-  }
+  // Terse by design (field, 2026-09-21): a control, a dash, the goal.
+  std::string leave = touch ? "" : label(g, A_MENU) + ": menu";
+  if (skip_on_)
+    leave = touch ? "red beacon skips"
+                  : "red beacon skips - " + leave;
+  std::string stick = pad ? label(g, A_STEER) : "joystick";
   char buf[96];
   switch (step_) {
     case LAUNCH:
-      title = "WELCOME PILOT";
-      l1 = one_hand ? "this is your ship - tap anywhere to launch"
-         : touch    ? "this is your ship - tap the red circle to launch"
-                    : "this is your ship - press " + label(g, A_FIRE) + " to launch";
+      title = "WELCOME";
+      l1 = one_hand ? "tap to launch"
+         : touch    ? "tap the red circle to launch"
+                    : "press " + label(g, A_FIRE) + " to launch";
       l3 = leave;
       break;
     case TURN:
-      title = "TURNING";
-      l1 = one_hand ? "drag sideways to turn - point at the beacon and hold"
-         : touch    ? "drag the joystick left or right - point at the beacon and hold"
-         : pad      ? "tilt the " + label(g, A_STEER) + " to turn - point at the beacon and hold"
-                    : "turn with " + label(g, A_STEER) + " - point at the beacon and hold";
+      title = "TURN";
+      l1 = one_hand ? "drag sideways - point at the beacon"
+         : (touch || pad) ? stick + " left or right - point at the beacon"
+                    : label(g, A_STEER) + " - point at the beacon";
       snprintf(buf, sizeof buf, "beacon %d of 2%s", beacons_hit_ + 1,
                camera_rounds_ > 0
-                   ? (rotate ? " - now the view turns with you"
-                             : " - now the view holds still")
+                   ? (rotate ? " - the view turns with you"
+                             : " - the view holds still")
                    : "");
       l2 = buf;
       l3 = leave;
       break;
     case THRUST:
       title = "THRUST";
-      l1 = one_hand ? "drag upward to thrust - fly through the beacon"
-         : touch    ? "push the joystick up to thrust - fly through the beacon"
-         : pad      ? "push the " + label(g, A_STEER) + " up to thrust - fly through the beacon"
-                    : "thrust with " + label(g, A_THRUST) + " - fly through the beacon";
-      l2 = one_hand ? "you keep drifting - drag down to brake"
-         : touch    ? "you keep drifting - pull the joystick down to brake"
-         : pad      ? "you keep drifting - pull the stick down to brake"
-                    : "you keep drifting - brake with " + label(g, A_REVERSE);
-      if (thrust_ms_ > 1500) l2 += " - thrusters heat up, watch the bar";
+      l1 = one_hand ? "drag up - fly through the beacon"
+         : (touch || pad) ? stick + " up - fly through the beacon"
+                    : label(g, A_THRUST) + " - fly through the beacon";
+      l2 = one_hand ? "no friction - drag down to brake"
+         : (touch || pad) ? "no friction - " + stick + " down to brake"
+                    : "no friction - " + label(g, A_REVERSE) + " brakes";
+      if (thrust_ms_ > 1500) l2 += " - watch the heat bar";
       l3 = leave;
       break;
     case CAMERA:
@@ -473,49 +470,47 @@ void Tutorial::banner_lines(const GLGame &g, std::string &title,
     case FIRE: {
       title = "FIRE";
       l1 = one_hand ? "tap to fire - destroy the asteroids"
-         : touch    ? "tap the red circle to fire - destroy the asteroids"
-                    : "fire with " + label(g, A_FIRE) + " - destroy the asteroids";
+         : touch    ? "red circle - destroy the asteroids"
+                    : label(g, A_FIRE) + " - destroy the asteroids";
       int kills = gs ? gs->ship->asteroid_kills - kills_at_entry_ : 0;
       if (kills > PRACTICE_KILLS) kills = PRACTICE_KILLS;
-      snprintf(buf, sizeof buf, "%d of %d destroyed", kills, PRACTICE_KILLS);
+      snprintf(buf, sizeof buf, "%d of %d", kills, PRACTICE_KILLS);
       l2 = buf;
       l3 = leave;
       break;
     }
     case BOOST:
       title = "BOOST";
-      l1 = touch ? "tap the amber circle to boost - a burst of speed"
-                 : "boost with " + label(g, A_BOOST) + " - a burst of speed";
-      l2 = "it recharges in two seconds";
+      l1 = touch ? "amber circle - a burst of speed"
+                 : label(g, A_BOOST) + " - a burst of speed";
+      l2 = "recharges in 2 s";
       l3 = leave;
       break;
     case SECONDARY:
-      title = "SECONDARY WEAPON";
+      title = "SECONDARY";
       if (gs && gs->ship->has_secondary())
-        l1 = one_hand ? "hold, or tap the blue button, to fire a missile"
-           : touch    ? "tap the blue circle to fire a missile"
-                      : "fire a missile with " + label(g, A_SECONDARY);
+        l1 = one_hand ? "hold, or the blue button - fire a missile"
+           : touch    ? "blue circle - fire a missile"
+                      : label(g, A_SECONDARY) + " - fire a missile";
       else
-        l1 = "collect the crate ahead - missiles";
-      l2 = touch ? "" : label(g, A_NEXT_WEAPON) + " cycles guns, " +
-                        label(g, A_NEXT_SECONDARY) + " cycles secondaries";
+        l1 = "collect the crate ahead";
+      l2 = touch ? "" : label(g, A_NEXT_WEAPON) + " and " +
+                        label(g, A_NEXT_SECONDARY) + " cycle weapons";
       l3 = leave;
       break;
     case WRAP:
-      title = "ONE MORE THING";
-      l1 = touch ? "pause, then CONTROLS, explains the whole layout"
-                 : label(g, A_HELP) + " shows every control - " +
-                   label(g, A_PAUSE) + " pauses";
-      l2 = touch ? "camera: OPTIONS, then CAMERA, on the menu"
-                 : label(g, A_ROTATE) + " switches the camera any time";
-      l3 = touch ? "tap fire to finish" : "press " + label(g, A_FIRE) + " to finish";
+      title = "ALSO";
+      l1 = touch ? "pause > CONTROLS shows the layout"
+                 : label(g, A_HELP) + " controls - " + label(g, A_PAUSE) +
+                   " pause - " + label(g, A_ROTATE) + " camera";
+      l2 = touch ? "camera: OPTIONS > CAMERA" : "";
+      l3 = touch ? "tap fire to finish" : label(g, A_FIRE) + " to finish";
       break;
     case DONE:
-      title = "TUTORIAL COMPLETE";
+      title = "COMPLETE";
       l1 = touch ? "tap fire to start your first game"
-                 : "press " + label(g, A_FIRE) + " to start your first game";
-      l2 = touch ? "or pause, then EXIT TO MENU"
-                 : label(g, A_MENU) + " for the menu";
+                 : label(g, A_FIRE) + " starts your first game";
+      l2 = touch ? "pause > EXIT TO MENU" : label(g, A_MENU) + ": menu";
       break;
     default:
       break;
@@ -651,14 +646,14 @@ void Tutorial::draw(const GLGame &g) const {
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
     bool rotate = gs ? gs->rotate_view() : true;
-    const char *question = rotate ? "the view turned with your ship"
-                                  : "your ship turned - the view held still";
+    const char *question = rotate ? "the view turned with you"
+                                  : "the view held still";
     const char *rows[2] = {
-        rotate ? "KEEP ROTATING CAMERA" : "KEEP FIXED CAMERA",
-        rotate ? "TRY FIXED CAMERA" : "TRY ROTATING CAMERA"};
+        rotate ? "KEEP ROTATING" : "KEEP FIXED",
+        rotate ? "TRY FIXED" : "TRY ROTATING"};
     std::string later = touch
-        ? "change it later under OPTIONS, then CAMERA"
-        : "switch any time in play with " + label(g, A_ROTATE);
+        ? "later: OPTIONS > CAMERA"
+        : label(g, A_ROTATE) + " switches it in play";
     // The card spans the title's anchor to the hint's glyph floor, as
     // wide as the widest line (a desktop row wears its "> " and " <").
     {
