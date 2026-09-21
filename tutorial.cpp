@@ -17,6 +17,8 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 
 // The controls the banner names, in the pilot's own vocabulary (label()).
 enum { A_LEFT, A_RIGHT, A_STEER, A_THRUST, A_REVERSE, A_FIRE, A_BOOST,
@@ -331,9 +333,16 @@ bool Tutorial::crate_in_world(const GLGame &g) const {
 
 // ---- the CAMERA prompt --------------------------------------------------
 
+// Defined with the drawing below; the prompt's tap rows share them.
+static float text_half_w(const std::string &t, float size);
+static float card_scale(float widest_half_w);
+
 TapBand Tutorial::prompt_row(int i) {
-  // Two stacked rows under the question; finger pads meet halfway.
-  return TapBand(0.5f, i == 0 ? 10.0f : -50.0f, 15, 14);
+  // Two stacked rows under the question; finger pads meet halfway. The
+  // rows ride the prompt's scale (the widest line is its title, so the
+  // cap never bites here).
+  float s = card_scale(text_half_w("CAMERA", 22));
+  return TapBand(0.5f, (i == 0 ? 10.0f : -50.0f) * s, (int)(15 * s), 14 * s);
 }
 
 void Tutorial::apply_camera_choice(GLGame &g, bool keep) {
@@ -572,14 +581,66 @@ static float text_half_w(const std::string &t, float size) {
   return n > 0 ? size * (n - 0.5f) : 0.0f;
 }
 
+// The cards' text scale. PORTRAIT phones keep the 800 virtual half-width
+// and stretch the half-height, so a size tuned for a desktop window is a
+// 12 px glyph across a 1080 px phone — unreadable (field, 2026-09-21).
+// There the cards draw at twice the size (the touch help card's portrait
+// precedent, view/overlay.cpp), capped so the WIDEST line — given as its
+// half-width at 1x — still clears the screen edge with the card's own
+// padding. Landscape, desktop and pad stay at 1x.
+// Landscape touch is the same problem at a smaller ratio (a 1080 px
+// phone height over the 1200-unit landscape height: 16 px glyphs), so it
+// draws at 1.5x. The banner WRAPS a line the scale would push past the
+// edge (wrap_line) rather than shrinking the card, so the size holds;
+// the cap here is the CAMERA prompt's backstop, whose lines are short.
+static bool portrait() { return Typer::scaled_window_height > 620.0f; }
+// The widest a centred line may be (half-width): the screen edge less
+// the card's padding and a margin.
+static float line_limit() { return Typer::scaled_window_width - 30.0f - 24.0f; }
+static float text_scale() {
+  if (portrait()) return 2.0f;
+  return is_touch_mode() ? 1.5f : 1.0f;
+}
+static float card_scale(float widest_half_w) {
+  float s = text_scale();
+  if (widest_half_w * s > line_limit()) s = line_limit() / widest_half_w;
+  return s;
+}
+// Append `t` to `out` at `size`, split where it would run past the line
+// limit: at the " - " nearest the middle (the copy's control/goal seam),
+// else at the space nearest the middle. Recursive, so a very long line
+// keeps splitting; a single unbreakable word just overruns.
+static void wrap_line(const std::string &t, float size,
+                      std::vector<std::string> &out, std::vector<float> &sizes) {
+  if (text_half_w(t, size) > line_limit()) {
+    size_t mid = t.size() / 2, best = std::string::npos, best_d = t.size();
+    const char *seps[2] = {" - ", " "};
+    for (int k = 0; k < 2 && best == std::string::npos; k++) {
+      size_t sep_len = strlen(seps[k]);
+      for (size_t pos = t.find(seps[k]); pos != std::string::npos;
+           pos = t.find(seps[k], pos + 1)) {
+        size_t d = pos > mid ? pos - mid : mid - pos;
+        if (d < best_d) { best_d = d; best = pos; }
+      }
+      if (best != std::string::npos) {
+        wrap_line(t.substr(0, best), size, out, sizes);
+        wrap_line(t.substr(best + sep_len), size, out, sizes);
+        return;
+      }
+    }
+  }
+  out.push_back(t);
+  sizes.push_back(size);
+}
+
 // A translucent black card behind a block of centred text — the banner
 // and the CAMERA prompt read poorly straight over a starfield (field,
 // 2026-09-21). Edges in Typer virtual units (a glyph box runs from its
 // anchor y down 2*size), converted through Typer::scale to the ortho the
 // text is drawn in; a faint outline in the text colour gives the card an
 // edge. Drawn BEFORE the text it backs.
-static void draw_card(float top, float bottom, float half_w) {
-  const float pad_x = 30.0f, pad_y = 14.0f;
+static void draw_card(float top, float bottom, float half_w, float s) {
+  const float pad_x = 30.0f * s, pad_y = 14.0f * s;
   float k = Typer::scale;
   float x0 = (-half_w - pad_x) * k, x1 = (half_w + pad_x) * k;
   float y0 = (bottom - pad_y) * k, y1 = (top + pad_y) * k;
@@ -656,17 +717,16 @@ void Tutorial::draw(const GLGame &g) const {
         : label(g, A_ROTATE) + " switches it in play";
     // The card spans the title's anchor to the hint's glyph floor, as
     // wide as the widest line (a desktop row wears its "> " and " <").
-    {
-      float w = text_half_w("CAMERA", 22);
-      w = std::max(w, text_half_w(question, 9));
-      for (int i = 0; i < 2; i++)
-        w = std::max(w, text_half_w(Typer::cursored(rows[i], !touch),
-                                    prompt_row(i).size));
-      w = std::max(w, text_half_w(later, 8));
-      draw_card(140.0f, -120.0f - 16.0f, w);
-    }
-    Typer::draw_centered(0, 140, "CAMERA", 22);
-    Typer::draw_centered(0, 85, question, 9);
+    // Widths at 1x pick the scale; everything then draws through it.
+    float w = text_half_w("CAMERA", 22);
+    w = std::max(w, text_half_w(question, 9));
+    for (int i = 0; i < 2; i++)
+      w = std::max(w, text_half_w(Typer::cursored(rows[i], !touch), 15));
+    w = std::max(w, text_half_w(later, 8));
+    float s = card_scale(w);
+    draw_card(140.0f * s, (-120.0f - 16.0f) * s, w * s, s);
+    Typer::draw_centered(0, 140 * s, "CAMERA", 22 * s);
+    Typer::draw_centered(0, 85 * s, question, 9 * s);
     for (int i = 0; i < 2; i++) {
       TapBand b = prompt_row(i);
       if (touch)
@@ -674,7 +734,7 @@ void Tutorial::draw(const GLGame &g) const {
       else
         MenuSelect::draw_row(b.y, rows[i], b.size, prompt_sel_ == i);
     }
-    Typer::draw_centered(0, -120, later.c_str(), 8);
+    Typer::draw_centered(0, -120 * s, later.c_str(), 8 * s);
     return;
   }
 
@@ -685,39 +745,52 @@ void Tutorial::draw(const GLGame &g) const {
   // LEVEL line's glyph floor (and the card's own top padding) with real
   // air even at HUD SIZE LARGEST — at 150 the card crowded it (field,
   // 2026-09-21).
-  const float TOP = 180.0f;
   float H = Typer::scaled_window_height;
-  // The lines flow: an empty middle line closes up rather than leaving a
-  // hole in the card. Title anchor H-TOP (size 18), then a 27-unit pitch.
-  const std::string *lines[3] = {&l1, &l2, &l3};
-  const float sizes[3] = {9.0f, 9.0f, 8.0f};
-  float ys[3];
-  int n = 0;
-  for (int i = 0; i < 3; i++) {
-    if (lines[i]->empty()) continue;
-    ys[i] = H - TOP - 55 - 27.0f * n;
-    n++;
+  const float s = text_scale(), TITLE = 18.0f * s;
+  // The lines flow at the scale: an empty line closes up rather than
+  // leaving a hole in the card, and one the scale pushes past the edge
+  // wraps (the touch TURN line at 2x is wider than a portrait phone).
+  std::vector<std::string> lines;
+  std::vector<float> sizes;
+  if (!l1.empty()) wrap_line(l1, 9.0f * s, lines, sizes);
+  if (!l2.empty()) wrap_line(l2, 9.0f * s, lines, sizes);
+  if (!l3.empty()) wrap_line(l3, 8.0f * s, lines, sizes);
+  // The card is as wide as the widest line, sized on the title rather
+  // than the GOOD flash so it holds still through the flash.
+  float w = text_half_w(title, TITLE);
+  for (size_t i = 0; i < lines.size(); i++)
+    w = std::max(w, text_half_w(lines[i], sizes[i]));
+  // The card's top: 180 under the top edge (at 1x) — and on touch, under
+  // the pause circle instead when the card reaches the circle's column,
+  // or always in portrait (most cards reach it there at 2x, and a card
+  // that held one height across the steps read better than one that
+  // hopped with its width). The circle is in pixels from the window's
+  // top-left; a virtual unit is Typer::scale/2 px (Overlay's inset
+  // conversion), and HANDEDNESS LEFT mirrors the circle, hence the abs.
+  float TOP = 180.0f * s;
+  if (is_touch_mode()) {
+    float k = 2.0f / Typer::scale;
+    float pause_x = std::fabs(g_touch_controls.pause_cx - g.window.x() / 2) -
+                    g_touch_controls.pause_radius;
+    float pause_floor = g_touch_controls.pause_cy + g_touch_controls.pause_radius;
+    if (portrait() || w + 30.0f * s > pause_x * k)
+      TOP = std::max(TOP, pause_floor * k + 14.0f * s + 24.0f);
   }
-  // The card: from the title's anchor down to the lowest line's glyph
-  // floor, as wide as the widest line. Sized on the title, not the GOOD
-  // flash, so it holds still while the flash alternates.
-  {
-    float w = text_half_w(title, 18);
-    float bottom = H - TOP - 2 * 18;
-    for (int i = 0; i < 3; i++) {
-      if (lines[i]->empty()) continue;
-      w = std::max(w, text_half_w(*lines[i], sizes[i]));
-      bottom = ys[i] - 2 * sizes[i];
-    }
-    draw_card(H - TOP, bottom, w);
+  // Title anchor H-TOP, then a 27-unit pitch (at 1x), down to the lowest
+  // glyph floor.
+  float bottom = H - TOP - 2 * TITLE;
+  std::vector<float> ys(lines.size());
+  for (size_t i = 0; i < lines.size(); i++) {
+    ys[i] = H - TOP - (55 + 27.0f * i) * s;
+    bottom = ys[i] - 2 * sizes[i];
   }
+  draw_card(H - TOP, bottom, w, s);
   // A steady GOOD for the flash, then the next title: alternating the
   // two every 150 ms read as a flicker (field, 2026-09-21).
   if (flash_ms_ > 0)
-    Typer::draw_centered(0, H - TOP, "GOOD", 18);
+    Typer::draw_centered(0, H - TOP, "GOOD", TITLE);
   else
-    Typer::draw_centered(0, H - TOP, title.c_str(), 18);
-  for (int i = 0; i < 3; i++)
-    if (!lines[i]->empty())
-      Typer::draw_centered(0, ys[i], lines[i]->c_str(), sizes[i]);
+    Typer::draw_centered(0, H - TOP, title.c_str(), TITLE);
+  for (size_t i = 0; i < lines.size(); i++)
+    Typer::draw_centered(0, ys[i], lines[i].c_str(), sizes[i]);
 }
