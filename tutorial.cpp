@@ -45,7 +45,6 @@ static const int   ALIGN_HOLD_MS      = 150;
 static const int   PRACTICE_ROCKS     = 3;
 static const int   PRACTICE_KILLS     = 3;
 static const float CRATE_DIST         = 260.0f;
-static const int   FLASH_MS           = 700;   // steady GOOD after a step
 // Every death costs a respawn, never the tutorial: topped up each tick to
 // the Ship ctor's own 4, so the lives row looks exactly as it will in play.
 static const int   TUTORIAL_LIVES     = 4;
@@ -132,7 +131,6 @@ void Tutorial::enter_step(GLGame &g, Step s) {
 
 void Tutorial::complete_step(GLGame &g) {
   if (g.pickup_sound) Mix_PlayChannel(-1, g.pickup_sound, 0);
-  flash_ms_ = FLASH_MS;
   if (step_ + 1 < STEP_COUNT) enter_step(g, (Step)(step_ + 1));
 }
 
@@ -144,7 +142,6 @@ void Tutorial::skip_step(GLGame &g) {
 
 void Tutorial::tick(GLGame &g, int delta) {
   time_ += delta;
-  if (flash_ms_ > 0) flash_ms_ -= delta;
   if (prompt_open_) return;  // the sim is frozen under the CAMERA prompt
   step_ms_ += delta;
   GLShip *gs = pilot(g);
@@ -755,8 +752,7 @@ void Tutorial::draw(const GLGame &g) const {
   if (!l1.empty()) wrap_line(l1, 9.0f * s, lines, sizes);
   if (!l2.empty()) wrap_line(l2, 9.0f * s, lines, sizes);
   if (!l3.empty()) wrap_line(l3, 8.0f * s, lines, sizes);
-  // The card is as wide as the widest line, sized on the title rather
-  // than the GOOD flash so it holds still through the flash.
+  // The card is as wide as the widest line.
   float w = text_half_w(title, TITLE);
   for (size_t i = 0; i < lines.size(); i++)
     w = std::max(w, text_half_w(lines[i], sizes[i]));
@@ -785,12 +781,10 @@ void Tutorial::draw(const GLGame &g) const {
     bottom = ys[i] - 2 * sizes[i];
   }
   draw_card(H - TOP, bottom, w, s);
-  // A steady GOOD for the flash, then the next title: alternating the
-  // two every 150 ms read as a flicker (field, 2026-09-21).
-  if (flash_ms_ > 0)
-    Typer::draw_centered(0, H - TOP, "GOOD", TITLE);
-  else
-    Typer::draw_centered(0, H - TOP, title.c_str(), TITLE);
+  // The next step's title lands on the spot: the completion cue is the
+  // pickup chime alone, with no interstitial word (cut in the field,
+  // 2026-09-21).
+  Typer::draw_centered(0, H - TOP, title.c_str(), TITLE);
   for (size_t i = 0; i < lines.size(); i++)
     Typer::draw_centered(0, ys[i], lines[i].c_str(), sizes[i]);
 }

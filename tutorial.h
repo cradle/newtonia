@@ -75,7 +75,7 @@ public:
 
 private:
   void enter_step(GLGame &g, Step s);
-  void complete_step(GLGame &g);      // GOOD flash, then the next step
+  void complete_step(GLGame &g);      // chime, then the next step
   void finish(GLGame &g);             // latch tutorial_done, start the game
   void place_beacon(const GLGame &g, float rel_angle, float dist);
   bool nose_on_beacon(const GLGame &g) const;
@@ -95,8 +95,7 @@ private:
   static TapBand prompt_row(int i);
 
   Step step_ = LAUNCH;
-  int time_ = 0;            // ms in the tutorial (banner flash)
-  int flash_ms_ = 0;        // GOOD flash left after a completion
+  int time_ = 0;            // ms in the tutorial (beacon animation)
   int step_ms_ = 0;         // ms in the current step
   // TURN: the beacon and how long the nose has held on it.
   // Explicit origins: the default WrappedPoint ctor rolls a random spot
