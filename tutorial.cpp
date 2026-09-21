@@ -458,9 +458,9 @@ void Tutorial::banner_lines(const GLGame &g, std::string &title,
       l1 = one_hand ? "drag up - fly through the beacon"
          : (touch || pad) ? stick + " up - fly through the beacon"
                     : label(g, A_THRUST) + " - fly through the beacon";
-      l2 = one_hand ? "no friction - drag down to brake"
-         : (touch || pad) ? "no friction - " + stick + " down to brake"
-                    : "no friction - " + label(g, A_REVERSE) + " brakes";
+      l2 = one_hand ? "drag down to brake"
+         : (touch || pad) ? stick + " down to brake"
+                    : label(g, A_REVERSE) + " brakes";
       if (thrust_ms_ > 1500) l2 += " - watch the heat bar";
       l3 = leave;
       break;
