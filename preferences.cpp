@@ -298,6 +298,9 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "star_density") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f) g_prefs.star_density = v;
+    } else if (strcmp(key, "hud_scale") == 0) {
+        float v = (float)atof(val);
+        if (v >= 1.0f && v <= 1.75f) g_prefs.hud_scale = v;
     } else if (strcmp(key, "master_volume") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f && v <= 1.0f) g_prefs.master_volume = v;
@@ -431,6 +434,7 @@ void save_preferences() {
     fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "leaderboard_prompts=%d\n",     g_prefs.leaderboard_prompts ? 1 : 0);
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
+    fprintf(f, "hud_scale=%.4f\n",              g_prefs.hud_scale);
     fprintf(f, "master_volume=%.4f\n",          g_prefs.master_volume);
     fprintf(f, "music_volume=%.4f\n",           g_prefs.music_volume);
     fprintf(f, "lan_visible=%d\n",             g_prefs.lan_visible        ? 1 : 0);

@@ -171,6 +171,33 @@ returning EACCES) is never mistaken for a fresh install and is left
 untouched; the peek mode the shot/video harnesses and the signal self-test
 use never decides or writes. Runs in `linux.yml`.
 
+### Web control analytics unit test
+
+`node test/unit/control_analytics.cjs` (Node + a C++11 compiler; `CXX`
+overrides `g++`) compiles the production GLGame, GLShip and StateManager
+analytics methods against stub game/player state and the real KeyBinding type.
+Checks successful pause/resume transitions and automatic/remote exclusions,
+dead P1/live P2, dead or non-keyboard
+seats, replay/spectate/roster/help/board exclusions, non-game states, remaps,
+alternates and combined action masks. Also executes the production canvas
+finger handlers: a held drag crossing zones counts once, a fresh finger counts
+again, and both pause zones report completed pause/resume transitions but not
+touches consumed by the controls card. The harness slices explicit, unique
+begin/end markers; braces inside comments or strings do not delimit a test body.
+Runs in web CI. State predicates, player lifetime and keyboard side effects
+are fixtures; this is not a gameplay integration test.
+
+```sh
+node test/unit/web_analytics.cjs  # Node + tsc on PATH
+```
+
+Runs the production collector against a fake clock, input events, gamepad API,
+and live-binding query. Covers batching, lifecycle flushes, readiness/failure
+handling, keyboard repeats, ASCII/special-key separation, touch taps and hold
+continuations, remaps, and gamepad sampling. Both web JavaScript tests compile
+into a temporary directory when run standalone. In web CI they reuse the
+preceding TypeScript step's output via `NEWTONIA_WEB_JS=web/main.js`.
+
 ### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
 
 ```sh

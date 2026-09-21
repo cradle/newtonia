@@ -22,6 +22,127 @@ declare const NewtoniaStore: undefined | {
   playStoreUrl(referrer: string): string;
 };
 
+// Aggregate web control intent, never raw keys, pointer coordinates or pad IDs.
+// No GA calls from input handlers: one small summary per 30 seconds, plus exit.
+function createControlAnalytics(query: (key: number) => number, enabled = true) {
+  const counts: Record<string, number> = Object.create(null);
+  const held = new Set<string>();
+  // Bit order shared with GLShip::control_analytics / GLGame::control_analytics.
+  const actions = ['move', 'fire', 'secondary', 'boost', 'teleport', 'pause',
+    'weapon_cycle', 'camera'];
+  const specials: Record<string, number> = { ArrowLeft: 228, ArrowUp: 229,
+    ArrowRight: 230, ArrowDown: 231, Enter: 13, Escape: 27, Tab: 9,
+    Backspace: 8, F1: 129, F4: 132, F8: 136, F11: 139 };
+  const punctuation: Record<number, number> = { 59: 59, 61: 61, 173: 45,
+    186: 59, 187: 61, 188: 44, 189: 45, 190: 46, 191: 47, 192: 96,
+    219: 91, 220: 92, 221: 93, 222: 39 };
+  const keyCode = (e: KeyboardEvent): number => {
+    // SDL 2.32.10 Emscripten_MapKeyCode uses the DOM legacy keyCode table,
+    // not the physical code's US letter. Keep code only for held identity.
+    // https://github.com/libsdl-org/SDL/blob/release-2.32.10/src/video/emscripten/SDL_emscriptenevents.c
+    if (e.location === 3) return 0; // SDL keypad symbols are not forwarded by web_main.
+    if (e.keyCode >= 65 && e.keyCode <= 90) return e.keyCode + 32;
+    if (e.keyCode >= 48 && e.keyCode <= 57) return e.keyCode;
+    if (punctuation[e.keyCode]) return punctuation[e.keyCode];
+    // Mirror web_main.cpp's plain ASCII and SDLK -> GLUT special-key mapping.
+    if (e.key.length === 1) {
+      const key = e.key.toLowerCase().charCodeAt(0);
+      return key < 128 ? key : 0;
+    }
+    return specials[e.key] || 0;
+  };
+  let joystick = false;
+  let firstSent = false;
+  let lastFlush = performance.now();
+  const safeQuery = (key: number) => {
+    try { return query(key); } catch { return -1; }
+  };
+  const focused = () => enabled && !document.hidden && document.hasFocus();
+  const allowed = () => focused() && safeQuery(0) >= 0;
+  const add = (name: string) => { counts[name] = Math.min(1000000, (counts[name] || 0) + 1); };
+  const addMask = (mask: number, source?: string) => {
+    if (mask <= 0) return;
+    for (let i = 0; i < actions.length; i++) if (mask & (1 << i)) add(actions[i]);
+    if (source) add(source);
+  };
+  const flush = () => {
+    if (!Object.keys(counts).length) return;
+    const w = window as any;
+    // Retain the bounded counters until the tag loads; never queue at its stub.
+    try {
+      if (typeof w.gtag !== 'function' || !w.newtoniaAnalyticsReady) return;
+      const data = { ...counts };
+      for (const key of Object.keys(counts)) delete counts[key];
+      if (!firstSent) {
+        w.gtag('event', 'game_controls_used');
+        firstSent = true;
+      }
+      w.gtag('event', 'game_controls_summary', data);
+    } catch { /* Analytics failure must not interrupt controls or lifecycle. */ }
+  };
+  const reset = () => { held.clear(); joystick = false; };
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey ||
+        (e as KeyboardEvent & { newtoniaControlContinuation?: boolean }).newtoniaControlContinuation) return;
+    const key = keyCode(e);
+    if (!key || !focused()) return;
+    const mask = safeQuery(key);
+    if (mask <= 0) return;
+    const id = (e.isTrusted ? 'keyboard:' + (e.code || key) : 'touch:' + key);
+    // Each synthetic down represents a touch action; deferred keyup must
+    // not merge rapid taps. Physical keys still need held/repeat suppression.
+    if (e.isTrusted) {
+      if (held.has(id)) return;
+      held.add(id);
+    }
+    addMask(mask, e.isTrusted ? 'keyboard_presses' : 'touch_presses');
+  }, { passive: true });
+  window.addEventListener('keyup', (e: KeyboardEvent) => {
+    const key = keyCode(e);
+    held.delete(e.isTrusted ? 'keyboard:' + (e.code || key) : 'touch:' + key);
+  }, { passive: true });
+  window.addEventListener('blur', reset);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { reset(); flush(); lastFlush = performance.now(); }
+  });
+  window.addEventListener('pagehide', () => { reset(); flush(); });
+  window.addEventListener('newtonia-analytics-ready', flush);
+  // Sample controller activity at 4 Hz, not on every rendering frame. Short
+  // taps may be missed: these are activity samples, NOT button-press counts.
+  window.setInterval(() => {
+    if (performance.now() - lastFlush >= 30000) {
+      flush(); lastFlush = performance.now();
+    }
+    if (!allowed()) return;
+    try {
+      const pads = navigator.getGamepads?.();
+      if (pads) for (let i = 0; i < Math.min(pads.length, 4); i++) {
+        const pad = pads[i];
+        if (pad?.connected && (pad.buttons.some(b => b.pressed) ||
+            (pad.mapping === 'standard' && pad.axes.slice(0, 4).some(a => Math.abs(a) > 0.25)))) {
+          add('gamepad_active_samples');
+          break;
+        }
+      }
+    } catch { /* Gamepad API can be restricted in embedded builds. */ }
+  }, 250);
+  return {
+    joystick(nx: number, ny: number) {
+      const active = Math.abs(nx) > 0.15 || Math.abs(ny) > 0.15;
+      if (active && !joystick && allowed()) addMask(1, 'touch_presses');
+      joystick = active;
+    },
+    direct(mask: number, touch = true) {
+      // C++ has already checked the live game/action, including pause resume.
+      // Keep the independent hostname/replay and document gates here.
+      if (!focused()) return;
+      // Semantic pause transitions have no inferred device/source counter.
+      addMask(mask, touch ? 'touch_presses' : undefined);
+    },
+  };
+}
+// END control analytics
+
 (function () {
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
   const fsBtn = document.getElementById("fullscreen-btn") as HTMLButtonElement;
@@ -256,6 +377,7 @@ declare const NewtoniaStore: undefined | {
   };
 
   function callTouchJoystick(nx: number, ny: number): void {
+    controlAnalytics.joystick(nx, ny);
     (Module as ModuleEx)._web_touch_joystick?.(nx, ny);
   }
 
@@ -265,6 +387,14 @@ declare const NewtoniaStore: undefined | {
   let _joyPlaceholderEls: HTMLElement[] = [];
   let _positionJoyPlaceholder: (() => void) | null = null;
   let _inMenuMode = true;
+  // Do not mix local testing or leaderboard replay controls into live play.
+  const trackControls = window.location.hostname === "newtonia.metonymous.com" &&
+      !new URLSearchParams(window.location.search).has("replay");
+  const controlAnalytics = createControlAnalytics((key) => {
+    if (!trackControls) return -1;
+    return (Module as any)._web_control_analytics?.(key) ?? -1;
+  }, trackControls);
+  (window as any).newtoniaRecordTouchControl = (mask: number, touch = true) => controlAnalytics.direct(mask, touch);
   // The mine button only exists while the local ship has a secondary
   // equipped — C++ pushes changes via EM_ASM (glgame.cpp GLGame::tick),
   // the same bridge setMenuMode rides. Starts false: a fresh ship has no
@@ -640,13 +770,16 @@ declare const NewtoniaStore: undefined | {
     // Fingers deliberately left to the canvas-tap path (the zoom zones).
     const passFingers = new Set<number>();
 
-    function keyEvt(key: string, type: string): void {
-      canvas.dispatchEvent(new KeyboardEvent(type, {
+    function keyEvt(key: string, type: string, continuation = false): void {
+      const event = new KeyboardEvent(type, {
         key,
         code: key === " " ? "Space" : `Key${key.toUpperCase()}`,
         bubbles: true,
         cancelable: true,
-      }));
+      });
+      // Taking over a tap's held key is not an additional analytics press.
+      Object.assign(event, { newtoniaControlContinuation: continuation });
+      canvas.dispatchEvent(event);
     }
 
     // Synthesized fire press. The weapons only sample the trigger in
@@ -685,7 +818,7 @@ declare const NewtoniaStore: undefined | {
         window.clearTimeout(spaceUpTimer);
         spaceUpTimer = null;
       }
-      keyEvt(" ", "keydown");
+      keyEvt(" ", "keydown", true);
       return true;
     }
 
@@ -1122,14 +1255,7 @@ declare const NewtoniaStore: undefined | {
       btn.className = cls;
       btn.textContent = label;
 
-      const dispatchKey = (type: string) => {
-        canvas.dispatchEvent(new KeyboardEvent(type, {
-          key,
-          code: key === " " ? "Space" : `Key${key.toUpperCase()}`,
-          bubbles: true,
-          cancelable: true,
-        }));
-      };
+      const dispatchKey = (type: string) => keyEvt(key, type);
 
       // Track active fingers so multi-finger presses keep the button held.
       const activeFingers = new Set<number>();

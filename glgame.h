@@ -106,6 +106,7 @@ public:
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
+  int control_analytics(int key) const;
   void draw() override;
   void tick(int delta) override;
   void keyboard(unsigned char key, int x, int y) override;
@@ -240,8 +241,9 @@ private:
   // path diffs asteroids itself and would otherwise discard the capture).
   Save::GameState build_save_data(bool include_asteroids = true) const;
   void save_progress();   // save only when at least one player is alive or has lives
-  void toggle_pause(bool broadcast = true);  // broadcast=false: applying a
-                                             // peer's PAUSE/RESUME event
+  // broadcast=false suppresses the network echo; user_action=false excludes
+  // automatic/remote transitions from web control analytics.
+  void toggle_pause(bool broadcast = true, bool user_action = false);
   // Pause-screen menu, drawn by Overlay::paused. Every pause opens on
   // RESUME — never on the exit row left armed by the last one. PLAYERS
   // (the seat roster) only exists offline, so the row list is 3 or 2 long

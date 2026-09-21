@@ -5,17 +5,48 @@ import struct
 import math
 import random
 import os
+import sys
 
 SAMPLE_RATE = 48000
+
+# A generator that sums its partials past full scale is brought back to
+# this peak instead of being clamped: the old clamp baked a hard-clip into
+# six impact cues (see normalize below), and the mixer clamps AGAIN when
+# cues overlap at play time. 0.85 is the level the music tracks already
+# normalise to. Automatic, so no new cue can ship clipped; cues that stay
+# under 1.0 are written exactly as generated.
+OVERSHOOT_PEAK = 0.85
+
+def to_pcm(samples):
+    """The exact bytes write_wav stores for these samples (shared with --check)."""
+    top = max(abs(x) for x in samples) or 1.0
+    if top > 1.0:
+        print(f'  (peaked at {top:.2f}, normalised to {OVERSHOOT_PEAK})')
+        samples = [x / top * OVERSHOOT_PEAK for x in samples]
+    clamped = [max(-32767, min(32767, int(s * 32767))) for s in samples]
+    return struct.pack(f'<{len(clamped)}h', *clamped)
 
 def write_wav(filename, samples):
     with wave.open(filename, 'w') as f:
         f.setnchannels(1)
         f.setsampwidth(2)
         f.setframerate(SAMPLE_RATE)
-        clamped = [max(-32767, min(32767, int(s * 32767))) for s in samples]
-        data = struct.pack(f'<{len(clamped)}h', *clamped)
-        f.writeframes(data)
+        f.writeframes(to_pcm(samples))
+
+# Peak-normalise a cue. The heavy explosion/impact cues below sum their
+# partials past 1.0, and write_wav's clamp used to bake the resulting
+# hard-clip INTO the asset (thud, lance, mine/giga-mine/missile/station
+# explode all shipped pinned at 0 dBFS). At play time the mixer sums cues
+# into 16-bit and clamps again, so two of those overlapping (a thud under a
+# shot, a mine under an explosion) clipped even under AudioVolume's 0.75
+# HEADROOM — measured on the web build in Edge, 2026-09-18. 0.60 puts them
+# at the level of the ordinary asteroid explosion (0.59), the loudest cue
+# that never clipped on its own.
+LOUD_CUE_PEAK = 0.60
+
+def normalize(samples, peak=LOUD_CUE_PEAK):
+    top = max(abs(x) for x in samples) or 1.0
+    return [x / top * peak for x in samples]
 
 def make_shoot():
     """Laser pew: frequency sweep 800→200 Hz, 150ms."""
@@ -60,7 +91,7 @@ def make_lance():
         body = math.sin(2 * math.pi * 220 * t) * math.exp(-t * 8) * 0.45
         transient = (rng.random() * 2 - 1) * math.exp(-t * 90) * 0.5
         samples.append(crack + body + transient)
-    return samples
+    return normalize(samples)
 
 def make_shock():
     """Electric zap: buzzy detuned high tones sweeping down under crackling
@@ -151,7 +182,7 @@ def make_station_explode():
         # Trailing debris/rumble that lingers after the boom.
         debris = (rng.random() * 2 - 1) * math.exp(-t * 2.0) * 0.14
         samples.append((sub + boom + metal + noise + debris) * env)
-    return samples
+    return normalize(samples)
 
 def make_thud():
     """Bullet hits invincible asteroid: low woody knock, 600ms."""
@@ -170,7 +201,7 @@ def make_thud():
         click_env = math.exp(-t * 150)
         noise = (rng.random() * 2 - 1) * 0.45 * click_env
         samples.append(body + noise)
-    return samples
+    return normalize(samples)
 
 def make_mine_explode():
     """Mine explosion: mid-weight boom with metallic clang and noise burst, 800ms."""
@@ -190,7 +221,7 @@ def make_mine_explode():
         # Trailing rumble
         rumble = (rng.random() * 2 - 1) * math.exp(-t * 4.0) * 0.15
         samples.append((boom + clang + noise + rumble) * attack)
-    return samples
+    return normalize(samples)
 
 
 def make_missile_explode():
@@ -211,7 +242,7 @@ def make_missile_explode():
         # Trailing rumble
         rumble = (rng.random() * 2 - 1) * math.exp(-t * 3.5) * 0.18
         samples.append((boom + thud + noise + rumble) * attack)
-    return samples
+    return normalize(samples)
 
 def make_missile_fly():
     """Missile in-flight: wailing screamer with air rush, 500ms (loopable)."""
@@ -325,7 +356,7 @@ def make_giga_mine_explode():
         # Trailing rumble noise
         rumble = (rng.random() * 2 - 1) * math.exp(-t * 1.5) * 0.15
         samples.append((sub + boom + thud + noise + rumble) * env)
-    return samples
+    return normalize(samples)
 
 
 def make_ting():
@@ -871,6 +902,37 @@ if __name__ == '__main__':
         'time_slow_start.wav':   make_time_slow_start,
         'time_slow_end.wav':     make_time_slow_end,
     }
+
+    if '--check' in sys.argv:
+        # CI gate (linux.yml): are the committed WAVs what this script
+        # produces? Regenerates in memory and compares sample-for-sample,
+        # allowing a 2-LSB slop for libm differences between platforms
+        # (sin/exp can differ in the last ulp, which int() then flips).
+        stale = []
+        for filename, fn in sounds.items():
+            want = to_pcm(fn())
+            try:
+                with wave.open(filename, 'r') as f:
+                    have = f.readframes(f.getnframes())
+                    ok = (f.getnchannels(), f.getsampwidth(), f.getframerate()) == (1, 2, SAMPLE_RATE)
+            except FileNotFoundError:
+                have, ok = b'', False
+            if ok and len(have) == len(want):
+                a = struct.unpack(f'<{len(want)//2}h', want)
+                b = struct.unpack(f'<{len(have)//2}h', have)
+                ok = all(abs(x - y) <= 2 for x, y in zip(a, b))
+            else:
+                ok = False
+            if not ok:
+                stale.append(filename)
+        if stale:
+            print('STALE audio assets (generate_sounds.py changed without regenerating):')
+            for filename in stale:
+                print(f'  audio/{filename}')
+            print('Run ./generate_sounds.py and commit the audio/ changes.')
+            sys.exit(1)
+        print(f'audio/ is in sync with generate_sounds.py ({len(sounds)} files).')
+        sys.exit(0)
 
     for filename, fn in sounds.items():
         print(f'Generating {filename}...')

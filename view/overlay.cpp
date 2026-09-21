@@ -87,12 +87,67 @@ static bool viewport_is_grid_cell(const GLGame *glgame) {
   return glgame->num_x_viewports() >= 2 && glgame->num_y_viewports() >= 2;
 }
 
+// The HUD SIZE preference (Preferences::hud_scale, desktop Options) as the
+// factor this viewport's HUD text actually grows by — 1.0 at NORMAL, and
+// 1.0 wherever the layout cannot take more, so every row multiplies its
+// classic size by this and NORMAL draws exactly what always drew.
+//
+// Field, 2026-09-18: on a 4K display the classic sizes read too small.
+// Typer scales everything with the window height, so a 4K fullscreen HUD
+// is the same FRACTION of the screen as a 1080p one; the complaint is
+// about that fraction on a big or distant screen, which only a multiplier
+// answers. Capped per viewport so the top row still fits: LEVEL is centred
+// (8 glyphs at 12f, half-width 96f) and the score is right-aligned against
+// the corner inset (six digits at 20f, 240f wide, starting at vw -
+// CORNER_INSET - 240f), with a 48f gap between them — two LEVEL-glyph
+// advances, the least that reads as two items (a 10-unit gap rendered as
+// "LEVEL 1999999" on a 2P strip) — so f <= (vw - INSET) / 384 keeps them
+// apart (vw is the viewport's HALF-width in Typer units: 1067 on a 16:9
+// full window, 800 at 4:3). A full-width viewport holds every step — 2.6
+// at 16:9, 1.9 at 4:3 — so the cap bites only on the 2P side-by-side
+// strips: 1.24 at 16:9, and exactly 1.0 at 4:3, where the pref therefore
+// does nothing (a layout that was tight before it existed is never
+// shrunk by it either). The 2x2 grid is excluded outright: its cells
+// already run the 0.75 shrink below, with CLEARED dropped to just clear
+// the weapons list, and any growth puts the two back on top of each
+// other. Touch too: the OSD's pause circle is placed to clear the classic
+// score/multiplier stack (touch_controls_resize), and the touch HUD runs
+// its own larger sizes where they matter.
+static float hud_grow(const GLGame *glgame) {
+  if (is_touch_mode() || viewport_is_grid_cell(glgame)) return 1.0f;
+  float vw = Typer::scaled_window_width / glgame->num_x_viewports();
+  float cap = (vw - Overlay::CORNER_INSET) / (6 * 40.0f + 96.0f + 48.0f);
+  float grow = g_prefs.hud_scale;
+  if (grow > cap) grow = cap;
+  return grow < 1.0f ? 1.0f : grow;
+}
+
 // A grid cell carries the same HUD as a full window in a quarter of the
 // room, so the full-size rows and centre banners crowd each other (field:
 // CLEARED overprinted the weapons list). Shrink the HUD text there; 1P and
-// both 2P splits are untouched.
+// both 2P splits are untouched — there this is just the HUD SIZE growth.
 static float hud_fit(const GLGame *glgame) {
-  return viewport_is_grid_cell(glgame) ? 0.75f : 1.0f;
+  return viewport_is_grid_cell(glgame) ? 0.75f : hud_grow(glgame);
+}
+
+// The centre column's top anchor: LEVEL and the god-mode/time-slow stack
+// under it. The join hint sits ABOVE this row (title_text, at vh - 40)
+// and grows with the HUD too, so its glyphs reach 16 units deeper per
+// unit of growth — at LARGEST they printed straight through LEVEL's top
+// (worst-case render, 2026-09-18). Drop the column by exactly that depth.
+// Centre only: the score and weapons list share no column with the hint.
+static float centre_hud_y(const GLGame *glgame) {
+  return top_hud_y(glgame) - 16.0f * (hud_grow(glgame) - 1.0f);
+}
+
+// The bottom hint row's anchor (the show/hide-controls hint, the boost
+// hint): 85 above the viewport floor at the classic size — a real margin
+// inside the title-safe inset (Typer glyphs extend 2x the size below their
+// anchor). Lifted with the HUD growth by the extra depth, so a bigger hint
+// stays inside the inset instead of sinking into it.
+static float bottom_hint_y(const GLGame *glgame) {
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+  return -vh + 85.0f + 16.0f * (hud_grow(glgame) - 1.0f);
 }
 
 
@@ -994,7 +1049,7 @@ void Overlay::seat_roster(const GLGame *glgame) {
 void Overlay::level(const GLGame *glgame, const GLShip *glship) {
   char buf[20];
   snprintf(buf, sizeof(buf), "LEVEL %d", glgame->generation + 1);
-  Typer::draw_centered(0, top_hud_y(glgame), buf, 12 * hud_fit(glgame));
+  Typer::draw_centered(0, centre_hud_y(glgame), buf, 12 * hud_fit(glgame));
 }
 
 // Is the always-on room line on screen? Shared by the banner itself and by
@@ -1034,7 +1089,7 @@ float Overlay::room_line_drop(const GLGame *glgame) {
   float row_centre = H - H * (2 * row + 1) / ny;
   float bottom = (line_y - row_centre) - 2.0f * ROOM_LINE_SZ;  // ink's floor
   float f = hud_fit(glgame);
-  float first = top_hud_y(glgame) - 62 * f;    // the god-mode label's anchor
+  float first = centre_hud_y(glgame) - 62 * f; // the god-mode label's anchor
   float drop = first - (bottom - 10.0f);       // ...plus a gap
   return drop > 0.0f ? drop : 0.0f;
 }
@@ -1062,7 +1117,7 @@ void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
   // One drop for the whole stack, not a per-line nudge: shifting the block
   // as a unit keeps the god-mode/time-slow spacing that stops THOSE two
   // overlapping when both run at once.
-  float base_y = top_hud_y(glgame) - room_line_drop(glgame);
+  float base_y = centre_hud_y(glgame) - room_line_drop(glgame);
   Typer::draw_centered(0, base_y - 62 * f, "God mode", 10 * f);
   Typer::draw_centered(0, base_y - 100 * f, remaining / 1000, 10 * f);
 }
@@ -1075,7 +1130,7 @@ void Overlay::time_slow(const GLGame *glgame, const GLShip *glship) {
   int remaining = glgame->time_slow_wall_ms_remaining();
   if(remaining <= 0) return;
   float f = hud_fit(glgame);
-  float base_y = top_hud_y(glgame) - room_line_drop(glgame);
+  float base_y = centre_hud_y(glgame) - room_line_drop(glgame);
   Typer::draw_centered(0, base_y - 137 * f, "Time slow", 10 * f);
   Typer::draw_centered(0, base_y - 175 * f, (remaining + 999) / 1000, 10 * f);
 }
@@ -1118,7 +1173,7 @@ void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::lives(const GLGame *glgame, const GLShip *glship) {
-  Typer::draw_lives(Typer::scaled_window_width/glgame->num_x_viewports()-40-CORNER_INSET, -Typer::scaled_window_height/glgame->num_y_viewports()+70+CORNER_INSET, glship, 18);
+  Typer::draw_lives(Typer::scaled_window_width/glgame->num_x_viewports()-40-CORNER_INSET, -Typer::scaled_window_height/glgame->num_y_viewports()+70+CORNER_INSET, glship, 18 * hud_grow(glgame));
 }
 
 void Overlay::weapons(const GLGame *glgame, const GLShip *glship) {
@@ -1128,6 +1183,11 @@ void Overlay::weapons(const GLGame *glgame, const GLShip *glship) {
     (-Typer::scaled_window_width/glgame->num_x_viewports()+CORNER_INSET) * s,
     (Typer::scaled_window_height/glgame->num_y_viewports()-CORNER_INSET) * s
         - safe_inset_top() * 2.0f, 0.0f);
+  // The list is laid out in classic units from its top-left corner and
+  // grows down and right, so the HUD scale is a plain scale about that
+  // corner — every row, chip and column keeps its relative place.
+  float f = hud_grow(glgame);
+  mat4_scale(vp, vp, f, f, 1.0f);
   gles2_set_vp(vp);
   glship->draw_weapons();
   gles2_set_vp(saved);
@@ -1141,8 +1201,11 @@ void Overlay::temperature(const GLGame *glgame, const GLShip *glship) {
   float temp_vp[16]; mat4_scale(temp_vp, inner, 30.0f, 30.0f, 1.0f);
   gles2_set_vp(temp_vp);
   glship->draw_temperature();
+  // The gauge itself is a graphic and keeps its size; only the WARNING
+  // text above it follows the HUD scale.
+  float f = hud_grow(glgame);
   float status_vp[16]; mat4_translate(status_vp, inner, 42.0f, 147.0f, 0.0f);
-  mat4_scale(status_vp, status_vp, 10.0f, 10.0f, 1.0f);
+  mat4_scale(status_vp, status_vp, 10.0f * f, 10.0f * f, 1.0f);
   gles2_set_vp(status_vp);
   glship->draw_temperature_status();
   gles2_set_vp(base);
@@ -1425,8 +1488,7 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
       key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
       // Exactly where title_text draws the "show" twin, in every layout —
       // the hint must not jump across the screen when the card opens.
-      float vh = Typer::scaled_window_height / glgame->num_y_viewports();
-      Typer::draw_centered(0, -vh + 85, hint, 8);
+      Typer::draw_centered(0, bottom_hint_y(glgame), hint, 8 * hud_grow(glgame));
     }
   }
 }
@@ -1462,14 +1524,15 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
           snprintf(join_hint, sizeof(join_hint),
                    "player %d press %s to join", next_seat,
                    pad_action_label_any(pad_action_or(PAD_NONE, PAD_ACT_PAUSE, PAD_ACT_FIRE)));
-          Typer::draw_centered(0, top_y, join_hint, 8);
+          Typer::draw_centered(0, top_y, join_hint, 8 * hud_grow(glgame));
         }
 #ifndef _GAMING_XBOX
         // Keyboard join hint — on Xbox the only join path is a second
         // controller, and Enter only ever joins the P2 seat (FOURPLAYER.md
         // D3: P3/P4 are controller-first).
         else if(!is_steam_gamemode() && next_seat == 2)
-          Typer::draw_centered(0, top_y, "player 2 press enter to join", 8);
+          Typer::draw_centered(0, top_y, "player 2 press enter to join",
+                               8 * hud_grow(glgame));
 #endif
       }
     } else {
@@ -1528,7 +1591,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
      (glgame->current_time)/12000 % 2) {
     char hint[48];
     key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
-    Typer::draw_centered(0, -vh + 85, hint, 8);
+    Typer::draw_centered(0, bottom_hint_y(glgame), hint, 8 * hud_grow(glgame));
   }
   // Boost discoverability (first-use hint): boost is the least-found
   // control in the game, so until the pilot has boosted ONCE (ever —
@@ -1555,7 +1618,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         hint[0] = '\0';
     }
     if(hint[0] != '\0')
-      Typer::draw_centered(0, -vh + 85, hint, 8);
+      Typer::draw_centered(0, bottom_hint_y(glgame), hint, 8 * hud_grow(glgame));
   }
   if(!glgame->running && glship->show_help) {
     // An awaiting seat's pad just DROPPED — on a pad-only device (Steam
@@ -1570,7 +1633,8 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     const char* unpause = glship->awaiting_pad()   ? "reconnect controller to resume"
                         : glship->has_controller() ? pad_unpause
                                                    : "press p to resume";
-    Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
+    Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause,
+                         8 * hud_grow(glgame));
   }
 
   // Touch: exit affordance — the bottom strip is a tap band

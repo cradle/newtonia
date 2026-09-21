@@ -1686,3 +1686,21 @@ void GLShip::draw_missiles() const {
   }
 }
 
+
+// Bit order is the action vocabulary in web/main.ts. Read the actual bound
+// keys, including alternates and remaps, not another copy of the defaults.
+// TEST-SLICE-BEGIN: analytics_ship
+int GLShip::control_analytics(unsigned char key) const {
+  int mask = 0;
+  if (thrust_key.matches(key) || reverse_key.matches(key) ||
+      left_key.matches(key) || right_key.matches(key)) mask |= 1;
+  if (shoot_key.matches(key)) mask |= 2;
+  if (mine_key.matches(key)) mask |= 4;
+  if (boost_key.matches(key)) mask |= 8;
+  if (teleport_key.matches(key)) mask |= 16;
+  if (next_weapon_key.matches(key) || next_secondary_key.matches(key)) mask |= 64;
+  if (zoom_in_key.matches(key) || zoom_out_key.matches(key) ||
+      toggle_rotate_view_key.matches(key)) mask |= 128;
+  return mask;
+}
+// TEST-SLICE-END: analytics_ship

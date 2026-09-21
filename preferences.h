@@ -210,6 +210,16 @@ struct Preferences {
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;
     float star_density       = 1.0f;   // star-count multiplier; user-editable in INI
+    // HUD SIZE (Options, desktop list): a multiplier on the in-game HUD
+    // text — LEVEL, score, lives, the weapons list, the countdowns and the
+    // bottom hint row — for big or far-away screens (field, 2026-09-18: a
+    // 4K display, where the classic sizes read too small). 1 = the classic
+    // size, the floor; Overlay::hud_fit caps the effective value per
+    // viewport so the top row still fits, and the touch layout ignores it
+    // (its buttons are placed off the classic HUD stack). User-editable
+    // in the INI, 1..1.75 (the Options steps' range; out of range keeps
+    // the default).
+    float hud_scale          = 1.0f;
     // AUDIO sub-menu (Options): overall mixer level, and the music level
     // relative to it (title stream + the intro/pause tune loops — see
     // audio_volume.h for what each covers). 0..1; both default full, the

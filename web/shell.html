@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 
   <!-- Google Analytics (GA4) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-03BDC6CK12"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-03BDC6CK12" onload="window.newtoniaAnalyticsReady = true; window.dispatchEvent(new Event('newtonia-analytics-ready'))"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
@@ -139,11 +139,18 @@
 
     @media (pointer: coarse) {
       #touch-controls { display: block; }
-      /* Hover doesn't fire reliably on touch devices, so always show the controls bar */
+      /* Hover doesn't fire reliably on touch devices, so always show the controls bar.
+         It also has to stack ABOVE #touch-controls: the menu tap overlay and the
+         joystick zone are later siblings that paint over it and cancel the touch,
+         so the mute/fullscreen buttons could never be tapped on a touch screen
+         (Edge 153 + Chromium, 2026-09-18). Only the buttons take pointer events,
+         so the empty strip still passes touches through to the joystick. */
       #controls-bar {
         opacity: 1;
-        pointer-events: auto;
+        pointer-events: none;
+        z-index: 10;
       }
+      #controls-bar .ctrl-btn { pointer-events: auto; }
     }
 
     /* Analog joystick rings — positioned in JS */

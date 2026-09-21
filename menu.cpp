@@ -49,6 +49,18 @@ static const float STAR_DENSITY_MULTIPLIERS[] = {0.1f, 0.25f, 0.5f, 0.75f, 1.0f}
 static const char* STAR_DENSITY_LABELS[] = {"MINIMAL", "SPARSE", "MEDIUM", "MANY", "FULL"};
 static const int NUM_STAR_DENSITY = 5;
 
+// HUD SIZE (Preferences::hud_scale): the in-game HUD text multiplier, for
+// big or far-away screens. Index 0 is the classic size and the FLOOR — the
+// layouts were drawn for it and nobody asked for smaller. 1.75 is the top
+// because it is the last step at which a full-width 16:9 viewport's
+// weapons list (secondary row + NEXT chip) stays clear of the CLEARED
+// banner's corner; a 2x step reached into it. Overlay::hud_grow caps the
+// effective value per viewport on top of that, so on a 2P strip LARGEST
+// reads "as large as this layout holds" (1.24 at 16:9), not 1.75.
+static const float HUD_SIZE_VALUES[] = {1.0f, 1.25f, 1.5f, 1.75f};
+static const char* HUD_SIZE_LABELS[] = {"NORMAL", "LARGE", "LARGER", "LARGEST"};
+static const int NUM_HUD_SIZE = 4;
+
 // The AUDIO sub-menu's volume steps (Preferences::master_volume /
 // music_volume, pushed onto the mixer by AudioVolume::apply). Step 1 is a
 // true OFF — 0 silences outright, it does not merely duck.
@@ -122,7 +134,10 @@ static const int NUM_LEADERBOARD = 2;
 // blow the flat list's budget, the same reason AUDIO went a level down);
 // 10=zoom, 11=speed-follow zoom (CAMERA sub-menu rows); 12=touch input
 // method, 13=one-hand handedness (touch list only — see INPUT_LABELS /
-// HANDEDNESS_LABELS above). P2 rows are
+// HANDEDNESS_LABELS above); 14=HUD size (desktop list only: the touch
+// layout places its pause circle off the classic HUD stack, so the HUD
+// there stays at the size the OSD was laid out for — Overlay::hud_grow
+// ignores the pref in touch mode). P2 rows are
 // desktop-only — mobile (touch) shows Player 1 plus the shared options.
 // Options is desktop/controller-only today (see Menu::show_options_row),
 // so the touch list is future-proofing.
@@ -134,6 +149,7 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 3, "P4  SENSITIVITY"},
   {9, 0, "CAMERA"},
   {3, 0, "STAR  DENSITY"},
+  {14, 0, "HUD  SIZE"},
   {8, 0, "AUDIO"},
   {4, 0, "RECORD  REPLAYS"},
   // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
@@ -390,6 +406,8 @@ Menu::Menu() :
   }
   star_density_index_   = nearest_value_index(g_prefs.star_density,
                                               STAR_DENSITY_MULTIPLIERS, NUM_STAR_DENSITY);
+  hud_size_index_       = nearest_value_index(g_prefs.hud_scale,
+                                              HUD_SIZE_VALUES, NUM_HUD_SIZE);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   input_index_          = g_prefs.touch_one_hand ? 1 : 0;
@@ -866,6 +884,7 @@ void Menu::draw() {
         case 11: num_steps = NUM_SPEED_ZOOM;  cur_idx = speed_zoom_index_[r.player];  lbl = SPEED_ZOOM_LABELS;    break;
         case 12: num_steps = NUM_INPUT;       cur_idx = input_index_;                 lbl = INPUT_LABELS;         break;
         case 13: num_steps = NUM_HANDEDNESS;  cur_idx = handedness_index_;            lbl = HANDEDNESS_LABELS;    break;
+        case 14: num_steps = NUM_HUD_SIZE;    cur_idx = hud_size_index_;              lbl = HUD_SIZE_LABELS;      break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -2295,6 +2314,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 11: idx = &speed_zoom_index_[r.player]; num = NUM_SPEED_ZOOM;   break;
     case 12: idx = &input_index_;                num = NUM_INPUT;        break;
     case 13: idx = &handedness_index_;           num = NUM_HANDEDNESS;   break;
+    case 14: idx = &hud_size_index_;             num = NUM_HUD_SIZE;     break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2326,6 +2346,7 @@ void Menu::close_options() {
     g_prefs.player_keys[i].speed_zoom           = SPEED_ZOOM_VALUES[speed_zoom_index_[i]];
   }
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
+  g_prefs.hud_scale                    = HUD_SIZE_VALUES[hud_size_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
