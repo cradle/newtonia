@@ -43,7 +43,7 @@ static const int   ALIGN_HOLD_MS      = 150;
 static const int   PRACTICE_ROCKS     = 3;
 static const int   PRACTICE_KILLS     = 3;
 static const float CRATE_DIST         = 260.0f;
-static const int   FLASH_MS           = 900;
+static const int   FLASH_MS           = 700;   // steady GOOD after a step
 // Every death costs a respawn, never the tutorial: topped up each tick to
 // the Ship ctor's own 4, so the lives row looks exactly as it will in play.
 static const int   TUTORIAL_LIVES     = 4;
@@ -707,7 +707,9 @@ void Tutorial::draw(const GLGame &g) const {
     }
     draw_card(H - 150, bottom, w);
   }
-  if (flash_ms_ > 0 && (flash_ms_ / 150) % 2 == 0)
+  // A steady GOOD for the flash, then the next title: alternating the
+  // two every 150 ms read as a flicker (field, 2026-09-21).
+  if (flash_ms_ > 0)
     Typer::draw_centered(0, H - 150, "GOOD", 18);
   else
     Typer::draw_centered(0, H - 150, title.c_str(), 18);
