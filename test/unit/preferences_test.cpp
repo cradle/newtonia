@@ -71,9 +71,11 @@ int main() {
     assert(g_prefs.touch_one_hand);
     assert(g_prefs.touch_handedness == 2);
     assert(!g_prefs.touch_help_done);  // the first game still shows the card
+    assert(!g_prefs.tutorial_done);
     std::string ini = contents(dir + "preferences.ini");
     assert(ini.find("touch_one_hand=1\n") != std::string::npos);
     assert(ini.find("touch_handedness=2\n") != std::string::npos);
+    assert(ini.find("tutorial_done=0\n") != std::string::npos);
     // The install now looks old on every later launch, whatever play
     // leaves beside the INI — and reads back as the layout it chose.
     touch(dir + "stats.dat");
@@ -82,6 +84,11 @@ int main() {
     assert(!preferences_first_launch());
     assert(g_prefs.touch_one_hand);
     assert(g_prefs.touch_handedness == 2);
+    assert(!g_prefs.tutorial_done); // pending tutorial survives a restart
+    g_prefs.tutorial_done = true;
+    save_preferences();
+    load_preferences();
+    assert(g_prefs.tutorial_done);
   }
 
   // 2. No INI, but play left a file behind (a mobile install that never
@@ -97,6 +104,7 @@ int main() {
       assert(!preferences_first_launch());
       assert(!g_prefs.touch_one_hand);
       assert(g_prefs.touch_handedness == 1);
+      assert(g_prefs.tutorial_done);
       assert(!exists(dir + "preferences.ini"));
     }
     // The replays DIRECTORY counts too.
@@ -106,6 +114,7 @@ int main() {
     assert(!preferences_first_launch());
     assert(!g_prefs.touch_one_hand);
     assert(!exists(dir + "preferences.ini"));
+    assert(g_prefs.tutorial_done);
   }
 
   // 3. An INI from a build that predates the keys: the layout that INI was
@@ -118,6 +127,7 @@ int main() {
     assert(!g_prefs.touch_one_hand);
     assert(g_prefs.touch_handedness == 1);
     assert(!g_prefs.fullscreen);
+    assert(g_prefs.tutorial_done);
     assert(contents(dir + "preferences.ini") == "fullscreen=0\nstar_density=0.50\n");
   }
 

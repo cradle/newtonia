@@ -170,6 +170,17 @@ struct Preferences {
     // from any input path and saves. Roams with the INI; old builds
     // ignore the unknown key.
     bool boost_hint_done     = false;
+    // The first-time pilot's tutorial (tutorial.h): while false the main
+    // menu is the new-player START SCREEN — TUTORIAL / PLAY / OPTIONS, no
+    // stats, replays, leaderboard or online rows (Menu::new_player_) —
+    // and either finishing the tutorial, flying into its skip beacon, or
+    // picking PLAY latches this true for good. STRUCT default TRUE: an
+    // INI without the key belongs to an install that has already played
+    // (the old-install rule every new key follows here), so a veteran is
+    // never sent back to school by an upgrade; a NEW install starts false
+    // (first_launch_defaults). NEWTONIA_TUTORIAL=0/1 overrides the menu's
+    // reading of it (test drivers, screenshots) without touching the file.
+    bool tutorial_done       = true;
     // Auto-record replays (REPLAY.md). Default ON since 2026-07-28: the
     // low-end field pass cleared the recorder on real hardware across all
     // four axes (Moto E14 for CPU/RAM/lifecycle, Moto G05 for storage

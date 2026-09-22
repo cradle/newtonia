@@ -73,6 +73,10 @@ private:
   // honest answer on a fresh install.
   bool show_stats_row() const { return true; }
   int  stats_row_index() const;    // -1 when hidden
+  // The HIGH SCORE block under the rows: only with a score to show, and
+  // never on the new-player start screen (stat-free by design; the
+  // tutorial nudge sits in its slot).
+  bool show_high_score() const { return high_score > 0 && !new_player_; }
   // Structured board-screen geometry (one definition for draw AND taps):
   // a compact control pair up top, a fixed-pitch score table under column
   // headers, the UPLOAD action and status footer anchored at the bottom —
@@ -125,6 +129,12 @@ private:
   int currentTime;
   int high_score;
   bool has_save_ = false;
+  // The new-player START SCREEN (tutorial.h): while the tutorial has not
+  // been done or skipped — and no save exists — the menu is three rows,
+  // TUTORIAL / PLAY / OPTIONS, and nothing else (no stats, replays,
+  // leaderboard or online). Decided in the ctor from
+  // Preferences::tutorial_done, NEWTONIA_TUTORIAL=0/1 overriding.
+  bool new_player_ = false;
   bool has_net_resume_ = false;      // RESUME HOSTING row shown
   bool net_resume_scanned_ = false;  // ticket checked (first tick, not ctor)
   std::string net_resume_code_;      // its room code, for the row label

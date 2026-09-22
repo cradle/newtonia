@@ -27,6 +27,7 @@
 #include "glstarfield.h"
 #include "wrapped_point.h"
 #include "intro.h"
+#include "tutorial.h"
 #include "menu.h"
 #include "menu_select.h"
 #include "net_lobby.h"
@@ -241,7 +242,7 @@ static Pickup *make_pickup(const Save::Pickup &sp) {
 // world — generous by design, it is the fallen player's only way back.
 const float GLGame::revive_pickup_drop_chance = 0.1f;
 
-GLGame::GLGame(PadId controller, bool allow_dev_players) :
+GLGame::GLGame(PadId controller, bool allow_dev_players, bool tutorial) :
   State(),
   world(Point(default_world_width, default_world_height)),
   current_time(0),
@@ -253,6 +254,13 @@ GLGame::GLGame(PadId controller, bool allow_dev_players) :
   game_over_time(-1),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
+  // The tutorial flag must be up before anything below asks in_tutorial():
+  // add_asteroids leaves its field empty, the dev spawn hooks stand down,
+  // and the lifetime GAMES PLAYED count is skipped.
+  if (tutorial) {
+    tutorial_ = new Tutorial();
+    SDL_Log("tutorial: started - empty field");
+  }
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -286,7 +294,8 @@ GLGame::GLGame(PadId controller, bool allow_dev_players) :
   bool dev_start = false;
   {
     const char *sg = SDL_getenv("NEWTONIA_START_GENERATION");
-    if (sg != NULL && is_beta_feature_enabled() && atoi(sg) > 0) {
+    if (sg != NULL && is_beta_feature_enabled() && atoi(sg) > 0 &&
+        !tutorial_) {
       dev_start = true;
       generation = atoi(sg);
       // Replicate the per-generation growth: +50 each rebuild, +3000 at 14.
@@ -310,6 +319,12 @@ GLGame::GLGame(PadId controller, bool allow_dev_players) :
   // A new game begins legitimately: lift any XR-057 suppression left over
   // from a previous game's cheat keys.
   Achievements::new_game_started();
+  // The tutorial is practice, not a run: nothing it does may bank an
+  // achievement or a lifetime counter (the same suppression latch the
+  // cheat keys use — every Stats/unlock site already honours it, so no
+  // second gate is needed at those sites). Before the GAMES PLAYED count
+  // below, which reads the latch.
+  if (tutorial_) Achievements::note_cheat_used();
   // A new run gets a fresh id (rides the savegame + replay header so a
   // resume continues the same recording — REPLAY.md run-scoping).
   run_id_ = Replay::new_run_id();
@@ -436,7 +451,7 @@ GLGame::GLGame(PadId controller, bool allow_dev_players) :
   // NEWTONIA_START_GENERATION above, and marked as a cheat like it — the
   // ship is a free bounty).
   if (SDL_getenv("NEWTONIA_TEST_BOMBER") != NULL && is_beta_feature_enabled() &&
-      !players->empty()) {
+      !players->empty() && !tutorial_) {
     GLShip *p1 = players->front();
     GLEnemy *b = new GLEnemy(grid, p1->ship->position.x() + 600.0f,
                              p1->ship->position.y(), players, 1,
@@ -458,7 +473,7 @@ GLGame::GLGame(PadId controller, bool allow_dev_players) :
   {
     const char *ts = SDL_getenv("NEWTONIA_TEST_STATION");
     if (ts != NULL && is_beta_feature_enabled() && station == NULL &&
-        !players->empty()) {
+        !players->empty() && !tutorial_) {
       int g = atoi(ts);
       if (g <= 1) g = 19;
       station = new GLStation(grid, enemies, players,
@@ -656,6 +671,7 @@ GLGame::~GLGame() {
   // Any in-flight leaderboard qualify/upload is abandoned with the state —
   // harmless by design (the worker's per-connection state dies with the
   // socket, and a half-sent submit is simply never finalized).
+  delete tutorial_;
   delete board_;
   board_ = nullptr;
   delete replay_reader_;  // playback mode (R2); null otherwise
@@ -996,6 +1012,10 @@ GLGame::GLGame(const Save::GameState &save, PadId controller) :
 }
 
 void GLGame::save_progress() {
+  // The tutorial never touches savegame.dat — neither writes it nor, at
+  // its (unreachable) game over, deletes a real run's file. Stats are
+  // already frozen by the ctor's suppression latch.
+  if (tutorial_) return;
   Stats::flush();  // lifetime stats persist regardless of campaign-save eligibility
   // Online play never touches the local solo save (see NETPLAY.md): the
   // hosted world is not the solo game, and the game-over delete below
@@ -1142,6 +1162,11 @@ Save::GameState GLGame::build_save_data(bool include_asteroids) const {
 }
 
 void GLGame::add_asteroids() {
+  // The tutorial flies an EMPTY field (decided 2026-09-18): its three
+  // stationary practice rocks arrive with the FIRE step (tutorial.cpp),
+  // and the level-clear machinery is gated off so their loss never rolls
+  // a generation.
+  if (tutorial_) return;
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
     objects->push_back(new Asteroid(false));
     if(generation > 0) objects->push_front(new Asteroid(true));
@@ -1281,6 +1306,7 @@ void GLGame::maybe_start_intro() {
   // AND the input from the card (the leaderboard prompt's YES landed on
   // "PRESS FIRE TO START"; caught by the e2e's time-cheated S5).
   if (game_over) return;
+  if (tutorial_) return;  // the tutorial never leaves generation 0
   const char *name = NULL;
   std::vector<Asteroid *> display;
   Intro::Kind kind = Intro::ASTEROID;
@@ -1544,6 +1570,7 @@ bool GLGame::roster_available() const {
   // screen's MANAGE PLAYERS band and drawn as tap blocks (the touch pass:
   // a phone host had no way to remove anyone); the offline re-binding
   // half stays a cursor idea (one local touch player by construction).
+  if (tutorial_) return false;  // one pilot's lesson: no seats to arrange
   if (is_touch_mode()) return net_mode_ == NetHost;
   return net_mode_ == NetOff || net_mode_ == NetHost;
 }
@@ -1945,6 +1972,7 @@ bool GLGame::pad_may_command(PadId which) const {
 // set only decides which of the player's LAYOUT bindings apply.
 PadActionSet GLGame::pad_action_set() const {
   if (!running) return PAD_SET_MENU;
+  if (tutorial_ && tutorial_->owns_input()) return PAD_SET_MENU;
   if (all_players_out()) return PAD_SET_MENU;
   if (net_card_owns_input()) return PAD_SET_MENU;
   return PAD_SET_SHIP;
@@ -5227,6 +5255,7 @@ void GLGame::replay_finish(bool ended) {
 // abandonable — the GAME OVER card never waits on the network.
 void GLGame::board_maybe_start() {
   if (net_mode_ == NetReplay) return;
+  if (tutorial_) return;  // a practice score is not a best
   // Consume the one-shot promotion flag unconditionally (so it can't leak
   // into a later game over), THEN decide whether to prompt: only on a
   // build that can actually pass the worker's attestation requirement —
@@ -9017,7 +9046,9 @@ void GLGame::tick(int delta) {
   // (replay_start branches on the mode); playback never does.
   if (!replay_tried_) {
     replay_tried_ = true;
-    if (net_mode_ != NetReplay && !game_over) replay_start();
+    // No recording of the tutorial: it would rotate the pilot's real
+    // CURRENT RUN slot for a lesson nobody wants to watch back.
+    if (net_mode_ != NetReplay && !game_over && !tutorial_) replay_start();
   }
   // First one-hand game on this install: the gestures are invisible, so
   // the touch controls card shows itself once, pausing the game under it
@@ -9028,8 +9059,10 @@ void GLGame::tick(int delta) {
   // mid-card.
   if (!touch_help_tried_) {
     touch_help_tried_ = true;
+    // ...and not in the tutorial: two teaching layers at once would
+    // fight, and the card keeps its first-game showing for the real game.
     if (is_touch_mode() && touch_one_handed() && !g_prefs.touch_help_done &&
-        net_mode_ == NetOff && !game_over && running) {
+        net_mode_ == NetOff && !game_over && running && !tutorial_) {
       g_prefs.touch_help_done = true;
       save_preferences();
       touch_help_open(true);
@@ -9538,6 +9571,18 @@ void GLGame::tick(int delta) {
     return;
   }
 
+  // The tutorial's step machine, then its CAMERA prompt's freeze: while
+  // the prompt is up the sim holds exactly as a pause holds it (no steps,
+  // no scheduler catch-up afterwards), without the pause chrome or tune.
+  if (tutorial_) {
+    tutorial_->tick(*this, delta);
+    if (is_finished()) return;  // finish(): the first real game is next
+    if (tutorial_->owns_input()) {
+      last_tick += delta;
+      return;
+    }
+  }
+
   save_dirty_ = true;  // the sim advances below; the save on disk is stale
 
   time_until_next_step -= delta;
@@ -9550,7 +9595,9 @@ void GLGame::tick(int delta) {
   for(auto* h : *hazards)
     if(h->is_alive()) { hazards_pending = true; break; }
 
-  if(Asteroid::num_killable == 0 && !hazards_pending) {
+  // Never in the tutorial: its field is empty by design, and the practice
+  // rocks' loss must not start the clear countdown or roll a generation.
+  if(Asteroid::num_killable == 0 && !hazards_pending && !tutorial_) {
     if(!level_cleared) {
       // A client kill-claim (PROTO 13) is applied in net_host_poll —
       // BEFORE this check — but the killed asteroid's breakup runs in the
@@ -10848,7 +10895,9 @@ void GLGame::tick(int delta) {
         (time_slow_active() ? kTimeSlowFactor : 1);
   }
   /* Save high score automatically on game over */
-  if (!game_over && !players->empty()) {
+  // (Unreachable in the tutorial — lives are topped up each tick — but a
+  // practice score must never reach highscore.dat or the leaderboard.)
+  if (!game_over && !players->empty() && !tutorial_) {
     bool all_game_over = true;
     for (auto* glship : *players) {
       if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -10893,7 +10942,8 @@ void GLGame::tick(int delta) {
   }
 
   /* Save on death while lives remain (once per death window) */
-  if (!game_over && net_mode_ == NetOff && !players->empty()) {
+  // (The tutorial's respawns never write: nothing of it belongs on disk.)
+  if (!game_over && net_mode_ == NetOff && !players->empty() && !tutorial_) {
     bool any_dead_with_lives = false;
     bool any_dead_no_lives   = false;
     for (auto* glship : *players) {
@@ -11164,6 +11214,9 @@ void GLGame::draw_objects(float direction, bool minimap,
     }
     (*pi)->draw(direction);
   }
+  // The tutorial's beacons: world objects like the pickups, under the
+  // ships (the ship flies over the ring it is aiming at).
+  if(!minimap && tutorial_) tutorial_->draw_world(*this);
 
   std::list<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {
@@ -11238,6 +11291,7 @@ void GLGame::draw(void) {
   Overlay::paused(this);
   Overlay::seat_roster(this);  // replaces the pause menu while it is open
   Overlay::touch_help(this);   // the touch controls card, over everything
+  if (tutorial_) tutorial_->draw(*this);  // the step banner / CAMERA prompt
   // Leaderboard prompt/upload/result — its own full-window overlay so the
   // OFFLINE game-over card gets it too (the primary solo case). No-op
   // unless a board flow is live (LEADERBOARD.md).
@@ -12042,6 +12096,25 @@ void GLGame::controller(SDL_Event event) {
     return;
   }
 
+  // The tutorial's CAMERA prompt owns the pad: dpad/stick move, A
+  // confirms, B keeps (the keyboard twin above); everything else —
+  // including the trigger, which is fire in play — is swallowed.
+  if (running && tutorial_ && tutorial_->owns_input()) {
+    if (event.type == SDL_CONTROLLERBUTTONDOWN ||
+        event.type == SDL_CONTROLLERAXISMOTION) {
+      PadId which = event.type == SDL_CONTROLLERBUTTONDOWN
+                        ? event.cbutton.which : event.caxis.which;
+      if (!pad_may_command(which)) return;
+      unsigned char nav = nav_key_from_controller(event);
+      if (MenuSelect::is_up(nav) || MenuSelect::is_down(nav) ||
+          MenuSelect::is_back(nav) ||
+          (MenuSelect::is_confirm(nav) &&
+           event.type == SDL_CONTROLLERBUTTONDOWN))
+        tutorial_->nav(*this, nav);
+    }
+    return;
+  }
+
   // Paused with the menu up: dpad and left stick move the highlight, A
   // confirms — but only from a pad that is already playing, so an unknown
   // pad's A still joins player 2 through the ladder below. START (toggle
@@ -12118,7 +12191,8 @@ void GLGame::controller(SDL_Event event) {
         } else {
           toggle_pause(true, true);
         }
-      } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
+      } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff &&
+                !tutorial_) {
         if(pad_attached(event.cbutton.which))
           add_local_player(event.cbutton.which, /*with_keys=*/false);
       }
@@ -12153,7 +12227,8 @@ void GLGame::controller(SDL_Event event) {
           }
           return;
         }
-      } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
+      } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff &&
+                !tutorial_) {
         if(pad_attached(event.cbutton.which))
           add_local_player(event.cbutton.which, /*with_keys=*/false);
       }
@@ -12267,6 +12342,7 @@ bool GLGame::touch_zoom_active() const {
   // The help card owns the screen — this also turns the one-hand
   // tap-fire gate off under it (one_hand_ingame mirrors this predicate).
   if (touch_help_active_) return false;
+  if (tutorial_ && tutorial_->owns_input()) return false;
   return local_player() != NULL;
 }
 
@@ -12300,6 +12376,8 @@ void GLGame::touch_tap(float nx, float ny) {
       touch_help_close();
     return;
   }
+  // The tutorial's CAMERA prompt: its two bands, every other tap inert.
+  if (running && tutorial_ && tutorial_->touch_tap(*this, nx, ny)) return;
   // Leaderboard prompt on the GAME OVER card: a tap on the EXIT TO MENU
   // band still LEAVES (it is drawn under the prompt), and only taps
   // elsewhere answer YES (left half) / NO (right half) — the New-game
@@ -12918,10 +12996,14 @@ int GLGame::spectate_countdown_secs() const {
 
 void GLGame::touch_joystick(float nx, float ny) {
   if(!running || players->empty() || net_mode_ == NetReplay) return;
+  if (tutorial_ && tutorial_->owns_input()) return;
   local_player()->touch_joystick_input(nx, ny);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
+  // A fresh press ends a consumed tutorial tap's release guard, including
+  // when a layout change discarded the finger before its legacy key-up.
+  if (tutorial_) tutorial_->key_down(nav_key(key), running);
   // Board prompt/upload owns input on key-DOWN: record which nav keys were
   // actually PRESSED while the prompt is up, so keyboard_up can tell a
   // fresh press from a gameplay key released into the prompt (see there),
@@ -12951,6 +13033,10 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
   // Replay ghosts take no input — the records drive them.
   if (net_mode_ == NetReplay)
     return;
+  // The tutorial's CAMERA prompt owns the keys (keyboard_up answers it).
+  if (tutorial_ && tutorial_->owns_input()) {
+    return;
+  }
 
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
@@ -12960,6 +13046,9 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
+  // touch_tap runs before the legacy release. The final HAND choice may
+  // have closed the prompt; its centre-zone P must not pause LAUNCH.
+  if (tutorial_ && tutorial_->consume_touch_release()) return;
 
   if (net_card_owns_input()) {
     // Once the auto-rejoin has constructed its lobby the hand-off is
@@ -13037,6 +13126,21 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   // answered. touch_tap closes it; Esc (and Android back) does too.
   if (touch_help_active_) {
     if (key == (unsigned char)gk.menu) touch_help_close();
+    return;
+  }
+
+  // The tutorial's CAMERA prompt: w/s move, confirm picks, Esc keeps —
+  // the pause menu's ladder shape; nothing else acts under it.
+  if (running && tutorial_ && tutorial_->owns_input()) {
+    tutorial_->key_up(*this, nav_key(key));
+    return;
+  }
+  // Dev/test hook: the skip-level key advances one tutorial step (beta
+  // builds — the e2e driver walks the machine with it). Ahead of the
+  // real skip-level cheat below, which has no level to skip here.
+  if (tutorial_ && key == (unsigned char)gk.skip_level &&
+      is_beta_feature_enabled()) {
+    tutorial_->skip_step(*this);
     return;
   }
 
@@ -13126,7 +13230,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 #if !defined(__ANDROID__) && !defined(__IOS__)
   // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
   // controller-first, and the keyboard has no third layout to hand out.
-  if (key == (unsigned char)gk.add_player2 && players->size() < 2)
+  if (key == (unsigned char)gk.add_player2 && players->size() < 2 &&
+      !tutorial_)  // one pilot's lesson: no joins
     add_local_player(PAD_NONE, /*with_keys=*/true);
 #endif
   // A live board prompt/upload OWNS all game-over input, including the menu

@@ -10,6 +10,7 @@
 #include "../glship.h"
 #include "../pad_style.h"
 #include "../glgame.h"
+#include "../tutorial.h"
 #include "../typer.h"
 #include "../ship.h"
 #include "../touch_controls.h"
@@ -1224,6 +1225,10 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
   if(!glship->ship->is_alive() && glship->ship->lives <= 0 &&
      (glgame->net_active() || glgame->board_phase_ != GLGame::BoardOff))
     return;
+  // And under a tutorial prompt (the touch INPUT question opens on the
+  // first life): the frozen ship's READY printed straight through the
+  // card, centre-screen where both draw.
+  if (glgame->tutorial_ && glgame->tutorial_->owns_input()) return;
   if(glgame->running && !glship->show_help) {
     float saved[16]; gles2_get_mvp(saved);
     float vp[16]; mat4_scale(vp, saved, 20.0f, 20.0f, 1.0f);
@@ -1503,7 +1508,9 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // every strip (field, 2026-08-11) — anchored to the window's height, which
   // on a 2x2 grid is above the cell entirely.
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
-  if((int)glgame->players->size() < LOCAL_PLAYER_CAP) {
+  // No join offer in the tutorial: it is one pilot's lesson (the join
+  // paths are gated too), and the banner owns the top of the screen.
+  if((int)glgame->players->size() < LOCAL_PLAYER_CAP && !glgame->in_tutorial()) {
     // -40 (not -10): a real margin inside the title-safe edge, matching the
     // bottom-row hints (Xbox compliance) — pulled down further by the
     // cutout inset so this row stays aligned with the LEVEL/score/weapons

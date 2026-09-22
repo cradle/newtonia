@@ -937,6 +937,8 @@ static std::string key_label(int key) {
   return buf;
 }
 
+std::string GLShip::key_name(int key) { return key_label(key); }
+
 // Label a full binding: primary, plus "/ALT" when an alternate is bound
 // (e.g. "W/UP" for thrust with its arrow alias).
 static std::string binding_label(const KeyBinding &b) {

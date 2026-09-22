@@ -27,7 +27,9 @@ SHARDS="solo-replay solo-misc leaderboard lobby-and-lan netplay-core netplay-res
 shard_drivers() {
   case "$1" in
     join-links) echo "join_link_scenarios" ;;
-    solo-replay)  echo "replay_keyframe replay_menu fourplayer replay replay_playback" ;;
+    # tutorial.sh (the new-player start screen + tutorial) is solo and
+    # never touches wrangler, so it rides the one shard that skips it.
+    solo-replay)  echo "replay_keyframe replay_menu fourplayer replay replay_playback tutorial" ;;
     solo-misc)    echo "lan replay_failures video identity_attested identity_tick" ;;
     # leaderboard.sh alone: it stands up its own board worker and plays six
     # scenarios through it, two of them needing a dedicated worker of their

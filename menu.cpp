@@ -415,6 +415,15 @@ Menu::Menu() :
   master_volume_index_  = nearest_value_index(g_prefs.master_volume, VOLUME_VALUES, NUM_VOLUME);
   music_volume_index_   = nearest_value_index(g_prefs.music_volume, VOLUME_VALUES, NUM_VOLUME);
   scan_replays();
+  // New-player start screen (menu.h): the tutorial latch, unless a save
+  // says this pilot has flown, or the env override says otherwise
+  // (NEWTONIA_TUTORIAL=0: the e2e drivers' classic layout; =1: force the
+  // start screen for a screenshot or a re-run).
+  new_player_ = !g_prefs.tutorial_done && !has_save_;
+  if (const char *tv = SDL_getenv("NEWTONIA_TUTORIAL")) {
+    if (tv[0] == '0') new_player_ = false;
+    else if (tv[0] == '1') new_player_ = true;
+  }
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
@@ -1037,9 +1046,12 @@ void Menu::draw() {
         currentTime);
   } else {
     Typer::draw_centered(0, menu_title_y(), "Newtonia", 80);
-    if (high_score > 0) {
+    if (show_high_score()) {
       // Below the row band, above the copyright (portrait-aware anchors —
-      // touch sits a little lower, its row band being taller).
+      // touch sits a little lower, its row band being taller). Not on the
+      // start screen: a stat-free screen by design, and the tutorial
+      // nudge takes this slot (a kept highscore.dat beside a fresh INI
+      // used to draw both on top of each other).
       Typer::draw_centered(0, menu_high_score_y(), "HIGH SCORE", 14);
       Typer::draw_centered(0, menu_high_score_num_y(), high_score, 18);
     }
@@ -1093,19 +1105,31 @@ void Menu::draw() {
       }
     } else {
       std::vector<std::string> rows;
-      if (has_net_resume_) rows.push_back("RESUME HOSTING " + net_resume_code_);
-      if (has_save_) rows.push_back("CONTINUE");
-      rows.push_back("NEW GAME");
-      if (show_online_row()) rows.push_back("ONLINE");
-      if (show_options_row()) rows.push_back("OPTIONS");
-      if (show_replays_row()) rows.push_back("REPLAYS");
-      if (show_board_row()) rows.push_back("LEADERBOARD");
-      if (show_stats_row()) rows.push_back("STATS");
-      draw_menu_rows(rows);
+      if (new_player_) {
+        // The start screen: three rows and a one-line nudge where the
+        // high score block would sit (a new pilot has none).
+        rows.push_back("TUTORIAL");
+        rows.push_back("PLAY");
+        rows.push_back("OPTIONS");
+        draw_menu_rows(rows);
+        Typer::draw_centered(0, menu_high_score_y(),
+                             "new here? try the tutorial",
+                             is_touch_mode() ? 10 : 8);
+      } else {
+        if (has_net_resume_) rows.push_back("RESUME HOSTING " + net_resume_code_);
+        if (has_save_) rows.push_back("CONTINUE");
+        rows.push_back("NEW GAME");
+        if (show_online_row()) rows.push_back("ONLINE");
+        if (show_options_row()) rows.push_back("OPTIONS");
+        if (show_replays_row()) rows.push_back("REPLAYS");
+        if (show_board_row()) rows.push_back("LEADERBOARD");
+        if (show_stats_row()) rows.push_back("STATS");
+        draw_menu_rows(rows);
+      }
     }
   }
   if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_)
-    Typer::draw_centered(0, menu_copyright_y(high_score > 0),
+    Typer::draw_centered(0, menu_copyright_y(show_high_score()),
                          "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
@@ -1591,6 +1615,7 @@ int Menu::continue_row_index() const {
 }
 
 int Menu::max_menu_items() const {
+  if (new_player_) return 3;  // TUTORIAL / PLAY / OPTIONS
   int n = base_menu_rows();
   if (show_online_row()) n++;
   if (show_options_row()) n++;
@@ -1653,6 +1678,7 @@ int Menu::menu_row_at(float ny) const {
 }
 
 int Menu::online_row_index() const {
+  if (new_player_) return -1;
   if (!show_online_row()) return -1;
   return base_menu_rows();  // directly after NEW GAME
 }
@@ -1761,6 +1787,7 @@ void Menu::scan_replays() {
 }
 
 int Menu::options_row_index() const {
+  if (new_player_) return 2;  // the start screen's last row
   if (!show_options_row()) return -1;
   int i = base_menu_rows();
   if (show_online_row()) i++;
@@ -1768,6 +1795,7 @@ int Menu::options_row_index() const {
 }
 
 int Menu::replays_row_index() const {
+  if (new_player_) return -1;
   if (!show_replays_row()) return -1;
   int i = base_menu_rows();
   if (show_online_row()) i++;
@@ -1810,6 +1838,7 @@ static bool slot_is_upload_candidate(const std::string &path,
 }
 
 int Menu::board_row_index() const {
+  if (new_player_) return -1;
   if (!show_board_row()) return -1;
   int i = base_menu_rows();
   if (show_online_row()) i++;
@@ -1819,6 +1848,7 @@ int Menu::board_row_index() const {
 }
 
 int Menu::stats_row_index() const {
+  if (new_player_) return -1;
   if (!show_stats_row()) return -1;
   int i = base_menu_rows();
   if (show_online_row()) i++;
@@ -2349,6 +2379,7 @@ void Menu::close_options() {
 void Menu::scan_net_resume() {
   if (net_resume_scanned_) return;
   net_resume_scanned_ = true;
+  if (new_player_) return;  // a pilot who has never flown never hosted
   if (!show_online_row()) return;
   std::string code, token;
   long long age_ms = 0;
@@ -2374,6 +2405,22 @@ void Menu::decline_net_resume() {
 }
 
 void Menu::confirm_selection(PadId pad) {
+  if (new_player_) {
+    // The start screen: TUTORIAL (row 0) runs the walk-through, PLAY
+    // (row 1) is NEW GAME for a pilot who would rather learn by flying —
+    // and is the skip, so it latches the tutorial as done; OPTIONS (row
+    // 2) never reaches here (nav_input/touch_tap open it directly).
+    if (menu_selection == 1) {
+      g_prefs.tutorial_done = true;
+      save_preferences();
+    }
+#ifdef __EMSCRIPTEN__
+    EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
+    request_state_change(menu_selection == 0 ? GLGame::start_tutorial(pad)
+                                             : new GLGame(pad));
+    return;
+  }
   if (has_net_resume_ && menu_selection == 0) {
     // RESUME HOSTING: rebuild the hosted world from the online save and
     // hand it a game that reclaims the room and awaits the client's

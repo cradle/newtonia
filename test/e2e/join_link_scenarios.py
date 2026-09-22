@@ -80,8 +80,13 @@ class Game:
         self.name = name
         self.path = OUT / (name + '.log')
         self.file = self.path.open('w')
+        # A fresh profile is a NEW INSTALL, whose menu is the new-player
+        # start screen (tutorial.h), not the NEW GAME / ONLINE / OPTIONS
+        # layout host()/join() key in: read the pilot as tutorial-done,
+        # as lib.sh does for the shell drivers.
         config = dict(os.environ, SDL_AUDIODRIVER='dummy', NEWTONIA_NET_DEBUG='1',
                       NEWTONIA_SIGNAL_URL=URL, NEWTONIA_NET_TEST_SEATS='4',
+                      NEWTONIA_TUTORIAL='0',
                       XDG_DATA_HOME=str(OUT / ('profile-' + name)))
         config.update(env)
         previous = set(xdo("search", "--name", "Newtonia").stdout.split())
