@@ -81,6 +81,14 @@ paths and is a Linux CI gate. The e2e driver now checks both occurrences of
 the repeated camera calibration steps; preference tests cover tutorial
 migration and persistence.
 
+A second review of `dfc28ca7` reproduced a remaining touch release leak:
+the centre pause zone sends Enter down but P up. Choosing the final HAND
+row closed the card before P arrived, immediately pausing LAUNCH. A consumed
+prompt tap now swallows its trailing release across the step transition.
+A fresh key-down clears that guard so a layout change that discards the
+legacy release cannot swallow the next deliberate pause. Regression tests
+cover both cases and both touch layouts.
+
 ## Original coasting issue (addressed by review)
 
 On touch, FIRE now follows THRUST directly (no CAMERA freeze), so the

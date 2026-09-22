@@ -13001,6 +13001,9 @@ void GLGame::touch_joystick(float nx, float ny) {
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
+  // A fresh press ends a consumed tutorial tap's release guard, including
+  // when a layout change discarded the finger before its legacy key-up.
+  if (tutorial_) tutorial_->key_down(nav_key(key), running);
   // Board prompt/upload owns input on key-DOWN: record which nav keys were
   // actually PRESSED while the prompt is up, so keyboard_up can tell a
   // fresh press from a gameplay key released into the prompt (see there),
@@ -13032,7 +13035,6 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
     return;
   // The tutorial's CAMERA prompt owns the keys (keyboard_up answers it).
   if (tutorial_ && tutorial_->owns_input()) {
-    tutorial_->key_down(nav_key(key));
     return;
   }
 
@@ -13044,6 +13046,9 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
+  // touch_tap runs before the legacy release. The final HAND choice may
+  // have closed the prompt; its centre-zone P must not pause LAUNCH.
+  if (tutorial_ && tutorial_->consume_touch_release()) return;
 
   if (net_card_owns_input()) {
     // Once the auto-rejoin has constructed its lobby the hand-off is

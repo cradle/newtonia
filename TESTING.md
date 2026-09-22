@@ -1082,7 +1082,8 @@ test/e2e/replay_keyframe.sh # REPLAY.md keyframe ordering, via the in-binary
 bash test/unit/tutorial.sh # Real GLGame/Tutorial integration with an isolated
                      # netless build and pref dirs. SDL offscreen locally,
                      # Xvfb in linux.yml. Covers touch INPUT/HAND with the
-                     # native/web synthesized Enter release, outside-card
+                     # native/web synthesized Enter and P releases (including
+                     # after HAND closes), missing legacy releases, outside-card
                      # taps, both layouts, pause recovery, camera switches,
                      # coasting past practice targets, fresh BOOST/SECONDARY
                      # actions, save/stat preservation, controller ownership,

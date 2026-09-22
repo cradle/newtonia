@@ -489,6 +489,7 @@ void Tutorial::key_up(GLGame &g, unsigned char key) {
 bool Tutorial::touch_tap(GLGame &g, float nx, float ny) {
   if (!prompt_open_) return false;
   prompt_pressed_.clear();  // consume the finger's synthesized key release
+  touch_release_pending_ = true;
   int n = prompt_row_count();
   for (int i = 0; i < n; i++)
     if (prompt_row(i, n).contains(nx, ny)) { prompt_pick(g, i); break; }

@@ -24,12 +24,12 @@ static void press(GLGame &g, unsigned char key) {
   g.keyboard_up(key, 0, 0);
 }
 
-static void tap_row(GLGame &g, int index, int count) {
+static void tap_row(GLGame &g, int index, int count, unsigned char release = '\r') {
   TapBand row = Tutorial::prompt_row(index, count);
   // A real native/web tap: key-down, position, synthesized key-up.
   g.keyboard('\r', 0, 0);
   g.touch_tap(0.5f, 0.5f - (row.y - row.size) / (2 * Typer::scaled_window_height));
-  g.keyboard_up('\r', 0, 0);
+  g.keyboard_up(release, 0, 0);
 }
 
 static std::string contents(const std::string &path) {
@@ -51,6 +51,7 @@ int main(int argc, char **argv) {
   gles2_init();
   Typer::resize(800, 600);
   g_prefs.tutorial_done = false;
+  g_prefs.touch_handedness = 2;
   GLGame *g = GLGame::start_tutorial(PAD_NONE);
   g->resize(800, 600);
   Tutorial *t = g->tutorial_;
@@ -80,8 +81,26 @@ int main(int argc, char **argv) {
     g->touch_tap(0.5f, 0.02f); // outside the card must not confirm
     g->keyboard_up('\r', 0, 0);
     assert(t->step() == Tutorial::HAND);
-    tap_row(*g, 0, one ? 3 : 2);
+    // Native/web centre pause zones send Enter down but P up. Choosing
+    // HAND must consume that release even though the prompt just closed.
+    tap_row(*g, one ? 2 : 1, one ? 3 : 2, 'p');
+    assert(t->step() == Tutorial::LAUNCH && g_prefs.touch_handedness == 2);
+    assert(g->running);
+    // A subsequent deliberate pause still works.
+    g->keyboard('\r', 0, 0);
+    g->keyboard_up('p', 0, 0);
+    assert(!g->running);
+    press(*g, 'p');
+    assert(g->running);
+    // A tap may have no legacy release after changing the touch layout.
+    t->enter_step(*g, Tutorial::HAND);
+    TapBand left = Tutorial::prompt_row(0, one ? 3 : 2);
+    g->touch_tap(0.5f, 0.5f - (left.y - left.size) / (2 * Typer::scaled_window_height));
     assert(t->step() == Tutorial::LAUNCH && g_prefs.touch_handedness == 0);
+    press(*g, 'p');
+    assert(!g->running);
+    press(*g, 'p');
+    assert(g->running);
     ship->respawn(g->grid, false);
     t->tick(*g, 16);
     assert(t->step() == Tutorial::TURN);

@@ -79,8 +79,16 @@ public:
   // translator's output): up/down move, confirm picks, back = keep.
   void nav(GLGame &g, unsigned char key);
   // Keyboard confirms require a press begun on this card. A touch release
-  // may also synthesize Enter; touch_tap consumes that press first.
-  void key_down(unsigned char key) { prompt_pressed_.insert(key); }
+  // may synthesize Enter or P; consume it even if the tap closes the card.
+  void key_down(unsigned char key, bool running) {
+    touch_release_pending_ = false;
+    if (prompt_open_ && running) prompt_pressed_.insert(key);
+  }
+  bool consume_touch_release() {
+    bool pending = touch_release_pending_;
+    touch_release_pending_ = false;
+    return pending;
+  }
   void key_up(GLGame &g, unsigned char key);
   // Touch: the prompt's two bands. True when the tap was consumed.
   bool touch_tap(GLGame &g, float nx, float ny);
@@ -135,6 +143,7 @@ private:
   int thrust_ms_ = 0;
   // INPUT / HAND / CAMERA: the prompt.
   bool prompt_open_ = false;
+  bool touch_release_pending_ = false;
   std::set<unsigned char> prompt_pressed_;
   int prompt_sel_ = 0;      // INPUT: 0 = one hand, 1 = two; HAND: the row
                             // (L/C/R, or L/R under two hands); CAMERA: 0 =
