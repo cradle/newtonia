@@ -53,6 +53,7 @@ jobs:
             libglu1-mesa-dev \
             libssl-dev \
             libxi-dev \
+            xvfb xauth \
             cmake
 
       - name: Build SDL2_mixer (WAV + MP3 only)
@@ -82,6 +83,9 @@ jobs:
 
       - name: New-install touch layout defaults unit test
         run: bash test/unit/preferences.sh
+
+      - name: Tutorial input and game handoff regression tests
+        run: xvfb-run -a bash test/unit/tutorial.sh
 
       - name: Private relay startup regression test
         run: python3 test/unit/e2e_relay_startup.py

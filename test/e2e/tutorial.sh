@@ -22,9 +22,10 @@ LOG="$OUT/tutorial.log"
 # wait_log PATTERN SECS: poll the log for a line (the step machine logs
 # every transition); exits the driver on timeout with the log's tail.
 wait_log() {
-  local i
+  local i count required=${3:-1}
   for i in $(seq 1 $(( $2 * 4 ))); do
-    grep -aq "$1" "$LOG" && return 0
+    count=$(grep -ac "$1" "$LOG" || true)
+    [ "$count" -ge "$required" ] && return 0
     sleep 0.25
   done
   echo "TIMEOUT waiting for: $1"; tail -20 "$LOG"; exit 1
@@ -32,6 +33,7 @@ wait_log() {
 fail() { echo "$1"; tail -20 "$LOG"; kill $P 2>/dev/null; exit 1; }
 
 P=$(launch tutorial NEWTONIA_BETA=1)
+trap 'kill "$P" 2>/dev/null || true' EXIT
 sleep 3
 W=$(newtonia_windows | tail -1)
 [ -n "$W" ] || fail "NO WINDOW"
@@ -65,9 +67,9 @@ key $W s; key $W Return
 wait_log "tutorial: camera switched to FIXED" 5
 grep -q '^p1_rotate_view=0' "$INI" || fail "camera switch not persisted"
 key $W n                          # TURN again, skipped
-wait_log "tutorial: step THRUST" 5
+wait_log "tutorial: step THRUST" 5 2
 xdotool keydown --window $W w; sleep 5; xdotool keyup --window $W w
-wait_log "tutorial: step CAMERA" 8
+wait_log "tutorial: step CAMERA" 8 2
 key $W Return                     # KEEP FIXED CAMERA
 wait_log "tutorial: step FIRE" 5
 shot $W fire_step

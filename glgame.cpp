@@ -12099,9 +12099,12 @@ void GLGame::controller(SDL_Event event) {
   // The tutorial's CAMERA prompt owns the pad: dpad/stick move, A
   // confirms, B keeps (the keyboard twin above); everything else —
   // including the trigger, which is fire in play — is swallowed.
-  if (tutorial_ && tutorial_->owns_input()) {
+  if (running && tutorial_ && tutorial_->owns_input()) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN ||
         event.type == SDL_CONTROLLERAXISMOTION) {
+      PadId which = event.type == SDL_CONTROLLERBUTTONDOWN
+                        ? event.cbutton.which : event.caxis.which;
+      if (!pad_may_command(which)) return;
       unsigned char nav = nav_key_from_controller(event);
       if (MenuSelect::is_up(nav) || MenuSelect::is_down(nav) ||
           MenuSelect::is_back(nav) ||
@@ -12339,6 +12342,7 @@ bool GLGame::touch_zoom_active() const {
   // The help card owns the screen — this also turns the one-hand
   // tap-fire gate off under it (one_hand_ingame mirrors this predicate).
   if (touch_help_active_) return false;
+  if (tutorial_ && tutorial_->owns_input()) return false;
   return local_player() != NULL;
 }
 
@@ -12373,7 +12377,7 @@ void GLGame::touch_tap(float nx, float ny) {
     return;
   }
   // The tutorial's CAMERA prompt: its two bands, every other tap inert.
-  if (tutorial_ && tutorial_->touch_tap(*this, nx, ny)) return;
+  if (running && tutorial_ && tutorial_->touch_tap(*this, nx, ny)) return;
   // Leaderboard prompt on the GAME OVER card: a tap on the EXIT TO MENU
   // band still LEAVES (it is drawn under the prompt), and only taps
   // elsewhere answer YES (left half) / NO (right half) — the New-game
@@ -12992,6 +12996,7 @@ int GLGame::spectate_countdown_secs() const {
 
 void GLGame::touch_joystick(float nx, float ny) {
   if(!running || players->empty() || net_mode_ == NetReplay) return;
+  if (tutorial_ && tutorial_->owns_input()) return;
   local_player()->touch_joystick_input(nx, ny);
 }
 
@@ -13026,8 +13031,10 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
   if (net_mode_ == NetReplay)
     return;
   // The tutorial's CAMERA prompt owns the keys (keyboard_up answers it).
-  if (tutorial_ && tutorial_->owns_input())
+  if (tutorial_ && tutorial_->owns_input()) {
+    tutorial_->key_down(nav_key(key));
     return;
+  }
 
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
@@ -13119,8 +13126,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 
   // The tutorial's CAMERA prompt: w/s move, confirm picks, Esc keeps —
   // the pause menu's ladder shape; nothing else acts under it.
-  if (tutorial_ && tutorial_->owns_input()) {
-    tutorial_->nav(*this, nav_key(key));
+  if (running && tutorial_ && tutorial_->owns_input()) {
+    tutorial_->key_up(*this, nav_key(key));
     return;
   }
   // Dev/test hook: the skip-level key advances one tutorial step (beta

@@ -99,6 +99,7 @@ void Tutorial::enter_step(GLGame &g, Step s) {
   // And the layout questions only exist on touch.
   if ((s == INPUT || s == HAND) && !is_touch_mode()) s = LAUNCH;
   step_ = s;
+  prompt_pressed_.clear();
   step_ms_ = 0;
   aligned_ms_ = 0;
   // Only TURN and THRUST fly at a beacon; every other step starts with
@@ -146,7 +147,14 @@ void Tutorial::enter_step(GLGame &g, Step s) {
       if (gs) kills_at_entry_ = gs->ship->asteroid_kills;
       spawn_practice_asteroids(g);
       break;
+    case BOOST:
+      if (gs) boosts_at_entry_ = gs->ship->net_boost_count;
+      break;
     case SECONDARY:
+      // Practice has no persisted weapon achievements. Start this lesson's
+      // measurement afresh: a random drop fired during FIRE is not an
+      // answer to the SECONDARY prompt that has only just appeared.
+      if (gs) gs->ship->weapons_fired_mask = 0;
       spawn_crate(g);
       break;
     case WRAP:
@@ -247,7 +255,7 @@ void Tutorial::tick(GLGame &g, int delta) {
       }
       break;
     case BOOST:
-      if (!s->boost_ready()) complete_step(g);  // the cooldown just started
+      if (s->net_boost_count != boosts_at_entry_) complete_step(g);
       break;
     case SECONDARY: {
       const uint32_t secondary_bits =
@@ -279,6 +287,7 @@ void Tutorial::tick(GLGame &g, int delta) {
 // skip beacon reaches this without passing WRAP), and the pad that drove
 // the tutorial drives the game.
 void Tutorial::finish(GLGame &g) {
+  if (g.is_finished()) return;
   if (!done_latched_) {
     done_latched_ = true;
     g_prefs.tutorial_done = true;
@@ -286,6 +295,13 @@ void Tutorial::finish(GLGame &g) {
   }
   GLShip *gs = pilot(g);
   PadId pad = gs ? gs->controller_id() : PAD_NONE;
+  // The next game's ctor resets the process-wide asteroid count. Reap
+  // practice rocks BEFORE that reset, or this game's later destructor
+  // subtracts them from the new level (three leftovers cleared level 1).
+  for (Asteroid *rock : *g.objects) delete rock;
+  g.objects->clear();
+  for (Asteroid *rock : *g.dead_objects) delete rock;
+  g.dead_objects->clear();
   SDL_Log("tutorial: complete - starting the first game");
   g.request_state_change(new GLGame(pad));
 }
@@ -322,7 +338,7 @@ bool Tutorial::nose_on_beacon(const GLGame &g) const {
   return cosang >= ALIGN_COS;
 }
 
-// Three STATIONARY rocks fanned out ahead of the ship (a still target is
+// Three STATIONARY rocks fanned out beside the ship (a still target is
 // the right first target — decided 2026-09-18), the only asteroids the
 // tutorial ever spawns. Ordinary killable Asteroids, so hits split them
 // and kills credit like any other; num_killable is bumped by the ctor.
@@ -331,6 +347,11 @@ void Tutorial::spawn_practice_asteroids(GLGame &g) {
   if (!gs) return;
   Ship *s = gs->ship;
   Point f = s->facing.normalized();
+  // THRUST flows straight here on touch; a camera prompt also preserves
+  // momentum on desktop. Place the fan beside the current flight path so
+  // a coasting pilot has time to read FIRE before hitting a target.
+  Point flight = s->velocity.magnitude() > 0.01f ? s->velocity.normalized() : f;
+  f = Point(-flight.y(), flight.x());
   const float dist = 420.0f;
   for (int i = 0; i < PRACTICE_ROCKS; i++) {
     float a = (i - (PRACTICE_ROCKS - 1) * 0.5f) * 30.0f * DEG;
@@ -461,8 +482,13 @@ void Tutorial::nav(GLGame &g, unsigned char key) {
   else if (MenuSelect::is_back(key)) prompt_pick(g, -1);
 }
 
+void Tutorial::key_up(GLGame &g, unsigned char key) {
+  if (prompt_pressed_.erase(key)) nav(g, key);
+}
+
 bool Tutorial::touch_tap(GLGame &g, float nx, float ny) {
   if (!prompt_open_) return false;
+  prompt_pressed_.clear();  // consume the finger's synthesized key release
   int n = prompt_row_count();
   for (int i = 0; i < n; i++)
     if (prompt_row(i, n).contains(nx, ny)) { prompt_pick(g, i); break; }
@@ -584,9 +610,9 @@ void Tutorial::banner_lines(const GLGame &g, std::string &title,
     case SECONDARY:
       title = "SECONDARY";
       if (gs && gs->ship->has_secondary())
-        l1 = one_hand ? "hold, or the blue button - fire a missile"
-           : touch    ? "blue circle - fire a missile"
-                      : label(g, A_SECONDARY) + " - fire a missile";
+        l1 = one_hand ? "hold, or the blue button - use the secondary"
+           : touch    ? "blue circle - use the secondary"
+                      : label(g, A_SECONDARY) + " - use the secondary";
       else
         l1 = "collect the crate ahead";
       l2 = touch ? "" : label(g, A_NEXT_WEAPON) + " and " +
@@ -764,6 +790,10 @@ void Tutorial::draw_world(const GLGame &g) const {
 }
 
 void Tutorial::draw(const GLGame &g) const {
+  // Pause/help owns the screen until dismissed, including focus-loss
+  // pauses while a setup card is open.
+  GLShip *gs = pilot(g);
+  if (!g.running || g.touch_help_active_ || (gs && gs->showing_help())) return;
   glViewport(0, 0, g.window.x(), g.window.y());
   float hw = g.window.x() / Overlay::SAFE_AREA_SCALE;
   float hh = g.window.y() / Overlay::SAFE_AREA_SCALE;
@@ -771,7 +801,6 @@ void Tutorial::draw(const GLGame &g) const {
   mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  GLShip *gs = pilot(g);
   bool touch = is_touch_mode();
 
   if (prompt_open_) {

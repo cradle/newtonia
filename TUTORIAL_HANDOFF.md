@@ -58,15 +58,37 @@ Nothing is merged: the maintainer merges per CLAUDE.md's git rules
   the pad through `State::nav_key_from_controller`, and there is no pad
   twin of the beta skip key (a pad pilot skips via the red beacon only).
 
-## Known open item (not fixed, flagged to the maintainer)
+## Review follow-up
+
+The takeover review of `bc45d976` fixes these issues on this PR:
+
+- Native/web finger-up could answer INPUT and HAND with one tap. Prompts
+  now consume the tap's synthesized key release and require fresh keyboard
+  presses; touch fire/zoom/joystick routes are disabled while a card is open.
+- Pause input and drawing take priority over tutorial cards. Unseated
+  controllers cannot answer a prompt for another pilot.
+- Remaining practice rocks are destroyed before constructing the real
+  game, so their later teardown cannot subtract from the new game's global
+  asteroid count (three leftovers cleared level 1).
+- Practice targets spawn beside the flight path, fixing the coasting
+  collision below on touch and desktop.
+- BOOST and SECONDARY require actions during their own lessons. Previous
+  cooldowns/fired-weapon flags cannot skip them. Secondary wording covers
+  other weapons collected from practice rocks too.
+
+`test/unit/tutorial.sh` runs real game integration regressions for these
+paths and is a Linux CI gate. The e2e driver now checks both occurrences of
+the repeated camera calibration steps; preference tests cover tutorial
+migration and persistence.
+
+## Original coasting issue (addressed by review)
 
 On touch, FIRE now follows THRUST directly (no CAMERA freeze), so the
 three practice rocks spawn dead ahead of a ship still coasting from the
-thrust run; in a headless run the ship rammed them before firing. On
-desktop the CAMERA prompt freezes the sim between the two steps, so it
-only shows on the touch path. Candidate fixes: spawn the rocks off to
-the side (`spawn_practice_asteroids`), or a short brake pause before
-FIRE begins. The maintainer has not asked for either yet.
+thrust run; in a headless run the ship rammed them before firing. The
+desktop CAMERA prompt freezes simulation but preserves momentum, so that
+path is affected after dismissing the card too. Review moved the targets
+off the flight path in `spawn_practice_asteroids`.
 
 ## How to verify
 

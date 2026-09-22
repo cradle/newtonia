@@ -5,6 +5,7 @@
 #include "point.h"
 #include "view/tap_band.h"
 #include <string>
+#include <set>
 
 class GLGame;
 class GLShip;
@@ -77,6 +78,10 @@ public:
   // Prompt navigation in logical keys (State::nav_key / the pad
   // translator's output): up/down move, confirm picks, back = keep.
   void nav(GLGame &g, unsigned char key);
+  // Keyboard confirms require a press begun on this card. A touch release
+  // may also synthesize Enter; touch_tap consumes that press first.
+  void key_down(unsigned char key) { prompt_pressed_.insert(key); }
+  void key_up(GLGame &g, unsigned char key);
   // Touch: the prompt's two bands. True when the tap was consumed.
   bool touch_tap(GLGame &g, float nx, float ny);
   // Dev/test hook: the skip-level key advances one step (beta builds; the
@@ -130,12 +135,14 @@ private:
   int thrust_ms_ = 0;
   // INPUT / HAND / CAMERA: the prompt.
   bool prompt_open_ = false;
+  std::set<unsigned char> prompt_pressed_;
   int prompt_sel_ = 0;      // INPUT: 0 = one hand, 1 = two; HAND: the row
                             // (L/C/R, or L/R under two hands); CAMERA: 0 =
                             // keep, 1 = switch
   int camera_rounds_ = 0;   // switches so far (the wording says "again")
   // FIRE: kills at entry — three more end the step.
   int kills_at_entry_ = 0;
+  unsigned char boosts_at_entry_ = 0;
   // WRAP/DONE: the fire-press counter at entry — a FRESH press finishes.
   unsigned char shots_at_entry_ = 0;
   bool done_latched_ = false;

@@ -1079,6 +1079,14 @@ test/e2e/replay_keyframe.sh # REPLAY.md keyframe ordering, via the in-binary
                      # bug's exact shape — and deleting the reset reproduces
                      # the "5 record(s) held out" misreport. Also a linux.yml
                      # build gate.
+bash test/unit/tutorial.sh # Real GLGame/Tutorial integration with an isolated
+                     # netless build and pref dirs. SDL offscreen locally,
+                     # Xvfb in linux.yml. Covers touch INPUT/HAND with the
+                     # native/web synthesized Enter release, outside-card
+                     # taps, both layouts, pause recovery, camera switches,
+                     # coasting past practice targets, fresh BOOST/SECONDARY
+                     # actions, save/stat preservation, controller ownership,
+                     # and the asteroid count after the tutorial-to-game swap.
 test/e2e/tutorial.sh # The first-time pilot's start screen + tutorial
                      # (tutorial.h), solo, no relay: a FRESH pref dir must
                      # open on TUTORIAL / PLAY / OPTIONS with tutorial_done=0
@@ -1088,7 +1096,8 @@ test/e2e/tutorial.sh # The first-time pilot's start screen + tutorial
                      # reaches the beacon (TURN is skipped with the beta n
                      # key, whose tutorial meaning is "next step"); the CAMERA
                      # prompt's TRY row flips p1_rotate_view=0 in the INI and
-                     # re-runs the flying steps, KEEP proceeds; the rest is
+                     # re-runs the flying steps (both transition occurrences
+                     # are asserted), KEEP proceeds; the rest is
                      # walked with n; WRAP must latch tutorial_done=1; and
                      # before the final fire press no savegame/stats/highscore
                      # file and no replay recording may exist — then fire
