@@ -391,16 +391,16 @@ bool Tutorial::crate_in_world(const GLGame &g) const {
 
 // Defined with the drawing below; the prompt's tap rows share it.
 static float text_scale();
+static float prompt_row_pitch() { return is_touch_mode() ? 100.0f : 60.0f; }
 
 TapBand Tutorial::prompt_row(int i, int n) {
-  // n stacked rows under the question on a 60-unit pitch, the two-row
-  // block at 10 / -50 and a third row extending it downward; finger pads
-  // meet halfway. The rows ride the plain text scale, as the prompt's
-  // draw does — every prompt line is short enough that the width cap
-  // never bites, so the two can't disagree.
+  // Spread touch choices further apart and grow their hit bands with the
+  // spacing. Keep a small gap between bands so adjacent choices never
+  // overlap. Drawing and hit-testing share these same scaled anchors.
   float s = text_scale();
-  float y = 10.0f + 30.0f * (n - 2) - 60.0f * i;
-  return TapBand(0.5f, y * s, (int)(15 * s), 14 * s);
+  float pitch = prompt_row_pitch();
+  float y = -20.0f + pitch * (0.5f * (n - 1) - i);
+  return TapBand(0.5f, y * s, (int)(15 * s), (pitch * 0.5f - 16) * s);
 }
 
 int Tutorial::prompt_row_count() const {
@@ -864,9 +864,9 @@ void Tutorial::draw(const GLGame &g) const {
     for (int i = 0; i < n; i++)
       w = std::max(w, text_half_w(Typer::cursored(rows[i], cursor), 15));
     w = std::max(w, text_half_w(later, 8));
-    // A third row grows the card half a pitch each way, so it stays
-    // centred where the two-row card sits.
-    float grow = 30.0f * (n - 2);
+    // Expand the card, question and footer around the taller touch rows
+    // as well as the optional third handedness choice.
+    float grow = (prompt_row_pitch() * (n - 1) - 60.0f) * 0.5f;
     float top_y = 140.0f + grow, hint_y = -120.0f - grow;
     draw_card(top_y * s, (hint_y - 16.0f) * s, w * s, s);
     Typer::draw_centered(0, top_y * s, title, 22 * s);
