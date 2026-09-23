@@ -203,7 +203,7 @@ point — a phone must discover a desktop host, which mDNS/NSD could
 not): `NewtoniaActivity` holds a `MulticastLock` while foreground
 (CHANGE_WIFI_MULTICAST_STATE, install-time grant) so the wifi driver
 delivers beacons, and `beacon_dests()` walks interfaces via
-SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS runs
+SIOCGIFCONF there (written when minSdk was 21, below getifaddrs' API 24). **iOS runs
 the same backend behind `NEWTONIA_LAN_IOS` (ON since 2026-07-24)**:
 receiving/sending broadcast needs the Apple-gated multicast entitlement
 (requested at developer.apple.com/contact/request/networking-multicast

@@ -202,8 +202,8 @@ std::vector<uint32_t> beacon_dests() {
     closesocket(s);
   }
 #elif defined(__ANDROID__)
-  // getifaddrs needs API 24 but minSdk is 21: the classic SIOCGIFCONF
-  // walk works on every Android (IPv4-only, which is all beacons use).
+  // The classic SIOCGIFCONF walk (from when minSdk was 21, below
+  // getifaddrs' API 24) works on every Android (IPv4-only, which is all beacons use).
   int s = socket(AF_INET, SOCK_DGRAM, 0);
   if (s >= 0) {
     struct ifreq reqs[16];

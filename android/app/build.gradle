@@ -89,7 +89,9 @@ android {
 
     defaultConfig {
         applicationId = "org.newtonia"
-        minSdk = 21           // Android 5.0 (GLES2 guaranteed)
+        // Android 7.0. Was 21 (5.0); play-services-games-v2 22.x declares
+        // minSdk 24, and the manifest merger refuses anything lower.
+        minSdk = 24
         targetSdk = 36        // Android 16 (Google Play target-API requirement)
         versionCode = (project.findProperty('versionCode') as Integer) ?: 1
         versionName = project.findProperty('versionName') ?: "0.0.1"
