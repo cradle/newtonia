@@ -1105,27 +1105,23 @@ void Menu::draw() {
       }
     } else {
       std::vector<std::string> rows;
-      if (new_player_) {
-        // The start screen: three rows and a one-line nudge where the
-        // high score block would sit (a new pilot has none).
-        rows.push_back("TUTORIAL");
-        rows.push_back("PLAY");
-        rows.push_back("OPTIONS");
-        draw_menu_rows(rows);
+      // The new-player start screen is the full menu with TUTORIAL on
+      // top, no STATS or REPLAYS, and a one-line nudge where the high
+      // score block would sit (a new pilot has none).
+      if (new_player_) rows.push_back("TUTORIAL");
+      if (has_net_resume_) rows.push_back("RESUME HOSTING " + net_resume_code_);
+      if (has_save_) rows.push_back("CONTINUE");
+      rows.push_back("NEW GAME");
+      if (show_online_row()) rows.push_back("ONLINE");
+      if (show_options_row()) rows.push_back("OPTIONS");
+      if (show_replays_row()) rows.push_back("REPLAYS");
+      if (show_board_row()) rows.push_back("LEADERBOARD");
+      if (show_stats_row()) rows.push_back("STATS");
+      draw_menu_rows(rows);
+      if (new_player_)
         Typer::draw_centered(0, menu_high_score_y(),
                              "new here? try the tutorial",
                              is_touch_mode() ? 10 : 8);
-      } else {
-        if (has_net_resume_) rows.push_back("RESUME HOSTING " + net_resume_code_);
-        if (has_save_) rows.push_back("CONTINUE");
-        rows.push_back("NEW GAME");
-        if (show_online_row()) rows.push_back("ONLINE");
-        if (show_options_row()) rows.push_back("OPTIONS");
-        if (show_replays_row()) rows.push_back("REPLAYS");
-        if (show_board_row()) rows.push_back("LEADERBOARD");
-        if (show_stats_row()) rows.push_back("STATS");
-        draw_menu_rows(rows);
-      }
     }
   }
   if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_)
@@ -1602,20 +1598,20 @@ void Menu::touch_tap(float nx, float ny) {
   confirm_selection(PAD_NONE);
 }
 
-// The fixed game-entry rows above ONLINE: RESUME HOSTING (when a killed
-// hosted session is resumable), CONTINUE (when a solo save exists), and
-// NEW GAME. Every later row's index builds on this count.
+// The fixed game-entry rows above ONLINE: TUTORIAL (on the new-player
+// start screen), RESUME HOSTING (when a killed hosted session is
+// resumable), CONTINUE (when a solo save exists), and NEW GAME. Every
+// later row's index builds on this count.
 int Menu::base_menu_rows() const {
-  return (has_net_resume_ ? 1 : 0) + (has_save_ ? 2 : 1);
+  return tutorial_rows() + (has_net_resume_ ? 1 : 0) + (has_save_ ? 2 : 1);
 }
 
 int Menu::continue_row_index() const {
   if (!has_save_) return -1;
-  return has_net_resume_ ? 1 : 0;
+  return tutorial_rows() + (has_net_resume_ ? 1 : 0);
 }
 
 int Menu::max_menu_items() const {
-  if (new_player_) return 3;  // TUTORIAL / PLAY / OPTIONS
   int n = base_menu_rows();
   if (show_online_row()) n++;
   if (show_options_row()) n++;
@@ -1678,7 +1674,6 @@ int Menu::menu_row_at(float ny) const {
 }
 
 int Menu::online_row_index() const {
-  if (new_player_) return -1;
   if (!show_online_row()) return -1;
   return base_menu_rows();  // directly after NEW GAME
 }
@@ -1787,7 +1782,6 @@ void Menu::scan_replays() {
 }
 
 int Menu::options_row_index() const {
-  if (new_player_) return 2;  // the start screen's last row
   if (!show_options_row()) return -1;
   int i = base_menu_rows();
   if (show_online_row()) i++;
@@ -1795,7 +1789,6 @@ int Menu::options_row_index() const {
 }
 
 int Menu::replays_row_index() const {
-  if (new_player_) return -1;
   if (!show_replays_row()) return -1;
   int i = base_menu_rows();
   if (show_online_row()) i++;
@@ -1838,7 +1831,6 @@ static bool slot_is_upload_candidate(const std::string &path,
 }
 
 int Menu::board_row_index() const {
-  if (new_player_) return -1;
   if (!show_board_row()) return -1;
   int i = base_menu_rows();
   if (show_online_row()) i++;
@@ -1848,7 +1840,6 @@ int Menu::board_row_index() const {
 }
 
 int Menu::stats_row_index() const {
-  if (new_player_) return -1;
   if (!show_stats_row()) return -1;
   int i = base_menu_rows();
   if (show_online_row()) i++;
@@ -2379,7 +2370,6 @@ void Menu::close_options() {
 void Menu::scan_net_resume() {
   if (net_resume_scanned_) return;
   net_resume_scanned_ = true;
-  if (new_player_) return;  // a pilot who has never flown never hosted
   if (!show_online_row()) return;
   std::string code, token;
   long long age_ms = 0;
@@ -2405,23 +2395,15 @@ void Menu::decline_net_resume() {
 }
 
 void Menu::confirm_selection(PadId pad) {
-  if (new_player_) {
-    // The start screen: TUTORIAL (row 0) runs the walk-through, PLAY
-    // (row 1) is NEW GAME for a pilot who would rather learn by flying —
-    // and is the skip, so it latches the tutorial as done; OPTIONS (row
-    // 2) never reaches here (nav_input/touch_tap open it directly).
-    if (menu_selection == 1) {
-      g_prefs.tutorial_done = true;
-      save_preferences();
-    }
+  if (new_player_ && menu_selection == 0) {
+    // The start screen's TUTORIAL row runs the walk-through.
 #ifdef __EMSCRIPTEN__
     EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
-    request_state_change(menu_selection == 0 ? GLGame::start_tutorial(pad)
-                                             : new GLGame(pad));
+    request_state_change(GLGame::start_tutorial(pad));
     return;
   }
-  if (has_net_resume_ && menu_selection == 0) {
+  if (has_net_resume_ && menu_selection == tutorial_rows()) {
     // RESUME HOSTING: rebuild the hosted world from the online save and
     // hand it a game that reclaims the room and awaits the client's
     // auto-rejoin (the resume constructor; see NETPLAY.md).
@@ -2490,6 +2472,12 @@ void Menu::confirm_selection(PadId pad) {
     return;
   }
   new_confirm_ = false;
+  // NEW GAME from the start screen is the pilot who would rather learn by
+  // flying, so it is also the tutorial's skip.
+  if (new_player_) {
+    g_prefs.tutorial_done = true;
+    save_preferences();
+  }
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif

@@ -36,7 +36,7 @@ private:
   // the top when a fresh NetResume ticket + online save survived a killed
   // hosting process and the room's reclaim grace may still be open.
   // Expiry, or picking any other way into a game, deletes both files.
-  int  base_menu_rows() const;  // rows above ONLINE: resume?/continue?/new
+  int  base_menu_rows() const;  // rows above ONLINE: tutorial?/resume?/continue?/new
   int  continue_row_index() const;  // -1 when hidden
   void decline_net_resume();
   void scan_net_resume();
@@ -53,8 +53,11 @@ private:
   // ONLINE RUN (the most recent online session, ended or abandoned) and
   // BEST RUN — with score/level/date; files this build can't parse render
   // as unselectable rows naming the reason (damaged / newer version).
-  // Selecting a row starts R2 playback.
-  bool show_replays_row() const { return !replay_rows_.empty(); }
+  // Selecting a row starts R2 playback. Hidden on the new-player start
+  // screen, like STATS.
+  bool show_replays_row() const {
+    return !new_player_ && !replay_rows_.empty();
+  }
   int  replays_row_index() const;  // -1 when hidden
   void scan_replays();             // rebuild replay_rows_ from disk
   void open_replays();
@@ -69,9 +72,9 @@ private:
   void open_board();
   void close_board();
   // STATS screen: read-only lifetime numbers (stats.dat + the high score)
-  // with the killable-special-type checklist. Always shown — zeros are an
-  // honest answer on a fresh install.
-  bool show_stats_row() const { return true; }
+  // with the killable-special-type checklist. Shown everywhere except the
+  // new-player start screen, which the maintainer wants stat-free.
+  bool show_stats_row() const { return !new_player_; }
   int  stats_row_index() const;    // -1 when hidden
   // The HIGH SCORE block under the rows: only with a score to show, and
   // never on the new-player start screen (stat-free by design; the
@@ -130,11 +133,13 @@ private:
   int high_score;
   bool has_save_ = false;
   // The new-player START SCREEN (tutorial.h): while the tutorial has not
-  // been done or skipped — and no save exists — the menu is three rows,
-  // TUTORIAL / PLAY / OPTIONS, and nothing else (no stats, replays,
-  // leaderboard or online). Decided in the ctor from
-  // Preferences::tutorial_done, NEWTONIA_TUTORIAL=0/1 overriding.
+  // been done or skipped — and no save exists — the full menu gains a
+  // TUTORIAL row on top, drops STATS and REPLAYS, and shows a nudge in
+  // the high score slot. Decided in
+  // the ctor from Preferences::tutorial_done, NEWTONIA_TUTORIAL=0/1
+  // overriding.
   bool new_player_ = false;
+  int  tutorial_rows() const { return new_player_ ? 1 : 0; }
   bool has_net_resume_ = false;      // RESUME HOSTING row shown
   bool net_resume_scanned_ = false;  // ticket checked (first tick, not ctor)
   std::string net_resume_code_;      // its room code, for the row label

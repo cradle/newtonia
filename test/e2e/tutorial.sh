@@ -1,6 +1,6 @@
 #!/bin/bash
 # The first-time pilot's start screen + tutorial (tutorial.h): a fresh
-# install opens on the TUTORIAL / PLAY / OPTIONS start screen; TUTORIAL runs
+# install opens on the start screen (TUTORIAL on top of the full menu); it runs
 # the walk-through on an empty field; a real thrust run reaches the beacon
 # (twice — once per camera, through the Halo-style keep/switch prompt);
 # the beta skip key walks the remaining steps; a fire press at the end

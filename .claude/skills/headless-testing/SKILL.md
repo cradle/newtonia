@@ -52,8 +52,9 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
 
 **Gotchas learned the hard way:**
 - A fresh pref dir (a new `XDG_DATA_HOME`) is a NEW INSTALL, and a new
-  install's menu is the new-player start screen — TUTORIAL / PLAY / OPTIONS
-  (tutorial.h) — so the first Return above starts the tutorial, not a game.
+  install's menu is the new-player start screen — a TUTORIAL row on top of
+  the full menu (tutorial.h) — so the first Return above starts the
+  tutorial, not a game.
   Export `NEWTONIA_TUTORIAL=0` (lib.sh does) for the classic NEW GAME /
   ONLINE / OPTIONS layout; `=1` forces the start screen.
 - Screenshot the game window with `xwd -id $W` + `convert`; `import -window

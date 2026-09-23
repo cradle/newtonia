@@ -15,8 +15,8 @@ echo "e2e output: $OUT"
 # fresh dir means a known menu layout: NEW GAME + ONLINE, no CONTINUE).
 export XDG_DATA_HOME="$OUT/xdg"
 # A fresh pref dir is a NEW INSTALL, and a new install's menu is the
-# new-player start screen (TUTORIAL / PLAY / OPTIONS — tutorial.h), not
-# the row layout nav_host/nav_join encode. This override reads the pilot
+# new-player start screen (a TUTORIAL row on top — tutorial.h), which
+# shifts every row the nav_host/nav_join layout encodes down one. This override reads the pilot
 # as tutorial-done without touching the INI, so the drivers keep the
 # classic NEW GAME / ONLINE / OPTIONS layout they were written against.
 export NEWTONIA_TUTORIAL=0
