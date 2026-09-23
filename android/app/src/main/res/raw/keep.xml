@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resource-shrinker keep list (release shrinkResources, android/app/build.gradle).
+     Both Play Games bridges read their strings by NAME at runtime through
+     getIdentifier() — PlayGamesIdentity (play_games_oauth_client_id) and
+     PlayGamesAchievements (every achievement_* id) — which the shrinker
+     cannot see. Without this file those strings are stripped and
+     achievements / identity attestation fail SOFT (a logcat line is the only
+     symptom). PLAYQUALITY.md "resource trap". Any new string looked up by
+     name belongs in this list. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/game_services_project_id,@string/play_games_*,@string/achievement_*" />

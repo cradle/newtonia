@@ -168,11 +168,16 @@ android {
             // proguard-rules.pro — R8 can't see native callers, and stripping
             // the Play Games bridges fails SOFT (achievements/attestation
             // silently stop), so verify those on a real device after touching
-            // the rules. shrinkResources stays OFF deliberately: both bridges
-            // resolve their strings via getIdentifier(), which the resource
-            // shrinker can't see — it would strip games-ids.xml (PLAYQUALITY.md
-            // "resource trap") for a saving of a few icons' worth of bytes.
+            // the rules. shrinkResources is on too: the Play Console's R8
+            // insight flags "Resource shrinking isn't enabled" without it, and
+            // on AGP 9 it also runs R8's optimized resource shrinking. Both
+            // bridges resolve their strings via getIdentifier(), which the
+            // shrinker can't see, so res/raw/keep.xml pins every games-ids.xml
+            // string by name (PLAYQUALITY.md "resource trap") — a new string
+            // read by name must be added there, or it ships stripped and
+            // fails SOFT like a missing keep rule.
             minifyEnabled = true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                           'proguard-rules.pro'
             // -PdebugSign: sign the minified release build with the debug
