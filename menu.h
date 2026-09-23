@@ -69,9 +69,9 @@ private:
   void open_board();
   void close_board();
   // STATS screen: read-only lifetime numbers (stats.dat + the high score)
-  // with the killable-special-type checklist. Always shown — zeros are an
-  // honest answer on a fresh install.
-  bool show_stats_row() const { return true; }
+  // with the killable-special-type checklist. Shown everywhere except the
+  // new-player start screen, which the maintainer wants stat-free.
+  bool show_stats_row() const { return !new_player_; }
   int  stats_row_index() const;    // -1 when hidden
   // The HIGH SCORE block under the rows: only with a score to show, and
   // never on the new-player start screen (stat-free by design; the
@@ -131,7 +131,8 @@ private:
   bool has_save_ = false;
   // The new-player START SCREEN (tutorial.h): while the tutorial has not
   // been done or skipped — and no save exists — the full menu gains a
-  // TUTORIAL row on top and a nudge in the high score slot. Decided in
+  // TUTORIAL row on top, drops STATS, and shows a nudge in the high
+  // score slot. Decided in
   // the ctor from Preferences::tutorial_done, NEWTONIA_TUTORIAL=0/1
   // overriding.
   bool new_player_ = false;

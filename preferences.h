@@ -172,7 +172,7 @@ struct Preferences {
     bool boost_hint_done     = false;
     // The first-time pilot's tutorial (tutorial.h): while false the main
     // menu is the new-player START SCREEN — the full menu with a TUTORIAL
-    // row on top (Menu::new_player_) — and either finishing the tutorial,
+    // row on top and no STATS row (Menu::new_player_) — and either finishing the tutorial,
     // flying into its skip beacon, or picking NEW GAME latches this true
     // for good. STRUCT default TRUE: an
     // INI without the key belongs to an install that has already played
