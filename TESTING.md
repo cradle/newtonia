@@ -1090,7 +1090,7 @@ bash test/unit/tutorial.sh # Real GLGame/Tutorial integration with an isolated
                      # and the asteroid count after the tutorial-to-game swap.
 test/e2e/tutorial.sh # The first-time pilot's start screen + tutorial
                      # (tutorial.h), solo, no relay: a FRESH pref dir must
-                     # open on TUTORIAL / PLAY / OPTIONS with tutorial_done=0
+                     # open on the start screen (TUTORIAL on top) with tutorial_done=0
                      # written on the spot (the driver unsets lib.sh's
                      # NEWTONIA_TUTORIAL=0 override); TUTORIAL runs the
                      # walk-through on an empty field; a real 5 s thrust hold

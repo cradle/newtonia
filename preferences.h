@@ -171,10 +171,10 @@ struct Preferences {
     // ignore the unknown key.
     bool boost_hint_done     = false;
     // The first-time pilot's tutorial (tutorial.h): while false the main
-    // menu is the new-player START SCREEN — TUTORIAL / PLAY / OPTIONS, no
-    // stats, replays, leaderboard or online rows (Menu::new_player_) —
-    // and either finishing the tutorial, flying into its skip beacon, or
-    // picking PLAY latches this true for good. STRUCT default TRUE: an
+    // menu is the new-player START SCREEN — the full menu with a TUTORIAL
+    // row on top (Menu::new_player_) — and either finishing the tutorial,
+    // flying into its skip beacon, or picking NEW GAME latches this true
+    // for good. STRUCT default TRUE: an
     // INI without the key belongs to an install that has already played
     // (the old-install rule every new key follows here), so a veteran is
     // never sent back to school by an upgrade; a NEW install starts false
