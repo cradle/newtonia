@@ -53,8 +53,11 @@ private:
   // ONLINE RUN (the most recent online session, ended or abandoned) and
   // BEST RUN — with score/level/date; files this build can't parse render
   // as unselectable rows naming the reason (damaged / newer version).
-  // Selecting a row starts R2 playback.
-  bool show_replays_row() const { return !replay_rows_.empty(); }
+  // Selecting a row starts R2 playback. Hidden on the new-player start
+  // screen, like STATS.
+  bool show_replays_row() const {
+    return !new_player_ && !replay_rows_.empty();
+  }
   int  replays_row_index() const;  // -1 when hidden
   void scan_replays();             // rebuild replay_rows_ from disk
   void open_replays();
@@ -131,8 +134,8 @@ private:
   bool has_save_ = false;
   // The new-player START SCREEN (tutorial.h): while the tutorial has not
   // been done or skipped — and no save exists — the full menu gains a
-  // TUTORIAL row on top, drops STATS, and shows a nudge in the high
-  // score slot. Decided in
+  // TUTORIAL row on top, drops STATS and REPLAYS, and shows a nudge in
+  // the high score slot. Decided in
   // the ctor from Preferences::tutorial_done, NEWTONIA_TUTORIAL=0/1
   // overriding.
   bool new_player_ = false;

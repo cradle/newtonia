@@ -1106,8 +1106,8 @@ void Menu::draw() {
     } else {
       std::vector<std::string> rows;
       // The new-player start screen is the full menu with TUTORIAL on
-      // top, no STATS, and a one-line nudge where the high score block
-      // would sit (a new pilot has none).
+      // top, no STATS or REPLAYS, and a one-line nudge where the high
+      // score block would sit (a new pilot has none).
       if (new_player_) rows.push_back("TUTORIAL");
       if (has_net_resume_) rows.push_back("RESUME HOSTING " + net_resume_code_);
       if (has_save_) rows.push_back("CONTINUE");
