@@ -122,6 +122,26 @@ jobs:
         env:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
 
+      # shrinkResources (app/build.gradle) cannot see the Play Games
+      # bridges' getIdentifier() lookups; res/raw/keep.xml pins those
+      # strings. A miss fails SOFT on a device (achievements / attestation
+      # silently stop), so assert here that every games-ids.xml string, and
+      # the OAuth client id, survived into the shrunk APK by name.
+      - name: Check shrunk APK keeps the Play Games strings
+        working-directory: newtonia/android
+        run: |
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$AAPT2" dump resources app/build/outputs/apk/release/app-release.apk > "$RUNNER_TEMP/res.txt"
+          python3 - "$RUNNER_TEMP/res.txt" app/src/main/res/values/games-ids.xml <<'PY'
+          import re, sys, xml.etree.ElementTree as ET
+          dump = open(sys.argv[1]).read()
+          names = [e.get('name') for e in ET.parse(sys.argv[2]).getroot().iter('string')]
+          missing = [n for n in names if not re.search(r'\bstring/' + re.escape(n) + r'\b', dump)]
+          print(f"{len(names) - len(missing)}/{len(names)} games-ids.xml strings kept")
+          if missing:
+              sys.exit("stripped by the resource shrinker (add to res/raw/keep.xml): " + ", ".join(missing))
+          PY
+
       # The build PR testers install on a phone: minified like the store
       # build, debug-signed so it installs without the release key. The
       # fail-soft Play Games paths (achievements, identity attestation — see

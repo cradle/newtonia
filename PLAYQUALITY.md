@@ -79,8 +79,15 @@ make the flip safe — see the traps below before touching either file.
       leaderboard attestation, nothing says why). The installreferrer
       library is pinned too (its consumer rules should suffice, but the
       deferred-deep-link path also fails soft).
-- [x] `minifyEnabled true` for release. `shrinkResources` left OFF —
-      see the resource trap below.
+- [x] `minifyEnabled true` for release.
+- [x] `shrinkResources true` for release (2026-09-23), behind
+      `res/raw/keep.xml` — see the resource trap below. It was left off at
+      the R8 flip, and the Play Console's R8 insight card ("Your R8
+      configuration could be causing higher memory usage and lower
+      performance") kept listing "Resource shrinking isn't enabled" until
+      it went on; the card's earlier "upgrade AGP to 9.0" item was cleared
+      by the AGP 9.3.2 lift. On AGP 9 `shrinkResources` also turns on R8's
+      optimized resource shrinking.
 - [x] Boot gate in CI: `android.yml` builds ONE APK — the minified
       release build, debug-signed (`assembleRelease -PdebugSign`; the
       gradle property attaches the debug signing config so the APK
@@ -161,11 +168,13 @@ name at runtime — `getIdentifier("play_games_oauth_client_id"…)` in
 `PlayGamesAchievements.java` (`games-ids.xml`). The resource shrinker
 cannot see name-based lookups, so `shrinkResources true` would strip
 those strings and achievements/attestation would again fail soft (a
-logcat warning is the only symptom). Either keep `shrinkResources` off
-(the win is trivial at our resource count — a handful of launcher
-icons), or add a `res/raw/keep.xml` with
-`tools:keep="@string/game_services_project_id,@string/play_games_*,@string/achievement_*"`
-first.
+logcat warning is the only symptom). `android/app/src/main/res/raw/keep.xml`
+pins them with
+`tools:keep="@string/game_services_project_id,@string/play_games_*,@string/achievement_*"`,
+which is what makes `shrinkResources true` safe. Any NEW string read by
+name must match that list (or be added to it), and after touching either
+file check achievements and the attested name on a device — the CI boot
+gate cannot see a soft failure.
 
 ### 4. Zero-tap sign-in (April 2027) — EXEMPT, nothing to build
 
@@ -196,7 +205,7 @@ the April requirement does not ask for it.
 
 | When | What |
 |------|------|
-| Done | This assessment; `PlayGamesIdentity` keep rule; the R8 flip + CI boot gate; device gate verified 2026-08-30; secret-held shared-keystore wiring; keystore minted, `DEBUG_KEYSTORE_BASE64` secret set and SHA-1 registered 2026-08-31 — CI artifacts now carry the PGS-registered cert |
+| Done | This assessment; `PlayGamesIdentity` keep rule; the R8 flip + CI boot gate; device gate verified 2026-08-30; secret-held shared-keystore wiring; keystore minted, `DEBUG_KEYSTORE_BASE64` secret set and SHA-1 registered 2026-08-31 — CI artifacts now carry the PGS-registered cert; `shrinkResources` + `keep.xml` 2026-09-23 for the Play R8 card's "Resource shrinking isn't enabled" |
 | Next deploy artifact | Read actual DEX size off the AAB; confirm "games, < 50 MB" exemption holds; confirm Play deobfuscates traces |
 | After next release, once Vitals ships the new metrics | Confirm memory/bitmap panels are green; then ignore unless alerted |
 | 2027, when Google's gaming-auth guidance lands | Re-check the sign-in exemption still covers PGS-only games |
