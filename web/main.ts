@@ -421,6 +421,14 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
   // taps never synthesize fire keys. Deliberately left stale-true under
   // the Intro state, where a tap IS the fire input that dismisses it.
   let _tapFire = false;
+  // A tutorial prompt (INPUT / HAND / CAMERA) owns the screen: its rows
+  // are centred full-width tap bands, so every finger — on the joystick
+  // zone or a circle button — becomes a plain canvas tap (touch_tap), as
+  // native's finger-up does. Pushed by GLGame::tick on change.
+  let _promptOpen = false;
+  (window as any).setPromptOpen = (v: number | boolean): void => {
+    _promptOpen = !!v;
+  };
   // The selected secondary's kind (Save::WeaponEntry::Kind, -1 = none;
   // kept by setWeaponKinds) and — when it is the SHIELD (5) — its own
   // trigger truth, mirrored by C++ over setShieldEngaged. The one-hand
@@ -1104,9 +1112,11 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
-        if (_oneHand && inZoomZone(t)) {
-          // Live-play zoom zones keep their tap semantics: the release
-          // forwards to touch_tap (the zoom step) instead of the stick.
+        if (_promptOpen || (_oneHand && inZoomZone(t))) {
+          // Live-play zoom zones keep their tap semantics, and so does
+          // every finger under a tutorial prompt: the release forwards to
+          // touch_tap (the zoom step, or the prompt's row) instead of
+          // the stick.
           passFingers.add(t.identifier);
           continue;
         }
@@ -1273,8 +1283,16 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
         }
       });
 
+      // Fingers that landed while a tutorial prompt was up: taps on the
+      // prompt (forwarded on release), never this button's key.
+      const promptFingers = new Set<number>();
       btn.addEventListener("touchstart", (e) => {
         e.preventDefault();
+        if (_promptOpen) {
+          for (let i = 0; i < e.changedTouches.length; i++)
+            promptFingers.add(e.changedTouches[i].identifier);
+          return;
+        }
         if (key === "t" && !_teleportReady) return;
         for (let i = 0; i < e.changedTouches.length; i++) {
           const id = e.changedTouches[i].identifier;
@@ -1296,6 +1314,10 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
 
       const onBtnEnd = (e: TouchEvent, cancelled = false) => {
         e.preventDefault();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          if (promptFingers.delete(t.identifier) && !cancelled) forwardTap(t);
+        }
         let released = false;
         for (let i = 0; i < e.changedTouches.length; i++) {
           if (activeFingers.delete(e.changedTouches[i].identifier)) released = true;

@@ -1,20 +1,20 @@
-# Tutorial handoff (for Astra)
+# Tutorial handoff
 
-Written 2026-09-21, 11:30 PM AEST, at the end of the session that built the
-new-player start screen and the first-flight tutorial. Everything below is
-on PR #566, https://github.com/cradle/newtonia/pull/566, branch
-`claude/lucid-feynman-c6r8u8`, head `7e9d34a`. CI is green on that head
-(all nine workflows), the PR is mergeable, and no review thread is open.
-Nothing is merged: the maintainer merges per CLAUDE.md's git rules
-(never self-merge; a follow-up after the merge is a fresh branch + PR).
+Written 2026-09-21 at the end of the session that built the new-player
+start screen and the first-flight tutorial (PR #566, shipped in v1.64.0).
+PR #570 (v1.64.1) reworked the start screen, and the 2026-09-24 review
+fixes followed; the sections below are updated for both. CLAUDE.md's
+Menu and **Tutorial** bullets are the authoritative design notes.
 
 ## What shipped on the branch
 
 - **Start screen** (`menu.h/cpp`): while `Preferences::tutorial_done` is
-  false and no save exists, the main menu is TUTORIAL / PLAY / OPTIONS
-  under a one-line nudge. No stats, replays, leaderboard, online, resume
-  rows, and no high score block (`Menu::show_high_score()` hides it — the
-  nudge sits in its slot). PLAY latches the pref and starts NEW GAME.
+  false and no save exists, the main menu gains a TUTORIAL row on top and
+  shows a one-line nudge in the high score slot. NEW GAME, ONLINE,
+  OPTIONS and LEADERBOARD stay. STATS appears once `stats.dat` or a high
+  score says the pilot has played, and REPLAYS once a replay exists, so an
+  online-only pilot (ONLINE never latches the tutorial) still gets both.
+  NEW GAME from the start screen latches the pref (it is the skip).
 - **Tutorial** (`tutorial.h/cpp`, owned by `GLGame::tutorial_`, a `friend`):
   a step machine inside an ordinary offline `GLGame` with an empty field.
   Steps, in order: INPUT and HAND (touch only), LAUNCH, TURN, THRUST,
@@ -88,6 +88,22 @@ prompt tap now swallows its trailing release across the step transition.
 A fresh key-down clears that guard so a layout change that discards the
 legacy release cannot swallow the next deliberate pause. Regression tests
 cover both cases and both touch layouts.
+
+## Review fixes (2026-09-24)
+
+- WRAP and DONE ignore fire presses for their first second
+  (`CARD_ARM_MS`), and the INPUT/HAND/CAMERA prompts ignore answers for
+  their first half second (`PROMPT_ARM_MS`), so a pilot still shooting
+  fragments can no longer skip the last cards unread.
+- A pad on a tutorial started from the keyboard, mouse or touchscreen
+  adopts seat 1 on its first press (`GLGame::controller`).
+- Web: while a prompt is up, every finger on the HTML joystick zone or a
+  circle button becomes a canvas tap (`setPromptOpen`), so the whole row
+  answers in both layouts.
+- The skip beacon and practice rocks are capped to the pilot's visible
+  half-extent (`view_half_min`), so both are on screen on portrait phones.
+- Banners use pad wording for a pad pilot on a phone; rich presence reports
+  the menu during the tutorial.
 
 ## Original coasting issue (addressed by review)
 

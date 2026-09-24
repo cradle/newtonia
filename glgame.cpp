@@ -2153,6 +2153,10 @@ void GLGame::drop_station_and_enemies() {
 void GLGame::update_presence() const {
   // Displayed level numbers = internal generation + 1, the same rule as
   // achievements (ACHIEVEMENTS.md §5).
+  // The tutorial is not a run: friends would see "Level 1". Report the
+  // menu state instead (a tutorial string would need a new token in the
+  // portal-pasted rich_presence.vdf and the other backends).
+  if (tutorial_) { Presence::set_menu(); return; }
   Presence::set_level(generation + 1, (int)players->size());
 }
 
@@ -9004,6 +9008,18 @@ void GLGame::tick(int delta) {
       EM_ASM({ if (window.setTeleportReady) window.setTeleportReady($0); },
              g_touch_controls.teleport_ready ? 1 : 0);
     }
+    // A tutorial prompt's rows are full-width tap bands: while one is up,
+    // the HTML OSD turns every finger into a plain canvas tap (web/main.ts
+    // setPromptOpen). On change only; the next game's first tick pushes
+    // the false a game torn down under an open prompt left behind.
+    static bool web_prompt_pushed = false, web_prompt_last = false;
+    bool prompt_open = tutorial_ && tutorial_->owns_input();
+    if (!web_prompt_pushed || web_prompt_last != prompt_open) {
+      web_prompt_pushed = true;
+      web_prompt_last = prompt_open;
+      EM_ASM({ if (window.setPromptOpen) window.setPromptOpen($0); },
+             prompt_open ? 1 : 0);
+    }
     // One-hand tap-fire gate for the HTML OSD's gesture layer, on change
     // only like the flags above. No push from ~GLGame: back in the menu
     // the full-screen menu overlay owns every tap, so a stale true is
@@ -12020,6 +12036,25 @@ static char board_pad_key(const SDL_Event &event) {
 }
 
 void GLGame::controller(SDL_Event event) {
+  // The tutorial is one pilot's lesson with no join paths, so a pad that
+  // reaches a keyboard-started tutorial (TUTORIAL picked with Enter, a
+  // click or a Deck touchscreen tap: start_tutorial(PAD_NONE)) would
+  // otherwise pause and nav but never fly. The pilot's first deliberate
+  // press or push on an unbound pad adopts seat 1 — keeping its keys —
+  // and the event then flows on as that seat's own.
+  if (tutorial_ && !players->empty() &&
+      players->front()->controller_id() == PAD_NONE) {
+    PadId which = PAD_NONE;
+    if (event.type == SDL_CONTROLLERBUTTONDOWN)
+      which = event.cbutton.which;
+    else if (event.type == SDL_CONTROLLERAXISMOTION &&
+             std::abs((int)event.caxis.value) > 16000)
+      which = event.caxis.which;
+    if (which != PAD_NONE && pad_attached(which)) {
+      players->front()->set_controller(which);
+      SDL_Log("tutorial: pad adopted by seat 1");
+    }
+  }
   if (net_card_owns_input()) {
     // Same one-frame guard as keyboard_up: a committed auto-rejoin
     // hand-off must not be overwritten (the pending lobby would leak).

@@ -53,11 +53,10 @@ private:
   // ONLINE RUN (the most recent online session, ended or abandoned) and
   // BEST RUN — with score/level/date; files this build can't parse render
   // as unselectable rows naming the reason (damaged / newer version).
-  // Selecting a row starts R2 playback. Hidden on the new-player start
-  // screen, like STATS.
-  bool show_replays_row() const {
-    return !new_player_ && !replay_rows_.empty();
-  }
+  // Selecting a row starts R2 playback. A replay only exists once the
+  // pilot has played (the tutorial records none), so the start screen
+  // shows it too — an online-only pilot never latches tutorial_done.
+  bool show_replays_row() const { return !replay_rows_.empty(); }
   int  replays_row_index() const;  // -1 when hidden
   void scan_replays();             // rebuild replay_rows_ from disk
   void open_replays();
@@ -72,9 +71,11 @@ private:
   void open_board();
   void close_board();
   // STATS screen: read-only lifetime numbers (stats.dat + the high score)
-  // with the killable-special-type checklist. Shown everywhere except the
-  // new-player start screen, which the maintainer wants stat-free.
-  bool show_stats_row() const { return !new_player_; }
+  // with the killable-special-type checklist. The new-player start screen
+  // hides it only while there is nothing to show: once stats.dat or a high
+  // score says the pilot has played (online play never latches
+  // tutorial_done), it appears there too.
+  bool show_stats_row() const { return !new_player_ || has_stats_; }
   int  stats_row_index() const;    // -1 when hidden
   // The HIGH SCORE block under the rows: only with a score to show, and
   // never on the new-player start screen (stat-free by design; the
@@ -131,6 +132,7 @@ private:
 
   int currentTime;
   int high_score;
+  bool has_stats_ = false;  // Stats::any() or a high score (ctor)
   bool has_save_ = false;
   // The new-player START SCREEN (tutorial.h): while the tutorial has not
   // been done or skipped — and no save exists — the full menu gains a

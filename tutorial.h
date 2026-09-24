@@ -82,7 +82,9 @@ public:
   // may synthesize Enter or P; consume it even if the tap closes the card.
   void key_down(unsigned char key, bool running) {
     touch_release_pending_ = false;
-    if (prompt_open_ && running) prompt_pressed_.insert(key);
+    // Only a press BEGUN once the prompt is armed can answer it.
+    if (prompt_open_ && running && prompt_armed())
+      prompt_pressed_.insert(key);
   }
   bool consume_touch_release() {
     bool pending = touch_release_pending_;
@@ -99,6 +101,8 @@ public:
   static const char *step_name(Step s);
 
 private:
+  void open_prompt() { prompt_open_ = true; prompt_opened_at_ = time_; }
+  bool prompt_armed() const;  // PROMPT_ARM_MS since open_prompt
   void enter_step(GLGame &g, Step s);
   void complete_step(GLGame &g);      // chime, then the next step
   void finish(GLGame &g);             // latch tutorial_done, start the game
@@ -143,6 +147,7 @@ private:
   int thrust_ms_ = 0;
   // INPUT / HAND / CAMERA: the prompt.
   bool prompt_open_ = false;
+  int prompt_opened_at_ = 0;  // time_ when the prompt opened
   bool touch_release_pending_ = false;
   std::set<unsigned char> prompt_pressed_;
   int prompt_sel_ = 0;      // INPUT: 0 = one hand, 1 = two; HAND: the row
