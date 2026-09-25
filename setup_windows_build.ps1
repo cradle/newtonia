@@ -42,11 +42,13 @@ if ($fresh) {
 # --- packages ---------------------------------------------------------------
 # First -Syu on a fresh install may only stage core packages; run it twice.
 Write-Host '== updating MSYS2 packages'
-Invoke-Mingw 'pacman -Syu --noconfirm'
-if ($fresh) { Invoke-Mingw 'pacman -Syu --noconfirm' }
+# --ask=4 answers yes to pacman's "Remove X?" conflict prompt, which --noconfirm alone
+# declines (needed since MSYS2 split gcc-libs into libgcc).
+Invoke-Mingw 'pacman -Syu --noconfirm --ask=4'
+if ($fresh) { Invoke-Mingw 'pacman -Syu --noconfirm --ask=4' }
 
 Write-Host '== installing toolchain packages'
-Invoke-Mingw ('pacman -S --noconfirm --needed make git ' +
+Invoke-Mingw ('pacman -S --noconfirm --ask=4 --needed make git ' +
     'mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf ' +
     'mingw-w64-x86_64-freeglut mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_mixer ' +
     'mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-openssl')
