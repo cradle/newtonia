@@ -51,6 +51,23 @@ The thresholds (200 MB background, 400 MB cached, p90) meter
 is SDL/GLES from native code; the only bitmaps in the process belong to
 Play Games UI popups and are transient. Nothing to do.
 
+**The "BitmapFactory without inSampleSize" card is AndroidX, not us
+(2026-09-25).** Play Console flagged obfuscated `v2.c` for decoding without
+`inSampleSize`. Scanning the 1.64.2 AAB's dex (its R8 map is inside at
+`BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`) found
+exactly ONE `BitmapFactory` call site in the app:
+`androidx.core.graphics.drawable.IconCompat$Api23Impl.toIcon` →
+`decodeStream` (IconCompat.java:1299, the adaptive-bitmap-from-content-URI
+path) — `t2.c` in that build, with the IconCompat helper classes landing on
+t2/u2/v2/w2, so Play's `v2.c` is the same method under another build's
+names. androidx.core arrives through our `androidx.activity`/`fragment`
+deps and play-services-base; neither the Play Games SDK nor our code calls
+BitmapFactory, and we never build a URI IconCompat, so the path is
+unreachable. Nothing to fix. To re-check a future card: take the release's
+`newtonia-release-aab` artifact (deploy-android), map the name through the
+bundled proguard.map, and list `Landroid/graphics/BitmapFactory;` invokes in
+`base/dex/*.dex`.
+
 ### 3. DEX optimization — EXEMPT BY SIZE, but enable R8 anyway
 
 The 25% coverage floors apply to **apps with > 10 MB DEX and games with
