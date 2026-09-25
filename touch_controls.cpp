@@ -148,19 +148,29 @@ void touch_controls_resize(int w, int h) {
     // the text down under the circle — so also require the circle's TOP edge
     // to clear the multiplier bottom (~200 units incl. margin = 100*ts px,
     // plus the inset).
+    //
+    // HANDEDNESS LEFT puts the circle in the top-LEFT corner instead, over
+    // the WEAPONS list (Overlay::weapons: CORNER_INSET below the top, the
+    // touch list's deepest row — the NOVA SHARD count at -165, size 10 —
+    // bottoming out ~185 units under that). In portrait the circle's top
+    // sat inside that last row (field, 2026-09-25), so the circle also
+    // clears the whole list plus a 20-unit margin — in BOTH handednesses,
+    // so flipping sides never moves the button up or down.
     float pr         = minDim * 0.06f;
     float hud_bottom = 100.0f * ts + Overlay::safe_inset_top();
+    float list_bottom = (Overlay::CORNER_INSET + 185.0f + 20.0f) * 0.5f * ts +
+                        Overlay::safe_inset_top();
     g_touch_controls.pause_cx         = (float)w - pr - 0.015f * (float)w;
-    g_touch_controls.pause_cy         = std::max(160.0f * ts, hud_bottom + pr);
+    g_touch_controls.pause_cy         =
+        std::max(160.0f * ts, std::max(hud_bottom, list_bottom) + pr);
     g_touch_controls.pause_radius     = pr;
     g_touch_controls.pause_hit_radius = pr * 2.0f;
 
     // HANDEDNESS LEFT crosses the pause circle to the top-LEFT in both
     // input methods (the zoom column mirrors with it through
     // TouchZone::zoom_*_placed). One geometry drives the draw and every
-    // entry point's hit test, so the flip here moves both. It may brush
-    // a long WEAPONS list — cosmetic: the circle is translucent and the
-    // list is not a tap target.
+    // entry point's hit test, so the flip here moves both. The height
+    // above already clears the WEAPONS list it lands beside.
     if (touch_layout_mirrored())
         g_touch_controls.pause_cx = (float)w - g_touch_controls.pause_cx;
     oh_layout_actions();
