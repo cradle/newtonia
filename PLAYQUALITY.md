@@ -51,6 +51,21 @@ The thresholds (200 MB background, 400 MB cached, p90) meter
 is SDL/GLES from native code; the only bitmaps in the process belong to
 Play Games UI popups and are transient. Nothing to do.
 
+**The "bitmap downsampling" Play Console card is a library call site, not
+ours — dismiss it** (traced 2026-09-25). The card named an R8-renamed
+`v2.c` calling `BitmapFactory` without `inSampleSize`. The v1.64.2 AAB's
+own mapping (`BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`
+inside the deploy-android `newtonia-release-aab` artifact; Play Console's
+ReTrace download was refused) plus a dex scan found exactly ONE
+`BitmapFactory` call in the whole app: androidx.core's
+`IconCompat$Api23Impl.toIcon` (a `decodeStream` for an adaptive icon from a
+content URI), pulled in transitively by the AndroidX and Play Games
+dependencies. R8 names shift between builds (that build put the IconCompat
+helpers on t2..w2), so `v2.c` is that call under another build's naming.
+Nothing in the app builds an `IconCompat` from a URI, so the path never
+runs. The Play Games SDK 22.1.0 bump did not clear the card, and neither
+will our code.
+
 ### 3. DEX optimization — EXEMPT BY SIZE, but enable R8 anyway
 
 The 25% coverage floors apply to **apps with > 10 MB DEX and games with
