@@ -48,15 +48,36 @@ static const float CRATE_DIST         = 260.0f;
 // Every death costs a respawn, never the tutorial: topped up each tick to
 // the Ship ctor's own 4, so the lives row looks exactly as it will in play.
 static const int   TUTORIAL_LIVES     = 4;
+// A card must be on screen a moment before a press can answer it: the
+// pilot is usually still shooting leftover fragments when WRAP opens, and
+// the shot after that used to clear COMPLETE and start level 1 before
+// either card was read. Presses inside the window are absorbed.
+static const int   CARD_ARM_MS        = 1000;
+// The prompts' twin: a key or tap already on its way (the space that
+// fired the last shot, a double tap on INPUT) must not answer the next.
+static const int   PROMPT_ARM_MS      = 500;
 
 static const float DEG = (float)M_PI / 180.0f;
+
+// The distances above are tuned for a landscape window, where the view
+// reaches ~900 units every way. A portrait phone shows only ~420 units
+// either side of the ship, so the skip beacon (650 off the nose's right)
+// was never on screen, and the practice rocks (420 to the side) sat on
+// the edge. Cap a placement at a fraction of the NARROWER half-extent of
+// the pilot's view (the camera_screen_radius maths, one axis at a time).
+static float view_half_min(Point window, const GLShip *gs) {
+  float half_h = tanf(gs->view_angle() * (float)M_PI / 360.0f) * 1000.0f;
+  if (window.y() <= 0.0f) return half_h;
+  float half_w = half_h * (window.x() / window.y());
+  return std::min(half_w, half_h);
+}
 
 Tutorial::Tutorial() {
   // Touch opens on the layout question; the sim is frozen under it from
   // the first tick (nothing is pressed yet, so no controls to release).
   if (is_touch_mode()) {
     step_ = INPUT;
-    prompt_open_ = true;
+    open_prompt();
     prompt_sel_ = touch_one_handed() ? 0 : 1;
     SDL_Log("tutorial: step INPUT");
   }
@@ -121,12 +142,12 @@ void Tutorial::enter_step(GLGame &g, Step s) {
       place_beacon(g, 0.0f, THRUST_BEACON_DIST);  // straight ahead
       break;
     case INPUT:
-      prompt_open_ = true;
+      open_prompt();
       prompt_sel_ = touch_one_handed() ? 0 : 1;
       g.release_player_controls();
       break;
     case HAND: {
-      prompt_open_ = true;
+      open_prompt();
       // The cursor marks the setting in force: L/C/R under one hand;
       // under two hands CENTRE and RIGHT are the same arrangement, so
       // both read as the RIGHT row.
@@ -137,7 +158,7 @@ void Tutorial::enter_step(GLGame &g, Step s) {
       break;
     }
     case CAMERA:
-      prompt_open_ = true;
+      open_prompt();
       prompt_sel_ = 0;
       // The prompt takes the keys; a thrust held into it must not stay
       // latched under the frozen sim (the pause's own rule).
@@ -211,8 +232,9 @@ void Tutorial::tick(GLGame &g, int delta) {
         // Off the nose's right hand, where the two calibration turns
         // (135 degrees each way) and the straight thrust run never lead.
         Point f = s->facing.normalized();
-        float sx = s->position.x() + f.y() * SKIP_BEACON_DIST;
-        float sy = s->position.y() - f.x() * SKIP_BEACON_DIST;
+        float dist = std::min(SKIP_BEACON_DIST, 0.7f * view_half_min(g.window, gs));
+        float sx = s->position.x() + f.y() * dist;
+        float sy = s->position.y() - f.x() * dist;
         skip_beacon_ = WrappedPoint(sx, sy);
         skip_beacon_.wrap();
         skip_on_ = true;
@@ -273,10 +295,16 @@ void Tutorial::tick(GLGame &g, int delta) {
       break;
     }
     case WRAP:
-      if (gs->net_shoot_press_count != shots_at_entry_) complete_step(g);
-      break;
     case DONE:
-      if (gs->net_shoot_press_count != shots_at_entry_) finish(g);
+      // Presses before the card has been up CARD_ARM_MS are absorbed
+      // (the count re-baselines until then), so a fresh press after it
+      // is what ends the card.
+      if (step_ms_ < CARD_ARM_MS)
+        shots_at_entry_ = gs->net_shoot_press_count;
+      else if (gs->net_shoot_press_count != shots_at_entry_) {
+        if (step_ == WRAP) complete_step(g);
+        else finish(g);
+      }
       break;
     default:
       break;
@@ -352,7 +380,7 @@ void Tutorial::spawn_practice_asteroids(GLGame &g) {
   // a coasting pilot has time to read FIRE before hitting a target.
   Point flight = s->velocity.magnitude() > 0.01f ? s->velocity.normalized() : f;
   f = Point(-flight.y(), flight.x());
-  const float dist = 420.0f;
+  const float dist = std::min(420.0f, 0.6f * view_half_min(g.window, gs));
   for (int i = 0; i < PRACTICE_ROCKS; i++) {
     float a = (i - (PRACTICE_ROCKS - 1) * 0.5f) * 30.0f * DEG;
     float dx = f.x() * cosf(a) - f.y() * sinf(a);
@@ -475,9 +503,14 @@ void Tutorial::prompt_pick(GLGame &g, int row) {
   }
 }
 
+bool Tutorial::prompt_armed() const {
+  return time_ - prompt_opened_at_ >= PROMPT_ARM_MS;
+}
+
 void Tutorial::nav(GLGame &g, unsigned char key) {
   if (!prompt_open_) return;
   if (MenuSelect::move(key, prompt_sel_, prompt_row_count())) return;
+  if (!prompt_armed()) return;  // cursor moves count; answers wait
   if (MenuSelect::is_confirm(key)) prompt_pick(g, prompt_sel_);
   else if (MenuSelect::is_back(key)) prompt_pick(g, -1);
 }
@@ -490,6 +523,7 @@ bool Tutorial::touch_tap(GLGame &g, float nx, float ny) {
   if (!prompt_open_) return false;
   prompt_pressed_.clear();  // consume the finger's synthesized key release
   touch_release_pending_ = true;
+  if (!prompt_armed()) return true;  // consumed, but too soon to answer
   int n = prompt_row_count();
   for (int i = 0; i < n; i++)
     if (prompt_row(i, n).contains(nx, ny)) { prompt_pick(g, i); break; }
@@ -543,9 +577,11 @@ void Tutorial::banner_lines(const GLGame &g, std::string &title,
                             std::string &l1, std::string &l2,
                             std::string &l3) const {
   GLShip *gs = pilot(g);
-  bool touch = is_touch_mode();
-  bool one_hand = touch && touch_one_handed();
   bool pad = pad_pilot(g);
+  // A phone pilot on a Bluetooth pad reads the pad's buttons, not the
+  // on-screen circles the pad never touches.
+  bool touch = is_touch_mode() && !pad;
+  bool one_hand = touch && touch_one_handed();
   bool rotate = gs ? gs->rotate_view() : true;
   // Terse by design (field, 2026-09-21): a control, a dash, the goal.
   std::string leave = touch ? "" : label(g, A_MENU) + ": menu";

@@ -50,7 +50,7 @@ function harness(width=1000, height=600, hand=0) {
     ResizeObserver: class { observe() {} disconnect() {} },
     _resizeObserver:null, _circleButtonEls:[], _menuOverlay:null,
     _teleportReady:true, setTeleportReady() {},
-    _oneHand:true, _hand:hand, _tapFire:true, _inMenuMode:false, _mineAvailable:false,
+    _oneHand:true, _hand:hand, _tapFire:true, _promptOpen:false, _inMenuMode:false, _mineAvailable:false,
     _secondaryKind:-1, _shieldEngaged:false, _shieldEmpty:false,
     _holdRelease:null, _resetTouchGestures:null,
     _joyPlaceholderEls:[], _positionJoyPlaceholder:null,
@@ -462,6 +462,22 @@ for (const gesture of [false, true]) {
   h.context.setShieldEngaged(false, false); // engine removed the weapon
   h.context._resetTouchGestures();
   assert.deepEqual(h.keys, [['keyup', 'x'], ['keydown', 'x'], ['keyup', 'x']]);
+}
+// A tutorial prompt's rows are full-width tap bands: while one is open,
+// fingers on the joystick zone or a circle button, in either layout, are
+// canvas taps (touch_tap) and never steer or press a key.
+for (const oneHand of [true, false]) {
+  const h = harness(); const taps = [];
+  h.context.Module._web_menu_tap = (nx, ny) => taps.push([nx, ny]);
+  h.context._oneHand = oneHand; h.context._tapFire = false;
+  h.context._promptOpen = true;
+  h.send('touchstart', 200, 300, 7); h.advance(30); h.send('touchend', 200, 300, 7);
+  assert.deepEqual(taps, [[0.2, 0.5]]);
+  const c = h.container.querySelector('.touch-shoot');
+  c.handlers.touchstart({ preventDefault() {}, changedTouches:[{ identifier:8, clientX:500, clientY:420 }] });
+  c.handlers.touchend({ preventDefault() {}, changedTouches:[{ identifier:8, clientX:500, clientY:420 }] });
+  assert.deepEqual(taps[1], [0.5, 0.7]);
+  assert.equal(h.keys.length, 0);
 }
 console.log('touch_one_hand_web: all checks passed');
 

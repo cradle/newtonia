@@ -70,6 +70,7 @@ key $W n                          # TURN again, skipped
 wait_log "tutorial: step THRUST" 5 2
 xdotool keydown --window $W w; sleep 5; xdotool keyup --window $W w
 wait_log "tutorial: step CAMERA" 8 2
+sleep 0.8                         # the prompt's answer window (PROMPT_ARM_MS)
 key $W Return                     # KEEP FIXED CAMERA
 wait_log "tutorial: step FIRE" 5
 shot $W fire_step
@@ -80,6 +81,11 @@ key $W n; wait_log "tutorial: step SECONDARY" 5
 key $W n; wait_log "tutorial: step WRAP" 5
 alive $P tutorial
 grep -q '^tutorial_done=1' "$INI" || fail "wrap-up did not latch tutorial_done"
+# The card absorbs fire for its first second (CARD_ARM_MS): a press
+# straight away is no answer, one after the wait is.
+key $W space; sleep 0.3
+grep -aq "tutorial: step DONE" "$LOG" && fail "WRAP answered a press made as it opened"
+sleep 1.2
 key $W space; wait_log "tutorial: step DONE" 5
 shot $W tutorial_done
 # The tutorial banked nothing and left no save behind — checked HERE,
@@ -90,6 +96,7 @@ shot $W tutorial_done
 grep -aq "replay: recording started" "$LOG" && fail "tutorial recorded a replay"
 
 echo "== fire starts the first real game"
+sleep 1.2
 key $W space
 wait_log "tutorial: complete" 5
 sleep 3

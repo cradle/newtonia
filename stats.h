@@ -48,6 +48,9 @@ uint32_t highest_level();      // max displayed level ever reached (gen + 1)
 uint32_t play_seconds();       // active play time (not paused/menus/replays)
 uint32_t secondaries_used();   // successful secondary activations (no nova)
 uint32_t novas_detonated();
+// True once anything has been banked: the pilot has played somewhere
+// (NEW GAME, online or a continued run). The tutorial banks nothing.
+bool any();
 
 void add_kill();                    // one asteroid kill; disk writes are batched
 void add_shot();                    // one primary discharge; writes are batched

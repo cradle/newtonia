@@ -24,7 +24,12 @@ static void press(GLGame &g, unsigned char key) {
   g.keyboard_up(key, 0, 0);
 }
 
+// Let an open prompt's answer window arm (PROMPT_ARM_MS) without running
+// the sim: the tutorial's own clock is all it reads.
+static void arm(GLGame &g) { g.tutorial_->time_ += 600; }
+
 static void tap_row(GLGame &g, int index, int count, unsigned char release = '\r') {
+  arm(g);
   TapBand row = Tutorial::prompt_row(index, count);
   // A real native/web tap: key-down, position, synthesized key-up.
   g.keyboard('\r', 0, 0);
@@ -94,6 +99,7 @@ int main(int argc, char **argv) {
     assert(g->running);
     // A tap may have no legacy release after changing the touch layout.
     t->enter_step(*g, Tutorial::HAND);
+    arm(*g);
     TapBand left = Tutorial::prompt_row(0, one ? 3 : 2);
     g->touch_tap(0.5f, 0.5f - (left.y - left.size) / (2 * Typer::scaled_window_height));
     assert(t->step() == Tutorial::LAUNCH && g_prefs.touch_handedness == 0);
@@ -120,9 +126,14 @@ int main(int argc, char **argv) {
     // A held gameplay fire released into a new card cannot answer it.
     g->keyboard_up(' ', 0, 0);
     assert(t->step() == Tutorial::CAMERA);
+    // Too soon: a confirm the instant the card opens is not an answer.
+    press(*g, '\r');
+    assert(t->step() == Tutorial::CAMERA);
+    arm(*g);
     press(*g, 's'); press(*g, '\r');
     assert(t->step() == Tutorial::TURN && !g_prefs.player_keys[0].rotate_view);
     t->enter_step(*g, Tutorial::CAMERA);
+    arm(*g);
     press(*g, '\r');
     assert(t->step() == Tutorial::FIRE);
     delete g;
@@ -157,8 +168,15 @@ int main(int argc, char **argv) {
     press(*g, 'x');
     for (int ms = 0; ms < 400; ms += 16) g->tick(16);
     assert(t->step() == Tutorial::WRAP && g_prefs.tutorial_done);
+    // A shot fired as the card opens is absorbed, not an answer.
+    press(*g, ' '); t->tick(*g, 16);
+    assert(t->step() == Tutorial::WRAP);
+    for (int ms = 0; ms < 1100; ms += 16) t->tick(*g, 16);
+    assert(t->step() == Tutorial::WRAP);
     press(*g, ' '); t->tick(*g, 16);
     assert(t->step() == Tutorial::DONE);
+    press(*g, ' '); t->tick(*g, 16);
+    assert(t->step() == Tutorial::DONE && !g->get_next_state());
     delete g;
   } else if (scenario == "persistence") {
     char *dir = SDL_GetPrefPath("cc.gfm", "newtonia");
@@ -195,7 +213,44 @@ int main(int argc, char **argv) {
     assert(g->running && t->step() == Tutorial::CAMERA);
     event.cbutton.button = SDL_CONTROLLER_BUTTON_A;
     g->controller(event);
+    assert(t->step() == Tutorial::CAMERA);  // too soon to answer
+    arm(*g);
+    g->controller(event);
     assert(t->step() == Tutorial::FIRE);
+    delete g;
+  } else if (scenario == "pad-adopt") {
+    // TUTORIAL picked with the keyboard: seat 1 holds no pad, and the
+    // join paths are closed. The first press on a pad adopts seat 1.
+    int device = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                          SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+    assert(device >= 0);
+    SDL_GameController *pad = SDL_GameControllerOpen(device);
+    assert(pad);
+    PadId id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad));
+    GLShip *pilot = g->players->front();
+    assert(pilot->controller_id() == PAD_NONE);
+    SDL_Event event = {};
+    event.type = SDL_CONTROLLERBUTTONDOWN;
+    event.cbutton.which = id;
+    event.cbutton.button = SDL_CONTROLLER_BUTTON_A;
+    g->controller(event);
+    assert(g->players->size() == 1 && pilot->controller_id() == id);
+    assert(pilot->using_pad());
+    delete g;
+  } else if (scenario == "portrait") {
+    // A portrait phone shows ~420 units either side: the skip beacon and
+    // the practice fan must land inside that.
+    g->resize(540, 1170);
+    ship->respawn(g->grid, false);
+    t->tick(*g, 16);
+    assert(t->step() == Tutorial::TURN && t->skip_on_);
+    Point sk = t->skip_beacon_.closest_to(ship->position) - ship->position;
+    assert(sk.magnitude() < 400.0f);
+    t->enter_step(*g, Tutorial::FIRE);
+    for (Asteroid *rock : *g->objects) {
+      Point o = rock->position.closest_to(ship->position) - ship->position;
+      assert(o.magnitude() + rock->radius < 420.0f);
+    }
     delete g;
   } else {
     assert(false && "unknown scenario");

@@ -17,7 +17,7 @@ ${CXX:-g++} -Wall -std=c++11 -O0 -fno-access-control -I. \
   -o "$OUT/tutorial_test"
 export SDL_AUDIODRIVER=dummy
 if [ -z "${DISPLAY:-}" ]; then export SDL_VIDEODRIVER=offscreen; fi
-for scenario in handoff touch touch-one pause coasting actions persistence controller; do
+for scenario in handoff touch touch-one pause coasting actions persistence controller pad-adopt portrait; do
   if ! XDG_DATA_HOME="$OUT/$scenario" "$OUT/tutorial_test" "$scenario" > "$OUT/$scenario.log" 2>&1; then
     cat "$OUT/$scenario.log"
     exit 1

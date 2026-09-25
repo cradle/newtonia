@@ -420,6 +420,7 @@ Menu::Menu() :
   // (NEWTONIA_TUTORIAL=0: the e2e drivers' classic layout; =1: force the
   // start screen for a screenshot or a re-run).
   new_player_ = !g_prefs.tutorial_done && !has_save_;
+  has_stats_ = high_score > 0 || Stats::any();
   if (const char *tv = SDL_getenv("NEWTONIA_TUTORIAL")) {
     if (tv[0] == '0') new_player_ = false;
     else if (tv[0] == '1') new_player_ = true;

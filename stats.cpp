@@ -147,6 +147,11 @@ uint32_t highest_level()     { load(); return best_level; }
 uint32_t play_seconds()      { load(); return play_secs; }
 uint32_t secondaries_used()  { load(); return secondaries; }
 uint32_t novas_detonated()   { load(); return novas; }
+bool any() {
+  load();
+  return kills || shots || shipk || death_count || games || best_level ||
+         play_secs || secondaries || novas || special_mask;
+}
 
 void add_kill() {
   load();
