@@ -33,6 +33,7 @@ static Uint32 s_now = 1000;
 extern "C" Uint32 __wrap_SDL_GetTicks(void) { return s_now; }
 
 float Overlay::safe_inset_top() { return 0.0f; }
+const float Overlay::CORNER_INSET = 55.0f;
 static bool s_real_zones = false;
 TouchZone TouchZone::zoom_in_placed() {
   if (!s_real_zones) return TouchZone(2, 2, 2, 2);
