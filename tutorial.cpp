@@ -651,7 +651,7 @@ void Tutorial::banner_lines(const GLGame &g, std::string &title,
            : touch    ? "blue circle - use the secondary"
                       : label(g, A_SECONDARY) + " - use the secondary";
       else
-        l1 = "collect the crate ahead";
+        l1 = "collect the item ahead";
       l2 = touch ? "" : label(g, A_NEXT_WEAPON) + " and " +
                         label(g, A_NEXT_SECONDARY) + " cycle weapons";
       l3 = leave;
