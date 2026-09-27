@@ -1087,6 +1087,7 @@ bash test/unit/tutorial.sh # Real GLGame/Tutorial integration with an isolated
                      # taps, both layouts, pause recovery, camera switches,
                      # coasting past practice targets, fresh BOOST/SECONDARY
                      # actions, save/stat preservation, controller ownership,
+                     # touch resume after a pad disconnect during INPUT/HAND,
                      # and the asteroid count after the tutorial-to-game swap.
 test/e2e/tutorial.sh # The first-time pilot's start screen + tutorial
                      # (tutorial.h), solo, no relay: a FRESH pref dir must

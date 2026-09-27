@@ -496,6 +496,30 @@ for (const oneHand of [true, false]) {
   assert.deepEqual(h.keys, [['keydown', 'p'], ['keyup', 'p']]);
   assert.equal(taps.length, 1);
 }
+// A controller disconnect pauses an open tutorial question. GLGame's
+// tutorial_prompt_active() bridge relinquishes prompt ownership while
+// paused, then restores it after the play button resumes the question.
+for (const oneHand of [true, false]) {
+  const h = harness(); const taps = [];
+  h.context._oneHand = oneHand; h.context._tapFire = false;
+  h.context.Module._web_menu_tap = (nx, ny) => taps.push([nx, ny]);
+  const btn = h.container.querySelector('.touch-pause');
+  const e = { preventDefault() {},
+    changedTouches:[{ identifier:42, clientX:875, clientY:72 }] };
+  const tap = () => { btn.handlers.touchstart(e); btn.handlers.touchend(e); };
+  h.context._promptOpen = true;
+  tap();
+  assert.equal(h.keys.length, 0);
+  assert.deepEqual(taps, [[0.875, 0.12]]);
+  h.context._promptOpen = false; h.context._cardOpen = true;
+  tap();
+  assert.deepEqual(h.keys, [['keydown', 'p'], ['keyup', 'p']]);
+  assert.equal(taps.length, 1);
+  h.context._promptOpen = true; h.context._cardOpen = false;
+  tap();
+  assert.equal(h.keys.length, 2);
+  assert.deepEqual(taps[1], [0.875, 0.12]);
+}
 // The pause button is built showing the play triangle while the game is
 // stopped (setCardOpen toggles it live; the class is set at build too,
 // since a layout switch on the help card rebuilds the controls).

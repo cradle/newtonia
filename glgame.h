@@ -65,6 +65,8 @@ public:
   // clear, intro, join or leaderboard prompt — see the gates named on
   // tutorial_ below.
   bool in_tutorial() const { return tutorial_ != nullptr; }
+  // A paused game owns input even if a tutorial question is still open.
+  bool tutorial_prompt_active() const;
   GLGame(const Save::GameState &save, PadId controller = PAD_NONE);
   // Online host: adopts the Ready session from the lobby; the remote peer
   // drives player 2 via INPUT messages and receives 10 Hz snapshots.
