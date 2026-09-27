@@ -9020,6 +9020,17 @@ void GLGame::tick(int delta) {
       EM_ASM({ if (window.setPromptOpen) window.setPromptOpen($0); },
              prompt_open ? 1 : 0);
     }
+    // A full-screen card over a stopped game (help card, roster, pause):
+    // the HTML joystick zone forwards its fingers as taps so the card's
+    // bands answer on that half too (web/main.ts setCardOpen).
+    static bool web_card_pushed = false, web_card_last = false;
+    bool card_open = touch_help_active_ || roster_open() || !running;
+    if (!web_card_pushed || web_card_last != card_open) {
+      web_card_pushed = true;
+      web_card_last = card_open;
+      EM_ASM({ if (window.setCardOpen) window.setCardOpen($0); },
+             card_open ? 1 : 0);
+    }
     // One-hand tap-fire gate for the HTML OSD's gesture layer, on change
     // only like the flags above. No push from ~GLGame: back in the menu
     // the full-screen menu overlay owns every tap, so a stale true is
@@ -13265,8 +13276,13 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 #if !defined(__ANDROID__) && !defined(__IOS__)
   // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
   // controller-first, and the keyboard has no third layout to hand out.
+  // Never on a touch screen, which is how the phone apps compile it out:
+  // the web OSD forwards every tap as touch_tap + a '\r' release
+  // (web_main.cpp web_menu_tap), so each one-hand tap seated a player 2
+  // split screen with no input to fly it (field, web on a phone,
+  // 2026-09-27). A pad's A still joins.
   if (key == (unsigned char)gk.add_player2 && players->size() < 2 &&
-      !tutorial_)  // one pilot's lesson: no joins
+      !tutorial_ && !is_touch_mode())  // one pilot's lesson: no joins
     add_local_player(PAD_NONE, /*with_keys=*/true);
 #endif
   // A live board prompt/upload OWNS all game-over input, including the menu

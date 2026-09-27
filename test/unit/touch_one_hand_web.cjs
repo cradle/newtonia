@@ -50,7 +50,7 @@ function harness(width=1000, height=600, hand=0) {
     ResizeObserver: class { observe() {} disconnect() {} },
     _resizeObserver:null, _circleButtonEls:[], _menuOverlay:null,
     _teleportReady:true, setTeleportReady() {},
-    _oneHand:true, _hand:hand, _tapFire:true, _promptOpen:false, _inMenuMode:false, _mineAvailable:false,
+    _oneHand:true, _hand:hand, _tapFire:true, _promptOpen:false, _cardOpen:false, _inMenuMode:false, _mineAvailable:false,
     _secondaryKind:-1, _shieldEngaged:false, _shieldEmpty:false,
     _holdRelease:null, _resetTouchGestures:null,
     _joyPlaceholderEls:[], _positionJoyPlaceholder:null,
@@ -478,6 +478,31 @@ for (const oneHand of [true, false]) {
   c.handlers.touchend({ preventDefault() {}, changedTouches:[{ identifier:8, clientX:500, clientY:420 }] });
   assert.deepEqual(taps[1], [0.5, 0.7]);
   assert.equal(h.keys.length, 0);
+}
+// A full-screen card over a stopped game (help card, roster, pause):
+// the joystick zone forwards its fingers as canvas taps in both layouts,
+// so the two-hand help card's INPUT METHOD band (the left half, under
+// the zone) answers from the first tap — but the circle buttons keep
+// their keys, so the pause button still resumes.
+for (const oneHand of [true, false]) {
+  const h = harness(); const taps = [];
+  h.context.Module._web_menu_tap = (nx, ny) => taps.push([nx, ny]);
+  h.context._oneHand = oneHand; h.context._tapFire = false;
+  h.context._cardOpen = true;
+  h.send('touchstart', 250, 450, 7); h.advance(30); h.send('touchend', 250, 450, 7);
+  assert.deepEqual(taps, [[0.25, 0.75]]);
+  assert.equal(h.keys.length, 0);
+  h.button('touch-pause', 'touchstart', 9); h.button('touch-pause', 'touchend', 9);
+  assert.deepEqual(h.keys, [['keydown', 'p'], ['keyup', 'p']]);
+  assert.equal(taps.length, 1);
+}
+// Two-hand live play is unchanged: the stick steers and forwards nothing.
+{
+  const h = harness(); const taps = [];
+  h.context.Module._web_menu_tap = (nx, ny) => taps.push([nx, ny]);
+  h.context._oneHand = false; h.context._tapFire = false;
+  h.send('touchstart', 250, 450, 7); h.advance(30); h.send('touchend', 250, 450, 7);
+  assert.equal(taps.length, 0);
 }
 console.log('touch_one_hand_web: all checks passed');
 
