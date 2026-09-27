@@ -10,8 +10,11 @@
 #   S4  leaderboard_prompts=0 -> AUTO-upload (no prompt, same status text)
 #   S5  consumed credential (REJECT_FIRST_VERIFY) -> the retry peek-polls
 #       and resubmits a provably DIFFERENT credential, and places
-#   S6  mint not landed at submit (TEST_CRED_DELAY) -> empty cred rejected,
-#       the retry waits for the mint and places
+#   S6  mint not landed at game over (TEST_CRED_DELAY, the fresh-install
+#       cold cache) -> the qualify waits for it and goes out IDENTIFIED, and
+#       that identity admits the upload with no retry
+#   S7  a fresh install of an account whose better run already charts ->
+#       the identified qualify answers own_best and NO prompt appears
 #
 # The prompt's candidate is best.nrp, promoted by a CLEAN run — so S1/S4
 # score a clean run first (spray shots), abandon, and NEW GAME to rotate it
@@ -161,6 +164,8 @@ BSCORE=$(python3 "$ROOT/test/e2e/replay_check.py" "$RDIR/best.nrp" |
 [ "${BSCORE:-0}" -gt 0 ] || fail "S1: scoring run scored 0 (shots missed?)"
 crash_to_game_over "$W" "$OUT/s1.log"
 wait_log "$OUT/s1.log" "board: qualify" 10 || fail "S1: qualify never sent"
+grep -aq "board: qualify .*(identified)" "$OUT/s1.log" ||
+  fail "S1: qualify did not carry the credential"
 wait_log "$OUT/s1.log" "board: would place .* prompting" 15 ||
   fail "S1: prompt never armed"
 sleep 4                                        # the card's 3 s input grace
@@ -245,7 +250,9 @@ echo "===== S5: consumed credential -> retry submits a FRESH one ====="
 # ONCE. A dedicated worker with REJECT_FIRST_VERIFY rejects the first
 # submit per connection to model the consumed ticket; the varying test
 # credential ("<base>-<gen>") lets the worker log prove the resubmit
-# carried a genuinely different value.
+# carried a genuinely different value. Generations: -1 is spent verifying
+# the qualify, -2 rides the first submit (which the qualify's identity
+# admits, then the forced reject refuses), -3 is the retry's fresh read.
 REJECT_URL="ws://127.0.0.1:8796/board"
 ( cd "$ROOT/board" && npx -y wrangler@4 dev --local --port 8796 \
     --persist-to "$OUT/wrangler-state-reject" \
@@ -276,10 +283,12 @@ wait_log "$OUT/s5.log" "board: upload unverified - waiting" 10 ||
 wait_log "$OUT/s5.log" "board: retrying upload with a fresh credential" 10 ||
   fail "S5: no retry after unverified"
 wait_log "$OUT/s5.log" "board: placed #" 25 || fail "S5: retry did not place"
-# The worker saw BOTH generations: -1 rejected, -2 accepted (distinct).
+# The worker verified the qualify's credential and then the retry's, a
+# genuinely different generation (the rejected submit's -2 was never
+# verified: the qualify's identity stood in for it).
 grep -aq "cred=e2e-cred-1" "$OUT/wrangler-reject.log" ||
-  fail "S5: first submit's credential not seen by the worker"
-grep -aq "cred=e2e-cred-2" "$OUT/wrangler-reject.log" ||
+  fail "S5: the qualify's credential not seen by the worker"
+grep -aq "cred=e2e-cred-3" "$OUT/wrangler-reject.log" ||
   fail "S5: retry did not carry a fresh (different) credential"
 alive $P s5
 kill -9 $P; wait $P 2>/dev/null; P=""
@@ -290,36 +299,79 @@ kill -9 $P; wait $P 2>/dev/null; P=""
 # rerun's "came up" check pass against the OLD process (2026-09-15).
 kill_tree $REJECT_PID; REJECT_PID=""
 
-echo "===== S6: mint not landed at submit -> retry waits for it ====="
-# Credential-lifecycle hardening, empty case: the warm's async mint has not
-# landed when the player answers YES, so the submit carries an EMPTY
-# credential, which the worker rejects (FAKE_VERIFY still requires a
-# non-empty cred, like every real backend). The retry peek-polls until the
-# mint lands (NEWTONIA_BOARD_TEST_CRED_DELAY=3 reads), then resubmits.
-# Runs against the MAIN worker — no reject var needed; the rejection is the
-# empty credential itself. A distinct cred base isolates its worker log, and
-# a distinct NAME keeps it a separate FAKE_VERIFY account: S1 already placed
-# a (higher) score for "E2E" on this shared board, and a same-account lower
-# score is correctly refused "not-best" — not what S6 is probing.
+echo "===== S6: cold credential at game over -> qualify waits, identified ====="
+# The fresh-install case (field, Android, 2026-09-27): nothing has minted a
+# credential by game over — Android mints its first auth code only on the
+# first read — so the read in board_maybe_start comes back EMPTY. The
+# qualify must wait for the mint (peek, within BOARD_QUALIFY_CRED_WAIT_MS)
+# and go out IDENTIFIED rather than anonymous, and the identity the worker
+# verified then admits the upload even though the submit's own read hands
+# back no fresh value (NEWTONIA_BOARD_TEST_CRED_DELAY=3: the next mint is
+# still in flight, the reused one proves nothing) — no unverified retry.
+# A distinct cred base isolates its worker log, and a distinct NAME keeps
+# it a separate FAKE_VERIFY account: S1 already placed a (higher) score for
+# "E2E" on this shared board.
 use_home s6
 P=$(NEWTONIA_NET_NAME=E2ES6 NEWTONIA_BOARD_TEST_CRED=e2e-c6 \
     NEWTONIA_BOARD_TEST_CRED_DELAY=3 launch_game s6); sleep 2; W=$(win)
 clean_best "$W"
 crash_to_game_over "$W" "$OUT/s6.log"
 wait_log "$OUT/s6.log" "board: would place" 15 || fail "S6: no prompt"
+grep -aq "board: qualify .*(identified)" "$OUT/s6.log" ||
+  fail "S6: the qualify did not wait for the cold mint"
+grep -aq "cred=e2e-c6-1" "$OUT/wrangler.log" ||
+  fail "S6: the worker never verified the landed credential"
 sleep 4
 key "$W" Return                                  # YES
-wait_log "$OUT/s6.log" "board: upload unverified - waiting" 10 ||
-  fail "S6: empty-credential submit not rejected"
-wait_log "$OUT/s6.log" "board: retrying upload with a fresh credential" 10 ||
-  fail "S6: no retry once the mint landed"
-wait_log "$OUT/s6.log" "board: placed #" 25 || fail "S6: retry did not place"
-grep -aq "cred=e2e-c6-1" "$OUT/wrangler.log" ||
-  fail "S6: retry did not carry the landed credential"
+wait_log "$OUT/s6.log" "board: placed #" 20 || fail "S6: upload did not place"
+grep -aq "board: upload unverified" "$OUT/s6.log" &&
+  fail "S6: the qualify's identity did not admit the upload"
 alive $P s6
 kill -9 $P; wait $P 2>/dev/null; P=""
 
+echo "===== S7: fresh install, better run already charting -> no prompt ====="
+# Glenn's report: on a fresh install the local best is whatever this run
+# scored, so the anonymous qualify offered "would place #5" to the player
+# already at #1, for an upload the worker would refuse as not-best. Seed a
+# charting row for this account far above anything a spray scores, then
+# play a fresh install as that account: the identified qualify must answer
+# own_best and the card must never prompt.
+SEED_SCORE=900000000
+node --input-type=module - "$NEWTONIA_BOARD_URL" "$SEASON" "$SEED_SCORE" \
+    "$ROOT/board/test/nrp_fixture.mjs" <<'EOF' || fail "S7: seed row not placed"
+const [url, season, score, fixture] = process.argv.slice(2);
+const { build_nrp } = await import(fixture);
+const nrp = build_nrp({ game_version: season, run_id: 7007007n,
+                        score: Number(score) });
+const ws = new WebSocket(url);
+ws.binaryType = "arraybuffer";
+ws.onopen = () => ws.send(JSON.stringify({ t: "submit", size: nrp.length,
+    platform: 2, name: "E2ES7", cred: "seed" }));
+ws.onmessage = (m) => {
+  const f = JSON.parse(m.data);
+  if (f.t === "submit-ok") {
+    for (let p = 0; p < nrp.length; p += 60000)
+      ws.send(nrp.subarray(p, Math.min(p + 60000, nrp.length)));
+    ws.send(JSON.stringify({ t: "submit-end" }));
+    return;
+  }
+  console.log("seed: " + m.data);
+  process.exit(f.t === "placed" ? 0 : 1);
+};
+setTimeout(() => process.exit(1), 10000);
+EOF
+use_home s7
+P=$(NEWTONIA_NET_NAME=E2ES7 launch_game s7); sleep 2; W=$(win)
+clean_best "$W"
+crash_to_game_over "$W" "$OUT/s7.log"
+wait_log "$OUT/s7.log" "board: own best already at least this good" 15 ||
+  fail "S7: the qualify did not recognise the account's own row"
+grep -aq "board: would place" "$OUT/s7.log" &&
+  fail "S7: prompted below the account's own charting best"
+alive $P s7
+kill -9 $P; wait $P 2>/dev/null; P=""
+
 assert_clean "$OUT"/s1.log "$OUT"/s2.log "$OUT"/s3.log "$OUT"/s4.log \
-             "$OUT"/s5.log "$OUT"/s6.log
+             "$OUT"/s5.log "$OUT"/s6.log "$OUT"/s7.log
 [ "$FAIL" = 0 ] && echo "ALL PASS" || echo "FAILURES"
 exit $FAIL

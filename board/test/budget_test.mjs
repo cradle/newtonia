@@ -144,5 +144,67 @@ function fake_ws() {
   eq("throwing persist is swallowed", s2.queries, 0);
 }
 
+// ---- 3. platform verifier calls ride their own fail-closed budget ----
+for (const broken of ["throw", "garbage"])
+  eq(`verify fails closed (${broken})`,
+     await within_limit(limiter_env(broken), "ip", "verify"), false);
+
+{
+  // A credentialed qualify over the per-IP verify budget must not reach the
+  // platform verifier (it is answered anonymously), and a submit with no
+  // qualify identity to stand on is refused the same way. Real verifier
+  // (dev off, Android platform), so any call would hit the stubbed fetch.
+  let platform_calls = 0;
+  const real_fetch = globalThis.fetch;
+  globalThis.fetch = async () => { platform_calls++; throw new Error("no"); };
+  const stmt = { bind() { return stmt; }, first: async () => null,
+                 all: async () => ({ results: [] }), run: async () => ({}) };
+  const env = {
+    DB: { prepare: () => stmt, batch: async () => [] },
+    PLAY_GAMES_OAUTH_CLIENT_ID: "id", PLAY_GAMES_OAUTH_CLIENT_SECRET: "sec",
+    LIMITS: { idFromName: (n) => n, get: () => ({
+      fetch: async (url) => ({ json: async () => ({
+        allowed: !String(url).includes("action=verify") }) }) }) },
+  };
+  const sent = [];
+  const ws = { send: (t) => sent.push(JSON.parse(t)),
+               serializeAttachment() {}, deserializeAttachment: () => null,
+               close() {} };
+  const s = new Session({}, env);
+  s.hydrated = true;
+  await s.on_json(ws, JSON.stringify({ t: "qualify", season: "s1",
+      players: 1, score: 500, platform: 5, name: "P", cred: "code" }));
+  eq("over-budget qualify still answers", sent[0] && sent[0].t, "qualify");
+  eq("over-budget qualify is anonymous", sent[0] && sent[0].own_best, false);
+  eq("over-budget qualify skips the verifier", platform_calls, 0);
+  eq("over-budget qualify holds no identity", s.qualify_identity_, null);
+  await s.on_json(ws, JSON.stringify({ t: "submit", size: 5000,
+      platform: 5, name: "P", cred: "code" }));
+  eq("over-budget submit refused", sent[1] && sent[1].reason, "rate-limited");
+  eq("over-budget submit skips the verifier", platform_calls, 0);
+  globalThis.fetch = real_fetch;
+}
+
+{
+  // The qualify's verified identity rides the socket like the counters, so
+  // a hibernation between qualify and submit can't strand the upload.
+  const ws = fake_ws();
+  const s = new Session({}, {});
+  s.hydrated = true;
+  s.qualify_verified_ = true;
+  s.qualify_identity_ = { platform: 5, name: "P", verified: true,
+                          account: "pg:1" };
+  s.persist(ws);
+  const woken = new Session({}, {});
+  woken.hydrate(ws);
+  eq("qualify-verified flag restored", woken.qualify_verified_, true);
+  eq("qualify identity restored",
+     woken.qualify_identity_ && woken.qualify_identity_.account, "pg:1");
+  const junk = new Session({}, {});
+  junk.hydrate({ deserializeAttachment: () => ({ qv: "yes", qid: { a: 1 } }) });
+  eq("junk qualify identity refused", junk.qualify_identity_, null);
+  eq("non-boolean qualify flag is false", junk.qualify_verified_, false);
+}
+
 console.log(failures ? `${failures} FAILURE(S)` : "ALL PASS");
 process.exit(failures ? 1 : 0);

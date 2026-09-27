@@ -77,7 +77,13 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
      (field, Android fresh install, 2026-09-27). One qualify-time verify
      per socket; the identity it verified admits that socket's next submit
      once, because a single-use credential (Play Games' auth code) was
-     spent on it. No credential yet = the anonymous answer, as before.
+     spent on it. A cold cache at game over (Android mints its first code
+     only on the first read — the fresh install itself) holds the qualify
+     up to `BOARD_QUALIFY_CRED_WAIT_MS` (5 s) for the mint; no credential
+     by then = the anonymous answer, as before. Every platform verifier
+     call, qualify or submit, draws on a shared fail-closed per-IP
+     `verify` budget (20/hour); a qualify over it is answered anonymously,
+     a submit refused `rate-limited`.
   The prompt is "UPLOAD TO LEADERBOARD?" with the projected rank shown
   ("WOULD PLACE #7 THIS SEASON"), YES/NO through the shared confirm
   grammar (`MenuSelect`, stacked on desktop/controller, half-split on

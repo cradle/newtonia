@@ -5288,7 +5288,10 @@ void GLGame::board_maybe_start() {
   // round-trip) for the submit; the worker admits this socket's submit on
   // the identity it verified here, so a single-use credential (Play Games'
   // auth code) spent on the qualify still covers the upload. Empty = not
-  // minted yet: the qualify goes out anonymous, as it always did.
+  // minted yet — the COLD case, exactly the fresh install: Android mints
+  // its first auth code only on this first read. board_tick then peeks for
+  // it for up to BOARD_QUALIFY_CRED_WAIT_MS before sending the qualify
+  // anonymously, as it always was.
   board_q_cred_ = net_board_verify_credential();
   board_->connect(net_board_url());
   std::string season(h.game_version,
@@ -5298,21 +5301,42 @@ void GLGame::board_maybe_start() {
   // raw count — the replay HEADER keeps the true count. The worker
   // normalizes too; sending the slot keeps the echoed `players` matching.
   const int board_players = std::min((int)h.player_count, 2);
-  const NetIdentity &me = net_local_identity();
-  board_->qualify(season, board_players, h.final_score, me.platform, me.name,
-                  board_q_cred_);
   board_score_ = h.final_score;
   board_q_season_ = season;
   board_q_players_ = board_players;
   board_q_retried_ = false;
   board_phase_ = BoardQualifying;
   board_deadline_ = current_time + BOARD_QUALIFY_TIMEOUT_MS;
-  SDL_Log("board: qualify season=%s players=%u score=%u", season.c_str(),
-          (unsigned)board_players, (unsigned)h.final_score);
+  board_q_sent_ = false;
+  board_q_cred_deadline_ = current_time + BOARD_QUALIFY_CRED_WAIT_MS;
+  if (!board_q_cred_.empty()) board_send_qualify();
+}
+
+// Send the (possibly identified) qualify for the run board_maybe_start
+// armed. Once per socket; the reconnect path re-sends through here too.
+void GLGame::board_send_qualify() {
+  const NetIdentity &me = net_local_identity();
+  board_->qualify(board_q_season_, board_q_players_, board_score_,
+                  me.platform, me.name, board_q_cred_);
+  board_q_sent_ = true;
+  SDL_Log("board: qualify season=%s players=%u score=%u%s",
+          board_q_season_.c_str(), (unsigned)board_q_players_,
+          (unsigned)board_score_,
+          board_q_cred_.empty() ? " (anonymous)" : " (identified)");
 }
 
 void GLGame::board_tick() {
   if (!board_) return;
+  // The qualify is waiting on the first credential mint (see
+  // board_maybe_start): peek (no re-mint) until it lands, then consume it
+  // — which also fires the next mint, for the submit — and send; past the
+  // wait, send anonymously rather than lose the prompt.
+  if (board_phase_ == BoardQualifying && !board_q_sent_) {
+    if (!net_board_verify_credential_peek().empty())
+      board_q_cred_ = net_board_verify_credential();
+    if (!board_q_cred_.empty() || current_time >= board_q_cred_deadline_)
+      board_send_qualify();
+  }
   // Waiting for a fresh credential after an "unverified" upload (see the
   // Error handler): poll peek (no re-mint) until a value different from the
   // rejected one appears, then consume + resubmit it once; give up at the
@@ -5422,10 +5446,9 @@ void GLGame::board_tick() {
           board_->connect(net_board_url());
           // Same credential: if the dropped socket already verified it, a
           // single-use one fails here and the qualify is answered
-          // anonymously — the old behaviour, never a lost prompt.
-          const NetIdentity &me = net_local_identity();
-          board_->qualify(board_q_season_, board_q_players_, board_score_,
-                          me.platform, me.name, board_q_cred_);
+          // anonymously — the old behaviour, never a lost prompt. Still
+          // waiting on the first mint: the top of board_tick sends it.
+          if (board_q_sent_) board_send_qualify();
           return;  // fresh socket; poll it next tick
         }
         board_phase_ = BoardOff;
