@@ -830,7 +830,7 @@ test/e2e/turret_net.sh # turret drones over the wire (PROTO 26). The host
                      # its 60 s left (the muzzle-blast signature), no deploy
                      # aged out unconfirmed.
 test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
-test/e2e/fourplayer.sh # local 3-4P (FOURPLAYER.md): grid runs, Enter-join cap, 4P save/resume
+test/e2e/fourplayer.sh # local 3-4P (FOURPLAYER.md): grid runs, Enter-join cap (and no Enter join on touch), 4P save/resume
                      # + the NEWTONIA_NET_TEST_REVIVE_FILE payload hook (touch
                      # -> revive; the timed _MS twin remains for staggered
                      # setups) -> the fallen joiner leaves spectate and

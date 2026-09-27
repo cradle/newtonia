@@ -429,6 +429,18 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
   (window as any).setPromptOpen = (v: number | boolean): void => {
     _promptOpen = !!v;
   };
+  // A full-screen card of tap bands is up over a stopped game (the
+  // TOUCH CONTROLS help card, the manage-players roster, the pause
+  // screen). The joystick zone has nothing to steer there, so its
+  // fingers become plain canvas taps — otherwise, in the two-hand
+  // layout, the half of the screen under the zone swallowed every tap
+  // and the help card's INPUT METHOD band (the left half) never
+  // answered. Unlike _promptOpen, the circle buttons keep their keys:
+  // the pause button must still resume. Pushed by GLGame::tick.
+  let _cardOpen = false;
+  (window as any).setCardOpen = (v: number | boolean): void => {
+    _cardOpen = !!v;
+  };
   // The selected secondary's kind (Save::WeaponEntry::Kind, -1 = none;
   // kept by setWeaponKinds) and — when it is the SHIELD (5) — its own
   // trigger truth, mirrored by C++ over setShieldEngaged. The one-hand
@@ -1112,11 +1124,11 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
-        if (_promptOpen || (_oneHand && inZoomZone(t))) {
+        if (_promptOpen || _cardOpen || (_oneHand && inZoomZone(t))) {
           // Live-play zoom zones keep their tap semantics, and so does
-          // every finger under a tutorial prompt: the release forwards to
-          // touch_tap (the zoom step, or the prompt's row) instead of
-          // the stick.
+          // every finger under a tutorial prompt or a full-screen card:
+          // the release forwards to touch_tap (the zoom step, or the
+          // prompt's or card's band) instead of the stick.
           passFingers.add(t.identifier);
           continue;
         }

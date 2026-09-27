@@ -3,7 +3,8 @@
 # NEWTONIA_START_PLAYERS hook (the dark-launch gate stays down for real
 # joins), a 4P game must run in the 2x2 grid, a 3P game must run with the
 # free-cell minimap, Enter must join exactly one P2 and refuse a third
-# seat, and a 4P save must survive a quit/relaunch/CONTINUE cycle.
+# seat, a touch screen must refuse the Enter join, and a 4P save must
+# survive a quit/relaunch/CONTINUE cycle.
 # Prints FOURPLAYER-E2E-OK on success. See TESTING.md.
 set -u
 # Fresh prefs open on the new-player start screen (tutorial.h); this
@@ -109,8 +110,28 @@ rm -f "$PREF_DIR/savegame.dat" "$GAMELOG"
 ./newtonia > "$GAMELOG" 2>&1 & PID=$!
 newgame; alive "2P base"
 xdotool key --window $W Return; sleep 2; alive "after P2 join"
+grep -aq "Presence: Level 1 Co-Op" "$GAMELOG" || fail "Enter did not join P2"
 xdotool key --window $W Return; sleep 2; alive "after refused third Enter"
 stop "join cap"
+
+# 5. On a touch screen Enter never seats a P2: the web OSD sends a '\r'
+#    release with every forwarded tap, which used to open a split screen
+#    nobody could fly (the phone apps compile the join out entirely).
+rm -f "$PREF_DIR/savegame.dat" "$GAMELOG"
+NEWTONIA_FORCE_TOUCH=1 ./newtonia > "$GAMELOG" 2>&1 & PID=$!
+wait_for_menu || fail "touch: the game never reached the menu"
+W=$(xdotool search --name . 2>/dev/null | tail -1)
+# The touch menu ignores keys (touch_tap owns it): tap NEW GAME, the top
+# row, at its place in this driver's 1400x900 window. Retried: the
+# first click into a fresh window can be spent on focus.
+for i in 1 2 3 4 5; do
+  xdotool mousemove --window $W 700 360 click 1; sleep 2
+  grep -aq "Presence: Level 1" "$GAMELOG" && break
+done
+grep -aq "Presence: Level 1" "$GAMELOG" || fail "touch: no game started"
+xdotool key --window $W Return; sleep 2; alive "touch Enter"
+grep -aq "Presence: Level 1 Co-Op" "$GAMELOG" && fail "touch: Enter joined a P2"
+stop "touch join"
 
 rm -f "$PREF_DIR/savegame.dat"
 echo "FOURPLAYER-E2E-OK"
