@@ -437,9 +437,13 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
   // and the help card's INPUT METHOD band (the left half) never
   // answered. Unlike _promptOpen, the circle buttons keep their keys:
   // the pause button must still resume. Pushed by GLGame::tick.
+  // The same state is "the game is not running" (card_open is
+  // !running there), so it also swaps the pause button's bars for the
+  // play triangle, as the native OSD does (Overlay::touch_controls).
   let _cardOpen = false;
   (window as any).setCardOpen = (v: number | boolean): void => {
     _cardOpen = !!v;
+    document.querySelector(".touch-pause")?.classList.toggle("paused", _cardOpen);
   };
   // The selected secondary's kind (Save::WeaponEntry::Kind, -1 = none;
   // kept by setWeaponKinds) and — when it is the SHIELD (5) — its own
@@ -1276,6 +1280,7 @@ function createControlAnalytics(query: (key: number) => number, enabled = true) 
       const btn = document.createElement("div");
       btn.className = cls;
       btn.textContent = label;
+      if (key === "p") btn.classList.toggle("paused", _cardOpen);
 
       const dispatchKey = (type: string) => keyEvt(key, type);
 
