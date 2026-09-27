@@ -5279,9 +5279,17 @@ void GLGame::board_maybe_start() {
   board_up_retried_ = false;
   board_up_retry_deadline_ = 0;
   board_up_sent_cred_.clear();
-  // Warm the async platform credential mint (Steam's ticket takes a
-  // round-trip) so it is ready by the time the player answers YES.
-  (void)net_board_verify_credential();
+  // The qualify carries who is asking, so the worker can see this pilot's
+  // own row: a fresh install (or a second device) remembers no earlier
+  // run, and without the identity a score below the pilot's own charting
+  // best was offered as "would place #5" to a player already at #1 — an
+  // upload the worker then refuses as not-best (field, Android, 2026-09-27).
+  // Consuming it here also warms the next mint (Steam's ticket takes a
+  // round-trip) for the submit; the worker admits this socket's submit on
+  // the identity it verified here, so a single-use credential (Play Games'
+  // auth code) spent on the qualify still covers the upload. Empty = not
+  // minted yet: the qualify goes out anonymous, as it always did.
+  board_q_cred_ = net_board_verify_credential();
   board_->connect(net_board_url());
   std::string season(h.game_version,
                      strnlen(h.game_version, sizeof(h.game_version)));
@@ -5290,7 +5298,9 @@ void GLGame::board_maybe_start() {
   // raw count — the replay HEADER keeps the true count. The worker
   // normalizes too; sending the slot keeps the echoed `players` matching.
   const int board_players = std::min((int)h.player_count, 2);
-  board_->qualify(season, board_players, h.final_score);
+  const NetIdentity &me = net_local_identity();
+  board_->qualify(season, board_players, h.final_score, me.platform, me.name,
+                  board_q_cred_);
   board_score_ = h.final_score;
   board_q_season_ = season;
   board_q_players_ = board_players;
@@ -5355,8 +5365,11 @@ void GLGame::board_tick() {
         board_prompt_pressed_.clear();  // only keys pressed FROM NOW act
         SDL_Log("board: would place #%d - prompting", ev.place);
       } else {
-        SDL_Log("board: below the cut-line (place %d) - no prompt",
-                ev.place);
+        if (ev.own_best)
+          SDL_Log("board: own best already at least this good - no prompt");
+        else
+          SDL_Log("board: below the cut-line (place %d) - no prompt",
+                  ev.place);
         board_phase_ = BoardOff;
         delete board_;
         board_ = nullptr;
@@ -5407,7 +5420,12 @@ void GLGame::board_tick() {
         if (board_) {
           SDL_Log("board: connection lost while qualifying - retrying");
           board_->connect(net_board_url());
-          board_->qualify(board_q_season_, board_q_players_, board_score_);
+          // Same credential: if the dropped socket already verified it, a
+          // single-use one fails here and the qualify is answered
+          // anonymously — the old behaviour, never a lost prompt.
+          const NetIdentity &me = net_local_identity();
+          board_->qualify(board_q_season_, board_q_players_, board_score_,
+                          me.platform, me.name, board_q_cred_);
           return;  // fresh socket; poll it next tick
         }
         board_phase_ = BoardOff;

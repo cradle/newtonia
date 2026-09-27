@@ -169,12 +169,24 @@ using NetSig::json_uint_field;
 using NetSig::json_bool_field;
 
 std::string qualify_frame(const std::string &season, int players,
-                          uint32_t score) {
+                          uint32_t score, uint8_t platform,
+                          const std::string &name, const std::string &cred) {
   char buf[192];
   snprintf(buf, sizeof(buf),
-           "{\"t\":\"qualify\",\"season\":\"%s\",\"players\":%d,\"score\":%u}",
+           "{\"t\":\"qualify\",\"season\":\"%s\",\"players\":%d,\"score\":%u",
            json_escape(season).c_str(), players, score);
-  return buf;
+  std::string out = buf;
+  if (!cred.empty()) {
+    snprintf(buf, sizeof(buf), ",\"platform\":%u,\"name\":\"",
+             (unsigned)platform);
+    out += buf;
+    out += json_escape(name);
+    out += "\",\"cred\":\"";
+    out += json_escape(cred);
+    out += "\"";
+  }
+  out += "}";
+  return out;
 }
 
 std::string seasons_frame() { return "{\"t\":\"seasons\"}"; }
@@ -324,6 +336,8 @@ bool parse_frame(const std::string &frame, NetBoard::Event &ev) {
     ev.cutline = json_uint_field(frame, "cutline", v) ? (long)v : -1;
     ev.would_place = false;
     json_bool_field(frame, "would_place", ev.would_place);
+    ev.own_best = false;
+    json_bool_field(frame, "own_best", ev.own_best);
     return true;
   }
   if (t == "placed") {

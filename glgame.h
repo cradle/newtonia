@@ -1411,6 +1411,8 @@ private:
   // header was read once in board_maybe_start; score is board_score_).
   std::string board_q_season_;
   int board_q_players_ = 0;
+  std::string board_q_cred_;  // the credential the qualify carried
+
   // Which best slot the finished run promoted (solo best.nrp or co-op
   // best_coop.nrp — best is per-board); what qualify reads and submit sends.
   std::string board_up_path_;

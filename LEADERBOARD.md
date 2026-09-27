@@ -67,7 +67,17 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
      the lowest score" flow: the query is one D1 row read, so it is cheap
      enough to fire on every personal best, and it means the player is
      never asked to upload megabytes that would bounce off the bottom of
-     the table.
+     the table. The qualify also carries the asker's identity triple
+     (platform, name, credential — the submit's) when a credential is
+     minted, and the worker answers `would_place: false, own_best: true`
+     when the verified account already holds a row at least as good: a
+     fresh install or a second device remembers no earlier run, so the
+     local personal-best gate alone let a player already at #1 be offered
+     "would place #5" for an upload the worker then refused as not-best
+     (field, Android fresh install, 2026-09-27). One qualify-time verify
+     per socket; the identity it verified admits that socket's next submit
+     once, because a single-use credential (Play Games' auth code) was
+     spent on it. No credential yet = the anonymous answer, as before.
   The prompt is "UPLOAD TO LEADERBOARD?" with the projected rank shown
   ("WOULD PLACE #7 THIS SEASON"), YES/NO through the shared confirm
   grammar (`MenuSelect`, stacked on desktop/controller, half-split on
@@ -266,8 +276,9 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
 ## Server API — `board/src/worker.js` (WS at `/board`, JSON + binary frames)
 
 ```
-client → {t:"qualify", season, score, players}
-worker → {t:"qualify", place, cutline, would_place}   // one D1 read
+client → {t:"qualify", season, score, players[, platform, name, cred]}
+worker → {t:"qualify", place, cutline, would_place, own_best}
+                        // one D1 read (+ one verify + own-row read with cred)
 
 client → {t:"top", season, players, count}            // count ≤ 100
 worker → {t:"top", rows:[{rank, name, platform, verified, score,

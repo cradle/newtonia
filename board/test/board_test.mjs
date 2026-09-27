@@ -333,6 +333,54 @@ async function submit(ws, bytes, name, platform = 2) {
         JSON.stringify(f));
   ws6.close();
 
+  // 16. A qualify that says who is asking checks the asker's OWN row: a
+  // run below the player's charting best must not prompt, however high it
+  // would place among everyone else (field: a fresh Android install offered
+  // "#5" to the player already at #1). The identity it verified admits the
+  // same socket's submit ONCE, since a single-use credential was spent.
+  {
+    const wsq = await connect();
+    send(wsq, { t: "top", season: SEASON, players: 1, count: 10 });
+    f = await wsq._recv();
+    const alice = f.rows.find((r) => r.name === "ALICE");
+    send(wsq, { t: "qualify", season: SEASON, players: 1,
+                score: alice.score - 1, platform: 2, name: "ALICE",
+                cred: "x" });
+    f = await wsq._recv();
+    check("own better row suppresses the prompt",
+          f.t === "qualify" && f.own_best === true &&
+          f.would_place === false && f.place <= 100, JSON.stringify(f));
+    wsq.close();
+
+    const wsz = await connect();
+    send(wsz, { t: "qualify", season: SEASON, players: 1,
+                score: alice.score - 1, platform: 2, name: "ZOE",
+                cred: "x" });
+    f = await wsz._recv();
+    check("a new player's qualify still places",
+          f.t === "qualify" && f.own_best === false && f.would_place === true,
+          JSON.stringify(f));
+    const runZ = build_nrp({ game_version: SEASON, run_id: 5001n,
+                             score: alice.score - 1 });
+    send(wsz, { t: "submit", size: runZ.length, platform: 2, name: "ZOE",
+                cred: "" });
+    f = await wsz._recv();
+    check("qualify identity admits the submit", f.t === "submit-ok",
+          JSON.stringify(f));
+    for (let p = 0; p < runZ.length; p += 60000)
+      wsz.send(runZ.subarray(p, Math.min(p + 60000, runZ.length)));
+    send(wsz, { t: "submit-end" });
+    f = await wsz._recv();
+    check("qualify-attested submit placed #2", f.t === "placed" && f.rank === 2,
+          JSON.stringify(f));
+    send(wsz, { t: "submit", size: runZ.length, platform: 2, name: "ZOE",
+                cred: "" });
+    f = await wsz._recv();
+    check("qualify identity admits only one submit",
+          f.t === "err" && f.reason === "unverified", JSON.stringify(f));
+    wsz.close();
+  }
+
   ws.close(); ws2.close(); ws3.close(); ws5.close();
   console.log(failures ? `${failures} FAILURE(S)` : "ALL PASS");
   process.exit(failures ? 1 : 0);
