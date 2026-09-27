@@ -45,7 +45,7 @@ static std::string contents(const std::string &path) {
 int main(int argc, char **argv) {
   assert(argc == 2);
   const std::string scenario = argv[1];
-  if (scenario == "touch" || scenario == "touch-one")
+  if (scenario == "touch" || scenario == "touch-one" || scenario == "touch-resume")
     SDL_setenv("NEWTONIA_FORCE_TOUCH", "1", 1);
   assert(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) == 0);
   assert(Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) == 0);
@@ -236,6 +236,32 @@ int main(int argc, char **argv) {
     g->controller(event);
     assert(g->players->size() == 1 && pilot->controller_id() == id);
     assert(pilot->using_pad());
+    delete g;
+  } else if (scenario == "touch-resume") {
+    // Disconnecting a pad pauses INPUT/HAND without closing the question.
+    // The web bridge must relinquish prompt ownership so its play button
+    // sends P instead of forwarding an inert canvas tap.
+    int device = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                          SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+    assert(device >= 0);
+    SDL_GameController *pad = SDL_GameControllerOpen(device);
+    assert(pad);
+    PadId id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad));
+    for (Tutorial::Step step : {Tutorial::INPUT, Tutorial::HAND}) {
+      t->enter_step(*g, step);
+      g->players->front()->set_controller(id);
+      assert(g->tutorial_prompt_active());
+      g->controller_removed(id);
+      assert(!g->running && t->owns_input());
+      assert(!g->tutorial_prompt_active());
+      press(*g, 'p');  // the HTML play button's key pair
+      assert(g->running && g->tutorial_prompt_active());
+      assert(t->step() == step);
+      tap_row(*g, 0, step == Tutorial::INPUT ? 2 : 3);
+      assert(t->step() == (step == Tutorial::INPUT ? Tutorial::HAND : Tutorial::LAUNCH));
+    }
+    SDL_GameControllerClose(pad);
+    SDL_JoystickDetachVirtual(device);
     delete g;
   } else if (scenario == "portrait") {
     // A portrait phone shows ~420 units either side: the skip beacon and

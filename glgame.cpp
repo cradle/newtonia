@@ -9013,7 +9013,7 @@ void GLGame::tick(int delta) {
     // setPromptOpen). On change only; the next game's first tick pushes
     // the false a game torn down under an open prompt left behind.
     static bool web_prompt_pushed = false, web_prompt_last = false;
-    bool prompt_open = tutorial_ && tutorial_->owns_input();
+    bool prompt_open = tutorial_prompt_active();
     if (!web_prompt_pushed || web_prompt_last != prompt_open) {
       web_prompt_pushed = true;
       web_prompt_last = prompt_open;
@@ -12046,6 +12046,10 @@ static char board_pad_key(const SDL_Event &event) {
   }
 }
 
+bool GLGame::tutorial_prompt_active() const {
+  return running && tutorial_ && tutorial_->owns_input();
+}
+
 void GLGame::controller(SDL_Event event) {
   // The tutorial is one pilot's lesson with no join paths, so a pad that
   // reaches a keyboard-started tutorial (TUTORIAL picked with Enter, a
@@ -12145,7 +12149,7 @@ void GLGame::controller(SDL_Event event) {
   // The tutorial's CAMERA prompt owns the pad: dpad/stick move, A
   // confirms, B keeps (the keyboard twin above); everything else —
   // including the trigger, which is fire in play — is swallowed.
-  if (running && tutorial_ && tutorial_->owns_input()) {
+  if (tutorial_prompt_active()) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN ||
         event.type == SDL_CONTROLLERAXISMOTION) {
       PadId which = event.type == SDL_CONTROLLERBUTTONDOWN
