@@ -496,6 +496,16 @@ for (const oneHand of [true, false]) {
   assert.deepEqual(h.keys, [['keydown', 'p'], ['keyup', 'p']]);
   assert.equal(taps.length, 1);
 }
+// The pause button is built showing the play triangle while the game is
+// stopped (setCardOpen toggles it live; the class is set at build too,
+// since a layout switch on the help card rebuilds the controls).
+{
+  const h = harness(); h.context._cardOpen = true;
+  h.container.children.length = 0; h.context.buildTouchControls();
+  assert.ok(h.container.querySelector('.touch-pause').classList.contains('paused'));
+  const g = harness();
+  assert.ok(!g.container.querySelector('.touch-pause').classList.contains('paused'));
+}
 // Two-hand live play is unchanged: the stick steers and forwards nothing.
 {
   const h = harness(); const taps = [];

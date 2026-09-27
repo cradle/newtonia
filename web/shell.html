@@ -290,6 +290,17 @@
     }
     .touch-pause::before { left: 34%; }
     .touch-pause::after  { right: 34%; }
+    /* Paused: the bars become a play triangle (the native OSD's resume
+       icon, Overlay::touch_controls), sized in % like the bars so it
+       scales with the button. */
+    .touch-pause.paused::before {
+      left: 38%;
+      top: 30%;
+      width: 32%;
+      height: 40%;
+      clip-path: polygon(0 0, 100% 50%, 0 100%);
+    }
+    .touch-pause.paused::after { display: none; }
 
     /* Game-over promo banner (built by main.ts, shown via window.newtGameOver
        from the game's game-over latch): the run just ended — offer the site
