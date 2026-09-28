@@ -107,6 +107,37 @@ int main() {
     CHECK(parse_bundle(newer, back, bh) && back[2] == v[2]);
   }
 
+  // ── two bundles fold into one, whichever device wrote last ──
+  {
+    SaveRecord older, newer;
+    older.stamp = 100; older.present = true; older.bytes = std::string("NWTN\x17\x00old", 9);
+    newer.stamp = 200; newer.present = false;  // a later game over
+    std::string a[3] = {save_record_bytes(older), stats_bytes({500, 0x1, 9}), highscore_bytes(1000)};
+    std::string b[3] = {save_record_bytes(newer), stats_bytes({300, 0x4, 12}), highscore_bytes(100)};
+    bool all[3] = {true, true, true};
+    std::string ab = merge_bundles(bundle_bytes(a, all), bundle_bytes(b, all));
+    std::string ba = merge_bundles(bundle_bytes(b, all), bundle_bytes(a, all));
+    CHECK(ab == ba);
+    std::string v[3];
+    bool h[3];
+    CHECK(parse_bundle(ab, v, h) && h[0] && h[1] && h[2]);
+    SaveRecord r;
+    CHECK(parse_save_record(v[0], r) && r.stamp == 200 && !r.present);
+    std::vector<uint32_t> st;
+    CHECK(parse_stats(v[1], st) && st == std::vector<uint32_t>({500, 0x5, 12}));
+    int32_t hs = 0;
+    CHECK(parse_highscore(v[2], hs) && hs == 1000);
+
+    // An empty (new) saved game, or a damaged one, loses nothing.
+    CHECK(merge_bundles(std::string(), bundle_bytes(a, all)) == bundle_bytes(a, all));
+    CHECK(merge_bundles(std::string("junk"), bundle_bytes(a, all)) == bundle_bytes(a, all));
+    CHECK(merge_bundles(bundle_bytes(a, all), std::string()) == bundle_bytes(a, all));
+    // A file only one side has carries over.
+    bool only_hs[3] = {false, false, true};
+    std::string m = merge_bundles(bundle_bytes(b, only_hs), bundle_bytes(a, all));
+    CHECK(parse_bundle(m, v, h) && h[0] && h[1] && parse_highscore(v[2], hs) && hs == 1000);
+  }
+
   if (fails) {
     std::printf("%d check(s) failed\n", fails);
     return 1;

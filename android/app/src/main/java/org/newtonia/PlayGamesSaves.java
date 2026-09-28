@@ -3,16 +3,22 @@ package org.newtonia;
 // Java half of the Android cloud sync (cloud_sync.h): one Play Games saved
 // game holds the bundle of savegame.dat, stats.dat and highscore.dat. The
 // native half — android_cloud_sync.cpp — owns every merge decision; this
-// class only moves bytes:
+// class moves bytes, folding them with nativeMergeBundles (the same
+// max/OR/newest-stamp rules as the local merge, pure and thread-safe):
 //   pull: open the saved game, hand its bytes to nativeCloudData, close it.
-//   push: open it, replace its bytes with the bundle native passed, commit.
+//   push: open it, fold what it holds INTO the bundle native passed, commit
+//         the fold — so a bundle built from an older read never overwrites
+//         progress another device uploaded since, and a stale queued push
+//         is harmless.
+// Conflicts are resolved manually by folding both versions together
+// (RESOLUTION_POLICY_MOST_RECENTLY_MODIFIED would discard one side whole).
 // It pulls at startup (init) and on every resume, and pushes whenever the
 // native side's merge produced something the cloud lacks.
 //
 // Everything runs on the UI thread through a main-looper handler, one
 // operation at a time (a saved game can only be open once): a pull wanted
 // runs before a push waiting, since the pull's merge supersedes it, and a
-// newer push replaces an older one still waiting. A failed operation is
+// newer push folds into one still waiting. A failed operation is
 // not retried on the spot — the next resume or local write tries again —
 // so a device that is signed out, offline, or on a console with Saved
 // Games switched off costs one log line, not a loop.
@@ -27,10 +33,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import java.util.Arrays;
+
 import com.google.android.gms.games.AuthenticationResult;
 import com.google.android.gms.games.PlayGames;
 import com.google.android.gms.games.SnapshotsClient;
 import com.google.android.gms.games.snapshot.Snapshot;
+import com.google.android.gms.games.snapshot.SnapshotContents;
+import com.google.android.gms.games.snapshot.SnapshotMetadata;
 import com.google.android.gms.games.snapshot.SnapshotMetadataChange;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
@@ -39,8 +49,10 @@ public final class PlayGamesSaves {
 
     private static final String TAG = "NewtoniaCloudSync";
     private static final String SNAPSHOT = "newtonia_progress";
-    private static final int POLICY =
-            SnapshotsClient.RESOLUTION_POLICY_MOST_RECENTLY_MODIFIED;
+    private static final int POLICY = SnapshotsClient.RESOLUTION_POLICY_MANUAL;
+    // A resolution can itself meet a newer conflict; give up past this and
+    // let the next resume or write try again.
+    private static final int MAX_RESOLVE_ROUNDS = 4;
 
     private static final Handler sUiHandler = new Handler(Looper.getMainLooper());
 
@@ -54,6 +66,8 @@ public final class PlayGamesSaves {
 
     // android_cloud_sync.cpp: the saved game's bytes (empty = just created).
     private static native void nativeCloudData(byte[] data);
+    // android_cloud_sync.cpp: two bundles folded into one. Any thread.
+    private static native byte[] nativeMergeBundles(byte[] a, byte[] b);
 
     private PlayGamesSaves() {}
 
@@ -74,7 +88,7 @@ public final class PlayGamesSaves {
     public static void push(final byte[] data) {
         sUiHandler.post(new Runnable() {
             @Override public void run() {
-                sPush = data;
+                sPush = sPush == null ? data : merge(sPush, data);
                 pump();
             }
         });
@@ -116,11 +130,11 @@ public final class PlayGamesSaves {
                     SnapshotsClient client = PlayGames.getSnapshotsClient(activity);
                     if (sPullWanted) {
                         sPullWanted = false;
-                        pull(client);
+                        open(client, null);
                     } else {
                         byte[] data = sPush;
                         sPush = null;
-                        push(client, data);
+                        open(client, data);
                     }
                 }
             });
@@ -137,120 +151,133 @@ public final class PlayGamesSaves {
         if (ok) pump();
     }
 
-    private static void deliver(Snapshot s) throws java.io.IOException {
+    private static byte[] contents(Snapshot s) throws java.io.IOException {
         byte[] data = s.getSnapshotContents().readFully();
-        nativeCloudData(data != null ? data : new byte[0]);
+        return data != null ? data : new byte[0];
     }
 
-    private static void pull(final SnapshotsClient client) {
+    // Never throws: the push path runs it in bare Runnables. If the fold
+    // can't run, b (the newer side at every call) stands alone.
+    private static byte[] merge(byte[] a, byte[] b) {
+        try {
+            byte[] m = nativeMergeBundles(a, b);
+            if (m != null) return m;
+        } catch (Throwable t) {
+            Log.w(TAG, "bundle merge failed", t);
+        }
+        return b;
+    }
+
+    private static SnapshotMetadataChange meta() {
+        return new SnapshotMetadataChange.Builder()
+                .setDescription("Newtonia progress").build();
+    }
+
+    // UI thread only. push null = a pull: read, deliver, close.
+    private static void open(final SnapshotsClient client, final byte[] push) {
         try {
             client.open(SNAPSHOT, true, POLICY).addOnCompleteListener(
                     new OnCompleteListener<SnapshotsClient.DataOrConflict<Snapshot>>() {
                 @Override public void onComplete(
                         Task<SnapshotsClient.DataOrConflict<Snapshot>> task) {
                     if (!task.isSuccessful()) {
-                        Log.w(TAG, "open for read failed (is Saved Games on in the Play Console?)",
+                        Log.w(TAG, "opening the saved game failed (is Saved Games on in the Play Console?)",
                               task.getException());
-                        done(false);
+                        failed(push);
                         return;
                     }
-                    try {
-                        SnapshotsClient.DataOrConflict<Snapshot> r = task.getResult();
-                        if (r.isConflict()) {
-                            // The policy normally resolves this itself. When
-                            // it can't, hand both copies to the merge — its
-                            // rules take the union — and keep the server's.
-                            SnapshotsClient.SnapshotConflict c = r.getConflict();
-                            deliver(c.getConflictingSnapshot());
-                            deliver(c.getSnapshot());
-                            resolve(client, c);
-                            return;
-                        }
-                        Snapshot s = r.getData();
-                        deliver(s);
-                        client.discardAndClose(s);
-                        done(true);
-                    } catch (Throwable t) {
-                        Log.w(TAG, "reading the saved game failed", t);
-                        done(false);
-                    }
+                    opened(client, task.getResult(), push, 0);
                 }
             });
         } catch (Throwable t) {
-            Log.w(TAG, "open for read failed", t);
-            done(false);
+            Log.w(TAG, "opening the saved game failed", t);
+            failed(push);
         }
     }
 
+    // An open (or a resolution) came back: fold and settle it.
+    private static void opened(final SnapshotsClient client,
+                               SnapshotsClient.DataOrConflict<Snapshot> r,
+                               final byte[] push, final int round) {
+        try {
+            if (r.isConflict()) {
+                resolve(client, r.getConflict(), push, round);
+                return;
+            }
+            Snapshot s = r.getData();
+            final byte[] current = contents(s);
+            final byte[] merged = push == null ? current : merge(current, push);
+            if (Arrays.equals(merged, current)) {
+                // The cloud already holds everything: nothing to write.
+                deliver(current);
+                client.discardAndClose(s);
+                done(true);
+                return;
+            }
+            s.getSnapshotContents().writeBytes(merged);
+            client.commitAndClose(s, meta()).addOnCompleteListener(
+                    new OnCompleteListener<SnapshotMetadata>() {
+                @Override public void onComplete(Task<SnapshotMetadata> t) {
+                    if (!t.isSuccessful()) {
+                        Log.w(TAG, "saving the saved game failed", t.getException());
+                        failed(push);
+                        return;
+                    }
+                    deliver(merged);
+                    done(true);
+                }
+            });
+        } catch (Throwable t) {
+            Log.w(TAG, "reading or writing the saved game failed", t);
+            failed(push);
+        }
+    }
+
+    // Two devices wrote the saved game apart: keep both — fold the two
+    // versions (and any bundle waiting to go) and resolve with the fold.
     private static void resolve(final SnapshotsClient client,
-                                SnapshotsClient.SnapshotConflict c) {
-        client.resolveConflict(c.getConflictId(), c.getSnapshot()).addOnCompleteListener(
+                                SnapshotsClient.SnapshotConflict c,
+                                final byte[] push, final int round)
+            throws java.io.IOException {
+        if (round >= MAX_RESOLVE_ROUNDS) {
+            Log.w(TAG, "saved game still conflicted after " + round + " resolutions");
+            failed(push);
+            return;
+        }
+        byte[] merged = merge(contents(c.getSnapshot()), contents(c.getConflictingSnapshot()));
+        if (push != null) merged = merge(merged, push);
+        SnapshotContents out = c.getResolutionSnapshotContents();
+        out.writeBytes(merged);
+        final byte[] folded = merged;
+        client.resolveConflict(c.getConflictId(),
+                c.getSnapshot().getMetadata().getSnapshotId(), meta(), out)
+                .addOnCompleteListener(
                 new OnCompleteListener<SnapshotsClient.DataOrConflict<Snapshot>>() {
             @Override public void onComplete(
                     Task<SnapshotsClient.DataOrConflict<Snapshot>> task) {
-                try {
-                    if (task.isSuccessful() && !task.getResult().isConflict())
-                        client.discardAndClose(task.getResult().getData());
-                } catch (Throwable t) {
-                    Log.w(TAG, "closing the resolved saved game failed", t);
+                if (!task.isSuccessful()) {
+                    Log.w(TAG, "resolving the saved game conflict failed", task.getException());
+                    failed(push);
+                    return;
                 }
-                done(task.isSuccessful());
+                // The resolved copy (or a newer conflict) goes round again;
+                // the fold is already in it, so re-folding is a no-op.
+                opened(client, task.getResult(), folded, round + 1);
             }
         });
     }
 
-    private static void push(final SnapshotsClient client, final byte[] data) {
-        try {
-            client.open(SNAPSHOT, true, POLICY).addOnCompleteListener(
-                    new OnCompleteListener<SnapshotsClient.DataOrConflict<Snapshot>>() {
-                @Override public void onComplete(
-                        Task<SnapshotsClient.DataOrConflict<Snapshot>> task) {
-                    if (!task.isSuccessful()) {
-                        Log.w(TAG, "open for write failed", task.getException());
-                        requeue(data);
-                        done(false);
-                        return;
-                    }
-                    try {
-                        SnapshotsClient.DataOrConflict<Snapshot> r = task.getResult();
-                        if (r.isConflict()) {
-                            // Settle the conflict, then read before writing:
-                            // the next pull merges and pushes afresh.
-                            sPullWanted = true;
-                            resolve(client, r.getConflict());
-                            return;
-                        }
-                        Snapshot s = r.getData();
-                        s.getSnapshotContents().writeBytes(data);
-                        SnapshotMetadataChange meta = new SnapshotMetadataChange.Builder()
-                                .setDescription("Newtonia progress").build();
-                        client.commitAndClose(s, meta).addOnCompleteListener(
-                                new OnCompleteListener<com.google.android.gms.games.snapshot.SnapshotMetadata>() {
-                            @Override public void onComplete(
-                                    Task<com.google.android.gms.games.snapshot.SnapshotMetadata> t) {
-                                if (!t.isSuccessful()) {
-                                    Log.w(TAG, "saving the saved game failed", t.getException());
-                                    requeue(data);
-                                }
-                                done(t.isSuccessful());
-                            }
-                        });
-                    } catch (Throwable t) {
-                        Log.w(TAG, "writing the saved game failed", t);
-                        requeue(data);
-                        done(false);
-                    }
-                }
-            });
-        } catch (Throwable t) {
-            Log.w(TAG, "open for write failed", t);
-            requeue(data);
-            done(false);
-        }
+    private static void deliver(byte[] data) {
+        nativeCloudData(data);
     }
 
-    // A newer push that arrived meanwhile wins over the one that failed.
-    private static void requeue(byte[] data) {
-        if (sPush == null) sPush = data;
+    // A push that failed waits for the next resume or write; folding makes
+    // a late retry safe even after newer progress lands.
+    private static void failed(byte[] push) {
+        if (push != null) {
+            // Merge into whatever newer push arrived meanwhile.
+            sPush = sPush == null ? push : merge(sPush, push);
+        }
+        done(false);
     }
 }

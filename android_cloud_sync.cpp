@@ -18,11 +18,14 @@
 // pushing before that would replace the cloud's files with this device's
 // alone. Anything written before then is merged in when the copy lands.
 //
-// A snapshot written by another device between this device's read and its
-// next write is overwritten (the open resolves to the most recently
-// modified copy); that device still holds its files, and its next sync
-// finds the cloud behind and pushes them again — high score and stats by
-// max, the save by its newer stamp.
+// Every write is a read-merge-write inside one open: the Java side opens
+// the saved game, folds what it holds into the bundle native passed
+// (nativeMergeBundles, the same rules as the local merge), and commits the
+// result, so a copy this device read earlier can never overwrite newer
+// progress another device uploaded since. Conflicts between devices are
+// resolved manually the same way — both versions folded together — never
+// by picking one. The fold is pure and touches no game state, so it is
+// safe on the UI thread.
 
 #if defined(__ANDROID__) && defined(PLAY_GAMES_BUILD)
 
@@ -183,6 +186,31 @@ Java_org_newtonia_PlayGamesSaves_nativeCloudData(JNIEnv *env, jclass,
   std::lock_guard<std::mutex> lock(g_inbox_mutex);
   g_inbox.push_back(b);
   g_pending = true;
+}
+
+// PlayGamesSaves.nativeMergeBundles (UI thread): two copies of the bundle
+// folded into one (CloudMerge::merge_bundles). Pure — no game state.
+static std::string java_bytes(JNIEnv *env, jbyteArray a) {
+  std::string b;
+  if (!a) return b;
+  jsize n = env->GetArrayLength(a);
+  b.resize((size_t)n);
+  if (n > 0) env->GetByteArrayRegion(a, 0, n, (jbyte *)&b[0]);
+  return b;
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_org_newtonia_PlayGamesSaves_nativeMergeBundles(JNIEnv *env, jclass,
+                                                    jbyteArray a,
+                                                    jbyteArray b) {
+  std::string x = java_bytes(env, a);
+  std::string y = java_bytes(env, b);
+  if (env->ExceptionCheck()) return NULL;  // Java sees the exception
+  std::string m = CloudMerge::merge_bundles(x, y);
+  jbyteArray out = env->NewByteArray((jsize)m.size());
+  if (!out) return NULL;
+  env->SetByteArrayRegion(out, 0, (jsize)m.size(), (const jbyte *)m.data());
+  return out;
 }
 
 namespace CloudSync {

@@ -150,4 +150,46 @@ inline bool parse_bundle(const std::string &b, std::string v[BUNDLE_FILES],
   return true;
 }
 
+// Two copies of the bundle folded into one by the same rules the local
+// merge uses: the higher score, each stats counter's max (mask OR'd), the
+// save record with the newer stamp (a tie keeps a's). Order only matters on
+// that tie. A copy that doesn't parse, or a value that doesn't, gives way to
+// the other side. Used where a saved game is written or a conflict is
+// resolved, so neither ever drops what the cloud already held.
+inline std::string merge_bundles(const std::string &a, const std::string &b) {
+  std::string va[BUNDLE_FILES], vb[BUNDLE_FILES], out[BUNDLE_FILES];
+  bool ha[BUNDLE_FILES], hb[BUNDLE_FILES], ho[BUNDLE_FILES];
+  if (!parse_bundle(a, va, ha)) parse_bundle(std::string(), va, ha);
+  if (!parse_bundle(b, vb, hb)) parse_bundle(std::string(), vb, hb);
+  for (int i = 0; i < BUNDLE_FILES; i++) { out[i] = va[i]; ho[i] = ha[i]; }
+
+  // Savegame (file 0).
+  {
+    SaveRecord ra, rb;
+    bool oka = ha[0] && parse_save_record(va[0], ra);
+    bool okb = hb[0] && parse_save_record(vb[0], rb);
+    if (okb && (!oka || rb.stamp > ra.stamp)) { out[0] = vb[0]; ho[0] = true; }
+    else if (!oka) { out[0].clear(); ho[0] = false; }
+  }
+  // Stats (file 1).
+  {
+    std::vector<uint32_t> sa, sb;
+    bool oka = ha[1] && parse_stats(va[1], sa);
+    bool okb = hb[1] && parse_stats(vb[1], sb);
+    if (oka && okb) { out[1] = stats_bytes(merge_stats(sa, sb)); ho[1] = true; }
+    else if (okb) { out[1] = vb[1]; ho[1] = true; }
+    else if (!oka) { out[1].clear(); ho[1] = false; }
+  }
+  // High score (file 2).
+  {
+    int32_t sa = 0, sb = 0;
+    bool oka = ha[2] && parse_highscore(va[2], sa);
+    bool okb = hb[2] && parse_highscore(vb[2], sb);
+    if (oka && okb) { out[2] = highscore_bytes(sa > sb ? sa : sb); ho[2] = true; }
+    else if (okb) { out[2] = vb[2]; ho[2] = true; }
+    else if (!oka) { out[2].clear(); ho[2] = false; }
+  }
+  return bundle_bytes(out, ho);
+}
+
 }  // namespace CloudMerge
