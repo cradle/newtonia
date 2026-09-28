@@ -17,6 +17,7 @@
 #import <Foundation/Foundation.h>
 #include <SDL.h>
 #include <atomic>
+#include <cerrno>
 #include <cstdio>
 #include <string>
 
@@ -166,8 +167,16 @@ bool sync_save() {
     if (r.present) {
       ok = write_local(CloudSync::SAVEGAME, r.bytes);
     } else {
-      std::remove(local_path(CloudSync::SAVEGAME).c_str());
-      ok = true;
+      // Only a removal that happened (or a file already gone) counts as
+      // applying the tombstone. Any other failure keeps the old stamp, so
+      // the next sync (foreground, or another device's push) retries
+      // instead of treating the ended run as settled.
+      std::string path = local_path(CloudSync::SAVEGAME);
+      errno = 0;
+      ok = !path.empty() &&
+           (std::remove(path.c_str()) == 0 || errno == ENOENT);
+      if (!ok)
+        SDL_Log("cloud-sync: could not remove the ended save (errno %d)", errno);
     }
     if (ok) set_local_save_stamp(r.stamp);
     return ok;
