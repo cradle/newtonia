@@ -102,4 +102,52 @@ inline SaveAction decide_save(uint64_t local_stamp, bool cloud_ok,
   return SAVE_NONE;
 }
 
+// ── one-value stores (a Play Games saved game) carry all three files in a
+// bundle: u32 magic "NWCB", u8 version 1, then per file (SAVEGAME, STATS,
+// HIGHSCORE order) u8 present, u32 length, the bytes — each value exactly
+// what iOS keeps under its own key. An empty blob is a brand-new saved
+// game: all three absent. ──────────────────────────────────────────────
+static const uint32_t BUNDLE_MAGIC = 0x4E574342;  // "NWCB"
+static const uint8_t  BUNDLE_VERSION = 1;
+static const int      BUNDLE_FILES = 3;
+
+inline std::string bundle_bytes(const std::string v[BUNDLE_FILES],
+                                const bool has[BUNDLE_FILES]) {
+  std::string b(5, '\0');
+  std::memcpy(&b[0], &BUNDLE_MAGIC, 4);
+  b[4] = (char)BUNDLE_VERSION;
+  for (int i = 0; i < BUNDLE_FILES; i++) {
+    uint32_t len = has[i] ? (uint32_t)v[i].size() : 0;
+    char hdr[5];
+    hdr[0] = has[i] ? 1 : 0;
+    std::memcpy(hdr + 1, &len, 4);
+    b.append(hdr, 5);
+    if (has[i]) b += v[i];
+  }
+  return b;
+}
+
+inline bool parse_bundle(const std::string &b, std::string v[BUNDLE_FILES],
+                         bool has[BUNDLE_FILES]) {
+  for (int i = 0; i < BUNDLE_FILES; i++) { v[i].clear(); has[i] = false; }
+  if (b.empty()) return true;
+  if (b.size() < 5) return false;
+  uint32_t magic = 0;
+  std::memcpy(&magic, b.data(), 4);
+  // A newer version may append files; the first three keep their layout.
+  if (magic != BUNDLE_MAGIC || (uint8_t)b[4] < BUNDLE_VERSION) return false;
+  size_t at = 5;
+  for (int i = 0; i < BUNDLE_FILES; i++) {
+    if (b.size() - at < 5) return false;
+    bool present = b[at] != 0;
+    uint32_t len = 0;
+    std::memcpy(&len, b.data() + at + 1, 4);
+    at += 5;
+    if (len > b.size() - at) return false;
+    if (present) { v[i] = b.substr(at, len); has[i] = true; }
+    at += len;
+  }
+  return true;
+}
+
 }  // namespace CloudMerge

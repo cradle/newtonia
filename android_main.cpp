@@ -10,6 +10,7 @@
 #include <GLES2/gl2.h>
 
 #include "achievements.h"
+#include "cloud_sync.h"
 #include "gles2_compat.h"
 #include "state_manager.h"
 #include "touch_controls.h"
@@ -624,6 +625,12 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // constructors can read them (e.g. rotate_view).
     load_preferences();
 
+    // Cloud sync (cloud_sync.h, the Play Games saved game): after
+    // Achievements::init (it brings up the Play Games SDK) and after the
+    // preferences load, whose new-install check reads which player files
+    // exist. The first copy arrives asynchronously and merges in poll().
+    CloudSync::init();
+
     // Create the game state machine
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
@@ -770,6 +777,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         int    delta = (int)(now - last_tick);
         last_tick    = now;
 
+        CloudSync::poll();
         s_game->tick(delta);
 
         // Draw game

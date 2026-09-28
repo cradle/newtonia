@@ -153,6 +153,24 @@ the previous save, temporary-file cleanup, and successful replacement after
 an interrupted attempt. Uses isolated temporary player data and runs in
 `linux.yml`; only SDL2 development headers and its library are needed.
 
+### Cloud save sync unit tests (Linux)
+
+```sh
+g++ -std=c++11 -Wall -I. test/unit/cloud_sync_merge_test.cpp -o /tmp/cloud_sync_merge_test && /tmp/cloud_sync_merge_test
+bash test/unit/cloud_sync_core.sh
+```
+
+The first checks the merge rules and value formats in `cloud_sync_merge.h`
+(high score max, stats max with the mask OR'd, newest save wins, the save
+envelope, Android's one-value bundle). The second runs the shared driver
+(`cloud_sync_core.cpp`) that both the iCloud and the Play Games backends
+use, against a fake store and a scratch directory: a fresh install pulls
+everything, two devices' progress merges both ways, a game over elsewhere
+ends the run here, a failed delete retries, a foreign blob is never landed.
+Both run in `linux.yml`. The platform halves (`ios_cloud_sync.mm`,
+`android_cloud_sync.cpp` + `PlayGamesSaves.java`) only compile in the iOS
+and Android CI and need a device to exercise.
+
 ### New-install touch layout defaults unit test (Linux)
 
 ```sh

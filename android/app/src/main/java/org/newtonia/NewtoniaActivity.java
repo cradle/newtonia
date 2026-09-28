@@ -374,6 +374,9 @@ public class NewtoniaActivity extends SDLActivity {
         // activity resumes before the native side re-runs its init) and
         // retry sign-in / flush queued earns after backgrounding.
         PlayGamesAchievements.onResume(this);
+        // Cloud sync (cloud_sync.h): re-read the Play Games saved game, in
+        // case another device pushed while the game was away.
+        PlayGamesSaves.onResume(this);
         try {
             if (multicastLock == null) {
                 WifiManager wm = (WifiManager)

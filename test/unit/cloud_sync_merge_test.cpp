@@ -83,6 +83,30 @@ int main() {
     CHECK(decide_save(10, true, 10) == SAVE_NONE);   // already in step
   }
 
+  // ── the one-value bundle (Android's saved game) ──
+  {
+    std::string v[3] = {save_record_bytes(SaveRecord()), "", highscore_bytes(42)};
+    bool has[3] = {true, false, true};
+    std::string b = bundle_bytes(v, has);
+    CHECK(b.compare(0, 4, "BCWN") == 0);  // "NWCB" as a little-endian u32
+    std::string back[3];
+    bool bh[3];
+    CHECK(parse_bundle(b, back, bh));
+    CHECK(bh[0] && !bh[1] && bh[2] && back[0] == v[0] && back[2] == v[2]);
+
+    // A just-created saved game is empty: all absent, not damage.
+    CHECK(parse_bundle(std::string(), back, bh) && !bh[0] && !bh[1] && !bh[2]);
+
+    // Truncation and a foreign blob are rejected.
+    CHECK(!parse_bundle(b.substr(0, b.size() - 1), back, bh));
+    CHECK(!parse_bundle(std::string("hello world"), back, bh));
+    // A newer version's appended files are ignored.
+    std::string newer = b;
+    newer[4] = 2;
+    newer += std::string("\x01\x01\x00\x00\x00Z", 6);
+    CHECK(parse_bundle(newer, back, bh) && back[2] == v[2]);
+  }
+
   if (fails) {
     std::printf("%d check(s) failed\n", fails);
     return 1;
