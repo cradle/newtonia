@@ -1406,6 +1406,9 @@ void Ship::reset(bool was_killed) {
 bool Ship::kill() {
   if(CompositeObject::kill()) {
     died_this_generation = true;  // no-damage/black-hole-survivor tracking
+    // No spare lives: this death is the pilot's last, so the score is
+    // final from here on (see freeze_score()).
+    if (lives == 0) freeze_score();
     // Lifetime DEATHS: a genuinely locally-piloted ship only —
     // !net_remote_gun excludes the host's replica of a remote pilot AND
     // every replay-playback ship (playback marks all of them, including
@@ -3134,6 +3137,9 @@ void Ship::step(float delta, const Grid &grid) {
     // and an unstamped player then sorted as "waiting longest" forever.
     // Guarded on 0 so it is taken once, at the transition, not every tick.
     out_order_ = ++out_order_seq_;
+    // The same paths can empty a ship without a last-life kill(); the
+    // score freeze needs the backstop too (a no-op when kill() took it).
+    freeze_score();
   }
 
   facing.rotate(rotation_direction * rotation_force * rotation_scale *

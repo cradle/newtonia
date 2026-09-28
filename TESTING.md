@@ -256,6 +256,14 @@ cover toggle on/off, engine resets, equipment changes under the finger, reset
 after lift, the one-second joystick return, web multiple fingers/cancellation,
 and unchanged two-hand hold-to-shield behavior.
 
+`make NETPLAY=0 test-score-freeze` (Linux/GNU ld, same windowless entry) pins
+the final-score freeze: a death with a life to spare freezes nothing, the last
+death freezes the score against everything that resolves after the wreck
+(shots in flight, mines, turrets, bounties), a co-op revive resumes scoring,
+and a ship emptied without a last-life kill is frozen by the step that sees it
+out. Linux CI runs it. GLGame re-applies the freeze each step and once more
+before the game-over check (`GLGame::enforce_score_freezes`).
+
 `make NETPLAY=0 test-shield-empty` (Linux/GNU ld, desktop dependencies) links
 the real engine objects with a windowless test entry and dummy audio. Linux CI
 runs the same target. It drains a held Shield, then verifies that one deliberate

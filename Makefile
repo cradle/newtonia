@@ -258,6 +258,13 @@ test-shield-empty: $(OBJFILES)
 	  -Wl,--wrap=main -o "$$out/shield_empty_test"; \
 	SDL_AUDIODRIVER=dummy "$$out/shield_empty_test"
 
+.PHONY: test-score-freeze
+test-score-freeze: $(OBJFILES)
+	@set -e; out=$$(mktemp -d); trap 'rm -rf "$$out"' EXIT; \
+	$(CC) $(CFLAGS) -I. test/unit/score_freeze_test.cpp $(OBJFILES) $(LIBS) \
+	  -Wl,--wrap=main -o "$$out/score_freeze_test"; \
+	SDL_AUDIODRIVER=dummy "$$out/score_freeze_test"
+
 .PHONY: test-camera-stick
 test-camera-stick: $(OBJFILES)
 	@set -e; out=$$(mktemp -d); trap 'rm -rf "$$out"' EXIT; \
