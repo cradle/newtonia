@@ -20,7 +20,7 @@ package org.newtonia;
 // runs before a push waiting, since the pull's merge supersedes it, and a
 // newer push folds into one still waiting. A failed operation (sign-in
 // still settling at launch, offline, Saved Games off) is retried on a
-// backing-off timer for about two minutes, then waits for the next resume
+// backing-off timer for about seven minutes, then waits for the next resume
 // or local write — a bounded handful of log lines, never a loop. Each
 // successful read and write logs one line (tag NewtoniaCloudSync).
 //
@@ -63,11 +63,10 @@ public final class PlayGamesSaves {
     private static boolean sBusy;
     private static boolean sPullWanted;
     private static byte[] sPush;
-    private static boolean sAuthLogged;
     // Retries after a failure: sign-in often completes a few seconds after
     // launch, and a lost startup pull would leave the whole run unsynced
     // (native pushes nothing until a copy has arrived).
-    private static final long[] RETRY_MS = {2000, 5000, 15000, 30000, 60000};
+    private static final long[] RETRY_MS = {2000, 5000, 15000, 30000, 60000, 60000, 60000, 60000, 60000, 60000};
     private static int sRetry;
     private static boolean sRetryPosted;
 
@@ -128,14 +127,18 @@ public final class PlayGamesSaves {
                     boolean ok = task.isSuccessful()
                             && task.getResult().isAuthenticated();
                     if (!ok) {
-                        if (!sAuthLogged) {
-                            sAuthLogged = true;
-                            Log.i(TAG, "not signed in to Play Games yet, will retry");
-                        }
+                        // One line per attempt: the retries are bounded,
+                        // and a field report needs to see whether sign-in
+                        // ever settled or the check itself failed.
+                        Log.i(TAG, "not signed in to Play Games (attempt "
+                                + (sRetry + 1) + (sRetry < RETRY_MS.length
+                                        ? ", will retry)" : ", waiting for the next resume)")
+                                + (task.isSuccessful() ? "" : ": " + task.getException()));
                         done(false);
                         return;
                     }
-                    sAuthLogged = false;
+                    if (sRetry > 0) Log.i(TAG, "signed in to Play Games after "
+                            + (sRetry + 1) + " attempts");
                     SnapshotsClient client = PlayGames.getSnapshotsClient(activity);
                     if (sPullWanted) {
                         sPullWanted = false;
