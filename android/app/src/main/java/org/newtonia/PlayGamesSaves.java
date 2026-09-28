@@ -18,10 +18,11 @@ package org.newtonia;
 // Everything runs on the UI thread through a main-looper handler, one
 // operation at a time (a saved game can only be open once): a pull wanted
 // runs before a push waiting, since the pull's merge supersedes it, and a
-// newer push folds into one still waiting. A failed operation is
-// not retried on the spot — the next resume or local write tries again —
-// so a device that is signed out, offline, or on a console with Saved
-// Games switched off costs one log line, not a loop.
+// newer push folds into one still waiting. A failed operation (sign-in
+// still settling at launch, offline, Saved Games off) is retried on a
+// backing-off timer for about two minutes, then waits for the next resume
+// or local write — a bounded handful of log lines, never a loop. Each
+// successful read and write logs one line (tag NewtoniaCloudSync).
 //
 // Needs Saved Games switched on in the Play Console's Play Games Services
 // configuration. PlayGamesSdk.initialize() is PlayGamesAchievements' job;
@@ -63,6 +64,12 @@ public final class PlayGamesSaves {
     private static boolean sPullWanted;
     private static byte[] sPush;
     private static boolean sAuthLogged;
+    // Retries after a failure: sign-in often completes a few seconds after
+    // launch, and a lost startup pull would leave the whole run unsynced
+    // (native pushes nothing until a copy has arrived).
+    private static final long[] RETRY_MS = {2000, 5000, 15000, 30000, 60000};
+    private static int sRetry;
+    private static boolean sRetryPosted;
 
     // android_cloud_sync.cpp: the saved game's bytes (empty = just created).
     private static native void nativeCloudData(byte[] data);
@@ -89,6 +96,7 @@ public final class PlayGamesSaves {
         sUiHandler.post(new Runnable() {
             @Override public void run() {
                 sPush = sPush == null ? data : merge(sPush, data);
+                sRetry = 0;
                 pump();
             }
         });
@@ -98,6 +106,7 @@ public final class PlayGamesSaves {
         sUiHandler.post(new Runnable() {
             @Override public void run() {
                 sPullWanted = true;
+                sRetry = 0;
                 pump();
             }
         });
@@ -121,7 +130,7 @@ public final class PlayGamesSaves {
                     if (!ok) {
                         if (!sAuthLogged) {
                             sAuthLogged = true;
-                            Log.i(TAG, "not signed in to Play Games, saves stay local");
+                            Log.i(TAG, "not signed in to Play Games yet, will retry");
                         }
                         done(false);
                         return;
@@ -144,11 +153,25 @@ public final class PlayGamesSaves {
         }
     }
 
-    // UI thread only. ok: move on to whatever else is waiting now; after a
-    // failure, wait for the next resume or write instead of spinning.
+    // UI thread only. ok: move on to whatever else is waiting now. After a
+    // failure, retry on a backing-off timer; once that runs out, the next
+    // resume or local write tries again.
     private static void done(boolean ok) {
         sBusy = false;
-        if (ok) pump();
+        if (ok) {
+            sRetry = 0;
+            pump();
+            return;
+        }
+        if (sRetryPosted || sRetry >= RETRY_MS.length) return;
+        if (!sPullWanted && sPush == null) return;
+        sRetryPosted = true;
+        sUiHandler.postDelayed(new Runnable() {
+            @Override public void run() {
+                sRetryPosted = false;
+                pump();
+            }
+        }, RETRY_MS[sRetry++]);
     }
 
     private static byte[] contents(Snapshot s) throws java.io.IOException {
@@ -209,6 +232,8 @@ public final class PlayGamesSaves {
             final byte[] merged = push == null ? current : merge(current, push);
             if (Arrays.equals(merged, current)) {
                 // The cloud already holds everything: nothing to write.
+                Log.i(TAG, (push == null ? "read the saved game, " : "saved game already current, ")
+                        + current.length + " bytes");
                 deliver(current);
                 client.discardAndClose(s);
                 done(true);
@@ -223,6 +248,7 @@ public final class PlayGamesSaves {
                         failed(push);
                         return;
                     }
+                    Log.i(TAG, "saved the saved game, " + merged.length + " bytes");
                     deliver(merged);
                     done(true);
                 }
@@ -274,6 +300,9 @@ public final class PlayGamesSaves {
     // A push that failed waits for the next resume or write; folding makes
     // a late retry safe even after newer progress lands.
     private static void failed(byte[] push) {
+        // pump() cleared the want before opening: put a failed pull back,
+        // or the startup read is lost and this run never syncs.
+        if (push == null) sPullWanted = true;
         if (push != null) {
             // Merge into whatever newer push arrived meanwhile.
             sPush = sPush == null ? push : merge(sPush, push);
