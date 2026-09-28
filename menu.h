@@ -142,6 +142,11 @@ private:
   // overriding.
   bool new_player_ = false;
   int  tutorial_rows() const { return new_player_ ? 1 : 0; }
+  // CloudSync::local_generation() when the fields above were last read: a
+  // save or high score arriving from another device (iCloud, cloud_sync.h)
+  // refreshes them on the top-level menu.
+  uint32_t cloud_gen_ = 0;
+  void refresh_from_cloud();
   bool has_net_resume_ = false;      // RESUME HOSTING row shown
   bool net_resume_scanned_ = false;  // ticket checked (first tick, not ctor)
   std::string net_resume_code_;      // its room code, for the row label

@@ -1,6 +1,7 @@
 #include "web_fs.h"
 #include "savegame.h"
 #include "atomic_file.h"
+#include "cloud_sync.h"
 #include "preferences.h"  // MAX_PLAYERS bounds the save's player count
 #include <SDL.h>
 #include <cstdio>
@@ -648,6 +649,9 @@ static bool save_game_in(const char *file, const Save::GameState &s) {
     if (!ok) return false;
 
     web_fs_sync("savegame");
+    // Only the solo run roams; the online-host slot is tied to this
+    // device's room (cloud_sync.h).
+    if (file == SG_FILE) CloudSync::local_written(CloudSync::SAVEGAME);
 
     return true;
 }
@@ -679,6 +683,7 @@ static void delete_save_in(const char *file) {
     if (path.empty()) return;
     std::remove(path.c_str());
     web_fs_sync("savegame-delete");
+    if (file == SG_FILE) CloudSync::local_written(CloudSync::SAVEGAME);
 }
 
 // A save that parsed but failed the semantic check (net_state_sane at the

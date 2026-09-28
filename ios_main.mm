@@ -9,6 +9,7 @@
 #include <SDL_mixer.h>
 
 #include "achievements.h"
+#include "cloud_sync.h"
 #include "gles2_compat.h"
 #include "net_signal.h"
 #include "net_transport.h"
@@ -444,6 +445,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // constructors can read them (e.g. rotate_view).
     load_preferences();
 
+    // iCloud save sync (cloud_sync.h): merge the cloud copies of the save,
+    // stats and high score into the local files before the menu reads them.
+    CloudSync::init();
+
     // Create the game state machine
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
@@ -511,9 +516,11 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             // SDL_WINDOWEVENT focus events on others; handle both so we catch it.
             case SDL_APP_WILLENTERBACKGROUND:
                 touch_controls_reset(s_game);
-                s_game->focus_lost();
+                s_game->focus_lost();  // auto-saves: push after it
+                CloudSync::app_background();
                 break;
             case SDL_APP_DIDENTERFOREGROUND:
+                CloudSync::app_foreground();
                 s_game->focus_gained();
                 s_reset_tick = true;
                 break;
@@ -562,6 +569,9 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         }
         int    delta = (int)(now - last_tick);
         last_tick    = now;
+
+        // Apply another device's iCloud changes between frames.
+        CloudSync::poll();
 
         s_game->tick(delta);
 

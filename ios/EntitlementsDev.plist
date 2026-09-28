@@ -25,5 +25,10 @@
          Entitlements.plist. -->
     <key>com.apple.developer.networking.multicast</key>
     <true/>
+
+    <!-- iCloud key-value store (save sync, ios_cloud_sync.mm). Automatic
+         signing adds the App ID's iCloud capability; see Entitlements.plist. -->
+    <key>com.apple.developer.ubiquity-kvstore-identifier</key>
+    <string>$(TeamIdentifierPrefix)cc.gfm.Newtonia</string>
 </dict>
 </plist>

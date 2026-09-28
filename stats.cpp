@@ -1,6 +1,7 @@
 #include "web_fs.h"
 #include "stats.h"
 #include "atomic_file.h"
+#include "cloud_sync.h"
 #include <SDL.h>
 #include <string>
 #include <cstdio>
@@ -131,6 +132,7 @@ void save() {
   unsaved_play_seconds = 0;
   // Persist to IndexedDB so the stats survive a page refresh.
   web_fs_sync("stats");
+  CloudSync::local_written(CloudSync::STATS);
 }
 
 } // namespace
@@ -210,6 +212,15 @@ void add_play_time(int ms) {
 
 void flush() {
   if (dirty) save();
+}
+
+void reload() {
+  // Bank anything pending first: the file must be at least as far along as
+  // memory before memory is replaced by it. The cloud merge only ever
+  // raises counters, so a field the file lacks keeps its in-memory value.
+  flush();
+  loaded = false;
+  load();
 }
 
 } // namespace Stats

@@ -1,6 +1,7 @@
 #include "web_fs.h"
 #include "highscore.h"
 #include "atomic_file.h"
+#include "cloud_sync.h"
 #include <SDL.h>
 #include <string>
 #include <cstdio>
@@ -38,4 +39,5 @@ void save_high_score(int score) {
   }, "highscore");
   // Persist to IndexedDB so the score survives a page refresh.
   if (ok) web_fs_sync("highscore");
+  if (ok) CloudSync::local_written(CloudSync::HIGHSCORE);
 }

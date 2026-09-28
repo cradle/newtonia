@@ -81,6 +81,11 @@ jobs:
       - name: Save failure regression test
         run: bash test/unit/savegame.sh
 
+      - name: Cloud save merge rules unit test
+        run: |
+          g++ -std=c++11 -Wall -I. test/unit/cloud_sync_merge_test.cpp -o /tmp/cloud_sync_merge_test
+          /tmp/cloud_sync_merge_test
+
       - name: New-install touch layout defaults unit test
         run: bash test/unit/preferences.sh
 
