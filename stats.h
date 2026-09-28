@@ -63,5 +63,8 @@ void add_play_time(int ms);         // accumulates; writes every ~60 s accrued
 void add_secondary_used();          // batched
 void add_nova();                    // rare: writes through
 void flush();                       // persist pending changes to stats.dat now
+// Re-read stats.dat after something outside this module rewrote it (the
+// cloud merge, cloud_sync.h). Flushes pending changes first.
+void reload();
 
 } // namespace Stats

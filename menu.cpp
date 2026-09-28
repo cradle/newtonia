@@ -24,6 +24,7 @@
 #include "steam_build.h"
 #include "view/overlay.h"
 #include "view/tap_band.h"
+#include "cloud_sync.h"
 #include <ctime>
 #include <iostream>
 #include <string>
@@ -421,6 +422,7 @@ Menu::Menu() :
   // start screen for a screenshot or a re-run).
   new_player_ = !g_prefs.tutorial_done && !has_save_;
   has_stats_ = high_score > 0 || Stats::any();
+  cloud_gen_ = CloudSync::local_generation();
   if (const char *tv = SDL_getenv("NEWTONIA_TUTORIAL")) {
     if (tv[0] == '0') new_player_ = false;
     else if (tv[0] == '1') new_player_ = true;
@@ -1130,7 +1132,29 @@ void Menu::draw() {
                          "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
+// Another device's save / stats / high score landed in the local files
+// (the first iCloud sync on a new phone arrives a few seconds after
+// launch). Re-read what the ctor cached — only on the plain top-level
+// menu, so no row moves under a sub-screen or a confirm.
+void Menu::refresh_from_cloud() {
+  if (cloud_gen_ == CloudSync::local_generation()) return;
+  if (options_mode_ || replays_mode_ || stats_mode_ || board_mode_ ||
+      quit_confirm_ || new_confirm_)
+    return;
+  cloud_gen_ = CloudSync::local_generation();
+  bool had_save = has_save_, was_new = new_player_;
+  high_score = load_high_score();
+  has_save_ = Save::save_exists();
+  has_stats_ = high_score > 0 || Stats::any();
+  // A pilot with a roaming save has flown: leave the start screen. Never
+  // the other way — a veteran is never sent back to it.
+  if (new_player_ && has_save_ && !SDL_getenv("NEWTONIA_TUTORIAL"))
+    new_player_ = false;
+  if (had_save != has_save_ || was_new != new_player_) menu_selection = 0;
+}
+
 void Menu::tick(int delta) {
+  refresh_from_cloud();
   // Leaderboard screen: drive the fetch/upload socket. May hand the state
   // to replay playback (a downloaded row confirmed) — nothing below
   // depends on running after that, the pending state change just waits

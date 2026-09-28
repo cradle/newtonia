@@ -34,5 +34,13 @@
          profile regenerated, or signing rejects this entitlement. -->
     <key>com.apple.developer.networking.multicast</key>
     <true/>
+
+    <!-- iCloud key-value store: the save, stats and high score roam
+         (ios_cloud_sync.mm, cloud_sync.h). The App ID's iCloud capability
+         must be enabled in the developer portal and the provisioning
+         profile regenerated (then PROVISIONING_PROFILE_BASE64 updated), or
+         signing rejects this entitlement. -->
+    <key>com.apple.developer.ubiquity-kvstore-identifier</key>
+    <string>TEAM_ID_PLACEHOLDER.cc.gfm.Newtonia</string>
 </dict>
 </plist>
