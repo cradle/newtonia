@@ -77,6 +77,8 @@ class NetBoard {
     std::string season; // Top: the season the rows belong to (same purpose)
     long cutline = -1;
     bool would_place = false;
+    bool own_best = false;  // Qualify: the verified asker's own row is
+                            // already at least this good (would_place false)
     std::string reason;
     std::vector<Row> rows;
     std::vector<Season> seasons;
@@ -88,8 +90,15 @@ class NetBoard {
   // until the socket is up.
   virtual void connect(const std::string &url) = 0;
 
+  // The identity triple is optional (empty cred = anonymous, the old
+  // frame): with it the worker also checks the asker's OWN row and answers
+  // would_place=false when that is already at least this good, and the
+  // verified identity then admits this socket's submit (the credential may
+  // be single-use, so the one spent here must still cover the upload).
   virtual void qualify(const std::string &season, int players,
-                       uint32_t score) = 0;
+                       uint32_t score, uint8_t platform = 0,
+                       const std::string &name = std::string(),
+                       const std::string &cred = std::string()) = 0;
   virtual void top(const std::string &season, int players, int count) = 0;
   // List the seasons that exist (newest first) — the menu's season browser.
   virtual void seasons() = 0;
@@ -173,7 +182,9 @@ std::string net_board_sanitize(const std::string &s, size_t max_len = 64);
 // ---- shared frame helpers (used by the backends; exposed for tests) -----
 namespace NetBoardProto {
 std::string qualify_frame(const std::string &season, int players,
-                          uint32_t score);
+                          uint32_t score, uint8_t platform = 0,
+                          const std::string &name = std::string(),
+                          const std::string &cred = std::string());
 std::string top_frame(const std::string &season, int players, int count);
 std::string seasons_frame();
 std::string rank_of_frame(const std::string &season, int players,

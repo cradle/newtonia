@@ -1370,6 +1370,9 @@ private:
   // mobile connection — DNS + TLS + WS + a Durable Object spin-up on a
   // just-woken radio — can take well over the old 4 s.
   static const int BOARD_QUALIFY_TIMEOUT_MS = 15000;
+  // How long the qualify waits for a cold credential mint before going out
+  // anonymously — inside the qualify deadline, leaving the worker its turn.
+  static const int BOARD_QUALIFY_CRED_WAIT_MS = 5000;
   // The verification credential is minted asynchronously and re-minted per
   // read (steam/play_games/game_center identity backends), so the value
   // handed to a submit can be empty (mint not landed), stale (Game Center's
@@ -1392,6 +1395,7 @@ private:
   static const int BOARD_PROMPT_ARM_MS = 700;
   void board_maybe_start();      // at game-over finalize (after replay_finish)
   void board_tick();             // poll events + timeout (game_over only)
+  void board_send_qualify();     // the qualify frame, identified when a credential is in hand
   // The card's nav while the prompt/result owns it. Logical keys (w/s move,
   // Enter confirms, Esc backs out = NO). True = input consumed; respects
   // the card's 3 s grace like every other game-over input.
@@ -1411,6 +1415,10 @@ private:
   // header was read once in board_maybe_start; score is board_score_).
   std::string board_q_season_;
   int board_q_players_ = 0;
+  std::string board_q_cred_;  // the credential the qualify carries
+  bool board_q_sent_ = false;  // the qualify frame has gone out
+  int board_q_cred_deadline_ = 0;  // stop waiting for the first mint
+
   // Which best slot the finished run promoted (solo best.nrp or co-op
   // best_coop.nrp — best is per-board); what qualify reads and submit sends.
   std::string board_up_path_;

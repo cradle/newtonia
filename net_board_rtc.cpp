@@ -73,9 +73,11 @@ class RtcBoard : public NetBoard {
     rtcSetErrorCallback(ws_, &RtcBoard::on_error);
   }
 
-  void qualify(const std::string &season, int players,
-               uint32_t score) override {
-    send_text(NetBoardProto::qualify_frame(season, players, score));
+  void qualify(const std::string &season, int players, uint32_t score,
+               uint8_t platform, const std::string &name,
+               const std::string &cred) override {
+    send_text(NetBoardProto::qualify_frame(season, players, score, platform,
+                                           name, cred));
   }
 
   void top(const std::string &season, int players, int count) override {

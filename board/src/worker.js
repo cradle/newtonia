@@ -5,8 +5,12 @@
 // already proves on every platform).
 //
 // Wire protocol (client -> / worker <-):
-//   -> {t:"qualify", season, players, score}
-//   <- {t:"qualify", place, cutline, would_place}
+//   -> {t:"qualify", season, players, score[, platform, name, cred]}
+//   <- {t:"qualify", place, cutline, would_place, own_best}
+//                               (own_best: the verified asker already holds
+//                                a row at least this good — would_place is
+//                                then false; the identity also admits this
+//                                socket's next submit)
 //   -> {t:"top", season, players, count}
 //   <- {t:"top", season, players,     (echoed: stale-answer drop, like
 //       rows:[{rank,name,platform,     qualify/rank-of)
@@ -129,6 +133,14 @@ const LIMITS = {
   query: { window_ms: 10 * 60 * 1000, limit: 200 },
   fetch: { window_ms: 60 * 60 * 1000, limit: 40 },
   submit: { window_ms: 60 * 60 * 1000, limit: 6 },
+  // Platform verifier calls (Steam/Google/Apple round-trips), shared by the
+  // submit and the credentialed qualify. The submit budget alone used to
+  // bound them; a qualify that verifies would otherwise be bounded only by
+  // the query budget (200 per 10 min), so a socket churn could spend our
+  // platform quota ~60x faster. A legitimate player verifies once per new
+  // local best (the qualify, whose identity then admits the upload), plus a
+  // stale-credential retry now and then.
+  verify: { window_ms: 60 * 60 * 1000, limit: 20 },
 };
 
 function limit_for(env, action, dev) {
@@ -138,6 +150,12 @@ function limit_for(env, action, dev) {
     return { ...cfg, limit: Number(env.SUBMIT_LIMIT) };
   if (action === "conn" && env && Number(env.CONN_LIMIT) > 0)
     return { ...cfg, limit: Number(env.CONN_LIMIT) };
+  // The verify budget widens with VERIFY_LIMIT, else follows SUBMIT_LIMIT
+  // (every submit verifies, so a harness widening one needs the other).
+  if (action === "verify" && env &&
+      (Number(env.VERIFY_LIMIT) > 0 || Number(env.SUBMIT_LIMIT) > 0))
+    return { ...cfg, limit: Number(env.VERIFY_LIMIT) > 0
+        ? Number(env.VERIFY_LIMIT) : 2 * Number(env.SUBMIT_LIMIT) };
   return cfg;
 }
 
@@ -886,7 +904,9 @@ async function sweep_orphans(env) {
 // limiter hiccup is the worse failure. A refused submit is not lost work
 // either — the client's upload row offers TRY LATER, and best.nrp keeps the
 // run until it succeeds.
-const FAIL_CLOSED = ["submit"];
+// `verify` too: it bounds calls to external platform APIs, whose quota an
+// outage must not hand out unmetered.
+const FAIL_CLOSED = ["submit", "verify"];
 
 export async function within_limit(env, ip, action, dev) {
   const limiter = env.LIMITS.get(env.LIMITS.idFromName(ip));
@@ -970,6 +990,11 @@ export class Session {
     // hydrate() — false on a freshly constructed instance, which is exactly
     // what a post-hibernation delivery gets.
     this.hydrated = false;
+    // The qualify's optional identity (see the qualify handler): whether
+    // this socket already spent its one qualify-time verify, and the
+    // verified identity waiting for this socket's next submit.
+    this.qualify_verified_ = false;
+    this.qualify_identity_ = null;
   }
 
   // Per-connection state lives in memory, and `acceptWebSocket` opts this DO
@@ -1008,6 +1033,9 @@ export class Session {
     this.submits = Number(a.submits) || 0;
     this.fetches = Number(a.fetches) || 0;
     this.forced_reject_once_ = a.forced === true;
+    this.qualify_verified_ = a.qv === true;
+    this.qualify_identity_ = a.qid && typeof a.qid.account === "string"
+        ? a.qid : null;
   }
 
   persist(ws) {
@@ -1016,6 +1044,7 @@ export class Session {
         ip: this.ip, dev: this.dev, queries: this.queries,
         submits: this.submits, fetches: this.fetches,
         forced: !!this.forced_reject_once_,
+        qv: !!this.qualify_verified_, qid: this.qualify_identity_ || null,
       });
     } catch (e) {}
   }
@@ -1157,13 +1186,45 @@ export class Session {
         return;
       }
       const cut = await cutline(this.env.DB, season, players);
+      // Who is asking (optional): a qualify may carry the same identity
+      // triple a submit does. Without it the answer can only say where the
+      // score would sit among EVERYONE's rows, so a player whose earlier,
+      // better run is already charting (a fresh install, a second device —
+      // nothing local remembers it) was prompted "would place #5" for an
+      // upload the worker then refuses as not-best (field, Android fresh
+      // install, 2026-09-27). One verify per connection at most: the qualify
+      // is a read on the query budget, and a platform round-trip per frame
+      // would let a socket spend our Steam/Google quota 120 times over.
+      // Over the per-IP verify budget the qualify is simply answered
+      // anonymously (the pre-identity behaviour), never refused.
+      let own_best = false;
+      if (typeof msg.cred === "string" && msg.cred && !this.qualify_verified_) {
+        this.qualify_verified_ = true;
+        const who = (await within_limit(this.env, this.ip, "verify", this.dev))
+            ? await verify_identity(this.env, Number(msg.platform) >>> 0,
+                                    msg.name, msg.cred, this.dev)
+            : null;
+        if (who) {
+          // Kept for this socket's submit: a credential can be single-use
+          // (Play Games' server auth code), so the one spent here must not
+          // leave the upload that follows unattested. Spent by one submit.
+          this.qualify_identity_ = who;
+          const mine = await this.env.DB.prepare(
+              `SELECT score FROM scores
+               WHERE season = ?1 AND players = ?2 AND platform_key = ?3`)
+              .bind(season, players, await platform_key(who.account)).first();
+          own_best = !!mine && Number(mine.score) >= score;
+        }
+        this.persist(ws);
+      }
       // On a whitelisted worker (production) a non-canonical season can
       // never be admitted, so it can never place — answering false here
       // means a dev build pointed at production simply never prompts,
       // instead of arming an upload doomed to bad-season.
       const admissible = !canonical_only(this.env) || season_canonical(season);
       this.send(ws, { t: "qualify", place, players, cutline: cut,
-                      would_place: admissible && place <= KEEP_N });
+                      would_place: admissible && place <= KEEP_N && !own_best,
+                      own_best });
       return;
     }
 
@@ -1188,8 +1249,18 @@ export class Session {
       // BEFORE accepting megabytes of chunks — a spoofed submit costs the
       // spoofer the round-trip, not us the bandwidth.
       const platform = Number(msg.platform) >>> 0;
-      const identity = await verify_identity(
-          this.env, platform, msg.name, msg.cred, this.dev);
+      // An identity this socket's qualify already verified stands in for
+      // the submit's own credential (see the qualify handler), once.
+      let identity = this.qualify_identity_ || null;
+      if (identity) {
+        this.qualify_identity_ = null;
+        this.persist(ws);
+      } else {
+        if (!(await within_limit(this.env, this.ip, "verify", this.dev)))
+          return this.err(ws, "rate-limited");
+        identity = await verify_identity(
+            this.env, platform, msg.name, msg.cred, this.dev);
+      }
       if (!identity) {
         // The COERCED number, not msg.platform: the raw field is whatever
         // the client sent, up to the 32 KB frame cap and including
