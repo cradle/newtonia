@@ -62,8 +62,13 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
      score place on the current season's board?" The worker answers with
      the projected rank and the current cut-line (lowest charting score).
      Only a would-place answer shows the prompt; a worker that is
-     unreachable or slow shows nothing (the offer stays available later —
-     see the REPLAYS-menu retry path). This is the "query the worker for
+     unreachable or slow shows no prompt (the offer stays available later —
+     see the REPLAYS-menu retry path). While the query runs the card reads
+     CHECKING LEADERBOARD, and when it ends without a prompt it says why
+     (YOUR BEST IS ALREADY ON THE BOARD / NOT HIGH ENOUGH FOR THE BOARD /
+     LEADERBOARD UNAVAILABLE) — until 2026-09-28 the check drew nothing
+     while the ordinary game-over cards had already stood down, so a new
+     best ended on a blank screen for as long as the board took to answer. This is the "query the worker for
      the lowest score" flow: the query is one D1 row read, so it is cheap
      enough to fire on every personal best, and it means the player is
      never asked to upload megabytes that would bounce off the bottom of

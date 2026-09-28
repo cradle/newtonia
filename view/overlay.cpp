@@ -1360,12 +1360,8 @@ void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::board_prompt(const GLGame *glgame) {
-  // No board flow, or the query is still silent (BoardQualifying draws
-  // nothing — the card must never look like it is waiting on the network):
-  // the ordinary GAME OVER cards own the screen.
-  if (glgame->board_phase_ == GLGame::BoardOff ||
-      glgame->board_phase_ == GLGame::BoardQualifying)
-    return;
+  // No board flow: the ordinary GAME OVER cards own the screen.
+  if (glgame->board_phase_ == GLGame::BoardOff) return;
 
   // From here on this overlay OWNS the whole game-over card in every mode
   // (net_overlays and the offline respawn/title cards all stand down while
@@ -1419,9 +1415,21 @@ void Overlay::board_prompt(const GLGame *glgame) {
                          11);
     return;
   }
-  // Terminal phases: a result line, then the EXIT TO MENU row (this
-  // overlay owns it now — the per-mode cards have stood down).
-  if (glgame->board_phase_ == GLGame::BoardPlaced) {
+  // Terminal phases (and the check, which can be left like them): a status
+  // line, then the EXIT TO MENU row (this overlay owns it now — the
+  // per-mode cards have stood down). The check used to draw nothing while
+  // those cards also stood down, so a new best's game over was a blank
+  // screen for as long as the board took to answer (up to 15 s cold).
+  if (glgame->board_phase_ == GLGame::BoardQualifying) {
+    // Dots count up so the line visibly waits instead of looking stuck,
+    // padded to one width on both sides so the words never move.
+    static const char *const dots[] = {"   ", ".  ", ".. ", "..."};
+    std::string line = std::string("   CHECKING LEADERBOARD") +
+                       dots[(glgame->current_time / 400) % 4];
+    Typer::draw_centered(0, 40, line.c_str(), 16);
+  } else if (glgame->board_phase_ == GLGame::BoardChecked) {
+    Typer::draw_centered(0, 40, glgame->board_note_, 14);
+  } else if (glgame->board_phase_ == GLGame::BoardPlaced) {
     char line[48];
     snprintf(line, sizeof(line), "UPLOADED - RANK #%d", glgame->board_place_);
     Typer::draw_centered(0, 40, line, 16);

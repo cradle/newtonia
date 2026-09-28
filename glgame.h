@@ -1359,11 +1359,12 @@ private:
   // which field-tested as "no prompt on the first game, fine on the second".
   enum BoardPhase {
     BoardOff,         // nothing armed (the usual game over)
-    BoardQualifying,  // qualify sent, waiting (nothing drawn yet)
+    BoardQualifying,  // qualify sent, waiting ("CHECKING LEADERBOARD")
     BoardPrompt,      // would place: YES/NO prompt on the card
     BoardUploading,   // submit in flight (progress line)
     BoardPlaced,      // done: "UPLOADED - RANK #N"
     BoardFailed,      // done: "UPLOAD FAILED" (+ short reason)
+    BoardChecked,     // done, no prompt: why (board_note_)
   };
   // Generous: the card sits until dismissed anyway, a late prompt is safe
   // (BOARD_PROMPT_ARM_MS anchors on when the PROMPT appears), and a cold
@@ -1431,6 +1432,10 @@ private:
   // prompt can't answer it. Cleared when the prompt opens.
   std::set<unsigned char> board_prompt_pressed_;
   std::string board_fail_reason_;
+  // BoardChecked's line: the check ended without a prompt, so the card
+  // says how it ended instead of the "CHECKING" line just vanishing.
+  const char *board_note_ = "";
+  void board_checked(const char *note);  // end the check: BoardChecked
   uint32_t board_score_ = 0;     // the run's score, drawn on every card phase
 
   static const int step_size = 8;

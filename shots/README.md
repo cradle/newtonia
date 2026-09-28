@@ -108,6 +108,9 @@ camera fixed           # keep the world's orientation on screen. Default is
                        #   pointing up and world placements appear rotated
                        #   by -heading. Composed scenes with angled ships
                        #   want `fixed` (WYSIWYG).
+board checking [SCORE] # end on the GAME OVER card with the leaderboard
+                       #   flow parked in a phase: off|checking|prompt|
+                       #   uploading|placed|failed|checked (no socket opens)
 players 2              # local split-screen co-op (1..4; 3-4 use the 2x2 grid)
 
 ship 0 -150 25         # move player 1 (and the camera) / heading in degrees

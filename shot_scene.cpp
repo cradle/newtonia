@@ -75,6 +75,11 @@ struct Scene {
   // prefs are poked, since the window's resize may already have happened.
   int one_hand = -1;
   int handedness = 1;       // Preferences::touch_handedness: 0 L, 1 C, 2 R
+  // `board PHASE [score]`: end the game on the GAME OVER card with the
+  // leaderboard flow parked in PHASE (-1 = no game over). No socket is
+  // opened — board_tick idles without one, so the phase holds.
+  std::string board_phase;  // empty = no game over
+  unsigned board_score = 123450;
   // `transparent`: write RGBA with black as full transparency (logo/text
   // assets). Alpha = the brightest channel, colour un-premultiplied, so
   // dim edge pixels become translucent instead of dark.
@@ -164,6 +169,15 @@ bool parse_scene_file(const char *path) {
       if (in >> gen) s_scene.generation = gen;
     } else if (cmd == "clear") {
       s_scene.clear_world = true;
+    } else if (cmd == "board") {
+      in >> s_scene.board_phase;
+      static const char *const ok[] = {"off", "checking", "prompt",
+          "uploading", "placed", "failed", "checked"};
+      bool known = false;
+      for (const char *k : ok) known = known || s_scene.board_phase == k;
+      if (!known) return parse_error(line_no, line,
+          "board wants off|checking|prompt|uploading|placed|failed|checked");
+      in >> s_scene.board_score;
     } else if (cmd == "noship") {
       s_scene.no_ship = true;
     } else if (cmd == "transparent") {
@@ -674,6 +688,31 @@ State *ShotScene::build_state() {
       return NULL;
     }
     g->pickups->push_back(p);
+  }
+
+  if (!s_scene.board_phase.empty()) {
+    // Every seat out of lives: the game-over latch's end state, without
+    // the latch (which would finalize a replay and start a real qualify).
+    for (GLShip *gs : *g->players) {
+      gs->ship->alive = false;
+      gs->ship->lives = 0;
+      gs->ship->time_until_respawn = 1 << 30;
+      gs->ship->score = s_scene.board_score;
+    }
+    g->game_over = true;
+    g->game_over_time = 0;
+    const std::string &ph = s_scene.board_phase;
+    g->board_phase_ = ph == "checking"  ? GLGame::BoardQualifying
+                    : ph == "prompt"    ? GLGame::BoardPrompt
+                    : ph == "uploading" ? GLGame::BoardUploading
+                    : ph == "placed"    ? GLGame::BoardPlaced
+                    : ph == "failed"    ? GLGame::BoardFailed
+                    : ph == "checked"   ? GLGame::BoardChecked
+                                        : GLGame::BoardOff;
+    g->board_score_ = s_scene.board_score;
+    g->board_place_ = 5;
+    g->board_fail_reason_ = "connection";
+    g->board_note_ = "YOUR BEST IS ALREADY ON THE BOARD";
   }
 
   g->grid.update((std::list<Object *> *)g->objects);

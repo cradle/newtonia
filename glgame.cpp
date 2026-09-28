@@ -5389,14 +5389,14 @@ void GLGame::board_tick() {
         board_prompt_pressed_.clear();  // only keys pressed FROM NOW act
         SDL_Log("board: would place #%d - prompting", ev.place);
       } else {
-        if (ev.own_best)
+        if (ev.own_best) {
           SDL_Log("board: own best already at least this good - no prompt");
-        else
+          board_checked("YOUR BEST IS ALREADY ON THE BOARD");
+        } else {
           SDL_Log("board: below the cut-line (place %d) - no prompt",
                   ev.place);
-        board_phase_ = BoardOff;
-        delete board_;
-        board_ = nullptr;
+          board_checked("NOT HIGH ENOUGH FOR THE BOARD");
+        }
         return;
       }
     } else if (ev.kind == NetBoard::Event::Placed) {
@@ -5421,10 +5421,13 @@ void GLGame::board_tick() {
         continue;
       }
       // An error during the prompt/upload shows on the card; one during
-      // the silent qualify just cancels the whole idea.
+      // the qualify ends the check (the card says so, see board_checked).
       if (board_phase_ == BoardUploading || board_phase_ == BoardPrompt) {
         board_phase_ = BoardFailed;
         board_fail_reason_ = net_board_sanitize(ev.reason, 32);
+      } else if (board_phase_ == BoardQualifying) {
+        board_checked("LEADERBOARD UNAVAILABLE");
+        return;
       } else {
         board_phase_ = BoardOff;
       }
@@ -5451,13 +5454,17 @@ void GLGame::board_tick() {
           if (board_q_sent_) board_send_qualify();
           return;  // fresh socket; poll it next tick
         }
-        board_phase_ = BoardOff;
+        board_phase_ = BoardChecked;
+        board_note_ = "LEADERBOARD UNAVAILABLE";
         return;
       }
       SDL_Log("board: connection closed");
       if (board_phase_ == BoardUploading) {
         board_phase_ = BoardFailed;
         board_fail_reason_ = "connection";
+      } else if (board_phase_ == BoardQualifying) {
+        board_checked("LEADERBOARD UNAVAILABLE");
+        return;
       } else if (board_phase_ != BoardPlaced &&
                  board_phase_ != BoardFailed) {
         board_phase_ = BoardOff;
@@ -5469,10 +5476,18 @@ void GLGame::board_tick() {
   }
   if (board_phase_ == BoardQualifying && current_time > board_deadline_) {
     SDL_Log("board: qualify timed out - no prompt");
-    board_phase_ = BoardOff;
-    delete board_;
-    board_ = nullptr;
+    board_checked("LEADERBOARD UNAVAILABLE");
   }
+}
+
+// The qualify ended without a prompt. The card has been saying CHECKING
+// LEADERBOARD, so it says how the check ended rather than letting the line
+// vanish; like Placed/Failed this is terminal and the normal exit runs.
+void GLGame::board_checked(const char *note) {
+  board_phase_ = BoardChecked;
+  board_note_ = note;
+  delete board_;
+  board_ = nullptr;
 }
 
 bool GLGame::board_nav(char key) {
@@ -5529,7 +5544,7 @@ bool GLGame::board_nav(char key) {
     }
     return true;
   }
-  return false;  // Placed/Failed/Off: the normal exit handling runs
+  return false;  // Placed/Failed/Checked/Off: the normal exit handling runs
 }
 
 // ---- replay playback (REPLAY.md R2) ----
