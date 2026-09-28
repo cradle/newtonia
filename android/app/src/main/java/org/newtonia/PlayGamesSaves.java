@@ -30,6 +30,8 @@ package org.newtonia;
 // time anything here does.
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -68,6 +70,9 @@ public final class PlayGamesSaves {
     // (native pushes nothing until a copy has arrived).
     private static final long[] RETRY_MS = {2000, 5000, 15000, 30000, 60000, 60000, 60000, 60000, 60000, 60000};
     private static int sRetry;
+    private static boolean sSignInAsked;
+    private static final String PREFS = "newtonia_cloud_sync";
+    private static final String PREF_DECLINED = "signin_declined";
     private static boolean sRetryPosted;
 
     // android_cloud_sync.cpp: the saved game's bytes (empty = just created).
@@ -126,6 +131,7 @@ public final class PlayGamesSaves {
                 @Override public void onComplete(Task<AuthenticationResult> task) {
                     boolean ok = task.isSuccessful()
                             && task.getResult().isAuthenticated();
+                    if (!ok && task.isSuccessful() && askSignIn(activity)) return;
                     if (!ok) {
                         // One line per attempt: the retries are bounded,
                         // and a field report needs to see whether sign-in
@@ -153,6 +159,50 @@ public final class PlayGamesSaves {
         } catch (Throwable t) {
             Log.w(TAG, "sign-in check failed", t);
             done(false);
+        }
+    }
+
+    // UI thread only. Automatic sign-in can fail with no error at all — in
+    // the field (2026-09-29) it did on most launches, for achievements too;
+    // likely the Saved Games consent, which automatic sign-in cannot ask
+    // for. Ask through Google's own prompt, once per launch, and never
+    // again on this install once the player turns it down. True when a
+    // prompt was started (it finishes the operation itself).
+    private static boolean askSignIn(final Activity activity) {
+        if (sSignInAsked) return false;
+        sSignInAsked = true;
+        final SharedPreferences prefs =
+                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (prefs.getBoolean(PREF_DECLINED, false)) {
+            Log.i(TAG, "not asking to sign in: declined before on this install");
+            return false;
+        }
+        try {
+            Log.i(TAG, "automatic sign-in failed, asking to sign in to Play Games");
+            PlayGames.getGamesSignInClient(activity).signIn()
+                    .addOnCompleteListener(new OnCompleteListener<AuthenticationResult>() {
+                @Override public void onComplete(Task<AuthenticationResult> task) {
+                    boolean ok = task.isSuccessful()
+                            && task.getResult().isAuthenticated();
+                    if (ok) {
+                        Log.i(TAG, "signed in to Play Games");
+                        // Achievements check on their own clock: tell them.
+                        PlayGamesAchievements.onResume(activity);
+                        sBusy = false;
+                        sRetry = 0;
+                        pump();
+                        return;
+                    }
+                    Log.i(TAG, "Play Games sign-in declined or failed"
+                            + (task.isSuccessful() ? "" : ": " + task.getException()));
+                    if (task.isSuccessful()) prefs.edit().putBoolean(PREF_DECLINED, true).apply();
+                    done(false);
+                }
+            });
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "Play Games sign-in prompt failed", t);
+            return false;
         }
     }
 
