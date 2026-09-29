@@ -10,13 +10,16 @@ snapshots without enabling the 'Saved Game' feature", then SIGN_IN_REQUIRED.
 Deleting the Newtonia profile on that Google account fixed it on Glenn's
 phone; players can't be asked to do that.
 
-`PlayGamesSaves.askConsent` shows Google's sign-in once per install on those
-errors, hoping it grants the missing access. Untested: it needs a Google
-account (not device — profiles are per account) that played Newtonia before
-2026-09-29.
+No in-game recovery is known. `GamesSignInClient.signIn()` can't do it: on
+an already-authenticated session the SDK (22.1.0) returns the existing result
+without starting a new flow (PR #583 review). So `PlayGamesSaves` recognises
+the error, logs "this Play Games profile has no Saved Games access", and
+leaves sync off for that profile; the game plays on local files as before.
 
-To test: install a build with PR #583 signed in to that account, launch,
-and run `adb logcat -s NewtoniaCloudSync NewtoniaPlayGames`. Pass: "asking
-Play Games for Saved Games access", then "read the saved game". Fail: the
-open still errors after the prompt — those players then don't sync (the
-game plays on local files as before) and we need another route.
+To do:
+1. Confirm with a Google account (not a device — profiles are per account)
+   that played Newtonia before 2026-09-29: install a build with PR #583 and
+   run `adb logcat -s NewtoniaCloudSync NewtoniaPlayGames`. Expect sign-in
+   and achievements to work and the "no Saved Games access" line.
+2. Find a supported route that grants the access without the player
+   deleting their Newtonia profile, or decide to tell affected players how.

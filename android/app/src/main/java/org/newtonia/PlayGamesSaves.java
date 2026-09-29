@@ -30,8 +30,6 @@ package org.newtonia;
 // time anything here does.
 
 import android.app.Activity;
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -73,10 +71,6 @@ public final class PlayGamesSaves {
     private static final long[] RETRY_MS = {2000, 5000, 15000, 30000, 60000, 60000, 60000, 60000, 60000, 60000};
     private static int sRetry;
     private static boolean sSignInAsked;
-    private static boolean sConsentAsked;
-    private static final String PREFS = "newtonia_cloud_sync";
-    private static final String PREF_DECLINED = "signin_declined";
-    private static final String PREF_CONSENT_ASKED = "saved_games_access_asked";
     private static boolean sRetryPosted;
 
     // android_cloud_sync.cpp: the saved game's bytes (empty = just created).
@@ -167,20 +161,15 @@ public final class PlayGamesSaves {
     }
 
     // UI thread only. Automatic sign-in can fail with no error at all — in
-    // the field (2026-09-29) it did on most launches, for achievements too;
-    // likely the Saved Games consent, which automatic sign-in cannot ask
-    // for. Ask through Google's own prompt, once per launch, and never
-    // again on this install once the player turns it down. True when a
-    // prompt was started (it finishes the operation itself).
+    // the field (2026-09-29) it did on most launches, for achievements too.
+    // Ask through Google's own prompt, once per launch. Nothing persists:
+    // the SDK reports a transient service failure and a declined prompt as
+    // the same unauthenticated result, so a "declined" latch could silence
+    // the prompt for good after a network blip. True when a prompt was
+    // started (it finishes the operation itself).
     private static boolean askSignIn(final Activity activity) {
         if (sSignInAsked) return false;
         sSignInAsked = true;
-        final SharedPreferences prefs =
-                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (prefs.getBoolean(PREF_DECLINED, false)) {
-            Log.i(TAG, "not asking to sign in: declined before on this install");
-            return false;
-        }
         try {
             Log.i(TAG, "automatic sign-in failed, asking to sign in to Play Games");
             PlayGames.getGamesSignInClient(activity).signIn()
@@ -199,7 +188,6 @@ public final class PlayGamesSaves {
                     }
                     Log.i(TAG, "Play Games sign-in declined or failed"
                             + (task.isSuccessful() ? "" : ": " + task.getException()));
-                    if (task.isSuccessful()) prefs.edit().putBoolean(PREF_DECLINED, true).apply();
                     done(false);
                 }
             });
@@ -210,50 +198,25 @@ public final class PlayGamesSaves {
         }
     }
 
-    // A Play Games profile made before Saved Games was switched on holds a
-    // sign-in without Saved Games access: the open fails with "Cannot use
-    // snapshots without enabling the 'Saved Game' feature", then
-    // SIGN_IN_REQUIRED (field, 2026-09-29 — deleting the profile fixed it).
-    private static boolean needsConsent(Exception e) {
+    // A Play Games profile made before Saved Games was switched on signs in
+    // without Saved Games access: the open fails with "Cannot use snapshots
+    // without enabling the 'Saved Game' feature", then SIGN_IN_REQUIRED
+    // (field, 2026-09-29 — deleting the game's Play Games profile fixed it).
+    // signIn() can't repair it: on an authenticated session the SDK returns
+    // the existing result without a new flow (PR #583 review). No in-game
+    // recovery is known (TODO.md), so sync just stays off for the profile.
+    private static boolean noSavedGamesAccess(Exception e) {
         if (e instanceof IllegalStateException) return true;
         return e instanceof ApiException
                 && ((ApiException) e).getStatusCode() == CommonStatusCodes.SIGN_IN_REQUIRED;
     }
 
-    // UI thread only. Ask Google's sign-in once per install to grant what
-    // the old sign-in lacks; the work goes back in the queue either way.
-    // True when a prompt was started (it finishes the operation itself).
-    private static boolean askConsent(byte[] push) {
-        final Activity activity = sActivity;
-        if (sConsentAsked || activity == null) return false;
-        sConsentAsked = true;
-        // Once per install, not per launch: if the prompt can't grant the
-        // access, a player must not meet it on every launch.
-        SharedPreferences prefs =
-                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (prefs.getBoolean(PREF_CONSENT_ASKED, false)) return false;
-        prefs.edit().putBoolean(PREF_CONSENT_ASKED, true).apply();
-        if (push == null) sPullWanted = true;
-        else sPush = sPush == null ? push : merge(sPush, push);
-        try {
-            Log.i(TAG, "asking Play Games for Saved Games access");
-            PlayGames.getGamesSignInClient(activity).signIn()
-                    .addOnCompleteListener(new OnCompleteListener<AuthenticationResult>() {
-                @Override public void onComplete(Task<AuthenticationResult> task) {
-                    Log.i(TAG, "Play Games sign-in for Saved Games: "
-                            + (task.isSuccessful() ? (task.getResult().isAuthenticated()
-                                    ? "signed in" : "not signed in")
-                                    : String.valueOf(task.getException())));
-                    sBusy = false;
-                    sRetry = 0;
-                    pump();
-                }
-            });
-            return true;
-        } catch (Throwable t) {
-            Log.w(TAG, "Play Games sign-in prompt failed", t);
-            return false;
-        }
+    // UI thread only. Retrying an open that can't succeed is only noise:
+    // keep the work queued and wait for the next resume to try once more.
+    private static void parked(byte[] push) {
+        if (push != null) sPush = sPush == null ? push : merge(sPush, push);
+        Log.i(TAG, "this Play Games profile has no Saved Games access; sync waits for the next resume");
+        sBusy = false;
     }
 
     // UI thread only. ok: move on to whatever else is waiting now. After a
@@ -309,7 +272,7 @@ public final class PlayGamesSaves {
                     if (!task.isSuccessful()) {
                         Exception e = task.getException();
                         Log.w(TAG, "opening the saved game failed (is Saved Games on in the Play Console?)", e);
-                        if (needsConsent(e) && askConsent(push)) return;
+                        if (noSavedGamesAccess(e)) { parked(push); return; }
                         failed(push);
                         return;
                     }
