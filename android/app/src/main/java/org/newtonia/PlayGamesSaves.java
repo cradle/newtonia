@@ -38,6 +38,8 @@ import android.util.Log;
 
 import java.util.Arrays;
 
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.common.api.CommonStatusCodes;
 import com.google.android.gms.games.AuthenticationResult;
 import com.google.android.gms.games.PlayGames;
 import com.google.android.gms.games.SnapshotsClient;
@@ -71,6 +73,7 @@ public final class PlayGamesSaves {
     private static final long[] RETRY_MS = {2000, 5000, 15000, 30000, 60000, 60000, 60000, 60000, 60000, 60000};
     private static int sRetry;
     private static boolean sSignInAsked;
+    private static boolean sConsentAsked;
     private static final String PREFS = "newtonia_cloud_sync";
     private static final String PREF_DECLINED = "signin_declined";
     private static boolean sRetryPosted;
@@ -206,6 +209,46 @@ public final class PlayGamesSaves {
         }
     }
 
+    // A Play Games profile made before Saved Games was switched on holds a
+    // sign-in without Saved Games access: the open fails with "Cannot use
+    // snapshots without enabling the 'Saved Game' feature", then
+    // SIGN_IN_REQUIRED (field, 2026-09-29 — deleting the profile fixed it).
+    private static boolean needsConsent(Exception e) {
+        if (e instanceof IllegalStateException) return true;
+        return e instanceof ApiException
+                && ((ApiException) e).getStatusCode() == CommonStatusCodes.SIGN_IN_REQUIRED;
+    }
+
+    // UI thread only. Ask Google's sign-in once per launch to grant what
+    // the old sign-in lacks; the work goes back in the queue either way.
+    // True when a prompt was started (it finishes the operation itself).
+    private static boolean askConsent(byte[] push) {
+        final Activity activity = sActivity;
+        if (sConsentAsked || activity == null) return false;
+        sConsentAsked = true;
+        if (push == null) sPullWanted = true;
+        else sPush = sPush == null ? push : merge(sPush, push);
+        try {
+            Log.i(TAG, "asking Play Games for Saved Games access");
+            PlayGames.getGamesSignInClient(activity).signIn()
+                    .addOnCompleteListener(new OnCompleteListener<AuthenticationResult>() {
+                @Override public void onComplete(Task<AuthenticationResult> task) {
+                    Log.i(TAG, "Play Games sign-in for Saved Games: "
+                            + (task.isSuccessful() ? (task.getResult().isAuthenticated()
+                                    ? "signed in" : "not signed in")
+                                    : String.valueOf(task.getException())));
+                    sBusy = false;
+                    sRetry = 0;
+                    pump();
+                }
+            });
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "Play Games sign-in prompt failed", t);
+            return false;
+        }
+    }
+
     // UI thread only. ok: move on to whatever else is waiting now. After a
     // failure, retry on a backing-off timer; once that runs out, the next
     // resume or local write tries again.
@@ -257,8 +300,9 @@ public final class PlayGamesSaves {
                 @Override public void onComplete(
                         Task<SnapshotsClient.DataOrConflict<Snapshot>> task) {
                     if (!task.isSuccessful()) {
-                        Log.w(TAG, "opening the saved game failed (is Saved Games on in the Play Console?)",
-                              task.getException());
+                        Exception e = task.getException();
+                        Log.w(TAG, "opening the saved game failed (is Saved Games on in the Play Console?)", e);
+                        if (needsConsent(e) && askConsent(push)) return;
                         failed(push);
                         return;
                     }
