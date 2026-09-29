@@ -86,6 +86,9 @@ jobs:
           g++ -std=c++11 -Wall -I. test/unit/cloud_sync_merge_test.cpp -o /tmp/cloud_sync_merge_test
           /tmp/cloud_sync_merge_test
 
+      - name: Cloud save sync driver unit test
+        run: ./test/unit/cloud_sync_core.sh
+
       - name: New-install touch layout defaults unit test
         run: bash test/unit/preferences.sh
 

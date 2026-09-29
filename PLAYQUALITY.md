@@ -206,15 +206,13 @@ authentication use cases" in 2027 — if the exemption narrows, our answer
 is still "PGS v2 automatic sign-in", which is Google's own recommended
 path for games.
 
-**Adjacent, deliberately out of scope:** the manifest sets
-`allowBackup="false"`, so device-to-device migration carries the Play
-Games identity but NOT local `savegame.dat` / `stats.dat` /
-`preferences`. That is today's intended behaviour (local files also back
-the leaderboard's best-run slots and the cheat flag — auto-backup
-restoring them un-audited is its own can of worms). If save migration is
-ever wanted, the path is PGS Saved Games (or scoped backup rules that
-exclude the leaderboard-sensitive files), designed on its own branch —
-the April requirement does not ask for it.
+**Adjacent:** the manifest sets `allowBackup="false"`, so device-to-device
+migration carries the Play Games identity but not local files through
+Android's own backup. Saves still move since 2026-09-28: `savegame.dat`,
+`stats.dat` and `highscore.dat` roam through a Play Games saved game
+(CLAUDE.md "Play Games Saved Games"), the path this note used to point at.
+Replays and `preferences` stay local — replays back the leaderboard's
+best-run slots, and restoring those un-audited is its own can of worms.
 
 ## Timeline
 

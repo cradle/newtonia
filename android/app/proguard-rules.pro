@@ -19,6 +19,11 @@
 # Java code references it.
 -keep class org.newtonia.PlayGamesIdentity { *; }
 
+# Cloud sync bridge (android_cloud_sync.cpp): resolved by name from native
+# code, and its nativeCloudData is bound by its JNI symbol name. Stripping it
+# fails SOFT — saves just stop syncing, with a logcat line as the only sign.
+-keep class org.newtonia.PlayGamesSaves { *; }
+
 # SDL's Java layer and the activity are likewise driven through JNI by the
 # SDL2 native library and NewtoniaActivity's native field reads.
 -keep class org.libsdl.app.** { *; }

@@ -6,8 +6,10 @@
 // "Steam Cloud"). Replays, preferences and the online/netplay files stay on
 // the device: replays are megabytes, and the rest describe the device.
 //
-// The only backend is iOS (ios_cloud_sync.mm, the iCloud key-value store);
-// cloud_sync.cpp is the no-op everywhere else, so the writers call these
+// Two backends: iOS (ios_cloud_sync.mm, the iCloud key-value store) and
+// Android (android_cloud_sync.cpp, a Play Games saved game), sharing one
+// merge driver (cloud_sync_core.h); cloud_sync.cpp is the no-op everywhere
+// else, so the writers call these
 // hooks unconditionally, like web_fs_sync. The game keeps reading and
 // writing its plain files: the backend merges the cloud copy INTO those
 // files (never the other way round mid-write), so no reader changes.

@@ -1,9 +1,9 @@
 #include "cloud_sync.h"
 
 // No-op backend for every build without a cloud store. iOS supplies the
-// real one in ios_cloud_sync.mm (the iOS project and ios.yml compile both
-// files, hence the guard).
-#if !defined(__IOS__)
+// real one in ios_cloud_sync.mm and Android in android_cloud_sync.cpp (both
+// builds compile this file too, hence the guard).
+#if !defined(__IOS__) && !(defined(__ANDROID__) && defined(PLAY_GAMES_BUILD))
 
 namespace CloudSync {
 void init() {}
