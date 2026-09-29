@@ -76,6 +76,7 @@ public final class PlayGamesSaves {
     private static boolean sConsentAsked;
     private static final String PREFS = "newtonia_cloud_sync";
     private static final String PREF_DECLINED = "signin_declined";
+    private static final String PREF_CONSENT_ASKED = "saved_games_access_asked";
     private static boolean sRetryPosted;
 
     // android_cloud_sync.cpp: the saved game's bytes (empty = just created).
@@ -219,13 +220,19 @@ public final class PlayGamesSaves {
                 && ((ApiException) e).getStatusCode() == CommonStatusCodes.SIGN_IN_REQUIRED;
     }
 
-    // UI thread only. Ask Google's sign-in once per launch to grant what
+    // UI thread only. Ask Google's sign-in once per install to grant what
     // the old sign-in lacks; the work goes back in the queue either way.
     // True when a prompt was started (it finishes the operation itself).
     private static boolean askConsent(byte[] push) {
         final Activity activity = sActivity;
         if (sConsentAsked || activity == null) return false;
         sConsentAsked = true;
+        // Once per install, not per launch: if the prompt can't grant the
+        // access, a player must not meet it on every launch.
+        SharedPreferences prefs =
+                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (prefs.getBoolean(PREF_CONSENT_ASKED, false)) return false;
+        prefs.edit().putBoolean(PREF_CONSENT_ASKED, true).apply();
         if (push == null) sPullWanted = true;
         else sPush = sPush == null ? push : merge(sPush, push);
         try {
