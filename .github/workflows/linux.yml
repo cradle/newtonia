@@ -101,6 +101,9 @@ jobs:
       - name: Shield inventory and effect regression test
         run: CPATH=/usr/local/include/SDL2${CPATH:+:$CPATH} make NETPLAY=0 -j4 test-shield-empty
 
+      - name: Final-score freeze unit test
+        run: CPATH=/usr/local/include/SDL2${CPATH:+:$CPATH} make NETPLAY=0 -j4 test-score-freeze
+
       - name: Right-stick camera regression test
         run: CPATH=/usr/local/include/SDL2${CPATH:+:$CPATH} make NETPLAY=0 -j4 test-camera-stick
 

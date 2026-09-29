@@ -150,7 +150,32 @@ class Ship : public CompositeObject {
       lives = 1;
       time_until_respawn = respawn_time;
       out_order_ = 0;
+      // Back in the game: scoring resumes — but from the frozen figure.
+      // Pickups are collected after the step's scoring and before GLGame's
+      // enforce_score_freezes(), so anything the pilot's lingering rounds
+      // earned earlier in this same step must be dropped first.
+      enforce_score_freeze();
+      score_frozen_ = false;
     }
+
+    // Final score: once a pilot's LAST life is gone the score is frozen at
+    // what it was at that death. Bullets still in flight, mines, missiles,
+    // turrets and chain kills keep resolving after the wreck, and every one
+    // of the ~45 score sites adds to `score` directly, so rather than gate
+    // each site the freeze is taken here (kill() on the last life, or the
+    // step that first sees the ship fully out) and GLGame re-applies it on
+    // the authoritative side (offline / host) before anything reads the
+    // score: the game-over card, highscore.dat, the leaderboard prompt, the
+    // replay header and the snapshots clients and replays render from.
+    void freeze_score() {
+      if (!score_frozen_) { score_frozen_ = true; frozen_score_ = score; }
+    }
+    void enforce_score_freeze() { if (score_frozen_) score = frozen_score_; }
+    bool score_frozen() const { return score_frozen_; }
+    // Net client: the score the host's last snapshot carried for this
+    // ship (-1 until one arrives). A fully-out pilot's score is pinned to
+    // it, since the host's figure is already frozen (GLGame::tick_net_client).
+    int net_host_score = -1;
 
     // Respawn-countdown tic, deferred: step() flags the second-boundary
     // crossing here (1 = tic, 2 = final-second tic_low) instead of playing
@@ -719,6 +744,8 @@ class Ship : public CompositeObject {
     // field bug). First own-cues ship to hum starts the channel, the last
     // to stop halts it; overlapping windows hold it at one hum's loudness.
     unsigned out_order_ = 0;             // see out_order()
+    bool score_frozen_ = false;          // see freeze_score()
+    int frozen_score_ = 0;
     static unsigned out_order_seq_;      // monotonic, stamps out_order_
     bool shield_humming = false;         // this ship's contribution
     static int shield_hum_refs;          // ships currently humming

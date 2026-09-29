@@ -433,6 +433,17 @@ private:
   // last life. Called from the pickup collection site and the
   // NEWTONIA_NET_TEST_REVIVE_MS e2e hook.
   void revive_fallen_partner(Ship *except);
+  // Re-applies every player's final-score freeze (Ship::freeze_score) so
+  // nothing that resolves after a pilot's last death — shots in flight,
+  // mines, turrets, chain kills, a client claim landing late — counts.
+  // Offline and host only: a net client and replay playback render the
+  // host's already-frozen scores from the snapshots.
+  void enforce_score_freezes();
+  // Net client twin: a fully-out pilot's score is pinned to the host's
+  // last snapshot value (already frozen there), since this side still
+  // resolves its own rounds locally for feedback. Called before the
+  // client's game-over check and again after tick_net_client returns.
+  void pin_client_final_scores();
   // Lance ship/station hits: the pulse's ray-march (Ship) only sees
   // asteroids, so the traced polyline comes back here — from the firer's
   // lance_hit_pending (offline/host) or the client's MSG_LANCE — and is

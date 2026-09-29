@@ -6715,6 +6715,16 @@ void GLGame::tick_net_client(int delta) {
   }
   if (net_mode_ == NetClient && net_session()->transport()->failed())
     net_peer_make().lost = true;
+  // Final-score freeze, client side: the host froze a fully-out pilot's
+  // score at their last death (Ship::freeze_score) and sends that figure,
+  // but this side still resolves its own shots locally for feedback, so a
+  // round landing after the wreck could bump the number between applies —
+  // into the game-over card, highscore.dat and the client's replay header.
+  // A pilot with no lives left shows exactly what the host last said.
+  // Pinned again once tick_net_client returns, after the local hit
+  // processing below (net_cosmetic_ship_impacts, lance/shock claims) that
+  // can still credit the wreck's rounds — see GLGame::tick.
+  pin_client_final_scores();
   // Game over is observed here, not simulated: alive/lives replicate, so
   // when the last life goes this side sees it too. The host's tick never
   // runs on a client, so without this the 3 s accidental-exit guard and
@@ -8225,6 +8235,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // respawn(), which would resurrect the corpse (burning a life) every
     // snapshot until the host's countdown ends. Track the HUD scalars; the
     // extras' alive-transition brings the ship back for real.
+    ship->net_host_score = s.players[i].score;  // see net_host_score
     if (s.players[i].respawning) {
       ship->score = s.players[i].score;
       ship->lives = s.players[i].lives;
@@ -9198,6 +9209,10 @@ void GLGame::tick(int delta) {
       if (delta < 1) delta = 1;
     }
     tick_net_client(delta);
+    // After every client-side score path in the tick, so the HUD, the
+    // game-over card and an exit's save_high_score between ticks all read
+    // the host's frozen figure.
+    pin_client_final_scores();
     return;
   }
   current_time += delta;
@@ -10976,7 +10991,13 @@ void GLGame::tick(int delta) {
     time_slow_step();
     time_until_next_step += time_between_steps *
         (time_slow_active() ? kTimeSlowFactor : 1);
+    enforce_score_freezes();
   }
+  // Once more after the steps: a client's kill claim applied by
+  // net_host_poll above credits outside the step loop. Everything below
+  // (the game-over high score, the leaderboard prompt, the replay header,
+  // the snapshot) reads the frozen figure.
+  enforce_score_freezes();
   /* Save high score automatically on game over */
   // (Unreachable in the tutorial — lives are topped up each tick — but a
   // practice score must never reach highscore.dat or the leaderboard.)
@@ -12884,6 +12905,19 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
 // client's spectate ends by itself and the alive-transition respawns the
 // wreck. No fallen partner (they beat the pickup back some other way) is
 // a quiet no-op. except = the collector (never revives itself).
+void GLGame::enforce_score_freezes() {
+  for (auto *gs : *players) gs->ship->enforce_score_freeze();
+}
+
+void GLGame::pin_client_final_scores() {
+  if (net_mode_ != NetClient) return;
+  for (auto *gs : *players) {
+    Ship *sh = gs->ship;
+    if (!sh->is_alive() && sh->lives == 0 && sh->net_host_score >= 0)
+      sh->score = sh->net_host_score;
+  }
+}
+
 void GLGame::revive_fallen_partner(Ship *except) {
   // Longest-dead first. At 2P there was only ever one partner to revive, so
   // "the first fallen in the list" was unambiguous; with 3-4 seats it meant
