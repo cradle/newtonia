@@ -150,7 +150,12 @@ class Ship : public CompositeObject {
       lives = 1;
       time_until_respawn = respawn_time;
       out_order_ = 0;
-      score_frozen_ = false;  // back in the game: scoring resumes
+      // Back in the game: scoring resumes — but from the frozen figure.
+      // Pickups are collected after the step's scoring and before GLGame's
+      // enforce_score_freezes(), so anything the pilot's lingering rounds
+      // earned earlier in this same step must be dropped first.
+      enforce_score_freeze();
+      score_frozen_ = false;
     }
 
     // Final score: once a pilot's LAST life is gone the score is frozen at

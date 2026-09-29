@@ -58,10 +58,14 @@ static void test_revive_resumes_scoring(const Grid &grid) {
   Ship ship(grid, true);
   ready(ship, grid, 0, 300);
   assert(ship.kill());
+  // Production order: the step's lingering-round points land, THEN a
+  // partner's revive pickup is collected, THEN GLGame enforces. The revive
+  // must drop those points itself, or the later enforce is a no-op.
   ship.score += 99;
+  ship.revive_one_life();
+  assert(ship.score == 300);
   ship.enforce_score_freeze();
   assert(ship.score == 300);
-  ship.revive_one_life();
   assert(!ship.score_frozen());
   ship.score += 40;
   ship.enforce_score_freeze();
