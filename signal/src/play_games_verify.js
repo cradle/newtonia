@@ -75,6 +75,12 @@ export async function verifyPlayGamesCode(env, code, fetcher = fetch) {
     if (!data || typeof data.access_token !== "string" || !data.access_token)
       return null;
     accessToken = data.access_token;
+    // Saved Games live in the player's Drive app folder. Profiles made before
+    // Saved Games was switched on (2026-09-28) never granted it; this line
+    // counts how many verified players still lack it (no id is logged).
+    const scope = typeof data.scope === "string" ? data.scope : "";
+    console.log(`play games verify: drive.appdata ${
+        scope.includes("drive.appdata") ? "granted" : "missing"}`);
   } catch (e) {
     return null;
   }

@@ -71,6 +71,7 @@ public final class PlayGamesSaves {
     private static final long[] RETRY_MS = {2000, 5000, 15000, 30000, 60000, 60000, 60000, 60000, 60000, 60000};
     private static int sRetry;
     private static boolean sSignInAsked;
+    private static boolean sConsentAsked;
     private static boolean sRetryPosted;
 
     // android_cloud_sync.cpp: the saved game's bytes (empty = just created).
@@ -203,8 +204,9 @@ public final class PlayGamesSaves {
     // without enabling the 'Saved Game' feature", then SIGN_IN_REQUIRED
     // (field, 2026-09-29 — deleting the game's Play Games profile fixed it).
     // signIn() can't repair it: on an authenticated session the SDK returns
-    // the existing result without a new flow (PR #583 review). No in-game
-    // recovery is known (TODO.md), so sync just stays off for the profile.
+    // the existing result without a new flow (PR #583 review). parked() asks
+    // for the missing consent through PlayGamesIdentity once per launch; if
+    // that doesn't take, sync stays off for the profile (TODO.md).
     private static boolean noSavedGamesAccess(Exception e) {
         if (e instanceof IllegalStateException) return true;
         return e instanceof ApiException
@@ -215,6 +217,20 @@ public final class PlayGamesSaves {
     // keep the work queued and wait for the next resume to try once more.
     private static void parked(byte[] push) {
         if (push != null) sPush = sPush == null ? push : merge(sPush, push);
+        final Activity activity = sActivity;
+        if (!sConsentAsked && activity != null) {
+            sConsentAsked = true;
+            boolean asked = PlayGamesIdentity.requestSavedGamesConsent(activity,
+                    new Runnable() {
+                @Override public void run() {
+                    // One more try either way; a second failure parks for good.
+                    sBusy = false;
+                    sRetry = 0;
+                    pump();
+                }
+            });
+            if (asked) return;
+        }
         Log.i(TAG, "this Play Games profile has no Saved Games access; sync waits for the next resume");
         sBusy = false;
     }
