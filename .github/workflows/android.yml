@@ -276,6 +276,8 @@ jobs:
           name: android-automotive-boot
           path: |
             logcat-automotive.txt
+            logcat-automotive-full.txt
+            dumpsys-activities.txt
             automotive.png
           retention-days: 7
           if-no-files-found: ignore

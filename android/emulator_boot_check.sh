@@ -35,6 +35,10 @@ log=logcat-automotive.txt
 adb logcat -c || true
 adb logcat -v brief SDL/APP:V AndroidRuntime:E DEBUG:F libc:F '*:S' > "$log" 2>&1 &
 logpid=$!
+# Everything else (system + event buffers, every tag) goes to the artifact for
+# diagnosing lifecycle surprises: which activity took the screen and why.
+adb logcat -b main,system,events,crash -v time > logcat-automotive-full.txt 2>&1 &
+fullpid=$!
 adb shell am start -S -n "$ACTIVITY" > /dev/null
 
 booted=
@@ -50,8 +54,9 @@ done
 adb exec-out screencap -p > automotive.png 2>/dev/null || true
 resumed=$(adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | tr -d '\r')
 pid=$(adb shell pidof "$PKG" | tr -d '\r')
-kill "$logpid" 2>/dev/null
-wait "$logpid" 2>/dev/null
+adb shell dumpsys activity activities > dumpsys-activities.txt 2>&1
+kill "$logpid" "$fullpid" 2>/dev/null
+wait "$logpid" "$fullpid" 2>/dev/null
 
 fail=
 [ -n "$booted" ] || { echo "FAIL: never reached audio setup (GL context or earlier)"; fail=1; }
@@ -62,6 +67,11 @@ echo "$resumed" | grep -q "$PKG" || { echo "FAIL: $PKG is not the resumed activi
 if [ -n "$fail" ]; then
   echo "== logcat:"
   tail -60 "$log"
+  echo "== activity lifecycle (events buffer):"
+  grep -E "wm_(on_|create|restart|finish|destroy|set_resumed|pause|stop|task_moved)|am_(crash|anr|kill|proc_died)|org\.newtonia" \
+    logcat-automotive-full.txt | grep -v "SDL/APP" | tail -60
+  echo "== $PKG in dumpsys:"
+  grep -nE "Display #|$PKG|ResumedActivity" dumpsys-activities.txt | head -60
   exit 1
 fi
 grep -E "SDL_CreateWindow|GL|Mix opened|Car display" "$log" | head -10
