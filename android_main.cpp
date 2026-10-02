@@ -88,6 +88,51 @@ static void read_display_safe_insets() {
             top, bottom, left, right);
 }
 
+// Android Auto: is the activity on the car's projected display? Answered by
+// NewtoniaActivity.isOnExternalDisplay(); false on any JNI failure, which is
+// the phone path. Re-read on every SDL resize, since a move between the phone
+// and the car display arrives as one.
+static bool s_external_display = false;
+
+static bool query_external_display() {
+    bool ext = false;
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (env && activity) {
+        jclass clazz = env->GetObjectClass(activity);
+        if (clazz) {
+            jmethodID m = env->GetMethodID(clazz, "isOnExternalDisplay", "()Z");
+            if (m) ext = env->CallBooleanMethod(activity, m) == JNI_TRUE;
+            if (env->ExceptionCheck()) { env->ExceptionClear(); ext = false; }
+            env->DeleteLocalRef(clazz);
+        }
+        env->DeleteLocalRef(activity);
+    }
+    return ext;
+}
+
+// Present without vsync on the car display, with vsync on the phone. Android
+// Auto encodes every frame we present into the video stream it sends to the
+// car; with a swap interval of 1 the projected display's buffer queue blocks
+// SwapWindow until the encoder has taken a frame, so the queue fills and
+// every queued buffer is a frame of latency between a touch and the ship
+// moving (field, v1.68.0: "more than a couple of frames" over USB). Interval
+// 0 lets the newest frame replace a waiting one instead. The main loop then
+// paces itself (CAR_FRAME_MS) so the GPU doesn't spin flat out.
+static const Uint32 CAR_FRAME_MS = 16;
+
+static void car_display_sync() {
+    static bool logged = false;
+    bool ext = query_external_display();
+    if (!logged || ext != s_external_display) {
+        logged = true;
+        SDL_Log("Car display: %s, swap interval %d",
+                ext ? "external (Android Auto)" : "phone", ext ? 0 : 1);
+    }
+    s_external_display = ext;
+    SDL_GL_SetSwapInterval(ext ? 0 : 1);
+}
+
 static inline float tc_dist(float ax, float ay, float bx, float by) {
     float dx = ax - bx, dy = ay - by;
     return sqrtf(dx * dx + dy * dy);
@@ -539,7 +584,8 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         return 1;
     }
 
-    SDL_GL_SetSwapInterval(1);   // vsync
+    SDL_GL_SetSwapInterval(1);   // vsync (car_display_sync below may drop it)
+    car_display_sync();
 
     // Initialise GLES2 shim
     gles2_init();
@@ -747,6 +793,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                     // the inset-shifted HUD row.
                     read_display_safe_insets();
                     touch_controls_resize(s_w, s_h);
+                    car_display_sync();
                 }
                 break;
 
@@ -787,6 +834,23 @@ extern "C" int SDL_main(int argc, char *argv[]) {
 
 
         SDL_GL_SwapWindow(s_window);
+
+        if (s_external_display) {
+            // Without vsync nothing paces the loop; cap it near 60 fps. The
+            // sim takes wall-clock deltas, so the cap changes no game speed.
+            Uint32 spent = SDL_GetTicks() - now;
+            if (spent < CAR_FRAME_MS) SDL_Delay(CAR_FRAME_MS - spent);
+
+            // Field diagnosis: frame rate on the car display every 5 s
+            // (adb logcat -s SDL/APP).
+            static Uint32 perf_t0 = 0, perf_frames = 0;
+            if (!perf_t0) perf_t0 = now;
+            ++perf_frames;
+            if (now - perf_t0 >= 5000) {
+                SDL_Log("Car display: %.1f fps", perf_frames * 1000.0f / (now - perf_t0));
+                perf_t0 = now; perf_frames = 0;
+            }
+        }
     }
 
     // Cleanup
