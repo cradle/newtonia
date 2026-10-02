@@ -29,6 +29,13 @@ fi
 echo "Automotive OS $(adb shell getprop ro.build.version.release | tr -d '\r')"
 
 adb install -r -g "$APK" || { echo "FATAL: install failed"; exit 1; }
+# Let the install finish landing for every user before launching. The car
+# image runs several Android users and finishes the install for them (and
+# starts/stops background users) for a few seconds afterwards; a package
+# change while the game is up makes Android RELAUNCH its activity, and an
+# SDL game ends its main loop on that relaunch, so a launch straight after
+# install closed itself about a second later in the first runs.
+sleep "${INSTALL_SETTLE_S:-45}"
 
 log=logcat-automotive.txt
 : > "$log"
@@ -62,6 +69,8 @@ fail=
 [ -n "$booted" ] || { echo "FAIL: never reached audio setup (GL context or earlier)"; fail=1; }
 grep -qE "FATAL EXCEPTION|Fatal signal" "$log" && { echo "FAIL: crash in logcat"; fail=1; }
 [ -n "$pid" ] || { echo "FAIL: $PKG is not running"; fail=1; }
+grep -q "wm_relaunch_resume_activity.*$PKG" logcat-automotive-full.txt && \
+  echo "NOTE: Android relaunched the activity during the run (see the events buffer)"
 echo "$resumed" | grep -q "$PKG" || { echo "FAIL: $PKG is not the resumed activity:"; echo "$resumed"; fail=1; }
 
 if [ -n "$fail" ]; then
