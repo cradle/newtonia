@@ -33,7 +33,7 @@ adb install -r -g "$APK" || { echo "FATAL: install failed"; exit 1; }
 log=logcat-automotive.txt
 : > "$log"
 adb logcat -c || true
-adb logcat -v brief SDL/APP:V AndroidRuntime:E DEBUG:F libc:F '*:S' > "$log" 2>&1 &
+adb logcat -v time SDL/APP:V AndroidRuntime:E DEBUG:F libc:F '*:S' > "$log" 2>&1 &
 logpid=$!
 # Everything else (system + event buffers, every tag) goes to the artifact for
 # diagnosing lifecycle surprises: which activity took the screen and why.
@@ -70,6 +70,9 @@ if [ -n "$fail" ]; then
   echo "== activity lifecycle (events buffer):"
   grep -E "wm_(on_|create|restart|finish|destroy|set_resumed|pause|stop|task_moved)|am_(crash|anr|kill|proc_died)|org\.newtonia" \
     logcat-automotive-full.txt | grep -v "SDL/APP" | tail -60
+  echo "== SDL and input around the launch (full logcat):"
+  grep -E "SDL|KeyEvent|keycode|KEYCODE|InputDispatcher|ActivityTaskManager|$PKG" \
+    logcat-automotive-full.txt | grep -vE "Adding device|PlayerBase|TrackPlayer" | head -150
   echo "== $PKG in dumpsys:"
   grep -nE "Display #|$PKG|ResumedActivity" dumpsys-activities.txt | head -60
   exit 1
