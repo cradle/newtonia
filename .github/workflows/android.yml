@@ -222,3 +222,58 @@ jobs:
           path: logcat-*.txt
           retention-days: 7
           if-no-files-found: ignore
+
+  # Android Automotive OS: the Android that runs on the car itself (Google
+  # built-in), which v1.68.0's manifest opted into (#586). Nobody on the team
+  # has such a car, so the emulator is the only place the game runs on it
+  # before Google's car review. Boots the same minified APK on Google's
+  # automotive image and checks the game launches, reaches GL + audio setup
+  # and stays the resumed activity (android/emulator_boot_check.sh). It says
+  # nothing about how the game plays; the screenshot artifact shows what the
+  # car screen looks like.
+  automotive-boot:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download minified release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: newtonia-release-minified
+
+      # android-automotive is the "Automotive with Google APIs" image (no Play
+      # Store); 34-ext9 is the newest x86_64 one on the stable channel.
+      - name: Boot check on an Automotive OS emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34-ext9
+          arch: x86_64
+          target: android-automotive
+          profile: automotive_1024p_landscape
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash android/emulator_boot_check.sh
+        env:
+          APK: app-release.apk
+
+      - name: Upload logcat and screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-automotive-boot
+          path: |
+            logcat-automotive.txt
+            automotive.png
+          retention-days: 7
+          if-no-files-found: ignore
