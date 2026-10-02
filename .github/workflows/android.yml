@@ -253,11 +253,13 @@ jobs:
           name: newtonia-release-minified
 
       # android-automotive is the "Automotive with Google APIs" image (no Play
-      # Store); 34-ext9 is the newest x86_64 one on the stable channel.
+      # Store); API 33 because the runner installs a matching
+      # platforms;android-N package and the newer images (34-ext9, 35-ext15)
+      # have none ("Failed to find package platforms;android-34-ext9").
       - name: Boot check on an Automotive OS emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34-ext9
+          api-level: 33
           arch: x86_64
           target: android-automotive
           profile: automotive_1024p_landscape

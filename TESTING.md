@@ -1552,7 +1552,7 @@ gate.
   Then sign into a Google account inside the emulator (Settings → Passwords &
   accounts) so Play Games can authenticate.
 - *Car (Android Automotive OS)*: the same flow on an automotive image —
-  `system-images;android-34-ext9;android-automotive;x86_64`, device
+  `system-images;android-33;android-automotive;x86_64`, device
   `automotive_1024p_landscape` (Android Studio → Device Manager → Automotive).
   CI boots the minified APK on exactly that image in `android.yml`'s
   `automotive-boot` job (`android/emulator_boot_check.sh`: installs, launches,
