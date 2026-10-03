@@ -35,6 +35,17 @@
                   android:required="false" />
     <uses-feature android:name="android.hardware.gamepad"
                   android:required="false" />
+    <!-- Play's Android Automotive OS feature rules: wifi, portrait and
+         landscape must not be required. The wifi multicast permission above
+         implies android.hardware.wifi, and some cars have no wifi; the screen
+         features stay optional so a fixed-orientation head unit still
+         qualifies. -->
+    <uses-feature android:name="android.hardware.wifi"
+                  android:required="false" />
+    <uses-feature android:name="android.hardware.screen.portrait"
+                  android:required="false" />
+    <uses-feature android:name="android.hardware.screen.landscape"
+                  android:required="false" />
 
     <application
         android:label="@string/app_name"
