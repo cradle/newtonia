@@ -144,6 +144,8 @@ jobs:
       #   3. Download the service account JSON key
       #   4. Store the JSON content in the GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret
       - name: Upload to Google Play (internal track)
+        id: play_upload
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
@@ -151,3 +153,19 @@ jobs:
           releaseFiles: newtonia/android/app/build/outputs/bundle/release/app-release.aab
           track: internal
           status: draft
+
+      # While the app has a rejected or pending submission, Play refuses an
+      # edit that would send itself for review ("Changes cannot be sent for
+      # review automatically", v1.68.2, 2026-10-04) and the upload is lost.
+      # Retry once with changesNotSentForReview so the release still lands;
+      # it then waits in Publishing overview for "Send changes for review".
+      - name: Upload to Google Play (internal track, held for manual review)
+        if: steps.play_upload.outcome == 'failure'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: org.newtonia
+          releaseFiles: newtonia/android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: draft
+          changesNotSentForReview: true
