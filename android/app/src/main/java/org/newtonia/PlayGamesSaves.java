@@ -207,7 +207,8 @@ public final class PlayGamesSaves {
     // fixes it either: on a real old profile (2026-10-05) Google granted the
     // drive.appdata scope through its authorization API and the opens still
     // failed, so it is Play Games' own record of the profile, not consent
-    // (PR #585). Sync stays off for the profile; decided to leave it.
+    // (PR #585); clearing Play services data didn't help either. Sync stays off
+    // for the profile for now; the server-save fallback is planned in TODO.md.
     private static boolean noSavedGamesAccess(Exception e) {
         if (e instanceof IllegalStateException) return true;
         return e instanceof ApiException
