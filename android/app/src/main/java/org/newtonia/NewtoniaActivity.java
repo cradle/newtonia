@@ -64,6 +64,27 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // Android Auto (parked games, PR #586) runs the activity on the car's
+    // projected display, not the phone's own, and every frame we present
+    // goes through Android Auto's video encoder before the car shows it.
+    // android_main.cpp asks this on start and on every resize, and on a
+    // non-default display presents without vsync (see car_display_sync
+    // there): the projected display's buffer queue blocks the swap until
+    // the encoder takes a frame, so with vsync every queued buffer is a
+    // frame of input lag. Any failure answers false, the phone path.
+    public boolean isOnExternalDisplay() {
+        try {
+            Display d = getWindowManager().getDefaultDisplay();
+            if (d == null) return false;
+            boolean ext = d.getDisplayId() != Display.DEFAULT_DISPLAY;
+            Log.i("Newtonia", "display id=" + d.getDisplayId() + " name=" + d.getName()
+                  + " refresh=" + d.getRefreshRate() + (ext ? " (external)" : ""));
+            return ext;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);

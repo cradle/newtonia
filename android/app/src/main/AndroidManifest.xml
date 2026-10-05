@@ -24,11 +24,35 @@
     <uses-feature android:name="android.hardware.touchscreen"
                   android:required="false" />
 
+    <!-- Cars (parked games, GA since 2026-09): Android Automotive OS installs
+         the same APK/AAB, so the feature must be optional or Play would ship
+         it to cars only. Gamepad is optional for the same reason — most phones
+         and cars have none built in, though both can pair one. Distribution
+         to cars is opted in per form factor in Play Console (Advanced
+         settings > Form factors) and reviewed against the car app quality
+         guidelines. -->
+    <uses-feature android:name="android.hardware.type.automotive"
+                  android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad"
+                  android:required="false" />
+    <!-- Play's Android Automotive OS feature rules: wifi, portrait and
+         landscape must not be required. The wifi multicast permission above
+         implies android.hardware.wifi, and some cars have no wifi; the screen
+         features stay optional so a fixed-orientation head unit still
+         qualifies. -->
+    <uses-feature android:name="android.hardware.wifi"
+                  android:required="false" />
+    <uses-feature android:name="android.hardware.screen.portrait"
+                  android:required="false" />
+    <uses-feature android:name="android.hardware.screen.landscape"
+                  android:required="false" />
+
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:hardwareAccelerated="true"
+        android:appCategory="game"
         android:enableOnBackInvokedCallback="false"><!--
         Opt OUT of the predictive-back system. At targetSdk 35+ this flag
         defaults to TRUE, which routes Back through OnBackInvokedCallback and
@@ -66,6 +90,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- Android Auto launcher (phone projection, parked only,
+                     Android 15+ phones). Games are the only parked category
+                     Android Auto accepts; appCategory="game" above is what
+                     marks us as one. The system blocks the activity once the
+                     car moves, which reaches us as an ordinary pause. -->
+                <category android:name="android.intent.category.CAR_LAUNCHER" />
             </intent-filter>
 
             <!-- Co-op join links (App Links). A tapped
