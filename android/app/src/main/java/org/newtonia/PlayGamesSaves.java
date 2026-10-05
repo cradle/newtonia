@@ -203,8 +203,11 @@ public final class PlayGamesSaves {
     // without enabling the 'Saved Game' feature", then SIGN_IN_REQUIRED
     // (field, 2026-09-29 — deleting the game's Play Games profile fixed it).
     // signIn() can't repair it: on an authenticated session the SDK returns
-    // the existing result without a new flow (PR #583 review). No in-game
-    // recovery is known (TODO.md), so sync just stays off for the profile.
+    // the existing result without a new flow (PR #583 review). Nothing else
+    // fixes it either: on a real old profile (2026-10-05) Google granted the
+    // drive.appdata scope through its authorization API and the opens still
+    // failed, so it is Play Games' own record of the profile, not consent
+    // (PR #585). Sync stays off for the profile; decided to leave it.
     private static boolean noSavedGamesAccess(Exception e) {
         if (e instanceof IllegalStateException) return true;
         return e instanceof ApiException
