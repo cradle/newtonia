@@ -205,8 +205,8 @@ public final class PlayGamesSaves {
     // (field, 2026-09-29 — deleting the game's Play Games profile fixed it).
     // signIn() can't repair it: on an authenticated session the SDK returns
     // the existing result without a new flow (PR #583 review). parked() asks
-    // for the missing consent through PlayGamesIdentity once per launch; if
-    // that doesn't take, sync stays off for the profile (TODO.md).
+    // for the missing Drive consent through SavedGamesConsent once per
+    // launch; if that doesn't take, sync stays off for the profile (TODO.md).
     private static boolean noSavedGamesAccess(Exception e) {
         if (e instanceof IllegalStateException) return true;
         return e instanceof ApiException
@@ -220,7 +220,7 @@ public final class PlayGamesSaves {
         final Activity activity = sActivity;
         if (!sConsentAsked && activity != null) {
             sConsentAsked = true;
-            boolean asked = PlayGamesIdentity.requestSavedGamesConsent(activity,
+            boolean asked = SavedGamesConsent.request(activity,
                     new Runnable() {
                 @Override public void run() {
                     // One more try either way; a second failure parks for good.

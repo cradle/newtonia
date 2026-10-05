@@ -380,6 +380,14 @@ public class NewtoniaActivity extends SDLActivity {
         handleInviteIntent(intent);
     }
 
+    // Google's Drive access screen (SavedGamesConsent) reports back here.
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == SavedGamesConsent.REQUEST_CODE)
+            SavedGamesConsent.onActivityResult(this, resultCode, data);
+    }
+
     // LAN co-op discovery (net_lan.cpp): Android wifi drivers filter
     // broadcast/multicast UDP unless a MulticastLock is held, so the
     // native beacon browse would hear nothing. Held only while the app

@@ -37,14 +37,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
-import java.util.Collections;
-
 import com.google.android.gms.games.GamesSignInClient;
 import com.google.android.gms.games.PlayGames;
 import com.google.android.gms.games.Player;
 import com.google.android.gms.games.PlayersClient;
-import com.google.android.gms.games.gamessignin.AuthResponse;
-import com.google.android.gms.games.gamessignin.AuthScope;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 
@@ -173,70 +169,6 @@ public final class PlayGamesIdentity {
         } catch (Throwable t) {
             sCodeInFlight = false;
             Log.w(TAG, "Play Games server-side access request failed", t);
-        }
-    }
-
-    // UI thread. A Play Games profile made before Saved Games was switched on
-    // (2026-09-28) never granted Drive app-folder access, where saved games
-    // live, and signIn() can't ask again on an authenticated session.
-    // requestServerSideAccess is the one sign-in call that can show Google's
-    // consent screen, and Drive app-folder access is one of the scopes it
-    // always requests. forceRefreshToken asks for offline access, which makes
-    // Google re-prompt; OPEN_ID is the least intrusive extra scope. Whether
-    // this re-grants Drive for an old profile is unproven (TODO.md). The code
-    // it returns is dropped. `after` runs on the UI thread once it settles.
-    // False when no request was made.
-    public static boolean requestSavedGamesConsent(final Activity activity,
-                                                   final Runnable after) {
-        final String clientId = oauthClientId(activity);
-        if (clientId == null) return false;
-        try {
-            Log.i(TAG, "asking Google to grant Saved Games access");
-            PlayGames.getGamesSignInClient(activity).requestServerSideAccess(
-                    clientId, true, Collections.singletonList(AuthScope.OPEN_ID))
-                    .addOnCompleteListener(new OnCompleteListener<AuthResponse>() {
-                @Override public void onComplete(Task<AuthResponse> task) {
-                    if (task.isSuccessful()) {
-                        Log.i(TAG, "consent request finished, granted "
-                                + task.getResult().getGrantedScopes());
-                        after.run();
-                        return;
-                    }
-                    // Field, 2026-10-05: this failed at once with a bare
-                    // NullPointerException on an old profile. Try the plain
-                    // overload, the one attestation already uses, with
-                    // offline access forced.
-                    Log.w(TAG, "consent request failed", task.getException());
-                    retryWithoutScopes(activity, clientId, after);
-                }
-            });
-            return true;
-        } catch (Throwable t) {
-            Log.w(TAG, "consent request could not start", t);
-            retryWithoutScopes(activity, clientId, after);
-            return true;
-        }
-    }
-
-    // UI thread.
-    private static void retryWithoutScopes(Activity activity, String clientId,
-                                           final Runnable after) {
-        try {
-            Log.i(TAG, "asking again without extra scopes");
-            PlayGames.getGamesSignInClient(activity)
-                    .requestServerSideAccess(clientId, true)
-                    .addOnCompleteListener(new OnCompleteListener<String>() {
-                @Override public void onComplete(Task<String> task) {
-                    if (task.isSuccessful())
-                        Log.i(TAG, "second consent request finished");
-                    else
-                        Log.w(TAG, "second consent request failed", task.getException());
-                    after.run();
-                }
-            });
-        } catch (Throwable t) {
-            Log.w(TAG, "second consent request could not start", t);
-            after.run();
         }
     }
 

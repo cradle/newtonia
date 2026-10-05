@@ -14,13 +14,14 @@ Likely cause: saved games live in the player's Drive app folder, and a
 profile made before Saved Games was switched on only granted basic games
 access. `GamesSignInClient.signIn()` can't ask again: on an
 already-authenticated session the SDK (22.1.0) returns the existing result
-without a new flow (PR #583 review). `requestServerSideAccess` is the one
-call that can show Google's consent screen, and Drive app-folder access is
-one of the scopes it always requests, so when an open fails this way
-`PlayGamesSaves` now asks through it once per launch
-(`PlayGamesIdentity.requestSavedGamesConsent`, offline access + OPEN_ID) and
-tries once more. Unproven. If it doesn't take, sync stays off for that
-profile and the game plays on local files as before.
+without a new flow (PR #583 review). Confirmed on a second Google account (2026-10-05). Asking through
+`requestServerSideAccess` fails inside the Play Games service (a bare
+NullPointerException with extra scopes, "Not signed in when calling API"
+without), so `PlayGamesSaves` now asks once per launch for the
+`drive.appdata` scope through Google's general authorization API
+(`SavedGamesConsent`, play-services-auth) and tries once more. Whether Play
+Games honours that grant is the open question. If it doesn't take, sync
+stays off for that profile and the game plays on local files as before.
 
 The board worker logs `play games verify: drive.appdata granted|missing` on
 every Play Games verification (Workers Logs), which shows how many verified
