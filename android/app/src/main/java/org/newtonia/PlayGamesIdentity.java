@@ -186,9 +186,9 @@ public final class PlayGamesIdentity {
     // this re-grants Drive for an old profile is unproven (TODO.md). The code
     // it returns is dropped. `after` runs on the UI thread once it settles.
     // False when no request was made.
-    public static boolean requestSavedGamesConsent(Activity activity,
+    public static boolean requestSavedGamesConsent(final Activity activity,
                                                    final Runnable after) {
-        String clientId = oauthClientId(activity);
+        final String clientId = oauthClientId(activity);
         if (clientId == null) return false;
         try {
             Log.i(TAG, "asking Google to grant Saved Games access");
@@ -196,18 +196,47 @@ public final class PlayGamesIdentity {
                     clientId, true, Collections.singletonList(AuthScope.OPEN_ID))
                     .addOnCompleteListener(new OnCompleteListener<AuthResponse>() {
                 @Override public void onComplete(Task<AuthResponse> task) {
-                    if (task.isSuccessful())
+                    if (task.isSuccessful()) {
                         Log.i(TAG, "consent request finished, granted "
                                 + task.getResult().getGrantedScopes());
-                    else
-                        Log.i(TAG, "consent request failed: " + task.getException());
-                    after.run();
+                        after.run();
+                        return;
+                    }
+                    // Field, 2026-10-05: this failed at once with a bare
+                    // NullPointerException on an old profile. Try the plain
+                    // overload, the one attestation already uses, with
+                    // offline access forced.
+                    Log.w(TAG, "consent request failed", task.getException());
+                    retryWithoutScopes(activity, clientId, after);
                 }
             });
             return true;
         } catch (Throwable t) {
             Log.w(TAG, "consent request could not start", t);
-            return false;
+            retryWithoutScopes(activity, clientId, after);
+            return true;
+        }
+    }
+
+    // UI thread.
+    private static void retryWithoutScopes(Activity activity, String clientId,
+                                           final Runnable after) {
+        try {
+            Log.i(TAG, "asking again without extra scopes");
+            PlayGames.getGamesSignInClient(activity)
+                    .requestServerSideAccess(clientId, true)
+                    .addOnCompleteListener(new OnCompleteListener<String>() {
+                @Override public void onComplete(Task<String> task) {
+                    if (task.isSuccessful())
+                        Log.i(TAG, "second consent request finished");
+                    else
+                        Log.w(TAG, "second consent request failed", task.getException());
+                    after.run();
+                }
+            });
+        } catch (Throwable t) {
+            Log.w(TAG, "second consent request could not start", t);
+            after.run();
         }
     }
 
