@@ -46,6 +46,7 @@ int  s_start_ms = 0;     // skip this far in before the capture begins
 int  s_duration_ms = 0;  // 0 = until the recording runs out
 bool s_hud = true;       // in-game HUD + minimap
 bool s_chrome = false;   // REPLAY watermark / timeline / hints
+float s_zoom = 1.0f;     // view-span scale, 1 = classic (< 1 is closer)
 bool s_info_only = false;
 unsigned s_seed = 1337;  // particle/debris rolls; the shot harness's default
 
@@ -208,6 +209,9 @@ bool VideoCapture::init() {
   if (hud && hud[0]) s_hud = !(hud[0] == '0' && hud[1] == '\0');
   const char *chrome = SDL_getenv("NEWTONIA_VIDEO_CHROME");
   if (chrome && chrome[0]) s_chrome = !(chrome[0] == '0' && chrome[1] == '\0');
+  const char *zoom = SDL_getenv("NEWTONIA_VIDEO_ZOOM");
+  if (zoom && zoom[0]) s_zoom = (float)atof(zoom);
+  if (!(s_zoom >= 0.3f && s_zoom <= 2.0f)) s_zoom = 1.0f;
   const char *seed = SDL_getenv("NEWTONIA_VIDEO_SEED");
   if (seed && seed[0]) s_seed = (unsigned)strtoul(seed, NULL, 10);
 
@@ -331,8 +335,11 @@ State *VideoCapture::build_state() {
   // is not a viewer, and a p1_camera_zoom=0.80 INI framed the same replay
   // 20% closer (pumping with speed under speed-follow) than another box.
   // Pin the classic view, as ShotScene does. (Rotate and smoothing keep
-  // following the INI as they always have.)
-  for (GLShip *gs : *g->players) gs->set_zoom_prefs(NULL, NULL);
+  // following the INI as they always have.) NEWTONIA_VIDEO_ZOOM frames
+  // closer or wider on purpose — a trailer wants the ship bigger than the
+  // classic view shows it — and is the same on every machine.
+  for (GLShip *gs : *g->players)
+    gs->set_zoom_prefs(s_zoom == 1.0f ? NULL : &s_zoom, NULL);
   s_game = g;
   return g;
 }
