@@ -34,6 +34,7 @@ DURATION=0
 AUDIO=1
 HUD=1
 CHROME=0
+ZOOM=1
 CRF=16
 INFO=0
 KEEP=0
@@ -54,6 +55,8 @@ Options:
   --crf N         x264 quality, lower is better (default 16, visually lossless)
   --no-audio      render silent
   --no-hud        drop the in-game HUD and minimap (pure world)
+  --zoom S        view-span scale: 1 = the classic view (default), below 1
+                  frames closer (0.7 shows the ship ~40% bigger), up to 2
   --chrome        keep the REPLAY watermark, timeline and control hints
   --keep          keep the intermediate frames/audio next to the output
   --info          print the replay's header (score, level, length) and exit
@@ -81,6 +84,7 @@ while [ $# -gt 0 ]; do
     --no-audio) AUDIO=0; shift ;;
     --no-hud)   HUD=0; shift ;;
     --chrome)   CHROME=1; shift ;;
+    --zoom)     ZOOM=$2; shift 2 ;;
     --keep)     KEEP=1; shift ;;
     --info)     INFO=1; shift ;;
     -h|--help)  usage; exit 0 ;;
@@ -132,6 +136,7 @@ COMMON=(
   NEWTONIA_VIDEO_MS="$DURATION"
   NEWTONIA_VIDEO_HUD="$HUD"
   NEWTONIA_VIDEO_CHROME="$CHROME"
+  NEWTONIA_VIDEO_ZOOM="$ZOOM"
 )
 
 echo "=== rendering $REPLAY -> $OUT (${W}x${H} @ ${FPS}fps)"
