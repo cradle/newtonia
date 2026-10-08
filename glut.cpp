@@ -8,6 +8,7 @@
 #include <SDL_mixer.h>
 
 #include "pad.h"
+#include "keyboard_seen.h"
 #include "startup_trace.h"
 #include "steam_input.h"
 #include "state_manager.h"
@@ -181,6 +182,7 @@ static unsigned char fold_case(unsigned char key) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
+  note_keyboard_used();
   key = fold_case(key);
   // The bare F toggle yields while a text field is consuming keystrokes
   // (the lobby's room-code entry): the Deck's floating keyboard typing F

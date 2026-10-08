@@ -4,6 +4,7 @@
 // platform compiles this TU inert.
 
 #include "shot_scene.h"
+#include "keyboard_seen.h"
 
 #include "glgame.h"
 #include "glenemy.h"
@@ -465,6 +466,8 @@ bool ShotScene::requested() {
 
 bool ShotScene::init() {
   s_out_path = SDL_getenv("NEWTONIA_SHOT");
+  // Renders show the desktop player's keyboard hints, as they always have.
+  note_keyboard_used();
   const char *scene = SDL_getenv("NEWTONIA_SHOT_SCENE");
   if (scene && scene[0] && !parse_scene_file(scene)) return false;
   // Env overrides beat the scene file, so one script can be rendered at

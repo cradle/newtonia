@@ -1,5 +1,6 @@
 #include "glgame.h"
 #include "achievements.h"
+#include "keyboard_seen.h"
 #include "presence.h"
 #include "invites.h"
 #include "steam_build.h"
@@ -157,6 +158,17 @@ static GLShip *make_seat_ship(const Grid &grid, int seat) {
   return gs;
 }
 
+// Keyboard clusters as seat inputs: only once this run has seen a real
+// key (keyboard_seen.h) — a WASD row a pad-only player can't use is noise
+// — and never on an Xbox console, where the pads are the input.
+static bool roster_offers_keys() {
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
+  return false;
+#else
+  return keyboard_seen();
+#endif
+}
+
 // with_bindings=false applies only the seat's scalars (sensitivity, camera
 // smoothing, rotate/fixed pref) — the pad-join path, where the pad is the
 // controls but the seat's Options settings must still take effect.
@@ -165,7 +177,14 @@ static void set_player_keys(GLShip *gs, int player_index,
   if (player_index < 0) player_index = 0;
   if (player_index >= MAX_PLAYERS) player_index = MAX_PLAYERS - 1;
   PlayerKeys &k = g_prefs.player_keys[player_index];
-  if (with_bindings) {
+  // Seat 1 always keeps its cluster (the long-shipped P1 default); the
+  // others only while a keyboard is in play (roster_offers_keys). Without
+  // one they'd be keys the roster neither shows nor lets anyone pick, yet
+  // the HUD advertised them: a CONTINUE restores each seat with bindings,
+  // so a resumed 4P game read "show controls with F8" on P2's screen with
+  // one pad and no keyboard (field, Xbox, 2026-10-08). A seat left without
+  // keys is also free for the next pad that connects.
+  if (with_bindings && (player_index == 0 || roster_offers_keys())) {
     gs->set_keys(k);
     gs->set_keymap_slot(player_index);
   }
@@ -1549,16 +1568,6 @@ static GLShip *seat_ship_at(std::list<GLShip*> *players, int i) {
 // A keyboard cluster's label, read from the slot's own bindings so a
 // hand-edited p3_*/p4_* INI shows the truth rather than a hardcoded guess:
 // the four direction primaries, e.g. "WASD" for slot 0 and "IJKL" for 1.
-// Keyboard clusters as seat inputs. Not on an Xbox console: the pads are
-// the input there, and a WASD row the player can't use is noise.
-static bool roster_offers_keys() {
-#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
-  return false;
-#else
-  return true;
-#endif
-}
-
 static std::string cluster_label(int slot) {
   if (slot < 0 || slot >= MAX_PLAYERS) return std::string();
   const PlayerKeys &k = g_prefs.player_keys[slot];

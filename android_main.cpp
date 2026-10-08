@@ -11,6 +11,7 @@
 
 #include "achievements.h"
 #include "cloud_sync.h"
+#include "keyboard_seen.h"
 #include "gles2_compat.h"
 #include "state_manager.h"
 #include "touch_controls.h"
@@ -723,7 +724,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                     case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
                     default: break;
                 }
-                if (key) s_game->keyboard(key, 0, 0);
+                if (key) { note_keyboard_used(); s_game->keyboard(key, 0, 0); }
                 break;
             }
             case SDL_KEYUP: {

@@ -20,6 +20,7 @@
 
 #include "gles2_compat.h"
 #include "state_manager.h"
+#include "keyboard_seen.h"
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
@@ -207,7 +208,7 @@ static void main_loop() {
                 case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
                 default: break;
             }
-            if (key) s_game->keyboard(key, 0, 0);
+            if (key) { note_keyboard_used(); s_game->keyboard(key, 0, 0); }
             break;
         }
         case SDL_KEYUP: {
