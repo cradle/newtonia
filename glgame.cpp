@@ -1937,9 +1937,17 @@ void GLGame::roster_nav(unsigned char key, PadId src) {
   // Confirm on the ADD row seats a player, the way the row reads — it used
   // to close the screen like any other confirm, so the only way to add
   // someone was cycling left/right (field, Xbox, 2026-10-08).
+  // With every input already driving a seat (one pad on a console, which
+  // has no keyboard rows) the new seat starts with NONE: the row reads what
+  // it is, a second pad claims it by pressing a button or plugging in, and
+  // left/right can still move the one pad across (field, Xbox, 2026-10-08:
+  // confirm did nothing at all there).
   if (MenuSelect::is_confirm(key) && roster_row_is_add(roster_selection_)) {
     SeatInput in;
-    if (roster_free_input(src, &in)) roster_apply(roster_selection_, in);
+    if (roster_free_input(src, &in))
+      roster_apply(roster_selection_, in);
+    else
+      add_local_player(PAD_NONE, /*with_keys=*/false);
     return;
   }
   if (MenuSelect::is_back(key) || MenuSelect::is_confirm(key)) {
@@ -1977,6 +1985,12 @@ void GLGame::roster_toggle_anonymous() {
   NET_LOG("net: allow anonymous players: %s\n",
           g_prefs.allow_anonymous ? "YES" : "NO");
   save_preferences();
+}
+
+// A cursor move or an input cycle: what the roster lets any pad do.
+bool GLGame::roster_nav_dir(unsigned char nav) {
+  return MenuSelect::is_up(nav) || MenuSelect::is_down(nav) ||
+         MenuSelect::is_left(nav) || MenuSelect::is_right(nav);
 }
 
 bool GLGame::roster_claim_pad(PadId which) {
@@ -12256,21 +12270,29 @@ void GLGame::controller(SDL_Event event) {
     return;
   }
   // Seat roster: a pad ALREADY driving a seat navigates it; a pad driving
-  // nothing claims the highlighted seat by pressing any button, which is
-  // how a new player joins here instead of through the START ladder below.
+  // nothing claims the highlighted seat by pressing a button, which is how
+  // a new player joins here instead of through the START ladder below.
+  // Directions navigate from EVERY pad, though: a pad just set to NONE (or
+  // a spare one walking to its seat) has to be able to move the cursor, and
+  // with only the dpad claiming, its stick went dead while its dpad
+  // silently rebound the highlighted seat (field, Xbox, 2026-10-08).
   if (roster_open()) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-      if (!is_player_controller(event.cbutton.which)) {
+      unsigned char nav = nav_key_from_controller(event);
+      if (!is_player_controller(event.cbutton.which) && !roster_nav_dir(nav)) {
         roster_claim_pad(event.cbutton.which);
         return;
       }
-      roster_nav(nav_key_from_controller(event), event.cbutton.which);
+      roster_nav(nav, event.cbutton.which);
       return;
     }
-    if (event.type == SDL_CONTROLLERAXISMOTION &&
-        is_player_controller(event.caxis.which)) {
+    if (event.type == SDL_CONTROLLERAXISMOTION) {
       unsigned char nav = nav_key_from_controller(event);
-      if (nav) roster_nav(nav);
+      // A spare pad's trigger confirms nothing here: it is not seated, so
+      // only its directions count (its buttons claim, above).
+      if (nav && (is_player_controller(event.caxis.which) ||
+                  roster_nav_dir(nav)))
+        roster_nav(nav, event.caxis.which);
     }
     return;
   }

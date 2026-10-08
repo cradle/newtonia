@@ -323,6 +323,7 @@ private:
   void roster_nav(unsigned char key, PadId src = PAD_NONE);
   // An unassigned pad takes the highlighted seat by pressing any button —
   // press-to-claim, the couch-co-op idiom. True when it was consumed.
+  static bool roster_nav_dir(unsigned char nav);
   bool roster_claim_pad(PadId which);
   SeatInput roster_seat_input(int seat) const;
   std::string roster_seat_label(int seat) const;
