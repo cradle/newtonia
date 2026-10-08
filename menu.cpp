@@ -13,6 +13,7 @@
 #include "net_resume.h"
 #include "net_session.h"  // net_state_sane: the local save is ingest too
 #include "pad.h"
+#include "keyboard_seen.h"
 #include "net_transport.h"
 #include "preferences.h"
 #include "touch_controls.h"
@@ -1083,6 +1084,12 @@ void Menu::draw() {
           Typer::draw_centered(0, title_bot - gap, "tap to start", sz);
         } else {
           bool has_ctrl = pad_count() > 0;
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
+          // A console is played with a pad: launched with none on (from
+          // Device Portal, the phone app, or a pad still waking up) it
+          // still says START, until a real key says a keyboard is here.
+          if (!keyboard_seen()) has_ctrl = true;
+#endif
           // Pad prompt in the plugged-in pad's vocabulary (pad.h): START
           // on Xbox, OPTIONS on PlayStation — and under Steam Input,
           // whatever the layout binds the Menu set's start action to.
