@@ -1549,6 +1549,16 @@ static GLShip *seat_ship_at(std::list<GLShip*> *players, int i) {
 // A keyboard cluster's label, read from the slot's own bindings so a
 // hand-edited p3_*/p4_* INI shows the truth rather than a hardcoded guess:
 // the four direction primaries, e.g. "WASD" for slot 0 and "IJKL" for 1.
+// Keyboard clusters as seat inputs. Not on an Xbox console: the pads are
+// the input there, and a WASD row the player can't use is noise.
+static bool roster_offers_keys() {
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
+  return false;
+#else
+  return true;
+#endif
+}
+
 static std::string cluster_label(int slot) {
   if (slot < 0 || slot >= MAX_PLAYERS) return std::string();
   const PlayerKeys &k = g_prefs.player_keys[slot];
@@ -1771,7 +1781,8 @@ std::string GLGame::roster_seat_label(int seat) const {
   GLShip *gs = seat_ship_at(players, seat);
   if (!gs) return "EMPTY";
   std::string out;
-  if (gs->has_keys()) out = cluster_label(gs->keymap_slot());
+  if (gs->has_keys() && roster_offers_keys())
+    out = cluster_label(gs->keymap_slot());
   if (gs->has_controller()) {
     char buf[16];
     snprintf(buf, sizeof buf, "PAD %d", pad_number(gs->controller_id()));
@@ -1782,12 +1793,41 @@ std::string GLGame::roster_seat_label(int seat) const {
   return out.empty() ? "NONE" : out;
 }
 
+// The ADD row: offline, below the seats while there is room for one more.
+bool GLGame::roster_row_is_add(int row) const {
+  return net_mode_ == NetOff && (int)players->size() < MAX_PLAYERS &&
+         row == (int)players->size();
+}
+
+// The input a confirm on the ADD row seats: the pad that pressed it when
+// that pad drives no seat yet, else the first option nobody holds.
+bool GLGame::roster_free_input(PadId src, SeatInput *out) const {
+  if (src != PAD_NONE && pad_attached(src) && !is_player_controller(src)) {
+    out->kind = SeatInput::Pad;
+    out->pad = src;
+    return true;
+  }
+  for (const SeatInput &in : roster_input_options()) {
+    if (in.kind == SeatInput::Pad && is_player_controller(in.pad)) continue;
+    if (in.kind == SeatInput::Keys) {
+      bool held = false;
+      for (auto *gs : *players)
+        if (gs->has_keys() && gs->keymap_slot() == in.slot) held = true;
+      if (held) continue;
+    }
+    if (in.kind == SeatInput::None) continue;
+    *out = in;
+    return true;
+  }
+  return false;
+}
+
 // Every input this machine can offer a seat: nothing, each keyboard cluster
 // that actually binds keys, then each connected pad.
 std::vector<GLGame::SeatInput> GLGame::roster_input_options() const {
   std::vector<SeatInput> out;
   out.push_back(SeatInput());  // None
-  for (int s = 0; s < MAX_PLAYERS; s++) {
+  for (int s = 0; roster_offers_keys() && s < MAX_PLAYERS; s++) {
     if (cluster_label(s).empty()) continue;
     SeatInput in;
     in.kind = SeatInput::Keys;
@@ -1892,6 +1932,14 @@ void GLGame::roster_nav(unsigned char key, PadId src) {
   }
   if (MenuSelect::is_back(key) && roster_kick_armed_ >= 0) {
     roster_kick_armed_ = -1;  // back disarms before it closes the screen
+    return;
+  }
+  // Confirm on the ADD row seats a player, the way the row reads — it used
+  // to close the screen like any other confirm, so the only way to add
+  // someone was cycling left/right (field, Xbox, 2026-10-08).
+  if (MenuSelect::is_confirm(key) && roster_row_is_add(roster_selection_)) {
+    SeatInput in;
+    if (roster_free_input(src, &in)) roster_apply(roster_selection_, in);
     return;
   }
   if (MenuSelect::is_back(key) || MenuSelect::is_confirm(key)) {

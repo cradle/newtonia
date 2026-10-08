@@ -328,6 +328,8 @@ private:
   std::string roster_seat_label(int seat) const;
   // Every input this machine can offer a seat, in cycle order.
   std::vector<SeatInput> roster_input_options() const;
+  bool roster_row_is_add(int row) const;
+  bool roster_free_input(PadId src, SeatInput *out) const;
   // Move an input onto a row, taking it off whatever seat held it; the ADD
   // row seats a new player first.
   void roster_apply(int row, const SeatInput &in);

@@ -1559,7 +1559,11 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       // -100 clears both. Suppressed while a leaderboard flow owns the
       // card (board_prompt draws its own heading + EXIT TO MENU row).
       // Touch has no row — the tap band at the screen edge is the exit.
-      if (!is_touch_mode() && glgame->board_phase_ == GLGame::BoardOff)
+      // Only once EVERY player is out: this branch keys on P1, and drawn
+      // per viewport it put the row on a co-op partner's screen while
+      // they were still flying (field, Xbox, 2026-10-08).
+      if (!is_touch_mode() && glgame->board_phase_ == GLGame::BoardOff &&
+          glgame->all_players_out())
         MenuSelect::draw_row(-100, "EXIT TO MENU", 16, true);
       // The upload prompt this card would carry can never appear with
       // recording off — there is nothing to submit — and the silence read
