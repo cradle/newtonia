@@ -1,5 +1,19 @@
 # Agent instructions
 
+## Merge only when CI is green
+
+Before merging any PR, verify that every applicable CI workflow and check for
+the PR's current head commit has completed successfully. Pending, queued,
+running, failed, cancelled, or missing results do not satisfy this rule. If a
+check is intentionally skipped or neutral, verify that it is not applicable;
+do not treat that result as a successful check.
+
+A request to merge, a clean review, or passing local tests does not waive this
+requirement. Wait for CI, investigate failures, and recheck after any head
+commit change. Pass the verified head SHA when merging so a newer, unchecked
+commit cannot be merged accidentally. Do not bypass checks or use an admin
+override to merge.
+
 ## Build before reporting that a build is unavailable
 
 For code changes and PR reviews, inspect the available toolchain and attempt the
