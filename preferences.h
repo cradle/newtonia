@@ -125,7 +125,9 @@ struct Preferences {
     bool rotate_view         = true;   // LEGACY global (pre-per-player): only a
                                        // migration/downgrade seed now — the game
                                        // reads PlayerKeys::rotate_view per player
-    bool friendly_fire       = true;   // players damage each other
+    // Players damage each other. OFF for new installs (2026-10-08); an
+    // existing INI keeps whatever it holds — the Options row can change it.
+    bool friendly_fire       = false;
     // Hosting policy (FOURPLAYER.md O3): may players the signalling worker
     // could not vouch for take a seat? Default YES, which is the behaviour
     // that always existed. NO refuses every peer whose NAME the worker did

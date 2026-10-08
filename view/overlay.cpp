@@ -1579,7 +1579,12 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
                              "turn on record replays to enter scores",
                              is_touch_mode() ? 10 : 8);
     }
-  } else {
+  }
+  // The friendly-fire line rides every shared game, not just a full
+  // roster: it used to be the else of the join-offer branch above, which
+  // was only false at two players back when the cap was two — with four
+  // seats it showed in 4P alone (field, Xbox, 2026-10-08).
+  if((int)glgame->players->size() >= 2 && !glgame->in_tutorial()) {
     // Keep these clear of the bottom edge: Typer glyphs extend ~2x the
     // size below their anchor, so a small offset puts the text on the
     // title-safe boundary (an Xbox-compliance problem, and clipped-looking
