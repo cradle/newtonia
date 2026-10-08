@@ -8255,6 +8255,10 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ghost->ship->set_black_holes(black_holes);
       ghost->ship->set_teleport_hazards(hazards);
       ghost->ship->net_remote_gun = true;
+      // Same framing as the ghosts already playing: the viewer's zoom when
+      // watched in-game, the render's pinned zoom under NEWTONIA_VIDEO —
+      // without it a joiner opened at the classic view beside them.
+      if (!players->empty()) ghost->copy_zoom_prefs(*players->front());
       players->push_back(ghost);
       SDL_Log("replay: player %d joined", (int)players->size());
     }
