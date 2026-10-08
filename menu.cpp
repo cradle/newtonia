@@ -124,6 +124,12 @@ static const int NUM_HANDEDNESS = 3;
 // what surfaced the old never-upload reading in the field.
 static const char* LEADERBOARD_LABELS[] = {"AUTO", "ASK"};
 static const int NUM_LEADERBOARD = 2;
+// Friendly fire (Preferences::friendly_fire): may co-op partners hurt each
+// other? The rule for local co-op and for a room this machine hosts. The
+// G key and the touch HUD tap were its only toggles, so a pad-only console
+// had none (field, Xbox, 2026-10-08) — this row is the pad's way to it.
+static const char* FRIENDLY_FIRE_LABELS[] = {"OFF", "ON"};
+static const int NUM_FRIENDLY_FIRE = 2;
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
 // 2=camera fixed/rotate, 3=star density, 4=auto-record replays,
@@ -138,7 +144,7 @@ static const int NUM_LEADERBOARD = 2;
 // HANDEDNESS_LABELS above); 14=HUD size (desktop list only: the touch
 // layout places its pause circle off the classic HUD stack, so the HUD
 // there stays at the size the OSD was laid out for — Overlay::hud_grow
-// ignores the pref in touch mode). P2 rows are
+// ignores the pref in touch mode); 15=friendly fire. P2 rows are
 // desktop-only — mobile (touch) shows Player 1 plus the shared options.
 // Options is desktop/controller-only today (see Menu::show_options_row),
 // so the touch list is future-proofing.
@@ -152,6 +158,7 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {3, 0, "STAR  DENSITY"},
   {14, 0, "HUD  SIZE"},
   {8, 0, "AUDIO"},
+  {15, 0, "FRIENDLY  FIRE"},
   {4, 0, "RECORD  REPLAYS"},
   // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
   {5, 0, "LEADERBOARD  UPLOAD"},
@@ -164,6 +171,7 @@ static const OptRow OPT_ROWS_TOUCH[] = {
   {9, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {8, 0, "AUDIO"},
+  {15, 0, "FRIENDLY FIRE"},
   {4, 0, "RECORD REPLAYS"},
   {5, 0, "LEADERBOARD UPLOAD"},  // LAST — see the desktop table
 };
@@ -410,6 +418,7 @@ Menu::Menu() :
   hud_size_index_       = nearest_value_index(g_prefs.hud_scale,
                                               HUD_SIZE_VALUES, NUM_HUD_SIZE);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
+  friendly_fire_index_  = g_prefs.friendly_fire ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   input_index_          = g_prefs.touch_one_hand ? 1 : 0;
   handedness_index_     = g_prefs.touch_handedness;
@@ -888,6 +897,7 @@ void Menu::draw() {
         case 12: num_steps = NUM_INPUT;       cur_idx = input_index_;                 lbl = INPUT_LABELS;         break;
         case 13: num_steps = NUM_HANDEDNESS;  cur_idx = handedness_index_;            lbl = HANDEDNESS_LABELS;    break;
         case 14: num_steps = NUM_HUD_SIZE;    cur_idx = hud_size_index_;              lbl = HUD_SIZE_LABELS;      break;
+        case 15: num_steps = NUM_FRIENDLY_FIRE; cur_idx = friendly_fire_index_;       lbl = FRIENDLY_FIRE_LABELS; break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -2334,6 +2344,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 12: idx = &input_index_;                num = NUM_INPUT;        break;
     case 13: idx = &handedness_index_;           num = NUM_HANDEDNESS;   break;
     case 14: idx = &hud_size_index_;             num = NUM_HUD_SIZE;     break;
+    case 15: idx = &friendly_fire_index_;        num = NUM_FRIENDLY_FIRE; break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2367,6 +2378,7 @@ void Menu::close_options() {
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   g_prefs.hud_scale                    = HUD_SIZE_VALUES[hud_size_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
+  g_prefs.friendly_fire                = (friendly_fire_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
   g_prefs.music_volume                 = VOLUME_VALUES[music_volume_index_];
