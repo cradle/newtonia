@@ -764,10 +764,11 @@ void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
                              const std::vector<uint8_t> &body) {
     if (!have_keyframe_) return note_predawn_drop();
     if (over_size_cap()) return;
-    std::vector<uint8_t> payload;
-    payload.reserve(2 + body.size());
-    payload.push_back(subtype);
-    payload.push_back(player_idx);
+    // Construct the header in place; reserve followed by push_back triggers
+    // GCC 14's -Wfree-nonheap-object under -O3 for this byte vector.
+    std::vector<uint8_t> payload(2);
+    payload[0] = subtype;
+    payload[1] = player_idx;
     payload.insert(payload.end(), body.begin(), body.end());
     // Stamped with the LAST state record's slot, not the next one's. An
     // effect stamped last_slot_ + 1 becomes due at the same playback
