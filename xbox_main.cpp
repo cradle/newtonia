@@ -63,6 +63,7 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 
 #include "gles2_compat.h"
 #include "state_manager.h"
+#include "keyboard_seen.h"
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
@@ -492,7 +493,7 @@ int main(int argc, char *argv[])
                 }
 #endif
                 unsigned char key = game_key_from_sdl(k);
-                if (key) s_game->keyboard(key, 0, 0);
+                if (key) { note_keyboard_used(); s_game->keyboard(key, 0, 0); }
                 break;
             }
             case SDL_KEYUP: {

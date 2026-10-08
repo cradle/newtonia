@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "../menu_select.h"
+#include "../keyboard_seen.h"
 #include "tap_band.h"
 #include "../net_board.h"
 #include "../net_identity.h"
@@ -1496,7 +1497,7 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
     // variant (it runs before the dim), the "hide" hint is drawn here on
     // top of it, at the same spot title_text would have used.
     if(!glship->last_input_was_controller && !is_touch_mode() &&
-       glship->help_key.primary() != 0) {
+       keyboard_seen() && glship->help_key.primary() != 0) {
       char hint[48];
       key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
       // Exactly where title_text draws the "show" twin, in every layout —
@@ -1608,7 +1609,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // key_hint's fallback would name P1's F1, which does nothing for that
   // seat — its card is on R3, and the card itself says so. The "hide"
   // variant is drawn by keymap() so it sits above the card's dim.
+  // Nor before any real key this run (keyboard_seen.h): a pad-only player
+  // would be told about a key no keyboard is there to press.
   if(!glship->last_input_was_controller && !is_touch_mode() &&
+     keyboard_seen() &&
      glship->help_key.primary() != 0 && !glship->show_help &&
      (glgame->current_time)/12000 % 2) {
     char hint[48];
@@ -1634,7 +1638,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         snprintf(hint, sizeof(hint), "boost with %s", bl);
     } else {
       int bk = glship->boost_key.primary();
-      if(bk >= 33 && bk <= 126)
+      if(keyboard_seen() && bk >= 33 && bk <= 126)
         snprintf(hint, sizeof(hint), "boost with %c", (char)bk);
       else
         hint[0] = '\0';
