@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Never commit NDA material
+
+This repository is public. Microsoft's Xbox console SDK (GDKX) and everything
+learned from it are under NDA and must never land here: no GDKX headers,
+libraries, symbol names or signatures, sample code, dev-kit output or logs,
+documentation excerpts, or Partner Center identity values, and no build
+that needs GDKX on a public hosted runner. Console code here is limited to
+`#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)` blocks over
+public APIs (SDL, the public GDK, standard Win32), compile-checked against
+stand-in headers. NDA work belongs only in the private `cradle/newtonia-xbox`
+(`xbox/PRIVATE_REPO.md`). When unsure whether something is covered, leave
+it out and ask the maintainer.
+
 ## Project Overview
 
 Newtonia is a top-down 2D space shooter written in C++ using SDL2 and OpenGL. It supports single-player and local co-op for up to 4 players (FOURPLAYER.md; P3/P4 join by controller) and targets multiple platforms: desktop (macOS, Linux, Windows), mobile (iOS, Android), web (WebAssembly), Xbox/GDK, and Steam.

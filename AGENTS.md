@@ -1,5 +1,18 @@
 # Agent instructions
 
+## Never commit NDA material
+
+This repository is public. Microsoft's Xbox console SDK (GDKX) and everything
+learned from it are under NDA and must never land here: no GDKX headers,
+libraries, symbol names or signatures, sample code, dev-kit output or logs,
+documentation excerpts, or Partner Center identity values, and no build
+that needs GDKX on a public hosted runner. Console code here is limited to
+`#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)` blocks over
+public APIs (SDL, the public GDK, standard Win32), compile-checked against
+stand-in headers. NDA work belongs only in the private `cradle/newtonia-xbox`
+(`xbox/PRIVATE_REPO.md`). When unsure whether something is covered, leave
+it out and ask the maintainer.
+
 ## Merge only when CI is green
 
 Before merging any PR, verify that every applicable CI workflow and check for
