@@ -15,6 +15,15 @@ stand-in headers. NDA work belongs only in the private `cradle/newtonia-xbox`
 (`xbox/PRIVATE_REPO.md`). When unsure whether something is covered, leave
 it out and ask the maintainer.
 
+## Shared changes start here
+
+Every change to the shared game code is made in this repo first, through a
+PR here, even when it was found on a port such as the Xbox UWP or GDK build.
+The private `cradle/newtonia-xbox` takes it by merging upstream `master`
+(its `sync-upstream` skill), never by copying or re-applying the change by
+hand. Only port-only material (its `uwp/`, packaging, GDK backends and fork
+workflows) is changed there directly.
+
 ## Project Overview
 
 Newtonia is a top-down 2D space shooter written in C++ using SDL2 and OpenGL. It supports single-player and local co-op for up to 4 players (FOURPLAYER.md; P3/P4 join by controller) and targets multiple platforms: desktop (macOS, Linux, Windows), mobile (iOS, Android), web (WebAssembly), Xbox/GDK, and Steam.

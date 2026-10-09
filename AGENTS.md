@@ -13,6 +13,15 @@ stand-in headers. NDA work belongs only in the private `cradle/newtonia-xbox`
 (`xbox/PRIVATE_REPO.md`). When unsure whether something is covered, leave
 it out and ask the maintainer.
 
+## Shared changes start here
+
+Every change to the shared game code is made in this repo first, through a
+PR here, even when it was found on a port such as the Xbox UWP or GDK build.
+The private `cradle/newtonia-xbox` takes it by merging upstream `master`
+(its `sync-upstream` skill), never by copying or re-applying the change by
+hand. Only port-only material (its `uwp/`, packaging, GDK backends and fork
+workflows) is changed there directly.
+
 ## Merge only when CI is green
 
 Before merging any PR, verify that every applicable CI workflow and check for
