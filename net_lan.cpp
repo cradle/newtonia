@@ -10,14 +10,19 @@
 // (ios/Entitlements*.plist) — without it iOS silently drops broadcast
 // both ways, and the lobby's "VISIBLE ON THIS NETWORK" line would lie.
 // Web/Xbox compile the no-op stubs (available() false) so the lobby
-// needs no ifdefs — the same pattern as invites/presence.
+// needs no ifdefs — the same pattern as invites/presence. The one Xbox
+// exception is the Dev Mode UWP side build (NEWTONIA_UWP, defined by the
+// private Xbox repo's uwp/CMakeLists.txt beside _GAMING_XBOX): it is a
+// Winsock app like the desktop build, and its package manifest carries
+// the privateNetworkClientServer capability that lets it hear and answer
+// beacons.
 
 #include "net_lan.h"
 
 #include "net_protocol.h"  // PROTO_VERSION, NET_LOG
 
 #if defined(NEWTONIA_NET_RTC) && !defined(__EMSCRIPTEN__) && \
-    !defined(_GAMING_XBOX)
+    (!defined(_GAMING_XBOX) || defined(NEWTONIA_UWP))
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #if !TARGET_OS_IPHONE || defined(NEWTONIA_LAN_IOS)
