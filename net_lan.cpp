@@ -9,15 +9,17 @@
 // signing entitlements carry com.apple.developer.networking.multicast
 // (ios/Entitlements*.plist) — without it iOS silently drops broadcast
 // both ways, and the lobby's "VISIBLE ON THIS NETWORK" line would lie.
-// Web/Xbox compile the no-op stubs (available() false) so the lobby
-// needs no ifdefs — the same pattern as invites/presence.
+// Web compiles the no-op stubs (available() false) so the lobby
+// needs no ifdefs — the same pattern as invites/presence. Any other build
+// that can't (or mustn't) broadcast defines NEWTONIA_NO_LAN to get the
+// same stubs; the console builds decide that in their own repo.
 
 #include "net_lan.h"
 
 #include "net_protocol.h"  // PROTO_VERSION, NET_LOG
 
 #if defined(NEWTONIA_NET_RTC) && !defined(__EMSCRIPTEN__) && \
-    !defined(_GAMING_XBOX)
+    !defined(NEWTONIA_NO_LAN)
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #if !TARGET_OS_IPHONE || defined(NEWTONIA_LAN_IOS)
