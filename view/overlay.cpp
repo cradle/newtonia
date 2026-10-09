@@ -1563,7 +1563,13 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       // Only once EVERY player is out: this branch keys on P1, and drawn
       // per viewport it put the row on a co-op partner's screen while
       // they were still flying (field, Xbox, 2026-10-08).
-      if (!is_touch_mode() && glgame->board_phase_ == GLGame::BoardOff &&
+      // Offline only: online, net_overlays draws the shared GAME OVER card
+      // with its own row at -80 over the whole window, and this one landed
+      // 20 units under it, two overlapping EXIT TO MENU rows (field,
+      // Android + desktop co-op, 2026-10-09).
+      bool offline_card = glgame->net_mode_ == GLGame::NetOff;
+      if (offline_card && !is_touch_mode() &&
+          glgame->board_phase_ == GLGame::BoardOff &&
           glgame->all_players_out())
         MenuSelect::draw_row(-100, "EXIT TO MENU", 16, true);
       // The upload prompt this card would carry can never appear with
@@ -1573,7 +1579,8 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       // lowercase hint register ("show controls with F1"), one small line
       // — an aside, not part of the card — below the exit row (-100
       // descends to -132), clear of the touch band's reach (~-370 up).
-      if (glgame->board_phase_ == GLGame::BoardOff &&
+      // Offline only, like the row: the online card carries its own copy.
+      if (offline_card && glgame->board_phase_ == GLGame::BoardOff &&
           glgame->all_players_out() && !Replay::recording_enabled() &&
           net_board_can_submit())
         Typer::draw_centered(0, -170,
