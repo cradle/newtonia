@@ -13,8 +13,13 @@
 #include <string.h>
 
 #ifdef _WIN32
-#include <process.h>   // _getpid
-#define getpid _getpid
+// GetCurrentProcessId, not _getpid: the CRT call is absent outside the
+// desktop API partition (UWP, the Xbox Game OS), as atomic_file.cpp notes.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#define getpid GetCurrentProcessId
 #else
 #include <unistd.h>    // getpid
 #endif
