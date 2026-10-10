@@ -2763,14 +2763,7 @@ void NetLobby::draw() {
         bool room_list = waiting_room();
         Typer::draw_centered(0, room_list ? 140 : 20, room_code_.c_str(), 48);
         y = room_list ? 20 : -100;
-#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
-        // A console player has nowhere to paste: no chat, no browser, no
-        // other app that takes it. The code itself is the message, so the
-        // line stays as a blank and nothing below it moves.
-        lines.push_back("");
-#else
         lines.push_back("COPIED TO CLIPBOARD");
-#endif
         lines.push_back("");
         // Pushed on the off-phase too (as a blank) — a conditional push
         // here makes every line below it jump each blink.
