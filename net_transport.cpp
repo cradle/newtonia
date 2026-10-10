@@ -35,10 +35,14 @@ void net_share_text(const std::string&) {}
 bool net_share_available() { return false; }
 #endif
 
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(NEWTONIA_PORT_CLIPBOARD)
 
 // Native clipboard is synchronous — the web versions (net_transport_web.cpp)
-// are the reason this is an async-shaped three-call API.
+// are the reason this is an async-shaped three-call API. A port whose SDL
+// backend keeps only a private in-process buffer defines
+// NEWTONIA_PORT_CLIPBOARD and supplies these three against the system
+// clipboard itself (SDL2's WinRT backend has no clipboard: text "copied"
+// there could not be pasted anywhere else on the device).
 #include <SDL.h>
 
 void net_clipboard_write(const std::string& text) {
@@ -54,7 +58,7 @@ bool net_clipboard_read_poll(std::string& out) {
   return true;
 }
 
-#endif /* !__EMSCRIPTEN__ */
+#endif /* !__EMSCRIPTEN__ && !NEWTONIA_PORT_CLIPBOARD */
 
 #ifndef NEWTONIA_NET_RTC
 
