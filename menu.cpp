@@ -16,6 +16,7 @@
 #include "keyboard_seen.h"
 #include "net_transport.h"
 #include "preferences.h"
+#include "port_display.h"
 #include "touch_controls.h"
 #include "presence.h"
 #include "replay.h"
@@ -131,6 +132,12 @@ static const int NUM_LEADERBOARD = 2;
 // had none (field, Xbox, 2026-10-08) — this row is the pad's way to it.
 static const char* FRIENDLY_FIRE_LABELS[] = {"OFF", "ON"};
 static const int NUM_FRIENDLY_FIRE = 2;
+// Render resolution (Preferences::render_4k), only on a port that defines
+// NEWTONIA_PORT_RESOLUTION (port_display.h) — the Xbox UWP build, where the
+// TV's 4K is on offer but 1080p is the default. Applied live: the port
+// resizes its render surface between frames.
+static const char* RESOLUTION_LABELS[] = {"1080P", "4K"};
+static const int NUM_RESOLUTION = 2;
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
 // 2=camera fixed/rotate, 3=star density, 4=auto-record replays,
@@ -145,7 +152,8 @@ static const int NUM_FRIENDLY_FIRE = 2;
 // HANDEDNESS_LABELS above); 14=HUD size (desktop list only: the touch
 // layout places its pause circle off the classic HUD stack, so the HUD
 // there stays at the size the OSD was laid out for — Overlay::hud_grow
-// ignores the pref in touch mode); 15=friendly fire. P2 rows are
+// ignores the pref in touch mode); 15=friendly fire; 16=render resolution
+// (desktop list, NEWTONIA_PORT_RESOLUTION ports only). P2 rows are
 // desktop-only — mobile (touch) shows Player 1 plus the shared options.
 // Options is desktop/controller-only today (see Menu::show_options_row),
 // so the touch list is future-proofing.
@@ -158,6 +166,9 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {9, 0, "CAMERA"},
   {3, 0, "STAR  DENSITY"},
   {14, 0, "HUD  SIZE"},
+#if defined(NEWTONIA_PORT_RESOLUTION)
+  {16, 0, "RESOLUTION"},
+#endif
   {8, 0, "AUDIO"},
   {15, 0, "FRIENDLY  FIRE"},
   {4, 0, "RECORD  REPLAYS"},
@@ -420,6 +431,7 @@ Menu::Menu() :
                                               HUD_SIZE_VALUES, NUM_HUD_SIZE);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   friendly_fire_index_  = g_prefs.friendly_fire ? 1 : 0;
+  resolution_index_     = g_prefs.render_4k ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   input_index_          = g_prefs.touch_one_hand ? 1 : 0;
   handedness_index_     = g_prefs.touch_handedness;
@@ -899,6 +911,7 @@ void Menu::draw() {
         case 13: num_steps = NUM_HANDEDNESS;  cur_idx = handedness_index_;            lbl = HANDEDNESS_LABELS;    break;
         case 14: num_steps = NUM_HUD_SIZE;    cur_idx = hud_size_index_;              lbl = HUD_SIZE_LABELS;      break;
         case 15: num_steps = NUM_FRIENDLY_FIRE; cur_idx = friendly_fire_index_;       lbl = FRIENDLY_FIRE_LABELS; break;
+        case 16: num_steps = NUM_RESOLUTION;  cur_idx = resolution_index_;            lbl = RESOLUTION_LABELS;    break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -2352,6 +2365,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 13: idx = &handedness_index_;           num = NUM_HANDEDNESS;   break;
     case 14: idx = &hud_size_index_;             num = NUM_HUD_SIZE;     break;
     case 15: idx = &friendly_fire_index_;        num = NUM_FRIENDLY_FIRE; break;
+    case 16: idx = &resolution_index_;           num = NUM_RESOLUTION;   break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2370,6 +2384,13 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     g_prefs.music_volume  = VOLUME_VALUES[music_volume_index_];
     AudioVolume::apply();
   }
+#if defined(NEWTONIA_PORT_RESOLUTION)
+  if (r.kind == 16 && g_prefs.render_4k != (resolution_index_ == 1)) {
+    // Live too: the picture changing under the cursor is the feedback.
+    g_prefs.render_4k = (resolution_index_ == 1);
+    port_render_resolution_changed();
+  }
+#endif
 }
 
 void Menu::close_options() {
@@ -2386,6 +2407,7 @@ void Menu::close_options() {
   g_prefs.hud_scale                    = HUD_SIZE_VALUES[hud_size_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   g_prefs.friendly_fire                = (friendly_fire_index_ == 1);
+  g_prefs.render_4k                    = (resolution_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
   g_prefs.music_volume                 = VOLUME_VALUES[music_volume_index_];

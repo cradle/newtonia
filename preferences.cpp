@@ -278,6 +278,8 @@ static void parse_line(const char *key, const char *val) {
             g_prefs.player_keys[i].rotate_view = v;
     } else if (strcmp(key, "friendly_fire") == 0) {
         g_prefs.friendly_fire = (val[0] == '1');
+    } else if (strcmp(key, "render_4k") == 0) {
+        g_prefs.render_4k = (val[0] == '1');
     } else if (strcmp(key, "allow_anonymous") == 0) {
         g_prefs.allow_anonymous = (val[0] == '1');
     } else if (strcmp(key, "touch_one_hand") == 0) {
@@ -425,6 +427,7 @@ void save_preferences() {
     // still reads a sane camera setting; new builds use p1_/p2_rotate_view.
     fprintf(f, "rotate_view=%d\n",             g_prefs.player_keys[0].rotate_view ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
+    fprintf(f, "render_4k=%d\n",               g_prefs.render_4k          ? 1 : 0);
     fprintf(f, "allow_anonymous=%d\n",         g_prefs.allow_anonymous    ? 1 : 0);
     fprintf(f, "touch_one_hand=%d\n",          g_prefs.touch_one_hand     ? 1 : 0);
     fprintf(f, "touch_handedness=%d\n",        g_prefs.touch_handedness);
