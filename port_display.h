@@ -8,7 +8,9 @@
 // time the row changes; the port reads the pref and resizes its render
 // surface. It runs from inside the menu's input handling, so a port that
 // has to rebuild a surface should note the request and do the work between
-// frames. Builds without the macro show no row and never call it.
+// frames. If the new size can't be made, the port puts render_4k back (and
+// saves it): the row reads the pref, so it shows what is really in force.
+// Builds without the macro show no row and never call it.
 #if defined(NEWTONIA_PORT_RESOLUTION)
 void port_render_resolution_changed();
 #endif

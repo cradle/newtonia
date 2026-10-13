@@ -911,7 +911,9 @@ void Menu::draw() {
         case 13: num_steps = NUM_HANDEDNESS;  cur_idx = handedness_index_;            lbl = HANDEDNESS_LABELS;    break;
         case 14: num_steps = NUM_HUD_SIZE;    cur_idx = hud_size_index_;              lbl = HUD_SIZE_LABELS;      break;
         case 15: num_steps = NUM_FRIENDLY_FIRE; cur_idx = friendly_fire_index_;       lbl = FRIENDLY_FIRE_LABELS; break;
-        case 16: num_steps = NUM_RESOLUTION;  cur_idx = resolution_index_;            lbl = RESOLUTION_LABELS;    break;
+        // Read off the pref, not the index: a port that can't make the
+        // new size puts the pref back (port_display.h), and the row follows.
+        case 16: num_steps = NUM_RESOLUTION;  cur_idx = g_prefs.render_4k ? 1 : 0;   lbl = RESOLUTION_LABELS;    break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -2365,7 +2367,9 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 13: idx = &handedness_index_;           num = NUM_HANDEDNESS;   break;
     case 14: idx = &hud_size_index_;             num = NUM_HUD_SIZE;     break;
     case 15: idx = &friendly_fire_index_;        num = NUM_FRIENDLY_FIRE; break;
-    case 16: idx = &resolution_index_;           num = NUM_RESOLUTION;   break;
+    case 16:
+      resolution_index_ = g_prefs.render_4k ? 1 : 0;   // the port may have put it back
+      idx = &resolution_index_;                        num = NUM_RESOLUTION;   break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2407,7 +2411,6 @@ void Menu::close_options() {
   g_prefs.hud_scale                    = HUD_SIZE_VALUES[hud_size_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   g_prefs.friendly_fire                = (friendly_fire_index_ == 1);
-  g_prefs.render_4k                    = (resolution_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
   g_prefs.music_volume                 = VOLUME_VALUES[music_volume_index_];
