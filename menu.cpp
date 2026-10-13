@@ -138,6 +138,23 @@ static const int NUM_FRIENDLY_FIRE = 2;
 // resizes its render surface between frames.
 static const char* RESOLUTION_LABELS[] = {"1080P", "4K"};
 static const int NUM_RESOLUTION = 2;
+// A switch the port could not make (port_render_resolution_failed): -1 none,
+// else the RESOLUTION_LABELS index that failed. Drawn as a dimmed notice over
+// the whole menu; the next input of any kind dismisses it and does nothing
+// else. File-static because the port reports it between frames, outside any
+// Menu call.
+static int s_resolution_failed = -1;
+#if defined(NEWTONIA_PORT_RESOLUTION)
+void port_render_resolution_failed(bool wanted_4k) {
+  s_resolution_failed = wanted_4k ? 1 : 0;
+}
+#endif
+// Any input while the notice is up: dismiss it and report it consumed.
+static bool dismiss_resolution_notice() {
+  if (s_resolution_failed < 0) return false;
+  s_resolution_failed = -1;
+  return true;
+}
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
 // 2=camera fixed/rotate, 3=star density, 4=auto-record replays,
@@ -1162,6 +1179,31 @@ void Menu::draw() {
   if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_)
     Typer::draw_centered(0, menu_copyright_y(show_high_score()),
                          "© 2008-2026 METONYMOUS", 13, currentTime);
+
+  if (s_resolution_failed >= 0) {
+    // The failed-switch notice: a dim over the whole frame (darker than the
+    // pause menu's 0.6, since the options rows sit right under it), then the
+    // message on top.
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(0.0f, 0.0f, 0.0f, 0.85f);
+    mb.vertex(-menu_hw, -menu_hh); mb.vertex(menu_hw, -menu_hh); mb.vertex(menu_hw, menu_hh);
+    mb.vertex(-menu_hw, -menu_hh); mb.vertex(menu_hw, menu_hh); mb.vertex(-menu_hw, menu_hh);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+    char title[48], detail[48];
+    snprintf(title, sizeof(title), "COULD NOT SWITCH TO %s",
+             RESOLUTION_LABELS[s_resolution_failed]);
+    snprintf(detail, sizeof(detail), "STAYING AT %s",
+             RESOLUTION_LABELS[1 - s_resolution_failed]);
+    Typer::draw_centered(0, 80, title, 18);
+    Typer::draw_centered(0, 10, detail, 12);
+    Typer::draw_centered(0, -70, is_touch_mode() ? "tap to continue"
+                                                 : "press any button", 8);
+  }
 }
 
 // Another device's save / stats / high score landed in the local files
@@ -1286,6 +1328,8 @@ void Menu::controller(SDL_Event event) {
   // through the same ladder the keyboard uses — one decision path per
   // screen, so pad directionals and back work wherever keys do. The pad
   // that confirmed rides along so confirm_selection can bind it to P1.
+  if (event.type == SDL_CONTROLLERBUTTONDOWN && dismiss_resolution_notice())
+    return;
   PadId src = PAD_NONE;
   unsigned char k = nav_key_from_controller(event, &src);
   if (k) nav_input(k, src);
@@ -1319,6 +1363,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 // keyboard, controller buttons/stick, the tick() trigger poll — lands here,
 // so each screen's rules exist exactly once.
 void Menu::nav_input(unsigned char key, PadId src) {
+  if (dismiss_resolution_notice()) return;
   bool confirm = MenuSelect::is_confirm(key);
   if (attract_mode_) {
     if (confirm) {
@@ -1475,6 +1520,7 @@ extern void app_move_to_background();
 #endif
 
 bool Menu::back_pressed() {
+  if (dismiss_resolution_notice()) return true;
   if (options_mode_) {
     if (audio_mode_) close_audio();          // one level: audio -> options
     else if (camera_mode_) close_camera();   // one level: camera -> options
@@ -1529,6 +1575,7 @@ bool Menu::back_pressed() {
 }
 
 void Menu::touch_tap(float nx, float ny) {
+  if (dismiss_resolution_notice()) return;
   if (attract_mode_) {
     attract_mode_ = false;  // any tap dismisses the attract screen
     return;

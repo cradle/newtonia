@@ -13,6 +13,12 @@
 // Builds without the macro show no row and never call it.
 #if defined(NEWTONIA_PORT_RESOLUTION)
 void port_render_resolution_changed();
+
+// The port calls this when the size the player picked could not be made and
+// it went back to the previous one (wanted_4k: the size that failed). The
+// menu shows a dimmed notice over everything until any input dismisses it.
+// Supplied by the shared code (menu.cpp), not by the port.
+void port_render_resolution_failed(bool wanted_4k);
 #endif
 
 #endif
