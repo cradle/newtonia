@@ -132,12 +132,19 @@ static const int NUM_LEADERBOARD = 2;
 // had none (field, Xbox, 2026-10-08) — this row is the pad's way to it.
 static const char* FRIENDLY_FIRE_LABELS[] = {"OFF", "ON"};
 static const int NUM_FRIENDLY_FIRE = 2;
-// Render resolution (Preferences::render_4k), only on a port that defines
-// NEWTONIA_PORT_RESOLUTION (port_display.h) — the Xbox UWP build, where the
-// TV's 4K is on offer but 1080p is the default. Applied live: the port
-// resizes its render surface between frames.
-static const char* RESOLUTION_LABELS[] = {"1080P", "4K"};
-static const int NUM_RESOLUTION = 2;
+// Render height (Preferences::render_height), only where the build defines
+// NEWTONIA_PORT_RESOLUTION (port_display.h): the desktop builds, which draw
+// into an offscreen buffer at the picked height and scale it to the window,
+// and the Xbox UWP port, which caps its ANGLE surface. Applied live: the
+// port resizes between frames. NATIVE is the screen's own size.
+static const char* RESOLUTION_LABELS[] = {"NATIVE", "720P", "1080P", "1440P", "4K"};
+static const int RESOLUTION_HEIGHTS[]  = {0, 720, 1080, 1440, 2160};
+static const int NUM_RESOLUTION = 5;
+static int resolution_index_for(int height) {
+  for (int i = 0; i < NUM_RESOLUTION; i++)
+    if (RESOLUTION_HEIGHTS[i] == height) return i;
+  return 0;
+}
 // A switch the port could not make (port_render_resolution_failed): -1 none,
 // else the RESOLUTION_LABELS index that failed. Drawn as a dimmed notice over
 // the whole menu; the next input of any kind dismisses it and does nothing
@@ -145,8 +152,8 @@ static const int NUM_RESOLUTION = 2;
 // Menu call.
 static int s_resolution_failed = -1;
 #if defined(NEWTONIA_PORT_RESOLUTION)
-void port_render_resolution_failed(bool wanted_4k) {
-  s_resolution_failed = wanted_4k ? 1 : 0;
+void port_render_resolution_failed(int wanted_height) {
+  s_resolution_failed = resolution_index_for(wanted_height);
 }
 #endif
 // Any input while the notice is up: dismiss it and report it consumed.
@@ -448,7 +455,7 @@ Menu::Menu() :
                                               HUD_SIZE_VALUES, NUM_HUD_SIZE);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   friendly_fire_index_  = g_prefs.friendly_fire ? 1 : 0;
-  resolution_index_     = g_prefs.render_4k ? 1 : 0;
+  resolution_index_     = resolution_index_for(g_prefs.render_height);
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   input_index_          = g_prefs.touch_one_hand ? 1 : 0;
   handedness_index_     = g_prefs.touch_handedness;
@@ -930,7 +937,7 @@ void Menu::draw() {
         case 15: num_steps = NUM_FRIENDLY_FIRE; cur_idx = friendly_fire_index_;       lbl = FRIENDLY_FIRE_LABELS; break;
         // Read off the pref, not the index: a port that can't make the
         // new size puts the pref back (port_display.h), and the row follows.
-        case 16: num_steps = NUM_RESOLUTION;  cur_idx = g_prefs.render_4k ? 1 : 0;   lbl = RESOLUTION_LABELS;    break;
+        case 16: num_steps = NUM_RESOLUTION;  cur_idx = resolution_index_for(g_prefs.render_height); lbl = RESOLUTION_LABELS; break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -1009,9 +1016,10 @@ void Menu::draw() {
       int rw = 0, rh = 0;
       port_render_size(&rw, &rh);
       char line[80];
-      if (g_prefs.render_4k && !port_render_4k_available())
-        snprintf(line, sizeof(line), "4K NOT AVAILABLE ON THIS SCREEN - DRAWING AT %dX%d",
-                 rw, rh);
+      int max_h = port_render_max_height();
+      if (max_h > 0 && g_prefs.render_height > max_h)
+        snprintf(line, sizeof(line), "%s NOT AVAILABLE ON THIS SCREEN - DRAWING AT %dX%d",
+                 RESOLUTION_LABELS[resolution_index_for(g_prefs.render_height)], rw, rh);
       else
         snprintf(line, sizeof(line), "DRAWING AT %dX%d", rw, rh);
       Typer::draw_centered(0, (int)desk_opt_bottom() - 40, line, 8);
@@ -1216,7 +1224,7 @@ void Menu::draw() {
     snprintf(title, sizeof(title), "COULD NOT SWITCH TO %s",
              RESOLUTION_LABELS[s_resolution_failed]);
     snprintf(detail, sizeof(detail), "STAYING AT %s",
-             RESOLUTION_LABELS[1 - s_resolution_failed]);
+             RESOLUTION_LABELS[resolution_index_for(g_prefs.render_height)]);
     Typer::draw_centered(0, 80, title, 18);
     Typer::draw_centered(0, 10, detail, 12);
     Typer::draw_centered(0, -70, is_touch_mode() ? "tap to continue"
@@ -2433,7 +2441,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 14: idx = &hud_size_index_;             num = NUM_HUD_SIZE;     break;
     case 15: idx = &friendly_fire_index_;        num = NUM_FRIENDLY_FIRE; break;
     case 16:
-      resolution_index_ = g_prefs.render_4k ? 1 : 0;   // the port may have put it back
+      resolution_index_ = resolution_index_for(g_prefs.render_height);  // the port may have put it back
       idx = &resolution_index_;                        num = NUM_RESOLUTION;   break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
@@ -2454,9 +2462,9 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     AudioVolume::apply();
   }
 #if defined(NEWTONIA_PORT_RESOLUTION)
-  if (r.kind == 16 && g_prefs.render_4k != (resolution_index_ == 1)) {
+  if (r.kind == 16 && g_prefs.render_height != RESOLUTION_HEIGHTS[resolution_index_]) {
     // Live too: the picture changing under the cursor is the feedback.
-    g_prefs.render_4k = (resolution_index_ == 1);
+    g_prefs.render_height = RESOLUTION_HEIGHTS[resolution_index_];
     port_render_resolution_changed();
   }
 #endif
