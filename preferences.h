@@ -239,6 +239,9 @@ struct Preferences {
     // behaviour that always existed, so a missing key changes nothing.
     float master_volume      = 1.0f;
     float music_volume       = 1.0f;
+    // Haptics (haptics.h): phone vibration on touch, controller rumble on a
+    // pad. On by default; the AUDIO sub-menu's VIBRATION row turns it off.
+    bool  vibration          = true;
     bool  lan_visible        = true;   // broadcast this host on the local network
                                        // (NETPLAY.md LAN play): when false the lobby
                                        // and mid-game re-host skip the UDP beacon +

@@ -11,6 +11,7 @@
 
 #include "achievements.h"
 #include "cloud_sync.h"
+#include "haptics.h"
 #include "keyboard_seen.h"
 #include "gles2_compat.h"
 #include "state_manager.h"
@@ -131,6 +132,7 @@ static void car_display_sync() {
                 ext ? "external (Android Auto)" : "phone", ext ? 0 : 1);
     }
     s_external_display = ext;
+    Haptics::set_external_display(ext);
     SDL_GL_SetSwapInterval(ext ? 0 : 1);
 }
 

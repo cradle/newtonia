@@ -1,6 +1,7 @@
 #include "typer.h"
 #include "asset_path.h"
 #include "audio_volume.h"
+#include "haptics.h"
 #include "highscore.h"
 #include "glstarfield.h"
 #include "glgame.h"
@@ -132,6 +133,11 @@ static const int NUM_LEADERBOARD = 2;
 // had none (field, Xbox, 2026-10-08) — this row is the pad's way to it.
 static const char* FRIENDLY_FIRE_LABELS[] = {"OFF", "ON"};
 static const int NUM_FRIENDLY_FIRE = 2;
+// Vibration (Preferences::vibration, haptics.h): the phone's motor on
+// touch, the pad's rumble on a controller. Lives on the AUDIO screen with
+// the other feedback levels; switching it ON gives a sample buzz.
+static const char* VIBRATION_LABELS[] = {"OFF", "ON"};
+static const int NUM_VIBRATION = 2;
 // Render height (Preferences::render_height), only where the build defines
 // NEWTONIA_PORT_RESOLUTION (port_display.h): the desktop builds, which draw
 // into an offscreen buffer at the picked height and scale it to the window,
@@ -242,10 +248,12 @@ static const OptRow &camera_row(int r) {
 static const OptRow OPT_ROWS_AUDIO_DESKTOP[] = {
   {6, 0, "MASTER  VOLUME"},
   {7, 0, "MUSIC  VOLUME"},
+  {17, 0, "VIBRATION"},
 };
 static const OptRow OPT_ROWS_AUDIO_TOUCH[] = {
   {6, 0, "MASTER VOLUME"},
   {7, 0, "MUSIC VOLUME"},
+  {17, 0, "VIBRATION"},
 };
 static int audio_row_count() {
   return (int)(sizeof(OPT_ROWS_AUDIO_DESKTOP) / sizeof(OPT_ROWS_AUDIO_DESKTOP[0]));
@@ -455,6 +463,7 @@ Menu::Menu() :
                                               HUD_SIZE_VALUES, NUM_HUD_SIZE);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   friendly_fire_index_  = g_prefs.friendly_fire ? 1 : 0;
+  vibration_index_      = g_prefs.vibration ? 1 : 0;
   resolution_index_     = resolution_index_for(g_prefs.render_height);
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   input_index_          = g_prefs.touch_one_hand ? 1 : 0;
@@ -935,6 +944,7 @@ void Menu::draw() {
         case 13: num_steps = NUM_HANDEDNESS;  cur_idx = handedness_index_;            lbl = HANDEDNESS_LABELS;    break;
         case 14: num_steps = NUM_HUD_SIZE;    cur_idx = hud_size_index_;              lbl = HUD_SIZE_LABELS;      break;
         case 15: num_steps = NUM_FRIENDLY_FIRE; cur_idx = friendly_fire_index_;       lbl = FRIENDLY_FIRE_LABELS; break;
+        case 17: num_steps = NUM_VIBRATION;   cur_idx = vibration_index_;             lbl = VIBRATION_LABELS;     break;
         // Read off the pref, not the index: a port that can't make the
         // new size puts the pref back (port_display.h), and the row follows.
         case 16: num_steps = NUM_RESOLUTION;  cur_idx = resolution_index_for(g_prefs.render_height); lbl = RESOLUTION_LABELS; break;
@@ -2442,6 +2452,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 13: idx = &handedness_index_;           num = NUM_HANDEDNESS;   break;
     case 14: idx = &hud_size_index_;             num = NUM_HUD_SIZE;     break;
     case 15: idx = &friendly_fire_index_;        num = NUM_FRIENDLY_FIRE; break;
+    case 17: idx = &vibration_index_;            num = NUM_VIBRATION;    break;
     case 16:
       resolution_index_ = resolution_index_for(g_prefs.render_height);  // the port may have put it back
       idx = &resolution_index_;                        num = NUM_RESOLUTION;   break;
@@ -2462,6 +2473,17 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     g_prefs.master_volume = VOLUME_VALUES[master_volume_index_];
     g_prefs.music_volume  = VOLUME_VALUES[music_volume_index_];
     AudioVolume::apply();
+  }
+  if (r.kind == 17) {
+    // Live, with a sample: the buzz is the feedback that it works (and,
+    // on a pad, which pad). Whoever is driving the menu feels it — the
+    // pad that moved the cursor, or the phone on touch.
+    g_prefs.vibration = (vibration_index_ == 1);
+    if (g_prefs.vibration) {
+      if (is_touch_mode()) Haptics::phone(Haptics::PICKUP);
+      for (int i = 0; i < pad_count(); i++)
+        Haptics::pad(pad_id_at(i), Haptics::BOOST);
+    }
   }
 #if defined(NEWTONIA_PORT_RESOLUTION)
   if (r.kind == 16 && g_prefs.render_height != RESOLUTION_HEIGHTS[resolution_index_]) {
@@ -2486,6 +2508,7 @@ void Menu::close_options() {
   g_prefs.hud_scale                    = HUD_SIZE_VALUES[hud_size_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   g_prefs.friendly_fire                = (friendly_fire_index_ == 1);
+  g_prefs.vibration                    = (vibration_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
   g_prefs.music_volume                 = VOLUME_VALUES[music_volume_index_];

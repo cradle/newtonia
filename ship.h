@@ -117,6 +117,11 @@ class Ship : public CompositeObject {
     // attribution (ACHIEVEMENTS.md §4). Set by GLGame when creating player
     // ships; stays false for enemies, stations, and future remote netplay peers.
     bool is_local_player = false;
+    // Haptics (haptics.h): bit (1 << Haptics::Event) per event that
+    // happened to this ship since GLGame::update_haptics last drained it
+    // (boost, nova here; pickups at GLGame's collection sites). Set on every
+    // ship; only the ones flown from this machine ever buzz.
+    uint32_t haptic_pending = 0;
     bool died_this_generation = false;  // reset by GLGame on generation rebuild
     uint32_t weapons_fired_mask = 0;    // bit = (int)Save::WeaponEntry::Kind fired this game
     int nova_charge;       // charge points accumulated toward next bomb (0–9)

@@ -315,6 +315,8 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "music_volume") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f && v <= 1.0f) g_prefs.music_volume = v;
+    } else if (strcmp(key, "vibration") == 0) {
+        g_prefs.vibration = (val[0] == '1');
     } else if (strcmp(key, "lan_visible") == 0) {
         g_prefs.lan_visible = (val[0] == '1');
     } else if (strcmp(key, "signal_url") == 0) {
@@ -446,6 +448,7 @@ void save_preferences() {
     fprintf(f, "hud_scale=%.4f\n",              g_prefs.hud_scale);
     fprintf(f, "master_volume=%.4f\n",          g_prefs.master_volume);
     fprintf(f, "music_volume=%.4f\n",           g_prefs.music_volume);
+    fprintf(f, "vibration=%d\n",               g_prefs.vibration          ? 1 : 0);
     fprintf(f, "lan_visible=%d\n",             g_prefs.lan_visible        ? 1 : 0);
     if (!g_prefs.signal_url.empty())
         fprintf(f, "signal_url=%s\n",             g_prefs.signal_url.c_str());

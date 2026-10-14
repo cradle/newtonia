@@ -22,6 +22,7 @@
 #include "weapon/shock.h"
 #include "net_protocol.h"  // NET_LOG
 #include "world_sound.h"
+#include "haptics.h"
 
 static const int NOVA_MAX_AMMO = 10;
 
@@ -822,6 +823,7 @@ int Ship::nova_ammo() const {
 }
 
 void Ship::nova_detonate() {
+  haptic_pending |= 1u << Haptics::NOVA;
   if (is_local_player) {
     Achievements::unlock("nova_detonated");
     // Lifetime NOVAS DETONATED — !net_remote_gun for the same reason as
@@ -1599,6 +1601,7 @@ void Ship::play_boost_sound(Point at) {
 void Ship::boost() {
   if (!boost_ready()) return;
   boost_cooldown_left = BOOST_COOLDOWN_MS;
+  haptic_pending |= 1u << Haptics::BOOST;
   net_boost_count++;
   play_boost_sound(position);
   boost_events.push_back(std::make_pair(net_seat, Point(position)));

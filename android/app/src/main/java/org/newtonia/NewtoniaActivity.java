@@ -14,6 +14,9 @@ import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.provider.Settings;
 import android.system.Os;
 import android.util.Log;
@@ -72,6 +75,38 @@ public class NewtoniaActivity extends SDLActivity {
     // there): the projected display's buffer queue blocks the swap until
     // the encoder takes a frame, so with vsync every queued buffer is a
     // frame of input lag. Any failure answers false, the phone path.
+    // Haptics (haptics.cpp): one short buzz on the phone's own motor, called
+    // from the game thread over JNI. amplitude is 1..255, used where the
+    // motor can vary it. Never throws back into native code.
+    private Vibrator mVibrator;
+
+    @SuppressWarnings("deprecation")
+    public void vibrate(int ms, int amplitude) {
+        try {
+            if (mVibrator == null) {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    VibratorManager vm =
+                        (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                    if (vm != null) mVibrator = vm.getDefaultVibrator();
+                } else {
+                    mVibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                }
+            }
+            Vibrator v = mVibrator;
+            if (v == null || !v.hasVibrator() || ms <= 0) return;
+            if (Build.VERSION.SDK_INT >= 26) {
+                int amp = v.hasAmplitudeControl()
+                    ? Math.max(1, Math.min(255, amplitude))
+                    : VibrationEffect.DEFAULT_AMPLITUDE;
+                v.vibrate(VibrationEffect.createOneShot(ms, amp));
+            } else {
+                v.vibrate(ms);
+            }
+        } catch (Exception e) {
+            Log.w("Newtonia", "vibrate failed: " + e);
+        }
+    }
+
     public boolean isOnExternalDisplay() {
         try {
             Display d = getWindowManager().getDefaultDisplay();
