@@ -37,6 +37,9 @@ void port_render_resolution_changed();
 // why nothing changed.
 void port_render_size(int *w, int *h);
 int  port_render_max_height();
+// True when that limit is a window's rather than the screen's, so the line
+// can say windowed mode is what stops the pick (it would draw in fullscreen).
+bool port_render_windowed();
 
 // The port calls this when the height the player picked could not be made
 // and it went back to the previous one (wanted_height: the one that failed,

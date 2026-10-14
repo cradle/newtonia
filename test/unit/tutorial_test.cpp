@@ -26,6 +26,7 @@
 void port_render_resolution_changed() {}
 void port_render_size(int *w, int *h) { *w = 0; *h = 0; }
 int port_render_max_height() { return 0; }
+bool port_render_windowed() { return false; }
 #endif
 
 static void press(GLGame &g, unsigned char key) {

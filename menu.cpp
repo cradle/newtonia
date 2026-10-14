@@ -1018,8 +1018,10 @@ void Menu::draw() {
       char line[80];
       int max_h = port_render_max_height();
       if (max_h > 0 && g_prefs.render_height > max_h)
-        snprintf(line, sizeof(line), "%s NOT AVAILABLE ON THIS SCREEN - DRAWING AT %dX%d",
-                 RESOLUTION_LABELS[resolution_index_for(g_prefs.render_height)], rw, rh);
+        snprintf(line, sizeof(line), "%s NOT AVAILABLE %s - DRAWING AT %dX%d",
+                 RESOLUTION_LABELS[resolution_index_for(g_prefs.render_height)],
+                 port_render_windowed() ? "IN WINDOWED MODE" : "ON THIS SCREEN",
+                 rw, rh);
       else
         snprintf(line, sizeof(line), "DRAWING AT %dX%d", rw, rh);
       Typer::draw_centered(0, (int)desk_opt_bottom() - 40, line, 8);

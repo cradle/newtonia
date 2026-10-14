@@ -176,6 +176,9 @@ int port_render_max_height() {
   return s_win_h > 0 ? s_win_h : h;
 }
 
+extern bool is_fullscreen;
+bool port_render_windowed() { return !is_fullscreen; }
+
 void draw() {
   if (!game) return;
   if (s_resolution_pending) {
