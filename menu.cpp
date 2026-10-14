@@ -16,6 +16,7 @@
 #include "keyboard_seen.h"
 #include "net_transport.h"
 #include "preferences.h"
+#include "port_display.h"
 #include "touch_controls.h"
 #include "presence.h"
 #include "replay.h"
@@ -131,6 +132,29 @@ static const int NUM_LEADERBOARD = 2;
 // had none (field, Xbox, 2026-10-08) — this row is the pad's way to it.
 static const char* FRIENDLY_FIRE_LABELS[] = {"OFF", "ON"};
 static const int NUM_FRIENDLY_FIRE = 2;
+// Render resolution (Preferences::render_4k), only on a port that defines
+// NEWTONIA_PORT_RESOLUTION (port_display.h) — the Xbox UWP build, where the
+// TV's 4K is on offer but 1080p is the default. Applied live: the port
+// resizes its render surface between frames.
+static const char* RESOLUTION_LABELS[] = {"1080P", "4K"};
+static const int NUM_RESOLUTION = 2;
+// A switch the port could not make (port_render_resolution_failed): -1 none,
+// else the RESOLUTION_LABELS index that failed. Drawn as a dimmed notice over
+// the whole menu; the next input of any kind dismisses it and does nothing
+// else. File-static because the port reports it between frames, outside any
+// Menu call.
+static int s_resolution_failed = -1;
+#if defined(NEWTONIA_PORT_RESOLUTION)
+void port_render_resolution_failed(bool wanted_4k) {
+  s_resolution_failed = wanted_4k ? 1 : 0;
+}
+#endif
+// Any input while the notice is up: dismiss it and report it consumed.
+static bool dismiss_resolution_notice() {
+  if (s_resolution_failed < 0) return false;
+  s_resolution_failed = -1;
+  return true;
+}
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
 // 2=camera fixed/rotate, 3=star density, 4=auto-record replays,
@@ -145,7 +169,8 @@ static const int NUM_FRIENDLY_FIRE = 2;
 // HANDEDNESS_LABELS above); 14=HUD size (desktop list only: the touch
 // layout places its pause circle off the classic HUD stack, so the HUD
 // there stays at the size the OSD was laid out for — Overlay::hud_grow
-// ignores the pref in touch mode); 15=friendly fire. P2 rows are
+// ignores the pref in touch mode); 15=friendly fire; 16=render resolution
+// (desktop list, NEWTONIA_PORT_RESOLUTION ports only). P2 rows are
 // desktop-only — mobile (touch) shows Player 1 plus the shared options.
 // Options is desktop/controller-only today (see Menu::show_options_row),
 // so the touch list is future-proofing.
@@ -158,6 +183,9 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {9, 0, "CAMERA"},
   {3, 0, "STAR  DENSITY"},
   {14, 0, "HUD  SIZE"},
+#if defined(NEWTONIA_PORT_RESOLUTION)
+  {16, 0, "RESOLUTION"},
+#endif
   {8, 0, "AUDIO"},
   {15, 0, "FRIENDLY  FIRE"},
   {4, 0, "RECORD  REPLAYS"},
@@ -420,6 +448,7 @@ Menu::Menu() :
                                               HUD_SIZE_VALUES, NUM_HUD_SIZE);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   friendly_fire_index_  = g_prefs.friendly_fire ? 1 : 0;
+  resolution_index_     = g_prefs.render_4k ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   input_index_          = g_prefs.touch_one_hand ? 1 : 0;
   handedness_index_     = g_prefs.touch_handedness;
@@ -899,6 +928,9 @@ void Menu::draw() {
         case 13: num_steps = NUM_HANDEDNESS;  cur_idx = handedness_index_;            lbl = HANDEDNESS_LABELS;    break;
         case 14: num_steps = NUM_HUD_SIZE;    cur_idx = hud_size_index_;              lbl = HUD_SIZE_LABELS;      break;
         case 15: num_steps = NUM_FRIENDLY_FIRE; cur_idx = friendly_fire_index_;       lbl = FRIENDLY_FIRE_LABELS; break;
+        // Read off the pref, not the index: a port that can't make the
+        // new size puts the pref back (port_display.h), and the row follows.
+        case 16: num_steps = NUM_RESOLUTION;  cur_idx = g_prefs.render_4k ? 1 : 0;   lbl = RESOLUTION_LABELS;    break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -967,6 +999,24 @@ void Menu::draw() {
         Typer::draw(VALUE_X + (int)strlen(lbl[cur_idx]) * 24 + 8, y,
                     rec_override == 1 ? "ENV ON" : "ENV OFF", 8);
     }
+
+#if defined(NEWTONIA_PORT_RESOLUTION)
+    // What the RESOLUTION row is really doing, under the list: the size the
+    // port draws at, and why a 4K pick changed nothing on a screen that is
+    // only 1080 lines tall (Series S on a 1080p monitor, 2026-10-14: both
+    // picks drew 1920x1080 and nothing on screen said so).
+    if (!touch && !audio_mode_ && !camera_mode_) {
+      int rw = 0, rh = 0;
+      port_render_size(&rw, &rh);
+      char line[80];
+      if (g_prefs.render_4k && !port_render_4k_available())
+        snprintf(line, sizeof(line), "4K NOT AVAILABLE ON THIS SCREEN - DRAWING AT %dX%d",
+                 rw, rh);
+      else
+        snprintf(line, sizeof(line), "DRAWING AT %dX%d", rw, rh);
+      Typer::draw_centered(0, (int)desk_opt_bottom() - 40, line, 8);
+    }
+#endif
 
     // Tappable exit on both layouts — see the replays band note above.
     // Desktop: also the selectable row after the last option (index ==
@@ -1147,6 +1197,31 @@ void Menu::draw() {
   if (!options_mode_ && !replays_mode_ && !board_mode_ && !stats_mode_)
     Typer::draw_centered(0, menu_copyright_y(show_high_score()),
                          "© 2008-2026 METONYMOUS", 13, currentTime);
+
+  if (s_resolution_failed >= 0) {
+    // The failed-switch notice: a dim over the whole frame (darker than the
+    // pause menu's 0.6, since the options rows sit right under it), then the
+    // message on top.
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(0.0f, 0.0f, 0.0f, 0.85f);
+    mb.vertex(-menu_hw, -menu_hh); mb.vertex(menu_hw, -menu_hh); mb.vertex(menu_hw, menu_hh);
+    mb.vertex(-menu_hw, -menu_hh); mb.vertex(menu_hw, menu_hh); mb.vertex(-menu_hw, menu_hh);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+    char title[48], detail[48];
+    snprintf(title, sizeof(title), "COULD NOT SWITCH TO %s",
+             RESOLUTION_LABELS[s_resolution_failed]);
+    snprintf(detail, sizeof(detail), "STAYING AT %s",
+             RESOLUTION_LABELS[1 - s_resolution_failed]);
+    Typer::draw_centered(0, 80, title, 18);
+    Typer::draw_centered(0, 10, detail, 12);
+    Typer::draw_centered(0, -70, is_touch_mode() ? "tap to continue"
+                                                 : "press any button", 8);
+  }
 }
 
 // Another device's save / stats / high score landed in the local files
@@ -1271,6 +1346,8 @@ void Menu::controller(SDL_Event event) {
   // through the same ladder the keyboard uses — one decision path per
   // screen, so pad directionals and back work wherever keys do. The pad
   // that confirmed rides along so confirm_selection can bind it to P1.
+  if (event.type == SDL_CONTROLLERBUTTONDOWN && dismiss_resolution_notice())
+    return;
   PadId src = PAD_NONE;
   unsigned char k = nav_key_from_controller(event, &src);
   if (k) nav_input(k, src);
@@ -1304,6 +1381,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 // keyboard, controller buttons/stick, the tick() trigger poll — lands here,
 // so each screen's rules exist exactly once.
 void Menu::nav_input(unsigned char key, PadId src) {
+  if (dismiss_resolution_notice()) return;
   bool confirm = MenuSelect::is_confirm(key);
   if (attract_mode_) {
     if (confirm) {
@@ -1460,6 +1538,7 @@ extern void app_move_to_background();
 #endif
 
 bool Menu::back_pressed() {
+  if (dismiss_resolution_notice()) return true;
   if (options_mode_) {
     if (audio_mode_) close_audio();          // one level: audio -> options
     else if (camera_mode_) close_camera();   // one level: camera -> options
@@ -1514,6 +1593,7 @@ bool Menu::back_pressed() {
 }
 
 void Menu::touch_tap(float nx, float ny) {
+  if (dismiss_resolution_notice()) return;
   if (attract_mode_) {
     attract_mode_ = false;  // any tap dismisses the attract screen
     return;
@@ -2352,6 +2432,9 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 13: idx = &handedness_index_;           num = NUM_HANDEDNESS;   break;
     case 14: idx = &hud_size_index_;             num = NUM_HUD_SIZE;     break;
     case 15: idx = &friendly_fire_index_;        num = NUM_FRIENDLY_FIRE; break;
+    case 16:
+      resolution_index_ = g_prefs.render_4k ? 1 : 0;   // the port may have put it back
+      idx = &resolution_index_;                        num = NUM_RESOLUTION;   break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2370,6 +2453,13 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     g_prefs.music_volume  = VOLUME_VALUES[music_volume_index_];
     AudioVolume::apply();
   }
+#if defined(NEWTONIA_PORT_RESOLUTION)
+  if (r.kind == 16 && g_prefs.render_4k != (resolution_index_ == 1)) {
+    // Live too: the picture changing under the cursor is the feedback.
+    g_prefs.render_4k = (resolution_index_ == 1);
+    port_render_resolution_changed();
+  }
+#endif
 }
 
 void Menu::close_options() {

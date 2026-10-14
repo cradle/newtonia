@@ -198,6 +198,7 @@ private:
   int  hud_size_index_       = 0;       // index into HUD_SIZE_VALUES (0=NORMAL=1.0)
   int  camera_index_[MAX_PLAYERS]      = {1, 1, 1, 1};  // per-player: 0=FIXED, 1=ROTATE
   int  friendly_fire_index_  = 0;       // 0=OFF, 1=ON (Preferences::friendly_fire)
+  int  resolution_index_     = 0;       // 0=1080P, 1=4K (Preferences::render_4k; port_display.h)
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
   int  input_index_          = 0;       // 0=TWO HANDS, 1=ONE HAND (Preferences::touch_one_hand)
   int  handedness_index_     = 1;       // 0=LEFT, 1=CENTRE, 2=RIGHT (Preferences::touch_handedness)

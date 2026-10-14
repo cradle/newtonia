@@ -128,6 +128,11 @@ struct Preferences {
     // Players damage each other. OFF for new installs (2026-10-08); an
     // existing INI keeps whatever it holds — the Options row can change it.
     bool friendly_fire       = false;
+    // Render resolution on a port that can change it (NEWTONIA_PORT_RESOLUTION,
+    // port_display.h): false = 1080p, true = 4K (the display's native size
+    // where it is smaller). 1080p is the default because it is what the
+    // console build has always rendered at. Ignored everywhere else.
+    bool render_4k           = false;
     // Hosting policy (FOURPLAYER.md O3): may players the signalling worker
     // could not vouch for take a seat? Default YES, which is the behaviour
     // that always existed. NO refuses every peer whose NAME the worker did
