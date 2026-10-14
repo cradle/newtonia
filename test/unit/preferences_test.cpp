@@ -180,6 +180,29 @@ int main() {
     assert(g_prefs.touch_handedness == 2);
   }
 
+  // 7. The RESOLUTION row's height (port_display.h): native by default,
+  //    round-trips, ignores heights the row can't show, and reads the first
+  //    console builds' render_4k key.
+  {
+    std::string dir = fresh_pref_dir();
+    touch(dir + "preferences.ini", "fullscreen=0\n");
+    load_preferences();
+    assert(g_prefs.render_height == 0);
+    g_prefs.render_height = 1440;
+    save_preferences();
+    load_preferences();
+    assert(g_prefs.render_height == 1440);
+    touch(dir + "preferences.ini", "render_height=999\n");
+    load_preferences();
+    assert(g_prefs.render_height == 0);
+    touch(dir + "preferences.ini", "render_4k=1\n");
+    load_preferences();
+    assert(g_prefs.render_height == 2160);
+    touch(dir + "preferences.ini", "render_4k=0\n");
+    load_preferences();
+    assert(g_prefs.render_height == 1080);
+  }
+
   std::printf("preferences_test: all checks passed\n");
   return 0;
 }

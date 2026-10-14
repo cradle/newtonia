@@ -10,6 +10,7 @@
 #include "gl_compat.h"
 #include "achievements.h"
 #include "stats.h"
+#include "port_display.h"
 #include <SDL.h>
 #include <SDL_mixer.h>
 #include <cassert>
@@ -18,6 +19,15 @@
 #include <cmath>
 #include <fstream>
 #include <iterator>
+
+#if defined(NEWTONIA_PORT_RESOLUTION)
+// The desktop entry point (glut.cpp, left out of this build) supplies the
+// RESOLUTION hooks; the test draws at the window size and changes nothing.
+void port_render_resolution_changed() {}
+void port_render_size(int *w, int *h) { *w = 0; *h = 0; }
+int port_render_max_height() { return 0; }
+bool port_render_windowed() { return false; }
+#endif
 
 static void press(GLGame &g, unsigned char key) {
   g.keyboard(key, 0, 0);

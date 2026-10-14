@@ -32,6 +32,8 @@
 #include "gl_compat.h"
 #include "mat4.h"
 #include "replay.h"
+#include "port_display.h"
+#include "render_target.h"
 
 #include <cstdio>
 #include <string>
@@ -98,14 +100,99 @@ static int s_last_frame_draws = 0, s_last_frame_segs = 0;
 
 static void draw_tap_debug();
 
+// The Options RESOLUTION row (port_display.h). The window is s_win_w x
+// s_win_h; the game is handed s_render_w x s_render_h, which differs only
+// while Preferences::render_height asks for a height the window isn't — then
+// the game draws into a RenderTarget of that size, scaled up onto the
+// window by draw(). Only smaller: a taller pick draws at the window's size
+// (port_render_max_height). Every viewport and projection the game sets up is sized from
+// what resize() hands it, so nothing else needs to know.
+static int s_win_w = 0, s_win_h = 0;
+static int s_render_w = 0, s_render_h = 0;
+static int s_applied_height = -1;        // the render_height in force
+static bool s_resolution_pending = false;
+
+static void apply_render_size() {
+  int want = g_prefs.render_height;
+  int rw = s_win_w, rh = s_win_h;
+  bool ok = true;
+  if (want > 0 && want < s_win_h && s_win_w > 0) {
+    rh = want;
+    rw = (int)((long long)s_win_w * want / s_win_h);
+    ok = RenderTarget::ensure(rw, rh);
+  } else {
+    RenderTarget::release();
+  }
+  if (!ok) {
+    // Back to the size in force before, and the setting with it, so the
+    // row and the next launch match what is on screen (the menu shows a
+    // notice). Only a size that was working comes back: at launch, native.
+    port_render_resolution_failed(want);
+    g_prefs.render_height = s_applied_height > 0 ? s_applied_height : 0;
+    save_preferences();
+    if (g_prefs.render_height > 0 && g_prefs.render_height < s_win_h) {
+      rh = g_prefs.render_height;
+      rw = (int)((long long)s_win_w * rh / s_win_h);
+      if (!RenderTarget::ensure(rw, rh)) {
+        g_prefs.render_height = 0;
+        save_preferences();
+        rw = s_win_w; rh = s_win_h;
+      }
+    } else {
+      rw = s_win_w; rh = s_win_h;
+    }
+  }
+  s_applied_height = g_prefs.render_height;
+  s_render_w = rw;
+  s_render_h = rh;
+  Typer::resize(rw, rh);
+  // Size the touch OSD layout too: only the shot/video harness reshapes
+  // did this, so an interactive NEWTONIA_FORCE_TOUCH run drew the OSD
+  // with zero-sized geometry — invisible buttons. Harmless off touch
+  // (drawing still gates on touch_osd_enabled()).
+  touch_controls_resize(rw, rh);
+  if (game) game->resize(rw, rh);
+}
+
+void port_render_resolution_changed() { s_resolution_pending = true; }
+
+void port_render_size(int *w, int *h) {
+  if (s_render_w > 0) {
+    *w = s_render_w;
+    *h = s_render_h;
+  } else {  // the shot/video harnesses, which never go through resize()
+    *w = glutGet(GLUT_WINDOW_WIDTH);
+    *h = glutGet(GLUT_WINDOW_HEIGHT);
+  }
+}
+
+// Nothing above the window's own height: rendering bigger and scaling down
+// through one linear blit drops the game's one-pixel lines (a 4K render on
+// an 800-line window broke the menu text up), so a taller pick draws at the
+// window's size and the Options line says so, as on the console.
+int port_render_max_height() {
+  int w = 0, h = 0;
+  port_render_size(&w, &h);
+  return s_win_h > 0 ? s_win_h : h;
+}
+
+extern bool is_fullscreen;
+bool port_render_windowed() { return !is_fullscreen; }
+
 void draw() {
   if (!game) return;
+  if (s_resolution_pending) {
+    s_resolution_pending = false;
+    apply_render_size();
+  }
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   last_render_time = current_time;
+  RenderTarget::bind();
   game->draw();  // StateManager::draw zeroes the dbg counters at entry
   s_last_frame_draws = g_gles2_dbg_draws;
   s_last_frame_segs  = g_gles2_dbg_line_segs;
   draw_tap_debug();
+  RenderTarget::present(s_win_w, s_win_h);
   glutSwapBuffers();
   // A Steam join accepted while the game is already running (steam://run into
   // an already-open game) does not bring us to the front. Drain the request
@@ -309,7 +396,8 @@ void mouse(int button, int state, int x, int y) {
 // Drawn from draw() after the state renders, ortho like the menus'.
 static void draw_tap_debug() {
   if (!s_tap_debug || s_tap_debug_line.empty()) return;
-  int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
+  int w = 0, h = 0;
+  port_render_size(&w, &h);   // drawn into the same buffer as the game
   if (w <= 0 || h <= 0) return;
   float ortho[16];
   mat4_ortho(ortho, (float)-w, (float)w, (float)-h, (float)h, -1.0f, 1.0f);
@@ -526,13 +614,9 @@ static void touch_listener_poll() {
 #endif // __linux__
 
 void resize(int width, int height) {
-  Typer::resize(width, height);
-  // Size the touch OSD layout too: only the shot/video harness reshapes
-  // did this, so an interactive NEWTONIA_FORCE_TOUCH run drew the OSD
-  // with zero-sized geometry — invisible buttons. Harmless off touch
-  // (drawing still gates on touch_osd_enabled()).
-  touch_controls_resize(width, height);
-  if (game) game->resize(width, height);
+  s_win_w = width;
+  s_win_h = height;
+  apply_render_size();
   if (!is_fullscreen) {
     g_prefs.window_width  = width;
     g_prefs.window_height = height;
