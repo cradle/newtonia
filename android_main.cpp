@@ -278,6 +278,10 @@ void app_move_to_background() {
     env->DeleteLocalRef(activity);
 }
 
+// Menu seams for the Android Auto EXIT row and quit confirm (menu.cpp).
+bool app_on_car_display() { return s_external_display; }
+void app_request_quit() { s_running = false; }
+
 // OS share sheet via ACTION_SEND chooser (see net_transport.h seam).
 bool net_share_available() { return true; }
 void net_share_text(const std::string &text) {
