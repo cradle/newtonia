@@ -14,6 +14,15 @@
 #if defined(NEWTONIA_PORT_RESOLUTION)
 void port_render_resolution_changed();
 
+// Also supplied by the port, for the line the Options screen draws under the
+// list: the size the game is drawing at right now, and whether 4K would draw
+// anything more (false on a screen no taller than 1080 lines — a 1080p TV, or
+// an app window the console holds at 1080p). While it is false the row still
+// cycles and the pref still saves, so a 4K pick takes effect on a screen that
+// can show it, but the port has nothing to rebuild and the line says so.
+void port_render_size(int *w, int *h);
+bool port_render_4k_available();
+
 // The port calls this when the size the player picked could not be made and
 // it went back to the previous one (wanted_4k: the size that failed). The
 // menu shows a dimmed notice over everything until any input dismisses it.

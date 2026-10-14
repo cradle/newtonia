@@ -1000,6 +1000,24 @@ void Menu::draw() {
                     rec_override == 1 ? "ENV ON" : "ENV OFF", 8);
     }
 
+#if defined(NEWTONIA_PORT_RESOLUTION)
+    // What the RESOLUTION row is really doing, under the list: the size the
+    // port draws at, and why a 4K pick changed nothing on a screen that is
+    // only 1080 lines tall (Series S on a 1080p monitor, 2026-10-14: both
+    // picks drew 1920x1080 and nothing on screen said so).
+    if (!touch && !audio_mode_ && !camera_mode_) {
+      int rw = 0, rh = 0;
+      port_render_size(&rw, &rh);
+      char line[80];
+      if (g_prefs.render_4k && !port_render_4k_available())
+        snprintf(line, sizeof(line), "4K NOT AVAILABLE ON THIS SCREEN - DRAWING AT %dX%d",
+                 rw, rh);
+      else
+        snprintf(line, sizeof(line), "DRAWING AT %dX%d", rw, rh);
+      Typer::draw_centered(0, (int)desk_opt_bottom() - 40, line, 8);
+    }
+#endif
+
     // Tappable exit on both layouts — see the replays band note above.
     // Desktop: also the selectable row after the last option (index ==
     // the row count); confirm on it closes, confirm on an option row
