@@ -1574,6 +1574,11 @@ bool Menu::back_pressed() {
 #if defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
     quit_confirm_ = true;
     quit_selection_ = 0;
+#elif defined(__ANDROID__)
+    if (android_pc_mode()) {
+      quit_confirm_ = true;
+      quit_selection_ = 0;
+    }
 #endif
     return true;
   }
@@ -1586,6 +1591,13 @@ bool Menu::back_pressed() {
     return true;
   }
 #if defined(__ANDROID__)
+  // Play Games on PC plays like the desktop build: Esc on the root menu asks
+  // QUIT? (YES exits, as on desktop) instead of hiding the window.
+  if (android_pc_mode()) {
+    quit_confirm_ = true;
+    quit_selection_ = 0;
+    return true;
+  }
   // Root Back on Android = go Home (background the app, state preserved) — the
   // platform convention, not a quit dialog. focus_lost() auto-saves; the task
   // stays alive so a relaunch resumes on this menu.

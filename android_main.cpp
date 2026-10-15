@@ -276,6 +276,11 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     }
 }
 
+// The menu's QUIT? YES (glutLeaveMainLoop, gl_compat.h): leave the main loop
+// so SDL_main cleans up and returns, which finishes the Activity. Reached on
+// Play Games on PC, where Esc on the root menu asks QUIT? like the desktop.
+void android_request_quit() { s_running = false; }
+
 // Send the app to the background (Home), preserving state — the modern
 // Android root-Back behaviour (Menu::back_pressed on Android calls this instead
 // of raising a quit dialog). moveTaskToBack keeps the task alive so a relaunch

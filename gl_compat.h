@@ -21,7 +21,10 @@
 #  elif defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
 #    define glutLeaveMainLoop() exit(0)
 #  elif defined(__ANDROID__)
-#    define glutLeaveMainLoop() exit(0)
+     // Ends android_main's loop: SDL_main returns and the Activity finishes
+     // (a bare exit(0) can leave the system relaunching the task).
+     void android_request_quit();
+#    define glutLeaveMainLoop() android_request_quit()
 #  else
 #    define glutLeaveMainLoop() // no-op on iOS
 #  endif
