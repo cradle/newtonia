@@ -740,7 +740,12 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             case SDL_KEYDOWN: {
                 if (e.key.repeat) break; // game tracks held state itself; ignore SDL repeats
                 SDL_Keycode k = e.key.keysym.sym;
-                if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) {
+                // On Play Games on PC, Esc is a desktop key (27 down + up,
+                // like glut.cpp), so prompts that answer it, such as the
+                // tutorial's CAMERA question, see it. Android Back, and Esc
+                // on a phone or tablet keyboard, stay the platform Back.
+                if (k == SDLK_AC_BACK ||
+                    (k == SDLK_ESCAPE && !android_pc_mode())) {
                     if (!s_game->back_pressed()) s_running = false;
                     break;
                 }
@@ -766,7 +771,8 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                 SDL_Keycode k = e.key.keysym.sym;
                 // The DOWN already went to back_pressed(); a release here
                 // would read as a second Esc (the menu key) on top of it.
-                if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) break;
+                if (k == SDLK_AC_BACK ||
+                    (k == SDLK_ESCAPE && !android_pc_mode())) break;
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (!key) switch (k) {
                     case SDLK_UP:    key = 128 + GLUT_KEY_UP;    break;
