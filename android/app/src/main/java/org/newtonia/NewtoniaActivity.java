@@ -318,10 +318,27 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // Google Play Games on PC (the Windows client): export NEWTONIA_PC_MODE=1
+    // so the native side plays like the desktop build — keyboard and mouse,
+    // no touch OSD (android_pc.h). HPE_EXPERIENCE is Google's documented
+    // system feature for that client. Skipped if already set, so a debug
+    // APK's adb --es NEWTONIA_PC_MODE 1 (or 0) forces either layout.
+    private void exportPcMode() {
+        try {
+            if (Os.getenv("NEWTONIA_PC_MODE") != null) return;
+            if (getPackageManager().hasSystemFeature(
+                    "com.google.android.play.feature.HPE_EXPERIENCE"))
+                Os.setenv("NEWTONIA_PC_MODE", "1", true);
+        } catch (Exception ignored) {
+            // Best-effort: native falls back to the touch build.
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         applyEnvExtras(getIntent());
         exportDeviceName();
+        exportPcMode();
         super.onCreate(savedInstanceState);
 
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);

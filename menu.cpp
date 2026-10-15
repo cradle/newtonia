@@ -1368,7 +1368,7 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 
 void Menu::keyboard_up(unsigned char key, int x, int y) {
   key = nav_key(key);  // arrows navigate like WASD
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__IOS__)
   // Touch/mobile — touch_tap and back_pressed() handle ALL interaction
   // (attract dismissal, row selection, confirms). The keys arriving here
   // are only the ones the touch zones synthesize (\r, space, x, p);
@@ -1378,9 +1378,11 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   (void)key;
   return;
 #else
-#ifdef __EMSCRIPTEN__
-  // Touch web: same as mobile — touch_tap owns all interaction and
-  // web_menu_tap() synthesizes a stray keyboard_up('\r') per tap.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+  // Touch web and phones: same as iOS above — touch_tap owns all
+  // interaction (web_menu_tap() and the Android touch zones synthesize
+  // stray key releases per tap). Android on Play Games on PC is not touch
+  // (android_pc.h): there the keyboard drives the menu as on desktop.
   if (is_touch_mode()) return;
 #endif
   nav_input(key, PAD_NONE);

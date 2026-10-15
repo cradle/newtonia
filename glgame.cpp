@@ -13450,10 +13450,11 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   }
   if (host_keys && key == (unsigned char)gk.time_reset) time_between_steps = step_size;
   if (key == (unsigned char)gk.pause) toggle_pause(true, true);
-#if !defined(__ANDROID__) && !defined(__IOS__)
+#if !defined(__IOS__)
   // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
   // controller-first, and the keyboard has no third layout to hand out.
-  // Never on a touch screen, which is how the phone apps compile it out:
+  // Never on a touch screen (iOS compiles it out; Android keeps it for
+  // Play Games on PC, where is_touch_mode() is false — android_pc.h):
   // the web OSD forwards every tap as touch_tap + a '\r' release
   // (web_main.cpp web_menu_tap), so each one-hand tap seated a player 2
   // split screen with no input to fly it (field, web on a phone,

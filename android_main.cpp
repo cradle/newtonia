@@ -156,6 +156,21 @@ static void update_joystick_nub(float px, float py) {
 
 // ---- Finger event handlers ----
 
+// Play Games on PC: one click, normalized window coords, into the state's
+// tap handler (the desktop layouts hit-test it — menus, options, lobby).
+// The same click can arrive twice (a finger and a mouse event), so a repeat
+// within 250 ms and a few pixels is dropped, as glut.cpp forward_tap does.
+static void pc_click(float nx, float ny) {
+    static Uint32 last_ms = 0;
+    static float last_x = -1.0f, last_y = -1.0f;
+    Uint32 now = SDL_GetTicks();
+    float dx = (nx - last_x) * s_w, dy = (ny - last_y) * s_h;
+    bool dup = last_ms != 0 && now - last_ms < 250 && dx * dx + dy * dy < 30.0f * 30.0f;
+    last_ms = now; last_x = nx; last_y = ny;
+    if (dup || !s_game) return;
+    s_game->touch_tap(nx, ny);
+}
+
 static void finger_down(SDL_FingerID id, float x, float y) {
     // Soft keyboard up (lobby code entry): taps must not synthesize game
     // keys — '\r', 'x', 'n' would leak into the code field (X and N are
@@ -460,6 +475,16 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // older devices.
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_STREAM_ROLE, "game");
 
+    // Play Games on PC (android_pc.h): a real mouse arrives as SDL mouse
+    // events (the manifest's android.hardware.type.pc turns the client's
+    // touch emulation off). SDL on Android defaults to ALSO synthesizing a
+    // finger from every mouse press, which would feed the touch layer the
+    // desktop build doesn't have — keep mouse as mouse there.
+    if (android_pc_mode()) {
+        SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+        SDL_Log("Play Games on PC: desktop input mode");
+    }
+
     // Initialise SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -722,36 +747,68 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                     case SDLK_DOWN:  key = 128 + GLUT_KEY_DOWN;  break;
                     case SDLK_LEFT:  key = 128 + GLUT_KEY_LEFT;  break;
                     case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
-                    default: break;
+                    default:
+                        // F1..F12 likewise (the help card's F1 — the HUD
+                        // offers it once a real keyboard has been seen).
+                        if (k >= SDLK_F1 && k <= SDLK_F12)
+                            key = 128 + GLUT_KEY_F1 + (k - SDLK_F1);
+                        break;
                 }
                 if (key) { note_keyboard_used(); s_game->keyboard(key, 0, 0); }
                 break;
             }
             case SDL_KEYUP: {
                 SDL_Keycode k = e.key.keysym.sym;
+                // The DOWN already went to back_pressed(); a release here
+                // would read as a second Esc (the menu key) on top of it.
+                if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) break;
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (!key) switch (k) {
                     case SDLK_UP:    key = 128 + GLUT_KEY_UP;    break;
                     case SDLK_DOWN:  key = 128 + GLUT_KEY_DOWN;  break;
                     case SDLK_LEFT:  key = 128 + GLUT_KEY_LEFT;  break;
                     case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
-                    default: break;
+                    default:
+                        // F1..F12 likewise (the help card's F1 — the HUD
+                        // offers it once a real keyboard has been seen).
+                        if (k >= SDLK_F1 && k <= SDLK_F12)
+                            key = 128 + GLUT_KEY_F1 + (k - SDLK_F1);
+                        break;
                 }
                 if (key) s_game->keyboard_up(key, 0, 0);
                 break;
             }
 
-            // Touch input
+            // Touch input. On Play Games on PC there is no touch layer: a
+            // finger (the client's emulated-touch mode) is a click, taken
+            // on release like the desktop build's mouse.
             case SDL_FINGERDOWN:
+                if (android_pc_mode()) break;
                 finger_down(e.tfinger.fingerId,
                             e.tfinger.x, e.tfinger.y);
                 break;
             case SDL_FINGERUP:
+                if (android_pc_mode()) { pc_click(e.tfinger.x, e.tfinger.y); break; }
                 finger_up(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
                 break;
             case SDL_FINGERMOTION:
+                if (android_pc_mode()) break;
                 finger_motion(e.tfinger.fingerId,
                               e.tfinger.x, e.tfinger.y);
+                break;
+
+            // Mouse: Play Games on PC only (glut.cpp mouse() is the desktop
+            // twin — a left release is a tap on whatever row it lands on).
+            // Phones ignore it, as before: their mouse presses already
+            // arrive as fingers. Clicks SDL made from a finger are skipped.
+            case SDL_MOUSEBUTTONUP:
+                if (android_pc_mode() && e.button.button == SDL_BUTTON_LEFT &&
+                    e.button.which != SDL_TOUCH_MOUSEID && s_w > 0 && s_h > 0)
+                    pc_click(e.button.x / (float)s_w, e.button.y / (float)s_h);
+                break;
+            case SDL_MOUSEBUTTONDOWN:
+            case SDL_MOUSEMOTION:
+            case SDL_MOUSEWHEEL:
                 break;
 
             // App lifecycle: auto-pause when backgrounded, auto-resume when foregrounded.

@@ -116,10 +116,15 @@ inline bool is_game_mode_active() {
 #endif
 }
 
+#include "android_pc.h"
+
 // Returns true when the primary input is touch (Android, iOS, or web with a
 // coarse pointer such as a touchscreen).
 inline bool is_touch_mode() {
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__)
+  // Play Games on PC plays like the desktop build (android_pc.h).
+  return !android_pc_mode();
+#elif defined(__IOS__)
   return true;
 #elif defined(__EMSCRIPTEN__)
   return EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;) != 0;
