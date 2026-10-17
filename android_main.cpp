@@ -58,6 +58,7 @@ static SDL_GLContext s_gl_ctx        = nullptr;
 static int           s_w = 800, s_h = 600;
 static bool          s_running       = true;
 static bool          s_reset_tick    = false;  // set on focus-gained to skip catch-up
+static bool          s_perf_reset    = true;   // restart the frame-rate log (start, resume)
 
 // ---- Utility ----
 
@@ -823,6 +824,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             // simulation doesn't try to catch up on the entire suspended period.
             last_tick    = now;
             s_reset_tick = false;
+            s_perf_reset = true;
         }
         int    delta = (int)(now - last_tick);
         last_tick    = now;
@@ -843,14 +845,28 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             // sim takes wall-clock deltas, so the cap changes no game speed.
             Uint32 spent = SDL_GetTicks() - now;
             if (spent < CAR_FRAME_MS) SDL_Delay(CAR_FRAME_MS - spent);
+        }
 
-            // Field diagnosis: frame rate on the car display every 5 s
-            // (adb logcat -s SDL/APP).
+        // Field diagnosis (adb logcat -s SDL/APP): the frame rate every 5 s
+        // on the car display, and on the phone the first 5 s after each
+        // start or resume, which says whether the high refresh rate
+        // NewtoniaActivity.requestHighRefreshRate asked for was granted.
+        {
             static Uint32 perf_t0 = 0, perf_frames = 0;
+            static bool phone_logged = false;
+            static bool last_ext = false;
+            if (s_perf_reset || s_external_display != last_ext) {
+                last_ext = s_external_display;
+                s_perf_reset = false;
+                perf_t0 = 0; perf_frames = 0; phone_logged = false;
+            }
             if (!perf_t0) perf_t0 = now;
             ++perf_frames;
             if (now - perf_t0 >= 5000) {
-                SDL_Log("Car display: %.1f fps", perf_frames * 1000.0f / (now - perf_t0));
+                float fps = perf_frames * 1000.0f / (now - perf_t0);
+                if (s_external_display) SDL_Log("Car display: %.1f fps", fps);
+                else if (!phone_logged) SDL_Log("Phone display: %.1f fps", fps);
+                if (!s_external_display) phone_logged = true;
                 perf_t0 = now; perf_frames = 0;
             }
         }
