@@ -1378,7 +1378,7 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 
 void Menu::keyboard_up(unsigned char key, int x, int y) {
   key = nav_key(key);  // arrows navigate like WASD
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__IOS__)
   // Touch/mobile — touch_tap and back_pressed() handle ALL interaction
   // (attract dismissal, row selection, confirms). The keys arriving here
   // are only the ones the touch zones synthesize (\r, space, x, p);
@@ -1388,9 +1388,11 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   (void)key;
   return;
 #else
-#ifdef __EMSCRIPTEN__
-  // Touch web: same as mobile — touch_tap owns all interaction and
-  // web_menu_tap() synthesizes a stray keyboard_up('\r') per tap.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+  // Touch web and phones: same as iOS above — touch_tap owns all
+  // interaction (web_menu_tap() and the Android touch zones synthesize
+  // stray key releases per tap). Android on Play Games on PC is not touch
+  // (android_pc.h): there the keyboard drives the menu as on desktop.
   if (is_touch_mode()) return;
 #endif
   nav_input(key, PAD_NONE);
@@ -1582,6 +1584,11 @@ bool Menu::back_pressed() {
 #if defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
     quit_confirm_ = true;
     quit_selection_ = 0;
+#elif defined(__ANDROID__)
+    if (android_pc_mode()) {
+      quit_confirm_ = true;
+      quit_selection_ = 0;
+    }
 #endif
     return true;
   }
@@ -1594,6 +1601,13 @@ bool Menu::back_pressed() {
     return true;
   }
 #if defined(__ANDROID__)
+  // Play Games on PC plays like the desktop build: Esc on the root menu asks
+  // QUIT? (YES exits, as on desktop) instead of hiding the window.
+  if (android_pc_mode()) {
+    quit_confirm_ = true;
+    quit_selection_ = 0;
+    return true;
+  }
   // Root Back on Android = go Home (background the app, state preserved) — the
   // platform convention, not a quit dialog. focus_lost() auto-saves; the task
   // stays alive so a relaunch resumes on this menu.

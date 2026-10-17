@@ -2,6 +2,14 @@
 
 Follow-ups that need a person, a device or an account we don't have to hand.
 
+## Google Play Games on PC: Play Console and a field test
+
+The APK has a desktop mode for the Windows client (CLAUDE.md, "Google Play
+Games on PC"). Still to do by hand: run it in the Play Games Developer
+Emulator, then opt in under Play Console > Test and release > Advanced
+settings > Form factors > Google Play Games on PC, which starts Google's
+PC review. Possible later polish: mouse-wheel zoom.
+
 ## Android cloud saves for old Play Games profiles: server saves (deferred)
 
 **Problem.** A Play Games profile for Newtonia made before Saved Games was

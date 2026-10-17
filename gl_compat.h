@@ -21,7 +21,10 @@
 #  elif defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
 #    define glutLeaveMainLoop() exit(0)
 #  elif defined(__ANDROID__)
-#    define glutLeaveMainLoop() exit(0)
+     // Ends android_main's loop: SDL_main returns and the Activity finishes
+     // (a bare exit(0) can leave the system relaunching the task).
+     void android_request_quit();
+#    define glutLeaveMainLoop() android_request_quit()
 #  else
 #    define glutLeaveMainLoop() // no-op on iOS
 #  endif
@@ -116,10 +119,15 @@ inline bool is_game_mode_active() {
 #endif
 }
 
+#include "android_pc.h"
+
 // Returns true when the primary input is touch (Android, iOS, or web with a
 // coarse pointer such as a touchscreen).
 inline bool is_touch_mode() {
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__)
+  // Play Games on PC plays like the desktop build (android_pc.h).
+  return !android_pc_mode();
+#elif defined(__IOS__)
   return true;
 #elif defined(__EMSCRIPTEN__)
   return EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;) != 0;
