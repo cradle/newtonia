@@ -98,6 +98,11 @@
                 <category android:name="android.intent.category.CAR_LAUNCHER" />
             </intent-filter>
 
+            <!-- Launcher shortcuts (long press on the icon): Continue, New
+                 game, Play online. Listed in res/xml/shortcuts.xml. -->
+            <meta-data android:name="android.app.shortcuts"
+                       android:resource="@xml/shortcuts" />
+
             <!-- Co-op join links (App Links). A tapped
                  https://newtonia.metonymous.com/join?code=XXXX opens the game;
                  NewtoniaActivity hands the code to Invites::note_accepted via

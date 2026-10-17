@@ -168,6 +168,24 @@ public class NewtoniaActivity extends SDLActivity {
     // check SDL's library-load/version status before calling native code.
     private static native void nativeAcceptInvite(String code);
 
+    // Launcher shortcuts (res/xml/shortcuts.xml): hands the tapped one's id
+    // to launch_shortcut.cpp, which Menu::tick acts on. Cold launch from
+    // onCreate, warm from onNewIntent.
+    private static native void nativeLaunchShortcut(String id);
+
+    static final String SHORTCUT_ACTION = "org.newtonia.SHORTCUT";
+
+    private void handleShortcutIntent(Intent intent) {
+        if (intent == null || !SHORTCUT_ACTION.equals(intent.getAction())) return;
+        String id = intent.getStringExtra("shortcut");
+        if (id == null || id.isEmpty() || SDLActivity.mBrokenLibraries) return;
+        try {
+            nativeLaunchShortcut(id);
+        } catch (UnsatisfiedLinkError error) {
+            Log.w("Newtonia", "Shortcut handoff failed: native symbol unavailable", error);
+        }
+    }
+
     // TEST-SLICE-BEGIN: android_install_referrer.py
     // Pull ?code= out of a https://newtonia.metonymous.com/join?code=XXXX
     // App Link intent and forward it. Safe to call with any intent.
@@ -430,6 +448,7 @@ public class NewtoniaActivity extends SDLActivity {
 
         // Cold launch from a tapped join link.
         handleInviteIntent(getIntent());
+        handleShortcutIntent(getIntent());
 
         // First launch after a Play Store install: recover a join code that
         // rode the install referrer (async; no-op on every later launch).
@@ -446,6 +465,7 @@ public class NewtoniaActivity extends SDLActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleInviteIntent(intent);
+        handleShortcutIntent(intent);
     }
 
     // LAN co-op discovery (net_lan.cpp): Android wifi drivers filter
