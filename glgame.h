@@ -1560,6 +1560,13 @@ private:
   // the current listener distances. Called once per tick from both the
   // sim tick and the net-client tick.
   void update_player_sound_volumes();
+  // Phone vibration / pad rumble for the ships flown from this machine
+  // (haptics.h): drains each ship's Ship::haptic_pending, and turns a
+  // death (alive -> wreck) or a cleared field into an event. Once per tick
+  // from GLGame::tick, ahead of the mode early-returns.
+  void update_haptics();
+  void haptic_for(GLShip *gs, int event);
+  int haptic_cleared_ = -1;  // level_cleared last tick; -1 before the first
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;

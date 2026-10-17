@@ -1,0 +1,19 @@
+# The desktop AUDIO options sub-screen: MASTER VOLUME, MUSIC VOLUME and
+# VIBRATION (phone motor on touch, pad rumble on a controller). Route as
+# camera.shot, then `key down` past P1..P4 SENSITIVITY, CAMERA, STAR
+# DENSITY, HUD SIZE and RESOLUTION onto the AUDIO opener.
+seed 3
+menu
+sim 4800
+key enter 200
+key down 700
+key enter 1200
+key down 1600
+key down 1900
+key down 2200
+key down 2500
+key down 2800
+key down 3100
+key down 3400
+key down 3700
+key enter 4200
