@@ -67,14 +67,6 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
-    // Android Auto (parked games, PR #586) runs the activity on the car's
-    // projected display, not the phone's own, and every frame we present
-    // goes through Android Auto's video encoder before the car shows it.
-    // android_main.cpp asks this on start and on every resize, and on a
-    // non-default display presents without vsync (see car_display_sync
-    // there): the projected display's buffer queue blocks the swap until
-    // the encoder takes a frame, so with vsync every queued buffer is a
-    // frame of input lag. Any failure answers false, the phone path.
     // Haptics (haptics.cpp): one short buzz on the phone's own motor, called
     // from the game thread over JNI. amplitude is 1..255, used where the
     // motor can vary it. Never throws back into native code.
@@ -107,6 +99,14 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // Android Auto (parked games, PR #586) runs the activity on the car's
+    // projected display, not the phone's own, and every frame we present
+    // goes through Android Auto's video encoder before the car shows it.
+    // android_main.cpp asks this on start and on every resize, and on a
+    // non-default display presents without vsync (see car_display_sync
+    // there): the projected display's buffer queue blocks the swap until
+    // the encoder takes a frame, so with vsync every queued buffer is a
+    // frame of input lag. Any failure answers false, the phone path.
     public boolean isOnExternalDisplay() {
         try {
             Display d = getWindowManager().getDefaultDisplay();
@@ -117,6 +117,38 @@ public class NewtoniaActivity extends SDLActivity {
             return ext;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    // High refresh rate: a 90/120 Hz phone hands an app 60 Hz unless the
+    // window asks for more, so ask for the display's fastest mode at the
+    // current resolution. The game loop takes wall-clock deltas and draws
+    // once per vsync, so the sim runs at the same speed and only the
+    // picture gets smoother. Not on a car's display (car_display_sync in
+    // android_main.cpp paces that one itself). The system can still hold
+    // the rate down (battery saver, thermal limits, a user's 60 Hz
+    // setting); this is a request, never a requirement.
+    private void requestHighRefreshRate() {
+        try {
+            Display d = getWindowManager().getDefaultDisplay();
+            if (d == null || d.getDisplayId() != Display.DEFAULT_DISPLAY) return;
+            Display.Mode cur = d.getMode();
+            Display.Mode best = cur;
+            for (Display.Mode m : d.getSupportedModes()) {
+                if (m.getPhysicalWidth() != cur.getPhysicalWidth()
+                    || m.getPhysicalHeight() != cur.getPhysicalHeight()) continue;
+                if (m.getRefreshRate() > best.getRefreshRate() + 0.5f) best = m;
+            }
+            android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+            if (lp.preferredDisplayModeId != best.getModeId()) {
+                lp.preferredDisplayModeId = best.getModeId();
+                getWindow().setAttributes(lp);
+            }
+            Log.i("Newtonia", "refresh: asked for " + best.getRefreshRate() + " Hz at "
+                  + best.getPhysicalWidth() + "x" + best.getPhysicalHeight()
+                  + " (display was " + cur.getRefreshRate() + " Hz)");
+        } catch (Exception e) {
+            Log.w("Newtonia", "refresh request failed: " + e);
         }
     }
 
@@ -372,6 +404,7 @@ public class NewtoniaActivity extends SDLActivity {
         }
 
         updateSafeInsets();
+        requestHighRefreshRate();
 
         // Report soft-keyboard coverage on every layout pass: the visible
         // display frame shrinks by the keyboard's height while it is up
@@ -433,6 +466,9 @@ public class NewtoniaActivity extends SDLActivity {
         // Cloud sync (cloud_sync.h): re-read the Play Games saved game, in
         // case another device pushed while the game was away.
         PlayGamesSaves.onResume(this);
+        // The display may have changed while away (a foldable's other
+        // screen, a mode the system switched); ask again.
+        requestHighRefreshRate();
         try {
             if (multicastLock == null) {
                 WifiManager wm = (WifiManager)
