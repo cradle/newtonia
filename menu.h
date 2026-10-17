@@ -77,6 +77,11 @@ private:
   // tutorial_done), it appears there too.
   bool show_stats_row() const { return !new_player_ || has_stats_; }
   int  stats_row_index() const;    // -1 when hidden
+  // EXIT row (last): only on the Android Auto car display, which has no
+  // Back/Home route out of the app (see menu.cpp).
+  bool show_exit_row() const;
+  int  exit_row_index() const;     // -1 when hidden
+  void quit_app();                 // leave the app (platform-appropriate)
   // The HIGH SCORE block under the rows: only with a score to show, and
   // never on the new-player start screen (stat-free by design; the
   // tutorial nudge sits in its slot).
