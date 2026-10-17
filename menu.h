@@ -38,6 +38,7 @@ private:
   // Expiry, or picking any other way into a game, deletes both files.
   int  base_menu_rows() const;  // rows above ONLINE: tutorial?/resume?/continue?/new
   int  continue_row_index() const;  // -1 when hidden
+  bool take_launch_shortcut();       // act on a launcher shortcut (launch_shortcut.h)
   void decline_net_resume();
   void scan_net_resume();
   // ONLINE row (netplay lobby): only on builds with a net backend.
