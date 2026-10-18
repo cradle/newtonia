@@ -34,9 +34,18 @@
 #include <string>
 #include <cstring>
 
+#if defined(__ANDROID__)
+// Defined in android_main.cpp. Plain C++ linkage; the calls are compiled
+// only in __ANDROID__ branches, so no other platform needs the symbols.
+extern void app_move_to_background();
+extern bool app_on_car_display();   // running on the Android Auto car screen
+extern void app_request_quit();     // end the main loop; SDL finishes the activity
+#endif
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <cstdio>
+
 // web_main.cpp: one-shot, true once a /play/?replay= watch deep link has
 // staged download.nrp for playback (polled below in Menu::tick).
 bool web_take_replay_watch();
@@ -1208,6 +1217,7 @@ void Menu::draw() {
       if (show_replays_row()) rows.push_back("REPLAYS");
       if (show_board_row()) rows.push_back("LEADERBOARD");
       if (show_stats_row()) rows.push_back("STATS");
+      if (show_exit_row()) rows.push_back("EXIT");
       draw_menu_rows(rows);
       if (new_player_)
         Typer::draw_centered(0, menu_high_score_y(),
@@ -1543,7 +1553,7 @@ void Menu::nav_input(unsigned char key, PadId src) {
       quit_confirm_ = false;  // back = No
     } else if (confirm) {
       if (quit_selection_ == 0) {
-        glutLeaveMainLoop();
+        quit_app();
       } else {
         quit_confirm_ = false;
       }
@@ -1579,6 +1589,8 @@ void Menu::nav_input(unsigned char key, PadId src) {
         open_board();
       } else if (menu_selection == stats_row_index()) {
         stats_mode_ = true;
+      } else if (menu_selection == exit_row_index()) {
+        quit_app();
       } else {
         confirm_selection(src);
       }
@@ -1588,12 +1600,18 @@ void Menu::nav_input(unsigned char key, PadId src) {
   }
 }
 
+
+// Leave the app from the menu. On Android this ends the main loop so
+// SDL_main returns and SDL finishes the activity cleanly (exit(0), the
+// glutLeaveMainLoop mapping there, skips SDL's teardown). Nothing on the
+// menu needs saving: games save when they return here.
+void Menu::quit_app() {
 #if defined(__ANDROID__)
-// Defined in android_main.cpp (moveTaskToBack). Plain C++ linkage; the call is
-// compiled only in the __ANDROID__ branch below, so no other platform needs
-// the symbol.
-extern void app_move_to_background();
+  app_request_quit();
+#else
+  glutLeaveMainLoop();
 #endif
+}
 
 bool Menu::back_pressed() {
   if (dismiss_resolution_notice()) return true;
@@ -1638,8 +1656,10 @@ bool Menu::back_pressed() {
   }
 #if defined(__ANDROID__)
   // Play Games on PC plays like the desktop build: Esc on the root menu asks
-  // QUIT? (YES exits, as on desktop) instead of hiding the window.
-  if (android_pc_mode()) {
+  // QUIT? (YES exits, as on desktop) instead of hiding the window. On the
+  // car display (Android Auto) backgrounding leaves nothing for the player
+  // to go back to, so root Back asks to quit there too.
+  if (android_pc_mode() || app_on_car_display()) {
     quit_confirm_ = true;
     quit_selection_ = 0;
     return true;
@@ -1740,14 +1760,14 @@ void Menu::touch_tap(float nx, float ny) {
     if (is_touch_mode()) {
       // Left half = Yes (quit), right half = No (dismiss)
       if (nx < 0.5f) {
-        glutLeaveMainLoop();
+        quit_app();
       } else {
         quit_confirm_ = false;
       }
     } else {
       // Desktop stacks Yes above No — hit-test the drawn stack.
       int pick = desktop_confirm_pick(ny);
-      if (pick == 0) glutLeaveMainLoop();
+      if (pick == 0) quit_app();
       else if (pick == 1) quit_confirm_ = false;
     }
     return;
@@ -1787,6 +1807,10 @@ void Menu::touch_tap(float nx, float ny) {
     stats_mode_ = true;
     return;
   }
+  if (row == exit_row_index()) {
+    quit_app();
+    return;
+  }
   confirm_selection(PAD_NONE);
 }
 
@@ -1803,6 +1827,24 @@ int Menu::continue_row_index() const {
   return tutorial_rows() + (has_net_resume_ ? 1 : 0);
 }
 
+// EXIT row: only where the platform gives the player no way out of the app
+// otherwise — Android Auto, where the game runs on the car's projected
+// display and the car has no Back gesture or Home button that reaches it
+// (field, 2026-10-14: "there is no way to quit"). Phones keep the Android
+// convention (Back/Home leave), so their menu is unchanged.
+bool Menu::show_exit_row() const {
+#if defined(__ANDROID__)
+  return app_on_car_display();
+#else
+  return false;
+#endif
+}
+
+int Menu::exit_row_index() const {
+  if (!show_exit_row()) return -1;
+  return max_menu_items() - 1;
+}
+
 int Menu::max_menu_items() const {
   int n = base_menu_rows();
   if (show_online_row()) n++;
@@ -1810,6 +1852,7 @@ int Menu::max_menu_items() const {
   if (show_replays_row()) n++;
   if (show_board_row()) n++;
   if (show_stats_row()) n++;
+  if (show_exit_row()) n++;
   return n;
 }
 
