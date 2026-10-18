@@ -47,6 +47,13 @@
     <uses-feature android:name="android.hardware.screen.landscape"
                   android:required="false" />
 
+    <!-- Google Play Games on PC: declaring the PC feature (optional, so
+         every phone still installs) turns off the client's mouse-to-touch
+         emulation, so a mouse arrives as a mouse. The game switches itself
+         to its desktop layout there at runtime (android_pc.h). -->
+    <uses-feature android:name="android.hardware.type.pc"
+                  android:required="false" />
+
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -97,6 +104,11 @@
                      car moves, which reaches us as an ordinary pause. -->
                 <category android:name="android.intent.category.CAR_LAUNCHER" />
             </intent-filter>
+
+            <!-- Launcher shortcuts (long press on the icon): Continue, New
+                 game, Play online. Listed in res/xml/shortcuts.xml. -->
+            <meta-data android:name="android.app.shortcuts"
+                       android:resource="@xml/shortcuts" />
 
             <!-- Co-op join links (App Links). A tapped
                  https://newtonia.metonymous.com/join?code=XXXX opens the game;

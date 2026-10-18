@@ -1,6 +1,8 @@
+#include "launch_shortcut.h"
 #include "typer.h"
 #include "asset_path.h"
 #include "audio_volume.h"
+#include "haptics.h"
 #include "highscore.h"
 #include "glstarfield.h"
 #include "glgame.h"
@@ -141,6 +143,11 @@ static const int NUM_LEADERBOARD = 2;
 // had none (field, Xbox, 2026-10-08) — this row is the pad's way to it.
 static const char* FRIENDLY_FIRE_LABELS[] = {"OFF", "ON"};
 static const int NUM_FRIENDLY_FIRE = 2;
+// Vibration (Preferences::vibration, haptics.h): the phone's motor on
+// touch, the pad's rumble on a controller. Lives on the AUDIO screen with
+// the other feedback levels; switching it ON gives a sample buzz.
+static const char* VIBRATION_LABELS[] = {"OFF", "ON"};
+static const int NUM_VIBRATION = 2;
 // Render height (Preferences::render_height), only where the build defines
 // NEWTONIA_PORT_RESOLUTION (port_display.h): the desktop builds, which draw
 // into an offscreen buffer at the picked height and scale it to the window,
@@ -251,10 +258,12 @@ static const OptRow &camera_row(int r) {
 static const OptRow OPT_ROWS_AUDIO_DESKTOP[] = {
   {6, 0, "MASTER  VOLUME"},
   {7, 0, "MUSIC  VOLUME"},
+  {17, 0, "VIBRATION"},
 };
 static const OptRow OPT_ROWS_AUDIO_TOUCH[] = {
   {6, 0, "MASTER VOLUME"},
   {7, 0, "MUSIC VOLUME"},
+  {17, 0, "VIBRATION"},
 };
 static int audio_row_count() {
   return (int)(sizeof(OPT_ROWS_AUDIO_DESKTOP) / sizeof(OPT_ROWS_AUDIO_DESKTOP[0]));
@@ -464,6 +473,7 @@ Menu::Menu() :
                                               HUD_SIZE_VALUES, NUM_HUD_SIZE);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   friendly_fire_index_  = g_prefs.friendly_fire ? 1 : 0;
+  vibration_index_      = g_prefs.vibration ? 1 : 0;
   resolution_index_     = resolution_index_for(g_prefs.render_height);
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   input_index_          = g_prefs.touch_one_hand ? 1 : 0;
@@ -944,6 +954,7 @@ void Menu::draw() {
         case 13: num_steps = NUM_HANDEDNESS;  cur_idx = handedness_index_;            lbl = HANDEDNESS_LABELS;    break;
         case 14: num_steps = NUM_HUD_SIZE;    cur_idx = hud_size_index_;              lbl = HUD_SIZE_LABELS;      break;
         case 15: num_steps = NUM_FRIENDLY_FIRE; cur_idx = friendly_fire_index_;       lbl = FRIENDLY_FIRE_LABELS; break;
+        case 17: num_steps = NUM_VIBRATION;   cur_idx = vibration_index_;             lbl = VIBRATION_LABELS;     break;
         // Read off the pref, not the index: a port that can't make the
         // new size puts the pref back (port_display.h), and the row follows.
         case 16: num_steps = NUM_RESOLUTION;  cur_idx = resolution_index_for(g_prefs.render_height); lbl = RESOLUTION_LABELS; break;
@@ -1265,6 +1276,39 @@ void Menu::refresh_from_cloud() {
   if (had_save != has_save_ || was_new != new_player_) menu_selection = 0;
 }
 
+// A launcher shortcut (long press on the app icon, launch_shortcut.h)
+// acts like picking its menu row. Only from the main list: on any other
+// screen, or mid-confirmation, it is dropped rather than tearing that
+// screen down. Returns true when it started a state change.
+bool Menu::take_launch_shortcut() {
+  LaunchShortcut::Kind k = LaunchShortcut::take();
+  if (k == LaunchShortcut::NONE) return false;
+  if (options_mode_ || replays_mode_ || stats_mode_ || board_mode_ ||
+      quit_confirm_ || new_confirm_)
+    return false;
+  attract_mode_ = false;
+  switch (k) {
+  case LaunchShortcut::CONTINUE:
+    // No save: the menu itself is the best answer.
+    if (continue_row_index() < 0) return false;
+    menu_selection = continue_row_index();
+    break;
+  case LaunchShortcut::NEW_GAME:
+    // The NEW GAME row (the last of the game-entry rows). Over a save it
+    // opens the same "New game?" question the row does, NO highlighted.
+    menu_selection = base_menu_rows() - 1;
+    break;
+  case LaunchShortcut::ONLINE:
+    if (online_row_index() < 0) return false;
+    menu_selection = online_row_index();
+    break;
+  default:
+    return false;
+  }
+  confirm_selection(PAD_NONE);
+  return true;
+}
+
 void Menu::tick(int delta) {
   refresh_from_cloud();
   // Leaderboard screen: drive the fetch/upload socket. May hand the state
@@ -1291,6 +1335,8 @@ void Menu::tick(int delta) {
       }
     }
   }
+
+  if (take_launch_shortcut()) return;
 
 #ifdef __EMSCRIPTEN__
   // A leaderboard WATCH deep link (/play/?replay=<season>/<run_id>):
@@ -1378,7 +1424,7 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 
 void Menu::keyboard_up(unsigned char key, int x, int y) {
   key = nav_key(key);  // arrows navigate like WASD
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__IOS__)
   // Touch/mobile — touch_tap and back_pressed() handle ALL interaction
   // (attract dismissal, row selection, confirms). The keys arriving here
   // are only the ones the touch zones synthesize (\r, space, x, p);
@@ -1388,9 +1434,11 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   (void)key;
   return;
 #else
-#ifdef __EMSCRIPTEN__
-  // Touch web: same as mobile — touch_tap owns all interaction and
-  // web_menu_tap() synthesizes a stray keyboard_up('\r') per tap.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+  // Touch web and phones: same as iOS above — touch_tap owns all
+  // interaction (web_menu_tap() and the Android touch zones synthesize
+  // stray key releases per tap). Android on Play Games on PC is not touch
+  // (android_pc.h): there the keyboard drives the menu as on desktop.
   if (is_touch_mode()) return;
 #endif
   nav_input(key, PAD_NONE);
@@ -1590,6 +1638,11 @@ bool Menu::back_pressed() {
 #if defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
     quit_confirm_ = true;
     quit_selection_ = 0;
+#elif defined(__ANDROID__)
+    if (android_pc_mode()) {
+      quit_confirm_ = true;
+      quit_selection_ = 0;
+    }
 #endif
     return true;
   }
@@ -1602,9 +1655,11 @@ bool Menu::back_pressed() {
     return true;
   }
 #if defined(__ANDROID__)
-  // On the car display (Android Auto) backgrounding leaves nothing for the
-  // player to go back to, so root Back asks to quit, like desktop.
-  if (app_on_car_display()) {
+  // Play Games on PC plays like the desktop build: Esc on the root menu asks
+  // QUIT? (YES exits, as on desktop) instead of hiding the window. On the
+  // car display (Android Auto) backgrounding leaves nothing for the player
+  // to go back to, so root Back asks to quit there too.
+  if (android_pc_mode() || app_on_car_display()) {
     quit_confirm_ = true;
     quit_selection_ = 0;
     return true;
@@ -2490,6 +2545,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 13: idx = &handedness_index_;           num = NUM_HANDEDNESS;   break;
     case 14: idx = &hud_size_index_;             num = NUM_HUD_SIZE;     break;
     case 15: idx = &friendly_fire_index_;        num = NUM_FRIENDLY_FIRE; break;
+    case 17: idx = &vibration_index_;            num = NUM_VIBRATION;    break;
     case 16:
       resolution_index_ = resolution_index_for(g_prefs.render_height);  // the port may have put it back
       idx = &resolution_index_;                        num = NUM_RESOLUTION;   break;
@@ -2510,6 +2566,17 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     g_prefs.master_volume = VOLUME_VALUES[master_volume_index_];
     g_prefs.music_volume  = VOLUME_VALUES[music_volume_index_];
     AudioVolume::apply();
+  }
+  if (r.kind == 17) {
+    // Live, with a sample: the buzz is the feedback that it works (and,
+    // on a pad, which pad). Whoever is driving the menu feels it — the
+    // pad that moved the cursor, or the phone on touch.
+    g_prefs.vibration = (vibration_index_ == 1);
+    if (g_prefs.vibration) {
+      if (is_touch_mode()) Haptics::phone(Haptics::PICKUP);
+      for (int i = 0; i < pad_count(); i++)
+        Haptics::pad(pad_id_at(i), Haptics::BOOST);
+    }
   }
 #if defined(NEWTONIA_PORT_RESOLUTION)
   if (r.kind == 16 && g_prefs.render_height != RESOLUTION_HEIGHTS[resolution_index_]) {
@@ -2534,6 +2601,7 @@ void Menu::close_options() {
   g_prefs.hud_scale                    = HUD_SIZE_VALUES[hud_size_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   g_prefs.friendly_fire                = (friendly_fire_index_ == 1);
+  g_prefs.vibration                    = (vibration_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   g_prefs.master_volume                = VOLUME_VALUES[master_volume_index_];
   g_prefs.music_volume                 = VOLUME_VALUES[music_volume_index_];

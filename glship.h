@@ -107,6 +107,9 @@ public:
   // the id may belong to the Steam Input backend.
   void set_controller(PadId pad);
   bool has_controller() const;
+  // Haptics (GLGame::update_haptics): was the ship alive last tick?
+  // -1 until first seen, so a game that opens on a wreck doesn't buzz.
+  int haptic_alive = -1;
   // Which button vocabulary this seat's hints use (pad_style.h): the
   // bound pad's, or — with no pad bound — whatever pad is plugged in.
   PadStyle pad_style() const;

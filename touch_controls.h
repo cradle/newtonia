@@ -8,13 +8,16 @@
 // build's behaviour exactly as before.
 
 #include <SDL.h>
+#include "android_pc.h"
 class StateManager;
 
 // The on-screen joystick/buttons render on the touch platforms; a desktop
 // build draws them only under NEWTONIA_FORCE_TOUCH (the screenshot
 // harness's mobile-store shots, and the existing touch-layout test hook).
 inline bool touch_osd_enabled() {
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__)
+  return !android_pc_mode();   // Play Games on PC: no OSD (android_pc.h)
+#elif defined(__IOS__)
   return true;
 #else
   return SDL_getenv("NEWTONIA_FORCE_TOUCH") != NULL;

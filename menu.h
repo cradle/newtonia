@@ -38,6 +38,7 @@ private:
   // Expiry, or picking any other way into a game, deletes both files.
   int  base_menu_rows() const;  // rows above ONLINE: tutorial?/resume?/continue?/new
   int  continue_row_index() const;  // -1 when hidden
+  bool take_launch_shortcut();       // act on a launcher shortcut (launch_shortcut.h)
   void decline_net_resume();
   void scan_net_resume();
   // ONLINE row (netplay lobby): only on builds with a net backend.
@@ -203,6 +204,7 @@ private:
   int  hud_size_index_       = 0;       // index into HUD_SIZE_VALUES (0=NORMAL=1.0)
   int  camera_index_[MAX_PLAYERS]      = {1, 1, 1, 1};  // per-player: 0=FIXED, 1=ROTATE
   int  friendly_fire_index_  = 0;       // 0=OFF, 1=ON (Preferences::friendly_fire)
+  int  vibration_index_      = 1;       // 0=OFF, 1=ON (Preferences::vibration)
   int  resolution_index_     = 0;       // RESOLUTION_LABELS index (Preferences::render_height; port_display.h)
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
   int  input_index_          = 0;       // 0=TWO HANDS, 1=ONE HAND (Preferences::touch_one_hand)

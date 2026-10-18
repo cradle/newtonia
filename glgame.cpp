@@ -47,6 +47,7 @@
 #include "replay.h"
 #include "teleport.h"
 #include "world_sound.h"
+#include "haptics.h"
 #include "web_control_analytics.h"
 #include <math.h>
 #include <cmath>
@@ -6208,8 +6209,13 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
       // the real pickup's ammo low) and an unrelated host-side pickup could
       // launder a blip through. Keyed per weapon, neither can happen.
       // Consumed on the accepted rise; self-expiring (~1.2 s).
-      if (arg >= 1 && arg < NET_PRIMARY_KINDS)
+      if (arg >= 1 && arg < NET_PRIMARY_KINDS) {
         net_pickup_latch_[arg] = 12;
+        // Ours (a weapon drop the host applied to our ship): buzz like the
+        // arsenal pickups we predict locally do.
+        if (GLShip *lp = local_player())
+          lp->ship->haptic_pending |= 1u << Haptics::PICKUP;
+      }
       break;
     case Net::EV_ROID_BOUNCE:
       // LEGACY decode only (old replay files, old hosts): the superseded
@@ -7367,6 +7373,7 @@ void GLGame::tick_net_client(int delta) {
                 fabsf(pp.y - pk->position.y()) < 0.5f) { already = true; break; }
           if (already) continue;
           pk->apply(pme);
+          pme->haptic_pending |= 1u << Haptics::PICKUP;
           net_predicted_pickups_.push_back(
               {pk->position.x(), pk->position.y(), NET_PICKUP_GRACE_APPLIES});
           if (pme->secondary != pme->secondary_weapons.end()) {
@@ -9209,6 +9216,7 @@ void GLGame::tick(int delta) {
     }
 #endif
   }
+  update_haptics();
   // Replay recording starts on the first tick — the earliest point that
   // knows the game's mode (the net ctors delegate to the offline ctors and
   // set net_mode_ only afterwards). Offline AND online games record
@@ -10992,6 +11000,7 @@ void GLGame::tick(int delta) {
         if(!(*pi)->collected && (*pi)->collide(*(*o)->ship)) {
           (*pi)->collected = true;
           (*pi)->apply((*o)->ship);
+          (*o)->ship->haptic_pending |= 1u << Haptics::PICKUP;
           // The revive targets the fallen PARTNER (the pickup can't see the
           // player list — same pattern as the mini-station reward): put them
           // back on their last life and let the ordinary respawn machinery
@@ -11688,6 +11697,43 @@ void GLGame::update_player_sound_volumes() {
     s->sound_own_cues = mine;
     s->update_boost_volume();
     s->update_missile_fly_volumes();
+  }
+}
+
+void GLGame::haptic_for(GLShip *gs, int event) {
+  Haptics::Event e = (Haptics::Event)event;
+  // The seat's pad when that is what it is flying with; otherwise, on a
+  // touchscreen, the device itself — but only for the one seat the screen
+  // drives (local co-op on a phone means pads for everyone else).
+  if (gs->has_controller() && gs->using_pad()) {
+    Haptics::pad(gs->controller_id(), e);
+  } else if (is_touch_mode() && gs == local_player()) {
+    Haptics::phone(e);
+  }
+}
+
+void GLGame::update_haptics() {
+  // Replays are watching, not flying: nothing buzzes, but the bits still
+  // drain so a later live tick can't replay them.
+  bool live = net_mode_ != NetReplay;
+  GLShip *local = local_player();
+  bool cleared_edge = level_cleared && haptic_cleared_ == 0;
+  haptic_cleared_ = level_cleared ? 1 : 0;
+  for (auto *gs : *players) {
+    Ship *s = gs->ship;
+    uint32_t bits = s->haptic_pending;
+    s->haptic_pending = 0;
+    int alive = s->is_alive() ? 1 : 0;
+    if (gs->haptic_alive == 1 && !alive) bits |= 1u << Haptics::DEATH;
+    gs->haptic_alive = alive;
+    if (cleared_edge && alive) bits |= 1u << Haptics::LEVEL_CLEAR;
+    // Online, only the ship this machine flies; offline every seat is ours.
+    bool mine = all_players_local() || gs == local;
+    if (!live || !mine || !bits) continue;
+    // One buzz per tick: the strongest event wins.
+    for (int e = Haptics::EVENT_COUNT - 1; e >= 0; e--) {
+      if (bits & (1u << e)) { haptic_for(gs, e); break; }
+    }
   }
 }
 
@@ -13450,10 +13496,11 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   }
   if (host_keys && key == (unsigned char)gk.time_reset) time_between_steps = step_size;
   if (key == (unsigned char)gk.pause) toggle_pause(true, true);
-#if !defined(__ANDROID__) && !defined(__IOS__)
+#if !defined(__IOS__)
   // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
   // controller-first, and the keyboard has no third layout to hand out.
-  // Never on a touch screen, which is how the phone apps compile it out:
+  // Never on a touch screen (iOS compiles it out; Android keeps it for
+  // Play Games on PC, where is_touch_mode() is false — android_pc.h):
   // the web OSD forwards every tap as touch_tap + a '\r' release
   // (web_main.cpp web_menu_tap), so each one-hand tap seated a player 2
   // split screen with no input to fly it (field, web on a phone,

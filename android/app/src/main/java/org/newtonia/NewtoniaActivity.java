@@ -14,6 +14,9 @@ import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.provider.Settings;
 import android.system.Os;
 import android.util.Log;
@@ -64,6 +67,38 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // Haptics (haptics.cpp): one short buzz on the phone's own motor, called
+    // from the game thread over JNI. amplitude is 1..255, used where the
+    // motor can vary it. Never throws back into native code.
+    private Vibrator mVibrator;
+
+    @SuppressWarnings("deprecation")
+    public void vibrate(int ms, int amplitude) {
+        try {
+            if (mVibrator == null) {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    VibratorManager vm =
+                        (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                    if (vm != null) mVibrator = vm.getDefaultVibrator();
+                } else {
+                    mVibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                }
+            }
+            Vibrator v = mVibrator;
+            if (v == null || !v.hasVibrator() || ms <= 0) return;
+            if (Build.VERSION.SDK_INT >= 26) {
+                int amp = v.hasAmplitudeControl()
+                    ? Math.max(1, Math.min(255, amplitude))
+                    : VibrationEffect.DEFAULT_AMPLITUDE;
+                v.vibrate(VibrationEffect.createOneShot(ms, amp));
+            } else {
+                v.vibrate(ms);
+            }
+        } catch (Exception e) {
+            Log.w("Newtonia", "vibrate failed: " + e);
+        }
+    }
+
     // Android Auto (parked games, PR #586) runs the activity on the car's
     // projected display, not the phone's own, and every frame we present
     // goes through Android Auto's video encoder before the car shows it.
@@ -85,6 +120,38 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // High refresh rate: a 90/120 Hz phone hands an app 60 Hz unless the
+    // window asks for more, so ask for the display's fastest mode at the
+    // current resolution. The game loop takes wall-clock deltas and draws
+    // once per vsync, so the sim runs at the same speed and only the
+    // picture gets smoother. Not on a car's display (car_display_sync in
+    // android_main.cpp paces that one itself). The system can still hold
+    // the rate down (battery saver, thermal limits, a user's 60 Hz
+    // setting); this is a request, never a requirement.
+    private void requestHighRefreshRate() {
+        try {
+            Display d = getWindowManager().getDefaultDisplay();
+            if (d == null || d.getDisplayId() != Display.DEFAULT_DISPLAY) return;
+            Display.Mode cur = d.getMode();
+            Display.Mode best = cur;
+            for (Display.Mode m : d.getSupportedModes()) {
+                if (m.getPhysicalWidth() != cur.getPhysicalWidth()
+                    || m.getPhysicalHeight() != cur.getPhysicalHeight()) continue;
+                if (m.getRefreshRate() > best.getRefreshRate() + 0.5f) best = m;
+            }
+            android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+            if (lp.preferredDisplayModeId != best.getModeId()) {
+                lp.preferredDisplayModeId = best.getModeId();
+                getWindow().setAttributes(lp);
+            }
+            Log.i("Newtonia", "refresh: asked for " + best.getRefreshRate() + " Hz at "
+                  + best.getPhysicalWidth() + "x" + best.getPhysicalHeight()
+                  + " (display was " + cur.getRefreshRate() + " Hz)");
+        } catch (Exception e) {
+            Log.w("Newtonia", "refresh request failed: " + e);
+        }
+    }
+
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
@@ -100,6 +167,24 @@ public class NewtoniaActivity extends SDLActivity {
     // (android_main.cpp → Invites::note_accepted). Invite entry points first
     // check SDL's library-load/version status before calling native code.
     private static native void nativeAcceptInvite(String code);
+
+    // Launcher shortcuts (res/xml/shortcuts.xml): hands the tapped one's id
+    // to launch_shortcut.cpp, which Menu::tick acts on. Cold launch from
+    // onCreate, warm from onNewIntent.
+    private static native void nativeLaunchShortcut(String id);
+
+    static final String SHORTCUT_ACTION = "org.newtonia.SHORTCUT";
+
+    private void handleShortcutIntent(Intent intent) {
+        if (intent == null || !SHORTCUT_ACTION.equals(intent.getAction())) return;
+        String id = intent.getStringExtra("shortcut");
+        if (id == null || id.isEmpty() || SDLActivity.mBrokenLibraries) return;
+        try {
+            nativeLaunchShortcut(id);
+        } catch (UnsatisfiedLinkError error) {
+            Log.w("Newtonia", "Shortcut handoff failed: native symbol unavailable", error);
+        }
+    }
 
     // TEST-SLICE-BEGIN: android_install_referrer.py
     // Pull ?code= out of a https://newtonia.metonymous.com/join?code=XXXX
@@ -318,10 +403,27 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // Google Play Games on PC (the Windows client): export NEWTONIA_PC_MODE=1
+    // so the native side plays like the desktop build — keyboard and mouse,
+    // no touch OSD (android_pc.h). HPE_EXPERIENCE is Google's documented
+    // system feature for that client. Skipped if already set, so a debug
+    // APK's adb --es NEWTONIA_PC_MODE 1 (or 0) forces either layout.
+    private void exportPcMode() {
+        try {
+            if (Os.getenv("NEWTONIA_PC_MODE") != null) return;
+            if (getPackageManager().hasSystemFeature(
+                    "com.google.android.play.feature.HPE_EXPERIENCE"))
+                Os.setenv("NEWTONIA_PC_MODE", "1", true);
+        } catch (Exception ignored) {
+            // Best-effort: native falls back to the touch build.
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         applyEnvExtras(getIntent());
         exportDeviceName();
+        exportPcMode();
         super.onCreate(savedInstanceState);
 
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
@@ -337,6 +439,7 @@ public class NewtoniaActivity extends SDLActivity {
         }
 
         updateSafeInsets();
+        requestHighRefreshRate();
 
         // Report soft-keyboard coverage on every layout pass: the visible
         // display frame shrinks by the keyboard's height while it is up
@@ -362,6 +465,7 @@ public class NewtoniaActivity extends SDLActivity {
 
         // Cold launch from a tapped join link.
         handleInviteIntent(getIntent());
+        handleShortcutIntent(getIntent());
 
         // First launch after a Play Store install: recover a join code that
         // rode the install referrer (async; no-op on every later launch).
@@ -378,6 +482,7 @@ public class NewtoniaActivity extends SDLActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleInviteIntent(intent);
+        handleShortcutIntent(intent);
     }
 
     // LAN co-op discovery (net_lan.cpp): Android wifi drivers filter
@@ -398,6 +503,9 @@ public class NewtoniaActivity extends SDLActivity {
         // Cloud sync (cloud_sync.h): re-read the Play Games saved game, in
         // case another device pushed while the game was away.
         PlayGamesSaves.onResume(this);
+        // The display may have changed while away (a foldable's other
+        // screen, a mode the system switched); ask again.
+        requestHighRefreshRate();
         try {
             if (multicastLock == null) {
                 WifiManager wm = (WifiManager)
