@@ -1,3 +1,4 @@
+#include "launch_shortcut.h"
 #include "typer.h"
 #include "asset_path.h"
 #include "audio_volume.h"
@@ -1265,6 +1266,39 @@ void Menu::refresh_from_cloud() {
   if (had_save != has_save_ || was_new != new_player_) menu_selection = 0;
 }
 
+// A launcher shortcut (long press on the app icon, launch_shortcut.h)
+// acts like picking its menu row. Only from the main list: on any other
+// screen, or mid-confirmation, it is dropped rather than tearing that
+// screen down. Returns true when it started a state change.
+bool Menu::take_launch_shortcut() {
+  LaunchShortcut::Kind k = LaunchShortcut::take();
+  if (k == LaunchShortcut::NONE) return false;
+  if (options_mode_ || replays_mode_ || stats_mode_ || board_mode_ ||
+      quit_confirm_ || new_confirm_)
+    return false;
+  attract_mode_ = false;
+  switch (k) {
+  case LaunchShortcut::CONTINUE:
+    // No save: the menu itself is the best answer.
+    if (continue_row_index() < 0) return false;
+    menu_selection = continue_row_index();
+    break;
+  case LaunchShortcut::NEW_GAME:
+    // The NEW GAME row (the last of the game-entry rows). Over a save it
+    // opens the same "New game?" question the row does, NO highlighted.
+    menu_selection = base_menu_rows() - 1;
+    break;
+  case LaunchShortcut::ONLINE:
+    if (online_row_index() < 0) return false;
+    menu_selection = online_row_index();
+    break;
+  default:
+    return false;
+  }
+  confirm_selection(PAD_NONE);
+  return true;
+}
+
 void Menu::tick(int delta) {
   refresh_from_cloud();
   // Leaderboard screen: drive the fetch/upload socket. May hand the state
@@ -1291,6 +1325,8 @@ void Menu::tick(int delta) {
       }
     }
   }
+
+  if (take_launch_shortcut()) return;
 
 #ifdef __EMSCRIPTEN__
   // A leaderboard WATCH deep link (/play/?replay=<season>/<run_id>):

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcuts: long-press the app icon (or drag one to the home
+     screen). Each launches NewtoniaActivity with a SHORTCUT action carrying
+     its id; NewtoniaActivity.handleShortcutIntent hands the id to the native
+     side (launch_shortcut.h) and Menu::take_launch_shortcut acts on it like
+     the matching menu row. Ids are the contract: keep them in step with
+     LaunchShortcut::note. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="continue"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_continue">
+        <intent
+            android:action="org.newtonia.SHORTCUT"
+            android:targetPackage="org.newtonia"
+            android:targetClass="org.newtonia.NewtoniaActivity">
+            <extra android:name="shortcut" android:value="continue" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_game"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_new_game">
+        <intent
+            android:action="org.newtonia.SHORTCUT"
+            android:targetPackage="org.newtonia"
+            android:targetClass="org.newtonia.NewtoniaActivity">
+            <extra android:name="shortcut" android:value="new_game" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="online"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_online">
+        <intent
+            android:action="org.newtonia.SHORTCUT"
+            android:targetPackage="org.newtonia"
+            android:targetClass="org.newtonia.NewtoniaActivity">
+            <extra android:name="shortcut" android:value="online" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -12,6 +12,7 @@
 #include "achievements.h"
 #include "cloud_sync.h"
 #include "haptics.h"
+#include "launch_shortcut.h"
 #include "keyboard_seen.h"
 #include "gles2_compat.h"
 #include "state_manager.h"
@@ -357,6 +358,19 @@ Java_org_newtonia_NewtoniaActivity_nativeAcceptInvite(JNIEnv *env, jclass, jstri
     if (c) {
         Invites::note_accepted(c);
         env->ReleaseStringUTFChars(code, c);
+    }
+}
+
+// Launcher shortcut (long press on the app icon, res/xml/shortcuts.xml):
+// NewtoniaActivity passes the tapped shortcut's id; Menu::tick acts on it.
+// Called on the Android UI thread; LaunchShortcut::note locks.
+extern "C" JNIEXPORT void JNICALL
+Java_org_newtonia_NewtoniaActivity_nativeLaunchShortcut(JNIEnv *env, jclass, jstring id) {
+    if (!id) return;
+    const char *c = env->GetStringUTFChars(id, NULL);
+    if (c) {
+        LaunchShortcut::note(c);
+        env->ReleaseStringUTFChars(id, c);
     }
 }
 
