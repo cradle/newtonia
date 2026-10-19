@@ -7,6 +7,7 @@
 #include "preferences.h"
 #include "touch_controls.h"
 #include "typer.h"
+#include "pad_style.h"
 #include "mesh.h"
 #include "mat4.h"
 #include "gl_compat.h"
@@ -532,21 +533,31 @@ bool Tutorial::touch_tap(GLGame &g, float nx, float ny) {
 
 // ---- wording --------------------------------------------------------------
 
+// A pad button as the tutorial copy names it: a face button (A, or a
+// PlayStation shape) circled like the physical button, the way the F1
+// card draws it (Typer::BUTTON_MARK); a word (LB, START, LEFT STICK)
+// stays plain text, as it does there.
+static std::string pad_label(const GLShip *gs, PadAction a) {
+  const char *s = gs->pad_hint(a);
+  if (pad_label_is_face(s)) return std::string(1, Typer::BUTTON_MARK) + s;
+  return s;
+}
+
 std::string Tutorial::label(const GLGame &g, int action) const {
   GLShip *gs = pilot(g);
   if (gs && gs->using_pad()) {
     switch (action) {
       case A_LEFT: case A_RIGHT: case A_STEER: case A_THRUST: case A_REVERSE:
-        return gs->pad_hint(PAD_ACT_STEER);
-      case A_FIRE:           return gs->pad_hint(PAD_ACT_FIRE);
-      case A_BOOST:          return gs->pad_hint(PAD_ACT_BOOST);
-      case A_SECONDARY:      return gs->pad_hint(PAD_ACT_SECONDARY);
-      case A_HELP:           return gs->pad_hint(PAD_ACT_HELP);
-      case A_PAUSE:          return gs->pad_hint(PAD_ACT_PAUSE);
-      case A_ROTATE:         return gs->pad_hint(PAD_ACT_ROTATE_VIEW);
-      case A_MENU:           return gs->pad_hint(PAD_ACT_MENU);
-      case A_NEXT_WEAPON:    return gs->pad_hint(PAD_ACT_NEXT_WEAPON);
-      case A_NEXT_SECONDARY: return gs->pad_hint(PAD_ACT_NEXT_SECONDARY);
+        return pad_label(gs, PAD_ACT_STEER);
+      case A_FIRE:           return pad_label(gs, PAD_ACT_FIRE);
+      case A_BOOST:          return pad_label(gs, PAD_ACT_BOOST);
+      case A_SECONDARY:      return pad_label(gs, PAD_ACT_SECONDARY);
+      case A_HELP:           return pad_label(gs, PAD_ACT_HELP);
+      case A_PAUSE:          return pad_label(gs, PAD_ACT_PAUSE);
+      case A_ROTATE:         return pad_label(gs, PAD_ACT_ROTATE_VIEW);
+      case A_MENU:           return pad_label(gs, PAD_ACT_MENU);
+      case A_NEXT_WEAPON:    return pad_label(gs, PAD_ACT_NEXT_WEAPON);
+      case A_NEXT_SECONDARY: return pad_label(gs, PAD_ACT_NEXT_SECONDARY);
     }
     return "?";
   }
@@ -722,11 +733,11 @@ static void draw_beacon(float cx, float cy, float phase, bool skip) {
 
 // Half the ink width of a centred Typer line, in virtual units: n glyphs
 // at a 2*size advance with 1*size of ink each span (2n - 1) * size (the
-// centring skips apostrophes, so the count does too).
+// centring skips apostrophes and button marks, so the count does too).
 static float text_half_w(const std::string &t, float size) {
   int n = 0;
   for (size_t i = 0; i < t.size(); i++)
-    if (t[i] != '\'') n++;
+    if (t[i] != '\'' && t[i] != Typer::BUTTON_MARK) n++;
   return n > 0 ? size * (n - 0.5f) : 0.0f;
 }
 
