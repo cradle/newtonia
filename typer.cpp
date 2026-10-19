@@ -9,6 +9,7 @@
 #include <math.h>
 #include <set>
 #include <string>
+#include <vector>
 #include "glship.h"
 #include "gl_compat.h"
 #include "mat4.h"
@@ -141,7 +142,7 @@ void Typer::draw_centered(float x, float y, const char * text, float size, int t
   // centering width must not count them either.
   size_t n = 0;
   for (const char *c = text; *c; c++)
-    if (*c != '\'') n++;
+    if (*c != '\'' && *c != BUTTON_MARK) n++;
   draw(x-size*(n+0.5)+size, y, text, size, time);
 }
 
@@ -193,6 +194,31 @@ void Typer::draw_centered_verified(float x, float y, const char *text,
 
 void Typer::draw(float x, float y, const char * text, float size, int time) {
   if (!meshes_initialized) init_meshes();
+  // Inline buttons: draw the line with each marked character blanked (so
+  // the rest still takes the cached whole-string mesh), then ring each
+  // button in the column it left.
+  if (strchr(text, BUTTON_MARK)) {
+    std::string plain;
+    std::vector<std::pair<unsigned int, char> > buttons;
+    unsigned int col = 0;
+    for (const char *c = text; *c; c++) {
+      if (*c == '\'') { plain += *c; continue; }  // no column, as below
+      if (*c == BUTTON_MARK && c[1]) {
+        c++;
+        buttons.push_back(std::make_pair(col, *c));
+        plain += ' ';
+      } else if (*c == BUTTON_MARK) {
+        continue;  // a trailing mark marks nothing
+      } else {
+        plain += *c;
+      }
+      col++;
+    }
+    draw(x, y, plain.c_str(), size, time);
+    for (size_t i = 0; i < buttons.size(); i++)
+      draw_button(x + buttons[i].first * size * 2, y, buttons[i].second, size);
+    return;
+  }
   // Whole string as one cached mesh where possible: one thick-line draw
   // instead of one per character. string_mesh() returns NULL for strings
   // containing the animated char — those take the per-char path below.

@@ -44,6 +44,14 @@ public:
   // peer cannot smuggle this character into a display name and fake an
   // attestation. It is also absent from net_name_char_drawable's whitelist.
   static const char VERIFIED_TICK = '\x01';
+  // Inline controller button: this byte before a face-button label's one
+  // character ("press " + BUTTON_MARK + "A") draws that character circled
+  // by draw_button, in the column it would have taken as plain text — the
+  // physical-button look of the F1 card, inside a sentence. The mark takes
+  // no column of its own (draw_centered skips it), and the button's
+  // neighbours in a hint are spaces, which the ring's overhang fills.
+  // Another CONTROL byte, so like the tick a peer name can never carry one.
+  static const char BUTTON_MARK = '\x06';
   static const int original_window_width, original_window_height;
   static float scaled_window_width, scaled_window_height;
   static int window_width, window_height;
