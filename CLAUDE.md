@@ -21,8 +21,10 @@ Every change to the shared game code is made in this repo first, through a
 PR here, even when it was found on a port such as the Xbox UWP or GDK build.
 The private `cradle/newtonia-xbox` takes it by merging upstream `master`
 (its `sync-upstream` skill), never by copying or re-applying the change by
-hand. Only port-only material (its `uwp/`, packaging, GDK backends and fork
-workflows) is changed there directly.
+hand. Only port-only material (its `uwp/`, the console entry point
+`xbox_main.cpp`, packaging, GDK backends and fork workflows) is changed there
+directly. `xbox_main.cpp` became fork-only on 2026-10-19: this repo's copy
+stays frozen (it still feeds the two xbox CI canaries), so don't edit it here.
 
 ## Project Overview
 
