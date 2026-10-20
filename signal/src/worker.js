@@ -322,6 +322,12 @@ async function turn_ice_servers(env) {
   // TURN kill switch: `wrangler secret put TURN_OFF` cuts the metered relay
   // bandwidth (STUN-only) while signaling keeps working. Delete to restore.
   if (env.TURN_OFF) return [];
+  // Dev/test hook (a wrangler dev --var, like FAKE_VERIFY; never set on a
+  // deployed worker): mint a placeholder server so the protocol tests can
+  // see WHICH joins get TURN without contacting Cloudflare.
+  if (env.FAKE_TURN === "1")
+    return [{ urls: "turn:fake.invalid:3478", username: "fake",
+              credential: "fake" }];
   if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return [];
   // Automatic monthly budget (see turn_budget_ok above): past the cap the
   // free account must not mint. Same STUN-only degradation as TURN_OFF.

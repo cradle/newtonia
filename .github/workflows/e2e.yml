@@ -102,6 +102,19 @@ jobs:
           node test/frame_bounds_test.mjs
           node test/reclaim_chain_test.mjs
           kill $DEV_PID
+          # Which joins get TURN: its own server with FAKE_TURN, since the
+          # placeholder ice frames would reorder the tests above.
+          npx wrangler@4 dev --local --port 8789 --var FAKE_TURN:1 \
+              --var RATE_HOST_LIMIT:200 --var RATE_JOIN_LIMIT:500 \
+              > wrangler-dev-turn.log 2>&1 &
+          DEV_PID=$!
+          for i in $(seq 1 60); do
+            curl -s -o /dev/null http://127.0.0.1:8789/ && break
+            kill -0 $DEV_PID 2>/dev/null || { echo "wrangler dev died:"; cat wrangler-dev-turn.log; exit 1; }
+            sleep 1
+          done
+          SIGNAL_TEST_URL=ws://127.0.0.1:8789/ws node test/rejoin_turn_test.mjs
+          kill $DEV_PID
 
       - name: Board unit tests
         working-directory: board
