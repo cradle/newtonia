@@ -364,7 +364,10 @@ void Overlay::net_overlays(const GLGame *glgame) {
                                   glgame->net_id_ctx()) +
              " DISCONNECTED";
     }
-    Typer::draw_centered(0, vh * 0.80f, head.c_str(), 20);
+    // Shown for a few seconds after the drop, not for the whole wait
+    // (net_lost_notice_ms_); the room code below stays up.
+    if (glgame->net_lost_notice_ms_ > 0)
+      Typer::draw_centered(0, vh * 0.80f, head.c_str(), 20);
     // The room line itself is the always-on one above — this branch used to
     // draw its own copy, which is why the code only ever appeared here.
     if (glgame->net_lan_door_open())
@@ -469,8 +472,10 @@ void Overlay::net_overlays(const GLGame *glgame) {
     }
     // The same banner-spot rule as the generation banner: with the
     // countdown stack dropped this header's old fixed vh*0.55 sat on the
-    // god-mode seconds — and this notice is PERSISTENT, not a 2 s flash.
-    Typer::draw_centered(0, banner_spot_y(glgame), head.c_str(), 20);
+    // god-mode seconds. Shown for a few seconds after the drop
+    // (net_lost_notice_ms_), not for the whole rejoin wait.
+    if (glgame->net_lost_notice_ms_ > 0)
+      Typer::draw_centered(0, banner_spot_y(glgame), head.c_str(), 20);
     if (glgame->net_signal_ && !show_room) {
       // Only when the always-on room line is NOT already up (it nearly
       // always is here — a worker session has a code and the game plays

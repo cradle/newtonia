@@ -1100,6 +1100,15 @@ private:
   // the session away. Stale entries are cleared on the first key-down
   // after the link is healthy again.
   std::set<unsigned char> net_card_pressed_;
+  // Host: the "<NAME> DISCONNECTED" header shows for NET_LOST_NOTICE_MS
+  // after a seat drops, then clears (field request, 2026-10-20: it used to
+  // stay up for the whole rejoin wait, over live play). Re-armed whenever a
+  // seat that was not already lost drops; net_lost_notice_tick keeps the
+  // mask of seats it has announced.
+  static const int NET_LOST_NOTICE_MS = 5000;
+  int net_lost_notice_ms_ = 0;
+  unsigned net_lost_seen_mask_ = 0;
+  void net_lost_notice_tick(int delta);
   int net_banner_ms_ = 0;
   std::string net_banner_text_;
   // True for the "<NAME> RECONNECTED" notice: drawn up top at the
