@@ -22,7 +22,7 @@
 //       the platform's, and is only dropped by an explicit finish_close().
 //
 // Run: node test/room_unit_test.mjs
-import { Room } from "../src/worker.js";
+import { Room, join_should_mint } from "../src/worker.js";
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -425,6 +425,31 @@ const frame = (o) => JSON.stringify(o);
   await room.webSocketMessage(h2, frame({ t: "seats", free: 0 }));
   j = await join();
   check("seats: the reclaimed host's report is enforced again", j.full && !j.joined);
+}
+
+// ---- A rejoin during the host's reclaim grace still gets TURN -------------
+{
+  const { room } = await make_room();
+  const h = await host(room);
+  const exists = async () =>
+      (await room.fetch(new Request("https://room/exists"))).json();
+  let ex = await exists();
+  check("grace: a live host is not in grace", ex.host === true && ex.grace === false,
+        JSON.stringify(ex));
+  check("grace: a join to a live host mints", join_should_mint(ex, false));
+  h.drop();
+  await room.drop_host(h);
+  ex = await exists();
+  check("grace: a dropped host reports grace", ex.host === false && ex.grace === true,
+        JSON.stringify(ex));
+  check("grace: a REJOIN during grace mints", join_should_mint(ex, true));
+  check("grace: a fresh join during grace does not", !join_should_mint(ex, false));
+  check("grace: a full room never mints",
+        !join_should_mint({ host: true, grace: false, full: true }, true));
+  clock = room.r.host_lost_at + 2 * 60 * 1000;
+  ex = await exists();
+  check("grace: past the window there is nothing to mint for",
+        ex.grace === false && !join_should_mint(ex, true), JSON.stringify(ex));
 }
 
 Date.now = real_now;
