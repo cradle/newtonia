@@ -492,7 +492,12 @@ export default {
       // through to the real /join, which emits the proper error.
       let ice = [];
       try {
-        const pre = await room.fetch(new Request("https://room/exists"));
+        // The rejoin flag rides the probe too, so `full` exempts it exactly
+        // as /join does: a live host still reporting 0 free seats hasn't
+        // noticed the loss yet, and admitting the rejoin while minting it
+        // nothing left a relay-only peer STUN-only (review on #617).
+        const pre = await room.fetch(new Request(
+            "https://room/exists" + (is_rejoin ? "?rejoin=1" : "")));
         const st = await pre.json();
         if (join_should_mint(st, is_rejoin)) ice = await turn_ice_servers(env);
       } catch (e) {}
@@ -709,7 +714,8 @@ export class Room {
           JSON.stringify({ host: !!this.r.host_token && !!this.hostWs(),
                            grace: !!this.in_grace(now),
                            joiner: n > 0,
-                           joiners: n, full: this.room_full(false) }),
+                           joiners: n,
+                           full: this.room_full(url.searchParams.get("rejoin") === "1") }),
           { headers: { "Content-Type": "application/json" } });
     }
 

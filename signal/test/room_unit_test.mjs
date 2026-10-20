@@ -386,6 +386,9 @@ const frame = (o) => JSON.stringify(o);
         JSON.stringify(j.se && j.se.sent));
   const ex = await (await room.fetch(new Request("https://room/exists"))).json();
   check("seats: /exists reports full", ex.full === true && ex.joiners === 0, JSON.stringify(ex));
+  const exr = await (await room.fetch(new Request("https://room/exists?rejoin=1"))).json();
+  check("seats: /exists?rejoin=1 is not full, so the rejoin is minted TURN",
+        exr.full === false && join_should_mint(exr, true), JSON.stringify(exr));
   j = await join("&rejoin=1");
   check("seats: a rejoin is exempt from the host's count", j.joined && !j.full,
         JSON.stringify(j.se && j.se.sent));

@@ -2,7 +2,8 @@
 // (join_should_mint). Before this, a host that dropped its socket (a
 // console suspending, a phone backgrounded) left its auto-rejoining peer
 // STUN-only, and a relay-only or hard-NAT client sat out a 40 s ICE
-// timeout (Xbox dev kit, 2026-10-20).
+// timeout (Xbox dev kit, 2026-10-20). The same holds for a rejoin to a live
+// host whose seat count still reads full.
 //
 // Run against its OWN `wrangler dev --local --port 8789 --var FAKE_TURN:1`
 // (SIGNAL_TEST_URL=ws://127.0.0.1:8789/ws), which mints a placeholder
@@ -27,6 +28,20 @@ const { host, code } = await host_room();
 let f = await join_frames(`?role=join&code=${code}`);
 check("live host: join admitted", joined(f));
 check("live host: join gets TURN", turn_count(f) > 0);
+await host._drain();
+
+// A live host still reporting no free seats (it hasn't noticed its peer
+// dropped yet): the rejoin is admitted, so it must get TURN too.
+host.send(JSON.stringify({ t: "seats", free: 0 }));
+await t(300);
+f = await join_frames(`?role=join&code=${code}&rejoin=1`);
+check("live host, 0 seats: rejoin admitted", joined(f));
+check("live host, 0 seats: rejoin gets TURN", turn_count(f) > 0);
+f = await join_frames(`?role=join&code=${code}`);
+check("live host, 0 seats: fresh join refused", !joined(f));
+check("live host, 0 seats: fresh join gets no TURN", turn_count(f) === 0);
+host.send(JSON.stringify({ t: "seats", free: 1 }));
+await t(300);
 await host._drain();
 
 host.close();
