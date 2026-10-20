@@ -3,6 +3,7 @@
 #include "glship.h"
 #include "asteroid.h"
 #include "missile_pickup.h"
+#include "weapon/missile.h"
 #include "menu_select.h"
 #include "preferences.h"
 #include "touch_controls.h"
@@ -383,7 +384,9 @@ void Tutorial::spawn_practice_asteroids(GLGame &g) {
   f = Point(-flight.y(), flight.x());
   const float dist = std::min(420.0f, 0.6f * view_half_min(g.window, gs));
   for (int i = 0; i < PRACTICE_ROCKS; i++) {
-    float a = (i - (PRACTICE_ROCKS - 1) * 0.5f) * 30.0f * DEG;
+    // 20 degrees apart: at 30 the outer rock rose under the banner card
+    // on a 720-line window once the cards grew to one instruction a line.
+    float a = (i - (PRACTICE_ROCKS - 1) * 0.5f) * 20.0f * DEG;
     float dx = f.x() * cosf(a) - f.y() * sinf(a);
     float dy = f.x() * sinf(a) + f.y() * cosf(a);
     Asteroid *rock = new Asteroid(false);
@@ -585,8 +588,8 @@ std::string Tutorial::label(const GLGame &g, int action) const {
 }
 
 void Tutorial::banner_lines(const GLGame &g, std::string &title,
-                            std::string &l1, std::string &l2,
-                            std::string &l3) const {
+                            std::vector<BannerLine> &body,
+                            std::vector<std::string> &footer) const {
   GLShip *gs = pilot(g);
   bool pad = pad_pilot(g);
   // A phone pilot on a Bluetooth pad reads the pad's buttons, not the
@@ -594,92 +597,111 @@ void Tutorial::banner_lines(const GLGame &g, std::string &title,
   bool touch = is_touch_mode() && !pad;
   bool one_hand = touch && touch_one_handed();
   bool rotate = gs ? gs->rotate_view() : true;
-  // Terse by design (field, 2026-09-21): a control, a dash, the goal.
-  std::string leave = touch ? "" : label(g, A_MENU) + ": menu";
-  if (skip_on_)
-    leave = touch ? "red beacon skips"
-                  : "red beacon skips - " + leave;
-  std::string stick = pad ? label(g, A_STEER) : "joystick";
+  // One instruction per line, each a plain sentence naming the control
+  // and what it does (field, 2026-10-20: "don't put more than one
+  // instruction on one line"). Status lines carry no bullet.
+  auto say = [&](const std::string &t) { body.push_back(BannerLine{t, true}); };
+  auto note = [&](const std::string &t) { body.push_back(BannerLine{t, false}); };
+  // The fire control, as a verb phrase: "press SPACE", "tap the red
+  // circle" — every "do X to Y" line on these cards starts with it.
+  std::string fire = one_hand ? "tap the screen"
+                   : touch    ? "tap the red circle"
+                              : "press " + label(g, A_FIRE);
+  // The steering control, for the stick-shaped inputs.
+  std::string stick = pad ? label(g, A_STEER) : "the joystick";
+  // The ways out, smallest and last. Touch has no quit key: the pause
+  // screen's EXIT TO MENU is where the DONE card points.
+  if (skip_on_ && step_ != WRAP && step_ != DONE)
+    footer.push_back("fly into the red beacon to skip");
+  if (!touch && step_ != WRAP && step_ != DONE)
+    footer.push_back(label(g, A_MENU) + " quits the tutorial");
   char buf[96];
   switch (step_) {
     case LAUNCH:
       title = "WELCOME";
-      l1 = one_hand ? "tap to launch"
-         : touch    ? "tap the red circle to launch"
-                    : "press " + label(g, A_FIRE) + " to launch";
-      l3 = leave;
+      say(fire + " to launch");
       break;
     case TURN:
       title = "TURN";
-      l1 = one_hand ? "drag sideways - point at the beacon"
-         : (touch || pad) ? stick + " left or right - point at the beacon"
-                    : label(g, A_STEER) + " - point at the beacon";
-      snprintf(buf, sizeof buf, "beacon %d of 2%s", beacons_hit_ + 1,
-               camera_rounds_ > 0
-                   ? (rotate ? " - the view turns with you"
-                             : " - the view holds still")
-                   : "");
-      l2 = buf;
-      l3 = leave;
+      say(one_hand ? "drag left or right to turn"
+         : touch    ? "push the joystick left or right to turn"
+         : pad      ? "turn with " + stick
+                    : "turn with " + label(g, A_LEFT) + " and " +
+                      label(g, A_RIGHT));
+      // The nose has to STOP on it: a held turn sweeps straight through
+      // the window (ALIGN_HOLD_MS), so "point at" alone read as a sweep.
+      say("stop with your nose on the blue beacon");
+      snprintf(buf, sizeof buf, "beacon %d of 2", beacons_hit_ + 1);
+      note(buf);
+      // A second lap after TRY on the camera prompt: say why it repeats.
+      if (camera_rounds_ > 0)
+        note(rotate ? "camera: ROTATING - the view turns with you"
+                    : "camera: FIXED - the view stays still");
       break;
     case THRUST:
       title = "THRUST";
-      l1 = one_hand ? "drag up - fly through the beacon"
-         : (touch || pad) ? stick + " up - fly through the beacon"
-                    : label(g, A_THRUST) + " - fly through the beacon";
-      l2 = one_hand ? "drag down to brake"
-         : (touch || pad) ? stick + " down to brake"
-                    : label(g, A_REVERSE) + " brakes";
-      if (thrust_ms_ > 1500) l2 += " - watch the heat bar";
-      l3 = leave;
+      say(one_hand ? "drag up to thrust"
+         : (touch || pad) ? "push " + stick + " up to thrust"
+                    : "hold " + label(g, A_THRUST) + " to thrust");
+      say("fly through the blue beacon");
+      say(one_hand ? "drag down to slow down"
+         : (touch || pad) ? "pull " + stick + " down to slow down"
+                    : "hold " + label(g, A_REVERSE) + " to slow down");
+      if (thrust_ms_ > 1500) say("watch the heat bar, bottom left");
       break;
     case CAMERA:
       title = "CAMERA";
       break;  // the prompt draws itself
     case FIRE: {
       title = "FIRE";
-      l1 = one_hand ? "tap to fire - destroy the asteroids"
-         : touch    ? "red circle - destroy the asteroids"
-                    : label(g, A_FIRE) + " - destroy the asteroids";
+      say(fire + " to fire");
+      say("destroy 3 asteroids");
       int kills = gs ? gs->ship->asteroid_kills - kills_at_entry_ : 0;
       if (kills > PRACTICE_KILLS) kills = PRACTICE_KILLS;
-      snprintf(buf, sizeof buf, "%d of %d", kills, PRACTICE_KILLS);
-      l2 = buf;
-      l3 = leave;
+      snprintf(buf, sizeof buf, "%d of %d destroyed", kills, PRACTICE_KILLS);
+      note(buf);
       break;
     }
     case BOOST:
       title = "BOOST";
-      l1 = touch ? "amber circle - a burst of speed"
-                 : label(g, A_BOOST) + " - a burst of speed";
-      l2 = "recharges in 2 s";
-      l3 = leave;
+      say((touch ? std::string("tap the amber circle")
+                  : "press " + label(g, A_BOOST)) + " for a burst of speed");
+      note("boost recharges in 2 seconds");
       break;
-    case SECONDARY:
-      title = "SECONDARY";
-      if (gs && gs->ship->has_secondary())
-        l1 = one_hand ? "hold, or the blue button - use the secondary"
-           : touch    ? "blue circle - use the secondary"
-                      : label(g, A_SECONDARY) + " - use the secondary";
-      else
-        l1 = "collect the item ahead";
-      l2 = touch ? "" : label(g, A_NEXT_WEAPON) + " and " +
-                        label(g, A_NEXT_SECONDARY) + " cycle weapons";
-      l3 = leave;
+    case SECONDARY: {
+      title = "SECONDARY WEAPON";
+      Weapon::Base *w = gs ? gs->ship->current_secondary() : NULL;
+      if (!w) {
+        say("fly into the missile item ahead");
+      } else {
+        // The tutorial's item is a missile; a random drop from a practice
+        // rock can equip something else first, and firing that counts too.
+        std::string what = dynamic_cast<Weapon::Missile *>(w) != NULL
+                               ? "the missile" : "your secondary weapon";
+        say((touch ? std::string("tap the blue circle")
+                    : "press " + label(g, A_SECONDARY)) + " to fire " + what);
+      }
       break;
+    }
     case WRAP:
-      title = "ALSO";
-      l1 = touch ? "pause > CONTROLS shows the layout"
-                 : label(g, A_HELP) + " controls - " + label(g, A_PAUSE) +
-                   " pause - " + label(g, A_ROTATE) + " camera";
-      l2 = touch ? "camera: OPTIONS > CAMERA" : "";
-      l3 = touch ? "tap fire to finish" : label(g, A_FIRE) + " to finish";
+      title = "MORE CONTROLS";
+      if (touch) {
+        say("pause > CONTROLS shows the touch layout");
+        say("menu > OPTIONS > CAMERA sets the camera");
+      } else {
+        say(label(g, A_HELP) + " shows every control");
+        say(label(g, A_PAUSE) + " pauses");
+        say(label(g, A_ROTATE) + " switches the camera");
+        say(label(g, A_NEXT_WEAPON) + " changes weapon");
+        say(label(g, A_NEXT_SECONDARY) + " changes secondary weapon");
+      }
+      say(fire + " to continue");
       break;
     case DONE:
-      title = "COMPLETE";
-      l1 = touch ? "tap fire to start your first game"
-                 : label(g, A_FIRE) + " starts your first game";
-      l2 = touch ? "pause > EXIT TO MENU" : label(g, A_MENU) + ": menu";
+      title = "TUTORIAL COMPLETE";
+      say(fire + " to start your first game");
+      say(touch ? "pause > EXIT TO MENU leaves"
+                 : label(g, A_MENU) + " returns to the menu");
       break;
     default:
       break;
@@ -747,7 +769,7 @@ static float text_half_w(const std::string &t, float size) {
 // There the cards draw at twice the size (the touch help card's portrait
 // precedent, view/overlay.cpp), capped so the WIDEST line — given as its
 // half-width at 1x — still clears the screen edge with the card's own
-// padding. Landscape, desktop and pad stay at 1x.
+// padding. Desktop and pad draw at 1.25x (below).
 // Landscape touch is the same problem at a smaller ratio (a 1080 px
 // phone height over the 1200-unit landscape height: 16 px glyphs), so it
 // draws at 1.5x. The banner WRAPS a line the scale would push past the
@@ -759,15 +781,20 @@ static bool portrait() { return Typer::scaled_window_height > 620.0f; }
 static float line_limit() { return Typer::scaled_window_width - 30.0f - 24.0f; }
 static float text_scale() {
   if (portrait()) return 2.0f;
-  return is_touch_mode() ? 1.5f : 1.0f;
+  // Desktop and pad draw at 1.25x: at 1x a 1280x720 window set the
+  // body lines in 9-unit glyphs, small next to the HUD they sit under
+  // (field, 2026-10-20: "simple but easy to read").
+  return is_touch_mode() ? 1.5f : 1.25f;
 }
 // Append `t` to `out` at `size`, split where it would run past the line
 // limit: at the " - " nearest the middle (the copy's control/goal seam),
 // else at the space nearest the middle. Recursive, so a very long line
 // keeps splitting; a single unbreakable word just overruns.
 static void wrap_line(const std::string &t, float size,
-                      std::vector<std::string> &out, std::vector<float> &sizes) {
-  if (text_half_w(t, size) > line_limit()) {
+                      std::vector<std::string> &out, std::vector<float> &sizes,
+                      float limit = -1.0f) {
+  if (limit < 0.0f) limit = line_limit();
+  if (text_half_w(t, size) > limit) {
     size_t mid = t.size() / 2, best = std::string::npos, best_d = t.size();
     const char *seps[2] = {" - ", " "};
     for (int k = 0; k < 2 && best == std::string::npos; k++) {
@@ -778,14 +805,38 @@ static void wrap_line(const std::string &t, float size,
         if (d < best_d) { best_d = d; best = pos; }
       }
       if (best != std::string::npos) {
-        wrap_line(t.substr(0, best), size, out, sizes);
-        wrap_line(t.substr(best + sep_len), size, out, sizes);
+        wrap_line(t.substr(0, best), size, out, sizes, limit);
+        wrap_line(t.substr(best + sep_len), size, out, sizes, limit);
         return;
       }
     }
   }
   out.push_back(t);
   sizes.push_back(size);
+}
+
+// The body's bullet: a filled dot in the text colour, a little under a
+// glyph's half height, centred on (cx, cy) in Typer virtual units — the
+// card's list marker (field, 2026-10-20: "a big point / small circle").
+static void draw_bullet(float cx, float cy, float size) {
+  static MeshBuilder mb;
+  static Mesh mesh;
+  const float *c = Typer::text_colour();
+  float k = Typer::scale;
+  mb.clear();
+  mb.begin(GL_TRIANGLES);
+  mb.color(c[0], c[1], c[2], 1.0f);
+  const int N = 16;
+  float r = 0.55f * size * k;
+  for (int i = 0; i < N; i++) {
+    float a0 = i * 2.0f * (float)M_PI / N, a1 = (i + 1) * 2.0f * (float)M_PI / N;
+    mb.vertex(cx * k, cy * k);
+    mb.vertex(cx * k + cosf(a0) * r, cy * k + sinf(a0) * r);
+    mb.vertex(cx * k + cosf(a1) * r, cy * k + sinf(a1) * r);
+  }
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 }
 
 // A translucent black card behind a block of centred text — the banner
@@ -872,13 +923,13 @@ void Tutorial::draw(const GLGame &g) const {
     switch (step_) {
       case INPUT:
         title = "CONTROLS";
-        question = "one thumb, or stick and buttons?";
+        question = "steer and fire with one thumb, or two?";
         rows[0] = "ONE HAND"; rows[1] = "TWO HANDS";
         break;
       case HAND:
         title = "HANDEDNESS";
         if (one_hand) {
-          question = "which thumb steers?";
+          question = "where does your thumb rest?";
           rows[0] = "LEFT"; rows[1] = "CENTRE"; rows[2] = "RIGHT";
         } else {
           question = "which thumb fires?";
@@ -887,11 +938,12 @@ void Tutorial::draw(const GLGame &g) const {
         break;
       default:
         title = "CAMERA";
-        question = rotate ? "the view turned with you" : "the view held still";
+        question = rotate ? "the view turned with your ship"
+                          : "the view stayed still";
         rows[0] = rotate ? "KEEP ROTATING" : "KEEP FIXED";
         rows[1] = rotate ? "TRY FIXED" : "TRY ROTATING";
         later = touch ? "later: OPTIONS > CAMERA"
-                      : label(g, A_ROTATE) + " switches it in play";
+                      : label(g, A_ROTATE) + " switches the camera in play";
         break;
     }
     int n = prompt_row_count();
@@ -929,27 +981,46 @@ void Tutorial::draw(const GLGame &g) const {
     return;
   }
 
-  std::string title, l1, l2, l3;
-  banner_lines(g, title, l1, l2, l3);
+  std::string title;
+  std::vector<BannerLine> body;
+  std::vector<std::string> footer;
+  banner_lines(g, title, body, footer);
   // Under the top HUD row (LEVEL/score), above the ship: title at H-TOP
-  // (size 18 descends 36), then three hint-register lines. TOP clears the
-  // LEVEL line's glyph floor (and the card's own top padding) with real
-  // air even at HUD SIZE LARGEST — at 150 the card crowded it (field,
-  // 2026-09-21).
+  // (size 18 descends 36), then the body — a LEFT-aligned column, each
+  // instruction after a bullet dot — then the footer's ways out, smaller
+  // and centred. TOP clears the LEVEL line's glyph floor (and the card's
+  // own top padding) with real air even at HUD SIZE LARGEST — at 150 the
+  // card crowded it (field, 2026-09-21).
   float H = Typer::scaled_window_height;
   const float s = text_scale(), TITLE = 18.0f * s;
-  // The lines flow at the scale: an empty line closes up rather than
-  // leaving a hole in the card, and one the scale pushes past the edge
-  // wraps (the touch TURN line at 2x is wider than a portrait phone).
-  std::vector<std::string> lines;
-  std::vector<float> sizes;
-  if (!l1.empty()) wrap_line(l1, 9.0f * s, lines, sizes);
-  if (!l2.empty()) wrap_line(l2, 9.0f * s, lines, sizes);
-  if (!l3.empty()) wrap_line(l3, 8.0f * s, lines, sizes);
-  // The card is as wide as the widest line.
-  float w = text_half_w(title, TITLE);
+  const float BODY = 9.0f * s, FOOT = 8.0f * s;
+  // The bullet's column: the dot sits in one glyph advance, then a gap.
+  const float INDENT = 3.0f * BODY;
+  // Wrap a body line the scale pushes past the edge (the column is
+  // centred, so the limit is the full width less the indent); a wrapped
+  // line's continuation carries no bullet of its own.
+  std::vector<BannerLine> lines;
+  for (size_t i = 0; i < body.size(); i++) {
+    std::vector<std::string> parts;
+    std::vector<float> unused;
+    wrap_line(body[i].text, BODY, parts, unused, line_limit() - INDENT * 0.5f);
+    for (size_t k = 0; k < parts.size(); k++)
+      lines.push_back(BannerLine{parts[k], body[i].bullet && k == 0});
+  }
+  std::vector<std::string> feet;
+  std::vector<float> feet_sizes;
+  for (size_t i = 0; i < footer.size(); i++)
+    wrap_line(footer[i], FOOT, feet, feet_sizes);
+  // The body column's width: every line indented (status lines too, so
+  // the text edges line up), as wide as its widest line.
+  float col_w = 0.0f;
   for (size_t i = 0; i < lines.size(); i++)
-    w = std::max(w, text_half_w(lines[i], sizes[i]));
+    col_w = std::max(col_w, INDENT + 2.0f * text_half_w(lines[i].text, BODY));
+  float col_x = -col_w * 0.5f;
+  // The card is as wide as the widest of the three parts.
+  float w = std::max(text_half_w(title, TITLE), col_w * 0.5f);
+  for (size_t i = 0; i < feet.size(); i++)
+    w = std::max(w, text_half_w(feet[i], feet_sizes[i]));
   // The card's top: 180 under the top edge (at 1x) — and on touch, under
   // the pause circle instead when the card reaches the circle's column,
   // or always in portrait (most cards reach it there at 2x, and a card
@@ -966,19 +1037,32 @@ void Tutorial::draw(const GLGame &g) const {
     if (portrait() || w + 30.0f * s > pause_x * k)
       TOP = std::max(TOP, pause_floor * k + 14.0f * s + 24.0f);
   }
-  // Title anchor H-TOP, then a 27-unit pitch (at 1x), down to the lowest
-  // glyph floor.
+  // Title anchor H-TOP, then a 32-unit pitch (at 1x); the footer opens
+  // with an extra half pitch of air so the ways out read as apart from
+  // the instructions.
   float bottom = H - TOP - 2 * TITLE;
-  std::vector<float> ys(lines.size());
+  float y = H - TOP - 55.0f * s;
+  std::vector<float> ys(lines.size()), fys(feet.size());
   for (size_t i = 0; i < lines.size(); i++) {
-    ys[i] = H - TOP - (55 + 27.0f * i) * s;
-    bottom = ys[i] - 2 * sizes[i];
+    ys[i] = y;
+    bottom = y - 2 * BODY;
+    y -= 32.0f * s;
+  }
+  if (!lines.empty()) y -= 13.0f * s;
+  for (size_t i = 0; i < feet.size(); i++) {
+    fys[i] = y;
+    bottom = y - 2 * feet_sizes[i];
+    y -= 24.0f * s;
   }
   draw_card(H - TOP, bottom, w, s);
   // The next step's title lands on the spot: the completion cue is the
   // pickup chime alone, with no interstitial word (cut in the field,
   // 2026-09-21).
   Typer::draw_centered(0, H - TOP, title.c_str(), TITLE);
-  for (size_t i = 0; i < lines.size(); i++)
-    Typer::draw_centered(0, ys[i], lines[i].c_str(), sizes[i]);
+  for (size_t i = 0; i < lines.size(); i++) {
+    if (lines[i].bullet) draw_bullet(col_x + BODY, ys[i] - BODY, BODY);
+    Typer::draw(col_x + INDENT, ys[i], lines[i].text.c_str(), BODY);
+  }
+  for (size_t i = 0; i < feet.size(); i++)
+    Typer::draw_centered(0, fys[i], feet[i].c_str(), feet_sizes[i]);
 }
