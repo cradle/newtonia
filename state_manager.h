@@ -39,6 +39,9 @@ public:
   bool back_pressed();
   void focus_lost();
   void focus_gained();
+  // Console suspend is next: close live net links (GLGame or Intro).
+  // Returns true if anything was closed.
+  bool platform_suspending();
   // Pad hot-plug, by PadId (pad.h) — the SDL entry points pass instance
   // ids, the Steam Input backend its own range; neither hands over an SDL
   // object.

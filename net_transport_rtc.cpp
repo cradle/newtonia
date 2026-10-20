@@ -286,15 +286,27 @@ private:
     static bool rtc_log_inited = false;
     if (!rtc_log_inited) {
       rtc_log_inited = true;
-      if (const char *lv = std::getenv("NEWTONIA_NET_RTC_LOG")) {
+      const char *lv = std::getenv("NEWTONIA_NET_RTC_LOG");
+#if defined(NEWTONIA_GDK_CONSOLE)
+      if (!lv && Net::net_console_rtc_log()) lv = "info";
+#endif
+      if (lv) {
         rtcLogLevel level = RTC_LOG_INFO;
         if (!std::strcmp(lv, "warn")) level = RTC_LOG_WARNING;
         else if (!std::strcmp(lv, "debug")) level = RTC_LOG_DEBUG;
         else if (!std::strcmp(lv, "verbose")) level = RTC_LOG_VERBOSE;
         rtcInitLogger(level, [](rtcLogLevel l, const char *m) {
+#if defined(NEWTONIA_GDK_CONSOLE)
+          char line[1024];
+          std::snprintf(line, sizeof line, "%s%9.3f rtc[%d]: %s\n",
+                        Net::net_log_role(), Net::net_log_secs(), (int)l,
+                        m ? m : "");
+          Net::net_console_log(line);
+#else
           std::printf("%s%9.3f rtc[%d]: %s\n", Net::net_log_role(),
                       Net::net_log_secs(), (int)l, m ? m : "");
           std::fflush(stdout);
+#endif
         });
       }
     }

@@ -165,6 +165,10 @@ public:
 
   void focus_lost();
   void focus_gained();
+  // The platform is about to freeze this process (console suspend). Closes
+  // every live net link so the peer fails fast and this side wakes already
+  // in its rejoin flow. Returns true if a link was closed.
+  bool net_platform_suspending();
   bool back_pressed() override;
   void controller_added(PadId id);
   void controller_removed(PadId id);

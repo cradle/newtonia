@@ -171,6 +171,14 @@ void StateManager::focus_lost() {
   }
 }
 
+bool StateManager::platform_suspending() {
+  GLGame *game = dynamic_cast<GLGame*>(state);
+  Intro *intro = dynamic_cast<Intro*>(state);
+  if(game) return game->net_platform_suspending();
+  if(intro) return intro->platform_suspending();
+  return false;
+}
+
 void StateManager::focus_gained() {
   GLGame *game = dynamic_cast<GLGame*>(state);
   Intro *intro = dynamic_cast<Intro*>(state);
