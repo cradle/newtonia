@@ -6,6 +6,7 @@
 #include "view/tap_band.h"
 #include <string>
 #include <set>
+#include <vector>
 
 class GLGame;
 class GLShip;
@@ -119,9 +120,14 @@ private:
   // The pilot's word for a control: the keyboard binding's name, the pad
   // button's label, per the last input device used.
   std::string label(const GLGame &g, int action) const;
-  // The banner's lines for the current step (device-specific wording).
-  void banner_lines(const GLGame &g, std::string &title, std::string &l1,
-                    std::string &l2, std::string &l3) const;
+  // The banner for the current step (device-specific wording): a title,
+  // the body — ONE instruction per line, each drawn after a bullet dot,
+  // plus unbulleted status lines (progress, the camera in force) — and
+  // a small centred footer (the ways out: skip beacon, quit key).
+  struct BannerLine { std::string text; bool bullet; };
+  void banner_lines(const GLGame &g, std::string &title,
+                    std::vector<BannerLine> &body,
+                    std::vector<std::string> &footer) const;
   bool pad_pilot(const GLGame &g) const;
   static GLShip *pilot(const GLGame &g);
   // Row i of an n-row prompt — ONE definition for draw and tap (TapBand
