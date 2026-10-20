@@ -9734,6 +9734,7 @@ void GLGame::tick(int delta) {
       }
     }
     if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
+    net_lost_notice_tick(delta);
   }
 
   if (!running) {
@@ -13589,3 +13590,14 @@ int GLGame::control_analytics(int key) const {
   return mask;
 }
 // TEST-SLICE-END: analytics_game
+
+void GLGame::net_lost_notice_tick(int delta) {
+  unsigned mask = 0;
+  for (const NetPeer *p : net_peers_)
+    if (p->lost && p->seat < 32) mask |= 1u << p->seat;
+  if (mask & ~net_lost_seen_mask_)
+    net_lost_notice_ms_ = NET_LOST_NOTICE_MS;  // a fresh drop: announce it
+  else if (net_lost_notice_ms_ > 0)
+    net_lost_notice_ms_ -= delta;
+  net_lost_seen_mask_ = mask;
+}
