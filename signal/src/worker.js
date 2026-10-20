@@ -301,6 +301,20 @@ export async function turn_budget_ok(env, fetcher = fetch,
   return turn_budget_cache.bytes < turn_budget_gb(env) * 1e9;
 }
 
+// Should a join get TURN credentials? Only when there is a room worth
+// joining: a live host with a free slot — or, for a REJOIN, a host in its
+// reclaim grace. A host that drops its socket (a console suspending, a phone
+// backgrounded) is exactly when its peer auto-rejoins, and that rejoin waits
+// in the room for the host to come back. Minting nothing then left the
+// rejoiner STUN-only for the whole attempt: a relay-only or hard-NAT client
+// could never connect and sat out a 40 s ICE timeout before its next join
+// (Xbox dev kit, 2026-10-20). A fresh (non-rejoin) join to a host-less room
+// still mints nothing.
+export function join_should_mint(st, rejoin) {
+  if (!st || st.full) return false;
+  return !!st.host || (!!rejoin && !!st.grace);
+}
+
 // Short-lived Cloudflare Calls TURN credentials, minted per connection.
 // Configured via secrets (wrangler secret put TURN_KEY_ID / TURN_API_TOKEN);
 // without them this returns [] and the game stays STUN-only.
@@ -308,6 +322,12 @@ async function turn_ice_servers(env) {
   // TURN kill switch: `wrangler secret put TURN_OFF` cuts the metered relay
   // bandwidth (STUN-only) while signaling keeps working. Delete to restore.
   if (env.TURN_OFF) return [];
+  // Dev/test hook (a wrangler dev --var, like FAKE_VERIFY; never set on a
+  // deployed worker): mint a placeholder server so the protocol tests can
+  // see WHICH joins get TURN without contacting Cloudflare.
+  if (env.FAKE_TURN === "1")
+    return [{ urls: "turn:fake.invalid:3478", username: "fake",
+              credential: "fake" }];
   if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return [];
   // Automatic monthly budget (see turn_budget_ok above): past the cap the
   // free account must not mint. Same STUN-only degradation as TURN_OFF.
@@ -462,19 +482,25 @@ export default {
       if (!(await within_limit(env, ip, "join")))
         return reject_ws(request, "rate-limited");
       const room = env.ROOMS.get(env.ROOMS.idFromName(code));
-      // Lightweight pre-check so credentials are minted only when there is
-      // actually an open room to join (host present, joiner slot free). A
-      // miss falls through to the real /join, which emits the proper error.
-      let ice = [];
-      try {
-        const pre = await room.fetch(new Request("https://room/exists"));
-        const st = await pre.json();
-        if (st.host && !st.full) ice = await turn_ice_servers(env);
-      } catch (e) {}
       // The client's auto-rejoin flags itself so the room's host-reported
       // seat count doesn't refuse a pilot whose seat the host hasn't yet
       // noticed is free (Room.room_full).
-      const rejoin = url.searchParams.get("rejoin") === "1" ? "&rejoin=1" : "";
+      const is_rejoin = url.searchParams.get("rejoin") === "1";
+      const rejoin = is_rejoin ? "&rejoin=1" : "";
+      // Lightweight pre-check so credentials are minted only when there is
+      // actually an open room to join (join_should_mint). A miss falls
+      // through to the real /join, which emits the proper error.
+      let ice = [];
+      try {
+        // The rejoin flag rides the probe too, so `full` exempts it exactly
+        // as /join does: a live host still reporting 0 free seats hasn't
+        // noticed the loss yet, and admitting the rejoin while minting it
+        // nothing left a relay-only peer STUN-only (review on #617).
+        const pre = await room.fetch(new Request(
+            "https://room/exists" + (is_rejoin ? "?rejoin=1" : "")));
+        const st = await pre.json();
+        if (join_should_mint(st, is_rejoin)) ice = await turn_ice_servers(env);
+      } catch (e) {}
       return room.fetch(new Request(
           `https://room/join?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}${rejoin}`, request));
     }
@@ -686,8 +712,10 @@ export class Room {
       const n = this.joinerWss().length;
       return new Response(
           JSON.stringify({ host: !!this.r.host_token && !!this.hostWs(),
+                           grace: !!this.in_grace(now),
                            joiner: n > 0,
-                           joiners: n, full: this.room_full(false) }),
+                           joiners: n,
+                           full: this.room_full(url.searchParams.get("rejoin") === "1") }),
           { headers: { "Content-Type": "application/json" } });
     }
 
