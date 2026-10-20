@@ -3432,6 +3432,35 @@ void GLGame::net_drop_session(NetPeer &p) {
   p.session = nullptr;
 }
 
+// Console suspend: the process is frozen next, so every live link is dead
+// whatever happens. Without this the peer only finds out from its own RX
+// watchdog, and this side wakes believing the session is alive until its
+// watchdog fires 10 s of game time after resume; meanwhile a rejoin
+// attempt from the peer meets a host that isn't listening (dev kit,
+// 2026-10-20: one rejoin took ~50 s). Close actively, exactly as the RX
+// watchdog does, and mark the link lost: the peer auto-rejoins at once,
+// and our first tick after resume parks the seat and reopens the room
+// (host) or starts the auto-rejoin (client).
+bool GLGame::net_platform_suspending() {
+  bool closed = false;
+  if (net_mode_ == NetHost) {
+    for (NetPeer *pw : net_peers_) {
+      if (pw->lost || !pw->session) continue;
+      NET_LOG("net: suspending - closing seat %d\n", (int)pw->seat);
+      pw->session->transport()->close();
+      pw->lost = true;
+      closed = true;
+    }
+  } else if (net_mode_ == NetClient && net_session() &&
+             !net_peer_make().lost) {
+    NET_LOG("net: suspending - closing the host link\n");
+    net_session()->transport()->close();
+    net_peer_make().lost = true;
+    closed = true;
+  }
+  return closed;
+}
+
 void GLGame::net_refresh_join_banner() {
   if (!net_join_banner_text_.empty() &&
       (net_banner_ms_ <= 0 || net_banner_text_ != net_join_banner_text_))

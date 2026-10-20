@@ -423,6 +423,10 @@ bool Intro::back_pressed() {
   return true;
 }
 
+bool Intro::platform_suspending() {
+  return game && game->net_platform_suspending();
+}
+
 void Intro::focus_lost() {
   unfocused = true;
   if (music_channel >= 0) Mix_Pause(music_channel);

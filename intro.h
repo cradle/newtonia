@@ -47,6 +47,7 @@ public:
   // these); controller hot-plug is forwarded to the adopted game so
   // assignments survive the intro.
   void focus_lost();
+  bool platform_suspending();  // forwards to the held game (console suspend)
   void focus_gained();
   void controller_added(PadId id);
   void controller_removed(PadId id);

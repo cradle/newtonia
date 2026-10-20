@@ -25,12 +25,31 @@
 
 namespace Net {
 
+#if defined(NEWTONIA_GDK_CONSOLE)
+// The console has no environment and no visible stdout. The console entry
+// point sets these from its debug-flags file (net-debug, net-rtc-log) and,
+// in a netplay build, implements net_console_log(), which sends each line
+// to the debugger output.
+inline bool &net_console_debug() {
+  static bool on = false;
+  return on;
+}
+inline bool &net_console_rtc_log() {
+  static bool on = false;
+  return on;
+}
+void net_console_log(const char *line);
+#endif
+
 // Netplay diagnostics are opt-in via NEWTONIA_NET_DEBUG=1 (the e2e drivers
 // set it): a shipped online session should not spew stdout — candidate
 // bursts alone are dozens of lines a second. NET_LOG gates every net/lobby
 // print behind one cached env check; user-facing text goes through Typer,
 // never printf, so nothing here is ever needed in a release build.
 inline bool net_debug_enabled() {
+#if defined(NEWTONIA_GDK_CONSOLE)
+  return net_console_debug();
+#endif
   static int on = -1;
   if (on < 0) {
     const char *e = std::getenv("NEWTONIA_NET_DEBUG");
@@ -76,8 +95,13 @@ inline double net_log_secs() {
 
 // Both printfs land in the same stdio buffer and flush as one write, so
 // two processes sharing a terminal don't shear a line apart.
+#if defined(NEWTONIA_GDK_CONSOLE) && defined(NEWTONIA_NET_RTC)
+#define NET_LOG(...) \
+  do { if (::Net::net_debug_enabled()) { char nl_[1024]; int nn_ = std::snprintf(nl_, sizeof nl_, "%s%9.3f ", ::Net::net_log_role(), ::Net::net_log_secs()); if (nn_ < 0) nn_ = 0; std::snprintf(nl_ + nn_, sizeof nl_ - nn_, __VA_ARGS__); ::Net::net_console_log(nl_); } } while (0)
+#else
 #define NET_LOG(...) \
   do { if (::Net::net_debug_enabled()) { std::printf("%s%9.3f ", ::Net::net_log_role(), ::Net::net_log_secs()); std::printf(__VA_ARGS__); std::fflush(stdout); } } while (0)
+#endif
 
 namespace Net {
 
