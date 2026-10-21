@@ -94,6 +94,13 @@ static bool net_selftest_attempt() {
   static const unsigned char REL_MSG[] = {'R', 1, 2, 3};
   static const unsigned char UNREL_MSG[] = {'U', 9, 8, 7};
 
+#if defined(NEWTONIA_NET_RELAY_ONLY)
+  // A relay-only build has no TURN server for this loopback pair, so it
+  // pairs the way LAN play does (host candidates, exempt from the policy).
+  host->set_lan_only(true);
+  join->set_lan_only(true);
+#endif
+
   bool pass = false;
   bool join_got_rel = false, join_got_unrel = false;
   bool host_got_rel = false, host_got_unrel = false;

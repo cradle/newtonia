@@ -149,8 +149,7 @@ public:
     // the peer's relay endpoint known, every pair must traverse TURN.
     // (Room flow always trickles; the manual clipboard flow isn't a
     // force-relay test path.)
-    if ((force_relay() || relay_only_) &&
-        cand_type(cand.c_str()) != "relay") {
+    if (relay_policy() && cand_type(cand.c_str()) != "relay") {
       NET_LOG("net: relay-only - dropped remote %s candidate\n",
               cand_type(cand.c_str()).c_str());
       return;
@@ -276,6 +275,19 @@ private:
     return on != 0;
   }
 
+  // NEWTONIA_NET_RELAY_ONLY (a build define, set by ports whose platform
+  // asks that players' IP addresses stay hidden): every internet pairing is
+  // relay-only, so each peer only ever sees the TURN server's address. One
+  // side forcing it is enough, since it also drops the peer's direct
+  // candidates. LAN pairings are exempt: they carry no ICE servers at all,
+  // so they have no relay to use, and a local address is no exposure.
+  bool relay_policy() const {
+#if defined(NEWTONIA_NET_RELAY_ONLY)
+    if (!lan_only_) return true;
+#endif
+    return force_relay() || relay_only_;
+  }
+
   void open_peer() {
     // Deep-diagnosis tap (stall hunt): NEWTONIA_NET_RTC_LOG=warn|info|
     // debug|verbose forwards libdatachannel/libjuice's own logger to
@@ -370,14 +382,16 @@ private:
     // local network needs.
     config.iceServers = ice_ptrs_.empty() ? nullptr : &ice_ptrs_[0];
     config.iceServersCount = (int)ice_ptrs_.size();
-    if (force_relay() || relay_only_) {
+    if (relay_policy()) {
       config.iceTransportPolicy = RTC_TRANSPORT_POLICY_RELAY;
       // The overlay proves it worked (local candidate reads "relay/");
       // this line proves the INTENT arrived — a shell export does not
       // reach a mac .app launched by double-click/open, and that failure
       // was silent ("my mac client says HOST/HOST" with the var set).
       NET_LOG("net: relay-only ICE policy ACTIVE (%s)\n",
-              relay_only_ ? "0-prefix join" : "NEWTONIA_NET_FORCE_RELAY");
+              relay_only_ ? "0-prefix join"
+              : force_relay() ? "NEWTONIA_NET_FORCE_RELAY"
+                              : "relay-only build");
     } else if (std::getenv("NEWTONIA_NET_FORCE_RELAY")) {
       NET_LOG("net: NEWTONIA_NET_FORCE_RELAY present but value is '0'/off\n");
     }
