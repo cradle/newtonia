@@ -277,10 +277,14 @@ private:
 
   // NEWTONIA_NET_RELAY_ONLY (a build define, set by ports whose platform
   // asks that players' IP addresses stay hidden): every internet pairing is
-  // relay-only, so each peer only ever sees the TURN server's address. One
-  // side forcing it is enough, since it also drops the peer's direct
-  // candidates. LAN pairings are exempt: they carry no ICE servers at all,
-  // so they have no relay to use, and a local address is no exposure.
+  // relay-only, so the other player only ever sees the TURN server's address
+  // for this one. That needs the libjuice hunks in
+  // patches/libdatachannel-ws-ca-cert.patch: the stock ICE agent also sent
+  // checks from its own socket to the peer's relay, whose TURN server passes
+  // the sender's address on. The other player's own candidates still reach
+  // this side through signalling; they are dropped, never used. LAN pairings
+  // are exempt: they carry no ICE servers at all, so they have no relay to
+  // use, and a local address is no exposure.
   bool relay_policy() const {
 #if defined(NEWTONIA_NET_RELAY_ONLY)
     if (!lan_only_) return true;

@@ -41,3 +41,50 @@ index 93dfe49..fdd4ceb 100644
  			PLOG_WARNING << "TLS certificate verification with root CA is not supported on Windows";
  		}
  #endif
+diff --git a/src/impl/icetransport.cpp b/src/impl/icetransport.cpp
+index 5d77dfb..5bc3d9e 100644
+--- a/src/impl/icetransport.cpp
++++ b/src/impl/icetransport.cpp
+@@ -90,6 +90,7 @@ IceTransport::IceTransport(const Configuration &config, candidate_callback candi
+ 	jconfig.cb_gathering_done = IceTransport::GatheringDoneCallback;
+ 	jconfig.cb_recv = IceTransport::RecvCallback;
+ 	jconfig.user_ptr = this;
++	jconfig.relay_only = config.iceTransportPolicy == TransportPolicy::Relay ? 1 : 0;
+ 
+ 	if (config.enableIceUdpMux) {
+ 		PLOG_DEBUG << "Enabling ICE UDP mux";
+diff --git a/deps/libjuice/include/juice/juice.h b/deps/libjuice/include/juice/juice.h
+index e43db6c..92d97c8 100644
+--- a/deps/libjuice/include/juice/juice.h
++++ b/deps/libjuice/include/juice/juice.h
+@@ -116,6 +116,7 @@ typedef struct juice_config {
+ 
+ 	void *user_ptr;
+ 
++	int relay_only; // non-zero: connectivity checks only from local relayed candidates
+ } juice_config_t;
+ 
+ JUICE_EXPORT juice_agent_t *juice_create(const juice_config_t *config);
+diff --git a/deps/libjuice/src/agent.c b/deps/libjuice/src/agent.c
+index 6d1dcf2..6ed217b 100644
+--- a/deps/libjuice/src/agent.c
++++ b/deps/libjuice/src/agent.c
+@@ -108,6 +108,7 @@ juice_agent_t *agent_create(const juice_config_t *config) {
+ 	agent->config.cb_gathering_done = config->cb_gathering_done;
+ 	agent->config.cb_recv = config->cb_recv;
+ 	agent->config.user_ptr = config->user_ptr;
++	agent->config.relay_only = config->relay_only;
+ 	if (alloc_failed) {
+ 		JLOG_FATAL("Memory allocation for configuration copy failed");
+ 		goto error;
+@@ -2492,7 +2493,9 @@ int agent_add_candidate_pair(juice_agent_t *agent, ice_candidate_t *local, // lo
+ int agent_add_candidate_pairs_for_remote(juice_agent_t *agent, ice_candidate_t *remote) {
+ 	// Here is the trick: local non-relayed candidates are undifferentiated for sending.
+ 	// Therefore, we don't need to match remote candidates with local ones.
+-	if (agent_add_candidate_pair(agent, NULL, remote))
++	// A relay-only agent never sends from its own sockets, or the peer's TURN
++	// server would pass this host's public address on to the peer.
++	if (!agent->config.relay_only && agent_add_candidate_pair(agent, NULL, remote))
+ 		return -1;
+ 
+ 	// However, we need still to differenciate local relayed candidates

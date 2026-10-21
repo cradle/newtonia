@@ -77,8 +77,14 @@ library applies it — both `build_netplay_deps*.sh`, both FetchContent
 and the four workflows that clone it themselves (`windows`, `deploy-steam`,
 `ios`, `deploy-ios`). A prefix built WITHOUT the patch fails to compile the
 game on the unknown field, which is deliberate: an unverified socket must
-never be the quiet outcome. **Re-check the three hunks on any libdatachannel
-bump.** The roots themselves ship in the binary (`net_ca_bundle.cpp`, written
+never be the quiet outcome. The same file also carries a relay-only fix in
+the vendored libjuice (`deps/libjuice`, plus one line in
+`src/impl/icetransport.cpp`): under `RTC_TRANSPORT_POLICY_RELAY` the stock
+agent still pairs its own socket with every remote candidate, so a
+relay-only player could send directly to the peer's TURN allocation and the
+peer would learn their address. The patch passes the policy down as
+`juice_config_t::relay_only` and drops those pairs (`NEWTONIA_NET_RELAY_ONLY`
+builds depend on it). **Re-check all six hunks on any libdatachannel bump.** The roots themselves ship in the binary (`net_ca_bundle.cpp`, written
 to the pref path by `net_tls.cpp` on first connect) because MbedTLS reaches
 no system trust store anywhere and OpenSSL reaches none on Windows;
 `NEWTONIA_NET_TLS_INSECURE=1` turns verification off for field debugging and
