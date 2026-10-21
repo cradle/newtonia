@@ -281,8 +281,9 @@ private:
   // for this one. That needs the libjuice hunks in
   // patches/libdatachannel-ws-ca-cert.patch: the stock ICE agent also sent
   // checks from its own socket to the peer's relay, whose TURN server passes
-  // the sender's address on. The other player's own candidates still reach
-  // this side through signalling; they are dropped, never used. LAN pairings
+  // the sender's address on. The same define flags the signalling socket
+  // (net_signal_rtc.cpp), and the worker then strips the other player's
+  // direct candidates before they reach this side too. LAN pairings
   // are exempt: they carry no ICE servers at all, so they have no relay to
   // use, and a local address is no exposure.
   bool relay_policy() const {

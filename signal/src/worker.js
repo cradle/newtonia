@@ -21,6 +21,13 @@
 //                                     legacy hosts never send it
 //   any   <- {t:"err", reason:"no-such-room"|"room-full"|"expired"}
 //
+// Relay-only privacy: a socket opened with `&ro=1` (a build that must hide
+// player addresses, NEWTONIA_NET_RELAY_ONLY) makes every pairing it is part
+// of private. For a private pairing the worker strips direct addresses from
+// what it relays BOTH ways: only `typ relay` candidates pass, and an SDP
+// loses its other a=candidate lines and its default c=/m= address. Neither
+// player then learns the other's IP from signalling (see relay_private).
+//
 // Rooms hold one host and up to MAX_JOINERS joiners (FOURPLAYER.md PB-D5).
 // Each joiner socket is tagged ["joiner", "j:<n>"] with a monotonically
 // increasing per-room id — tags are the only per-socket state that survives
@@ -422,6 +429,8 @@ export default {
     // a fixed fallback key still lets the limiter exercise end to end.
     const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
     const role = url.searchParams.get("role");
+    // Relay-only privacy flag (header), passed through to the room.
+    const ro = url.searchParams.get("ro") === "1" ? "&ro=1" : "";
 
     // Master kill switch: `wrangler secret put DISABLED` (any value) refuses
     // all rooms without a redeploy; `wrangler secret delete DISABLED` restores.
@@ -456,7 +465,7 @@ export default {
           if (st.ok) ice = await turn_ice_servers(env);
         } catch (e) {}
         return room.fetch(new Request(
-            `https://room/reclaim?code=${code}&token=${encodeURIComponent(token)}&ice=${encodeURIComponent(JSON.stringify(ice))}`,
+            `https://room/reclaim?code=${code}&token=${encodeURIComponent(token)}&ice=${encodeURIComponent(JSON.stringify(ice))}${ro}`,
             request));
       }
       // Fresh host: passing the limiter is the authorization for this
@@ -468,7 +477,7 @@ export default {
         const code = random_code();
         const room = env.ROOMS.get(env.ROOMS.idFromName(code));
         const resp = await room.fetch(
-            new Request(`https://room/host?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}`, request));
+            new Request(`https://room/host?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}${ro}`, request));
         if (resp.status !== 409) return resp;
       }
       return new Response("no free room codes", { status: 503 });
@@ -502,7 +511,7 @@ export default {
         if (join_should_mint(st, is_rejoin)) ice = await turn_ice_servers(env);
       } catch (e) {}
       return room.fetch(new Request(
-          `https://room/join?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}${rejoin}`, request));
+          `https://room/join?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}${rejoin}${ro}`, request));
     }
 
     return new Response("bad role", { status: 400 });
@@ -573,6 +582,44 @@ function mid_of(msg) {
   if (typeof m === "number" && Number.isFinite(m)) return String(m);
   if (typeof m === "string" && m.length > 0 && m.length <= MAX_MID_LEN) return m;
   return "0";
+}
+
+// Relay-only privacy filters (header). A candidate passes only if it is a
+// relayed one: its " typ " token says so. Anything unparseable is dropped,
+// since a candidate we cannot read is a candidate we cannot vouch for.
+export function cand_is_relay(cand) {
+  const m = / typ ([a-z]+)/.exec(cand);
+  return !!m && m[1] === "relay";
+}
+
+// A relay candidate's related address (raddr) is the sender's own mapped
+// address. libjuice and browsers already send 0.0.0.0 there; mask it anyway,
+// so no other stack's choice can carry the address through.
+export function mask_related(cand) {
+  return cand.replace(/ raddr \S+ rport \d+/, " raddr 0.0.0.0 rport 0");
+}
+
+// The same rule over a whole SDP: keep relay a=candidate lines, drop the
+// rest, and blank the default connection address (c=, and the m= port that
+// goes with it), which libdatachannel fills from the default candidate —
+// the host or srflx address on a gathered offer. ICE reads the candidates,
+// never the default, so 0.0.0.0:9 (what a trickle offer already carries)
+// costs nothing.
+export function strip_direct_sdp(sdp) {
+  const eol = sdp.includes("\r\n") ? "\r\n" : "\n";
+  const out = [];
+  for (const line of sdp.split(/\r?\n/)) {
+    if (line.startsWith("a=candidate:")) {
+      if (cand_is_relay(line)) out.push(mask_related(line));
+    } else if (line.startsWith("c=IN ")) {
+      out.push("c=IN IP4 0.0.0.0");
+    } else if (line.startsWith("m=")) {
+      out.push(line.replace(/^(m=\S+ )\d+/, "$19"));
+    } else {
+      out.push(line);
+    }
+  }
+  return out.join(eol);
 }
 
 // Per-socket frame budget state (Room.over_budget). Keyed by the socket
@@ -651,6 +698,21 @@ export class Room {
     }
     return best;
   }
+  // A pairing is private when either end opened its socket with ro=1
+  // (header). The host's flag also lives in the room record, so replays
+  // to a late joiner and frames sent while the host is in grace still
+  // know it.
+  is_ro(ws) { return !!ws && this.state.getTags(ws).includes("ro"); }
+  relay_private(jws) { return !!this.r.host_ro || this.is_ro(jws); }
+  cand_frame_for(jws, frame) {
+    if (!this.relay_private(jws)) return frame;
+    if (!cand_is_relay(frame.cand)) return null;
+    return { ...frame, cand: mask_related(frame.cand) };
+  }
+  sdp_for(jws, sdp) {
+    return this.relay_private(jws) ? strip_direct_sdp(sdp) : sdp;
+  }
+
   jidOf(ws) {
     for (const tag of this.state.getTags(ws))
       if (tag.startsWith("j:")) return Number(tag.slice(2));
@@ -696,6 +758,7 @@ export class Room {
     const code = url.searchParams.get("code");
     let ice = [];
     try { ice = JSON.parse(url.searchParams.get("ice") || "[]"); } catch (e) {}
+    const ro = url.searchParams.get("ro") === "1";
     const now = Date.now();
 
     // Same boundary rule as alarm(): the room is over AT the deadline.
@@ -725,7 +788,7 @@ export class Room {
       if (this.alive(now))
         return new Response("room in use", { status: 409 });
       const pair = new WebSocketPair();
-      await this.accept_host(pair[1], code, now, ice);
+      await this.accept_host(pair[1], code, now, ice, ro);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
@@ -758,7 +821,7 @@ export class Room {
       if (!this.hostWs() && !this.in_grace(now))
         return this.reject_ws("no-such-room");
       const pair = new WebSocketPair();
-      await this.reclaim_host(pair[1], code, ice);
+      await this.reclaim_host(pair[1], code, ice, ro);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
@@ -781,7 +844,7 @@ export class Room {
       if (this.room_full(url.searchParams.get("rejoin") === "1"))
         return this.reject_ws("room-full");
       const pair = new WebSocketPair();
-      await this.accept_joiner(pair[1], ice);
+      await this.accept_joiner(pair[1], ice, ro);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
@@ -1073,9 +1136,9 @@ export class Room {
     if (frame) this.safeSend(ws, frame);
   }
 
-  async accept_host(ws, code, now, ice) {
-    this.state.acceptWebSocket(ws, ["host"]);
-    this.r = { offer: null, offer_pv: null, host_cands: [],
+  async accept_host(ws, code, now, ice, ro = false) {
+    this.state.acceptWebSocket(ws, ro ? ["host", "ro"] : ["host"]);
+    this.r = { offer: null, offer_pv: null, host_cands: [], host_ro: ro,
                host_token: crypto.randomUUID(),
                // Worker-only ban-token salt — never sent to anyone (see
                // mint_ban_key; host_token goes to the host, so it can't be
@@ -1092,7 +1155,7 @@ export class Room {
 
   // Reclaim: same room, same token, fresh socket. The old offer is stale
   // (its transport died with the old socket); the host re-offers.
-  async reclaim_host(ws, code, ice) {
+  async reclaim_host(ws, code, ice, ro = false) {
     // Evict any lingering host socket first: an abrupt drop can leave the
     // old one registered (its TCP close undetected) until now. The valid
     // token that got us here proves this new socket is the rightful owner.
@@ -1101,7 +1164,10 @@ export class Room {
     for (const old of this.state.getWebSockets("host")) {
       try { old.close(1000); } catch (e) {}
     }
-    this.state.acceptWebSocket(ws, ["host"]);
+    this.state.acceptWebSocket(ws, ro ? ["host", "ro"] : ["host"]);
+    // The reclaimed socket's own flag decides from here (the same build
+    // reclaims, so in practice it never changes).
+    this.r.host_ro = ro;
     // The stored offer belonged to the dead socket's transports; the
     // host re-offers on the fresh one.
     this.r.offer = null;
@@ -1124,14 +1190,15 @@ export class Room {
       this.replay_identity(ws, "joiner", jid);
   }
 
-  async accept_joiner(ws, ice) {
+  async accept_joiner(ws, ice, ro = false) {
     // Mint the jid and carry it in the socket's tags — the only per-socket
     // state that survives hibernation. Never reused (see the header), which
     // is what keeps the late-verify race one-sided: a fresh player can
     // never inherit a departed jid's badge.
     const jid = this.r.next_jid;
     this.r.next_jid = jid + 1;
-    this.state.acceptWebSocket(ws, ["joiner", "j:" + jid]);
+    this.state.acceptWebSocket(ws, ro ? ["joiner", "j:" + jid, "ro"]
+                                      : ["joiner", "j:" + jid]);
     this.jid_entry(jid);
     // Prune entries whose socket is gone and whose identity isn't a
     // VERIFIED attestation: keeps the room record bounded under churn — an
@@ -1157,11 +1224,15 @@ export class Room {
     // SDP is single-use, so a second joiner must never receive the same
     // one. (Addressed offers are relay-only; a fresh jid can't have one.)
     if (this.r.offer) {
-      const replay = { t: "offer", sdp: this.r.offer };
+      const replay = { t: "offer", sdp: this.sdp_for(ws, this.r.offer) };
       if (this.r.offer_pv) replay.pv = this.r.offer_pv;
       this.safeSend(ws, replay);
       // Trickle: candidates the host gathered before this joiner arrived.
-      for (const c of this.r.host_cands) this.safeSend(ws, c);
+      // Stored raw; the privacy filter applies per receiving joiner.
+      for (const c of this.r.host_cands) {
+        const f = this.cand_frame_for(ws, c);
+        if (f) this.safeSend(ws, f);
+      }
       this.r.offer = null;
       this.r.offer_pv = null;
       this.r.host_cands = [];
@@ -1211,7 +1282,7 @@ export class Room {
     if (!msg || typeof msg !== "object") return;
     const tags = this.state.getTags(ws);
     if (tags.includes("host")) await this.from_host(msg);
-    else if (tags.includes("joiner")) await this.from_joiner(msg, this.jidOf(ws));
+    else if (tags.includes("joiner")) await this.from_joiner(msg, this.jidOf(ws), ws);
   }
 
   async webSocketClose(ws) { await this.drop(ws); }
@@ -1257,6 +1328,9 @@ export class Room {
       // up to the frame cap) used to ride through to the joiner verbatim.
       const fwd = { t: "offer", sdp: msg.sdp };
       if (pv) fwd.pv = pv;
+      // Privacy filter per receiving joiner (relay_private); the stored
+      // legacy slot keeps the raw SDP and is filtered at replay.
+      const fwd_for = (j) => ({ ...fwd, sdp: this.sdp_for(j, msg.sdp) });
       if (to !== null) {
         // Addressed (per-jid) offer: relay-only. A jid's socket is
         // connected for its whole life (the host can only learn a jid
@@ -1265,14 +1339,14 @@ export class Room {
         // would only grow the room record (a host re-offers to the
         // REPLACEMENT jid on its join event).
         const j = this.joinerWsById(to);
-        if (j) this.safeSend(j, fwd);
+        if (j) this.safeSend(j, fwd_for(j));
       } else {
         // Legacy unaddressed offer (2P hosts): to the oldest connected
         // joiner NOW — consumed, not stored, since an SDP is single-use —
         // or stored for a one-shot replay to the next arrival.
         const j = this.oldestJoinerWs();
         if (j) {
-          this.safeSend(j, fwd);
+          this.safeSend(j, fwd_for(j));
           if (this.r.offer) {
             this.r.offer = null;
             this.r.offer_pv = null;
@@ -1299,11 +1373,13 @@ export class Room {
       if (to !== null) {
         // Relay-only, like the addressed offer above.
         const j = this.joinerWsById(to);
-        if (j) this.safeSend(j, frame);
+        const f = j && this.cand_frame_for(j, frame);
+        if (f) this.safeSend(j, f);
       } else {
         const j = this.oldestJoinerWs();
         if (j) {
-          this.safeSend(j, frame);
+          const f = this.cand_frame_for(j, frame);
+          if (f) this.safeSend(j, f);
         } else if (this.r.host_cands.length < MAX_CANDS) {
           this.r.host_cands.push(frame);
           await this.save();
@@ -1312,7 +1388,7 @@ export class Room {
     }
   }
 
-  async from_joiner(msg, jid) {
+  async from_joiner(msg, jid, ws = null) {
     if (msg.t === "identity") {
       // jid null = a pre-multi-join socket surviving the deploy; its
       // announce would key the map under "null" — skip (the badge falls
@@ -1329,7 +1405,7 @@ export class Room {
       const h = this.hostWs();
       if (h) {
         // Rebuilt from the allowlisted fields, like the host's offer (F4).
-        const fwd = { t: "answer", sdp: msg.sdp };
+        const fwd = { t: "answer", sdp: this.sdp_for(ws, msg.sdp) };
         if (typeof msg.pv === "string" && msg.pv.length <= 8) fwd.pv = msg.pv;
         if (jid !== null) fwd.from = String(jid);
         this.safeSend(h, fwd);
@@ -1343,7 +1419,8 @@ export class Room {
       if (h) {
         const frame = { t: "cand", mid: mid_of(msg), cand: msg.cand };
         if (jid !== null) frame.from = String(jid);
-        this.safeSend(h, frame);
+        const f = this.cand_frame_for(ws, frame);
+        if (f) this.safeSend(h, f);
       }
     }
   }
