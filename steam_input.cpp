@@ -10,6 +10,7 @@
 
 #include <SDL.h>
 #include <steam/steam_api.h>
+#include <steam/steam_api_flat.h>
 
 #include <cstdlib>
 #include <cstdio>
@@ -18,6 +19,26 @@
 #include <vector>
 
 namespace {
+
+// The two ISteamInput calls that return a struct go through Valve's flat C
+// API, never the C++ interface. The Windows Steam build is MinGW and
+// steamclient64.dll is MSVC: for a member function returning a struct, GCC
+// passes the return buffer in RCX and `this` in RDX, MSVC the other way
+// round, so steamclient read our stack buffer as the interface and crashed
+// in the per-tick poll whenever a controller was connected (v1.70.0,
+// 2026-10-21; Linux and macOS share one convention and never saw it). Free
+// functions return structs the same way under both compilers. Any other
+// struct-returning Steamworks method (GetSteamID() and friends) needs the
+// same treatment if one is ever called.
+InputAnalogActionData_t analog_data(ISteamInput *in, InputHandle_t h,
+                                    InputAnalogActionHandle_t a) {
+  return SteamAPI_ISteamInput_GetAnalogActionData(in, h, a);
+}
+
+InputDigitalActionData_t digital_data(ISteamInput *in, InputHandle_t h,
+                                      InputDigitalActionHandle_t a) {
+  return SteamAPI_ISteamInput_GetDigitalActionData(in, h, a);
+}
 
 // The depot carries three Steam Input files beside the binary
 // (SDL_GetBasePath: the executable's directory on Linux/Windows,
@@ -425,8 +446,8 @@ void trace_set(ISteamInput *in, const SteamPad &p, PadActionSet set) {
     int n = info.analog
         ? in->GetAnalogActionOrigins(p.handle, g_set[set], g_analog[a], origins)
         : in->GetDigitalActionOrigins(p.handle, g_set[set], g_digital[a], origins);
-    bool active = info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
-                              : in->GetDigitalActionData(p.handle, g_digital[a]).bActive;
+    bool active = info.analog ? analog_data(in, p.handle, g_analog[a]).bActive
+                              : digital_data(in, p.handle, g_digital[a]).bActive;
     startup_tracef("  %-15s handle=%llu origins=%d active=%d%s%s", info.name,
                    (unsigned long long)(info.analog ? g_analog[a] : g_digital[a]), n,
                    (int)active, n > 0 ? " first=" : "",
@@ -441,8 +462,8 @@ bool any_action_active(ISteamInput *in, const SteamPad &p, PadActionSet set) {
   for (int a = 0; a < PAD_ACT_COUNT; a++) {
     const PadActionInfo &info = pad_action_info((PadAction)a);
     if (info.set != set) continue;
-    bool active = info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
-                              : in->GetDigitalActionData(p.handle, g_digital[a]).bActive;
+    bool active = info.analog ? analog_data(in, p.handle, g_analog[a]).bActive
+                              : digital_data(in, p.handle, g_digital[a]).bActive;
     if (active) return true;
   }
   return false;
@@ -502,7 +523,7 @@ void poll_pad(StateManager *game, SteamPad &p, PadActionSet want) {
     const PadActionInfo &info = pad_action_info((PadAction)a);
     if (info.set != want) continue;
     if (info.analog) {
-      InputAnalogActionData_t d = in->GetAnalogActionData(p.handle, g_analog[a]);
+      InputAnalogActionData_t d = analog_data(in, p.handle, g_analog[a]);
       Sint16 x = d.bActive ? to_sdl(d.x) : 0;
       Sint16 y = d.bActive ? to_sdl(-d.y) : 0;
       bool camera = a == PAD_ACT_CAMERA;
@@ -512,7 +533,7 @@ void poll_pad(StateManager *game, SteamPad &p, PadActionSet want) {
       if (axis_changed(last_y, y)) { last_y = y; emit_axis(game, p.id, camera ? SDL_CONTROLLER_AXIS_RIGHTY : SDL_CONTROLLER_AXIS_LEFTY, y); }
       continue;
     }
-    InputDigitalActionData_t d = in->GetDigitalActionData(p.handle, g_digital[a]);
+    InputDigitalActionData_t d = digital_data(in, p.handle, g_digital[a]);
     // Not in the active set yet (the switch lands a frame late): nothing
     // to read, and not yet a basis for priming either.
     if (!d.bActive) continue;
@@ -750,8 +771,8 @@ void steam_input_poll(StateManager *game) {
           for (int a = 0; a < PAD_ACT_COUNT; a++) {
             const PadActionInfo &info = pad_action_info((PadAction)a);
             total[info.set]++;
-            if (info.analog ? in->GetAnalogActionData(p.handle, g_analog[a]).bActive
-                            : in->GetDigitalActionData(p.handle, g_digital[a]).bActive) on[info.set]++;
+            if (info.analog ? analog_data(in, p.handle, g_analog[a]).bActive
+                            : digital_data(in, p.handle, g_digital[a]).bActive) on[info.set]++;
           }
           startup_tracef("steam input: handle %llu un-adopted: current set %llu (want %s=%llu) revision %s %d.%d, "
                          "actions active Ship %d/%d Menu %d/%d",
