@@ -603,6 +603,8 @@ node test/room_unit_test.mjs             # Room DO: alarm deadlines, frame bound
                                          #   seats (room_full: free=0 refuses a fresh join,
                                          #   ?rejoin=1 exempt, not enforced in grace, reclaim
                                          #   forgets it) (unit, no wrangler)
+node test/relay_privacy_test.mjs         # ro=1 pairings: only relay candidates and stripped
+                                         #   SDPs cross, both ways (unit, no wrangler)
 node test/frame_bounds_test.mjs          # the same bounds on workerd's sockets: allowlisted
                                          #   offer/answer rebuild, mid cap, oversized frame
                                          #   dropped (socket stays open), count + byte

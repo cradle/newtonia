@@ -20,18 +20,29 @@
 
 namespace {
 
+// A relay-only build (NEWTONIA_NET_RELAY_ONLY, net_transport_rtc.cpp) flags
+// its signalling socket so the worker strips direct addresses from what it
+// relays to and from this player: the transport hides this player's IP,
+// and the worker keeps the other player's IP from reaching this one.
+#if defined(NEWTONIA_NET_RELAY_ONLY)
+const char *const kRelayOnlyParam = "&ro=1";
+#else
+const char *const kRelayOnlyParam = "";
+#endif
+
 class RtcSignal : public NetSignal {
 public:
   RtcSignal() : ws_(-1), closed_flag_(false) {}
   ~RtcSignal() { close(); }
 
   void connect_host(const std::string &url) override {
-    open(url + "?role=host");
+    open(url + "?role=host" + kRelayOnlyParam);
   }
 
   void connect_host_reclaim(const std::string &url, const std::string &code,
                             const std::string &token) override {
-    open(url + "?role=host&code=" + code + "&token=" + token);
+    open(url + "?role=host&code=" + code + "&token=" + token +
+         kRelayOnlyParam);
   }
 
   void connect_join(const std::string &url, const std::string &code,
@@ -42,7 +53,8 @@ public:
       if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
       upper += c;
     }
-    open(url + "?role=join&code=" + upper + (rejoin ? "&rejoin=1" : ""));
+    open(url + "?role=join&code=" + upper + (rejoin ? "&rejoin=1" : "") +
+         kRelayOnlyParam);
   }
 
   void send_offer(const std::string &sdp, const std::string &to) override {
