@@ -85,7 +85,14 @@ origin table names — on an SDK bump re-check those NAMES against the real
 gate, if the stub is left stale).
 
 When adding a Steamworks call: verify the signature against the SDK docs /
-headers first, add it to the stub, then use it in game code.
+headers first, add it to the stub, then use it in game code. A Steamworks
+METHOD that returns a struct or class (`GetAnalogActionData`,
+`GetDigitalActionData`, `GetSteamID` …) must be called through the flat C
+API in `steam/steam_api_flat.h` (stubbed beside `steam_api.h`): the Windows
+build is MinGW and `steamclient64.dll` is MSVC, which pass a member
+function's return buffer in different registers, so the C++ call crashes
+inside Steam on Windows only — this gate and the Linux/macOS builds can't
+see it (v1.70.0 crash with a controller connected, 2026-10-21).
 
 ### Right-stick camera regression (Linux)
 
