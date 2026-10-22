@@ -69,6 +69,12 @@ new_sqlite_classes = ["Limiter"]
 [env.beta]
 name = "newtonia-signal-beta"
 
+# PlayFab title linked to the Xbox title (signal/src/xbox_verify.js): Xbox
+# credentials verify through its public LoginWithXbox. Not a secret. Beta
+# only until the console path is kit-tested; production adds it to [vars].
+[env.beta.vars]
+PLAYFAB_TITLE_ID = "FA641"
+
 [env.beta.observability.logs]
 enabled = true
 invocation_logs = true
