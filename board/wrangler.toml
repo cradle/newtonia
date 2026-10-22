@@ -12,7 +12,7 @@ enabled = true
 invocation_logs = true
 
 # PRODUCTION admits only canonical seasons (the SEASON-file stamps s1,
-# s2, ... — LEADERBOARD.md whitelist decision). The beta env sets no vars
+# s2, ... — LEADERBOARD.md whitelist decision). The beta env sets it to 0
 # (open for dev/test submissions), and the test harnesses pass
 # --var CANONICAL_SEASONS_ONLY:0 explicitly.
 [vars]
@@ -84,6 +84,13 @@ new_sqlite_classes = ["Session", "Limiter"]
 # top-level-only and apply to each script on deploy.
 [env.beta]
 name = "newtonia-board-beta"
+
+# PlayFab title linked to the Xbox title (signal/src/xbox_verify.js): Xbox
+# credentials verify through its public LoginWithXbox. Not a secret. Beta
+# only until the console path is kit-tested; production adds it to [vars].
+[env.beta.vars]
+CANONICAL_SEASONS_ONLY = "0"   # beta stays open (vars are not inherited)
+PLAYFAB_TITLE_ID = "FA641"
 
 [env.beta.observability.logs]
 enabled = true
