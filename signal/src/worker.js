@@ -39,6 +39,7 @@
 import { verifySteamTicket } from "./steam_verify.js";
 import { verifyPlayGamesCode } from "./play_games_verify.js";
 import { verifyGameCenterCred } from "./game_center_verify.js";
+import { verifyXboxToken } from "./xbox_verify.js";
 
 const CODE_ALPHABET = "ABCDEGHJKLMNPQRTUVWXYZ2346789"; // no 0/O/1/I/5/S (confusable in the game font) or F (game fullscreen key)
 const CODE_LEN = 5;
@@ -922,6 +923,8 @@ export class Room {
       //                only; Apple exposes no server-side alias lookup, so the
       //                attested name is always empty — see game_center_verify.js).
       //   Android (5): Play Games server auth code -> token exchange + player.
+      //   Xbox    (6): Xbox token for PlayFab -> LoginWithXbox (account only;
+      //                PlayFab exposes no gamertag, so name ABSENT like iOS).
       let verify = null;
       if (fake_slow)
         // Dev/e2e slow-verify hook (FAKE_VERIFY-gated like the fast path,
@@ -957,6 +960,14 @@ export class Room {
         verify = async () => {
           const v = await verifyPlayGamesCode(this.env, cred);
           return v ? { name: v.name || "", acct: v.playerId } : null;
+        };
+      else if (platform === 6 /* NET_PLATFORM_XBOX */)
+        verify = async () => {
+          const v = await verifyXboxToken(this.env, cred);
+          if (v) console.log(`xbox verified sandbox=${v.sandbox}`);
+          // Account proven, no alias from PlayFab: platform ATTESTED, name
+          // ABSENT ("PLAYER N - XBOX"), ban token from the Xbox user id.
+          return v ? { name: "", acct: v.xuid } : null;
         };
       if (verify) {
         // Denial-of-wallet guard: every verify is a round-trip against the

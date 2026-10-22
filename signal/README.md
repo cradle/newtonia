@@ -169,6 +169,16 @@ npx wrangler secret put PLAY_GAMES_OAUTH_CLIENT_ID     --env beta
 npx wrangler secret put PLAY_GAMES_OAUTH_CLIENT_SECRET --env beta
 ```
 
+**Xbox (V4)** needs only the **PlayFab title id** — not a secret. The
+console asks Xbox for a token addressed to PlayFab (`https://playfabapi.com/`)
+and sends it as the credential; the worker hands it to PlayFab's public
+`Client/LoginWithXbox` for that title (`xbox_verify.js`), and PlayFab checks
+the token belongs to the Xbox title linked to it. Account-only like Game
+Center: PlayFab returns the Xbox user id (ban token) but no gamertag, so the
+attested name is empty. Set `PLAYFAB_TITLE_ID` as a plain var under
+`[env.beta.vars]` (and later `[vars]`) in `wrangler.toml`, or as a secret;
+unset means Xbox peers stay unattested.
+
 For local e2e (`test/e2e/identity_attested.sh`, `test/identity_test.js`) the
 `FAKE_VERIFY` **dev var** attests the claim without contacting any platform
 backend — pass `--var FAKE_VERIFY:1` to `wrangler dev`. **Never** set it in

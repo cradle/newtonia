@@ -67,6 +67,7 @@ jobs:
           node test/steam_verify_test.mjs
           node test/play_games_verify_test.mjs
           node test/game_center_verify_test.mjs
+          node test/xbox_verify_test.mjs
           node test/room_unit_test.mjs
           node test/relay_privacy_test.mjs
 

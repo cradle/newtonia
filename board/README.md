@@ -90,7 +90,8 @@ and otherwise just resolves the existing id, so re-running is safe.
 
 The platform-verification secrets (`STEAM_WEBAPI_KEY`,
 `PLAY_GAMES_OAUTH_CLIENT_ID`, `PLAY_GAMES_OAUTH_CLIENT_SECRET`; Game Center
-needs none) are the SAME across the board and signal workers, so rather
+needs none, and Xbox needs only the non-secret `PLAYFAB_TITLE_ID` var — see
+signal/README.md) are the SAME across the board and signal workers, so rather
 than duplicate a per-worker secret onto each of the four scripts they live
 in one **account-level Cloudflare Secrets Store** that all four bind
 (`[[secrets_store_secrets]]` in both `wrangler.toml`s). Cloudflare secrets
