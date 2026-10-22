@@ -62,6 +62,9 @@ eq("oversize cred rejected",
 // Steam with a credential but no configured key: verifier declines.
 eq("unconfigured steam rejected",
    await verify_identity({}, 2, "X", "deadbeef"), null);
+// Xbox with a token but no PlayFab title configured: verifier declines.
+eq("unconfigured xbox rejected",
+   await verify_identity({}, 6, "X", "XBL3.0 x=1;tok"), null);
 
 // ---- rate_key (v6 collapse) ----
 eq("v4 keyed whole", rate_key("203.0.113.9"), "v4:203.0.113.9");

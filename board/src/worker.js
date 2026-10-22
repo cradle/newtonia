@@ -51,6 +51,7 @@
 import { verifySteamTicket } from "../../signal/src/steam_verify.js";
 import { verifyPlayGamesCode } from "../../signal/src/play_games_verify.js";
 import { verifyGameCenterCred } from "../../signal/src/game_center_verify.js";
+import { verifyXboxToken } from "../../signal/src/xbox_verify.js";
 import {
   validate_submission,
   season_ok,
@@ -309,6 +310,14 @@ export async function verify_identity(env, platform, name, cred, dev) {
     if (!v) return null;
     return { platform, name: strip_name(v.name || ""), verified: true,
              account: `pg:${v.playerId}` };
+  }
+  if (platform === 6 /* NET_PLATFORM_XBOX */) {
+    // Account proven through PlayFab; no gamertag comes back, so the alias
+    // stays a claim exactly like Game Center's.
+    const v = await with_timeout(verifyXboxToken(env, cred), platform);
+    if (!v) return null;
+    return { platform, name: claimed, verified: false,
+             account: `xbl:${v.xuid}` };
   }
   return null; // no verifier for this platform => no admission
 }

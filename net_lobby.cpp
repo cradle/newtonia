@@ -1204,10 +1204,13 @@ void NetLobby::copy_local_description() {
 // (Steam Web-API ticket, "" otherwise) for the worker to attest. Sent when a
 // socket comes up (Room/Joined) — the worker verifies and broadcasts the
 // result to the peer.
-void NetLobby::send_local_identity() {
+void NetLobby::send_local_identity(bool late) {
   if (!signal_) return;
   const NetIdentity &me = net_local_identity();
-  signal_->send_identity(me.platform, me.name, net_local_verify_credential());
+  std::string cred = net_local_verify_credential();
+  // Arms tick's one late re-announce (each fresh socket re-arms it).
+  identity_reannounce_ = !late && cred.empty() && net_has_verify_backend();
+  signal_->send_identity(me.platform, me.name, cred);
 }
 
 // Consume the worker's `identity` broadcast describing the peer. Only a
@@ -2113,6 +2116,13 @@ void NetLobby::tick(int delta) {
 
   pump_signal(delta);
   host_report_seats();
+  // The credential was still minting when we announced: announce again the
+  // moment it lands (peek starts no new mint while we wait).
+  if (identity_reannounce_ && signal_ &&
+      !net_local_verify_credential_peek().empty()) {
+    NET_LOG("[lobby] credential arrived - re-announcing identity\n");
+    send_local_identity(/*late=*/true);
+  }
 
   // Deck: bring the picker (and LAN rows) back the MOMENT the floating
   // keyboard is dismissed. The old proof — the next controller event

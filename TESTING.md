@@ -605,6 +605,7 @@ node test/steam_verify_test.mjs          # V1 Steam verifier, mocked Valve (unit
 node test/play_games_verify_test.mjs     # V2 Play Games verifier, mocked Google (unit)
 node test/game_center_verify_test.mjs    # V3 Game Center verifier, real RSA + synthetic
                                          #   Apple cert, mocked fetch (unit)
+node test/xbox_verify_test.mjs           # V4 Xbox verifier via PlayFab LoginWithXbox, mocked (unit)
 node test/room_unit_test.mjs             # Room DO: alarm deadlines, frame bounds/budget,
                                          #   verify bound to the room generation, host-reported
                                          #   seats (room_full: free=0 refuses a fresh join,
