@@ -436,7 +436,13 @@ private:
   bool handed_off_to_game_ = false;
   // Announce our identity to the worker; re-sent on every Room/Joined event
   // (each fresh socket, including a host reclaim), which the worker re-attests.
-  void send_local_identity();
+  // `late` = tick's re-announce, which never re-arms itself.
+  void send_local_identity(bool late = false);
+  // Set when an announce went out with no credential although this build
+  // has a verification backend (the async mint hadn't landed yet); tick
+  // re-announces once the credential arrives, so a slow mint costs a beat
+  // instead of the whole session's attestation.
+  bool identity_reannounce_ = false;
   // Consume a worker `identity` broadcast describing the peer.
   void apply_peer_attestation(uint8_t platform, const std::string &name,
                               bool verified, const std::string &key);
