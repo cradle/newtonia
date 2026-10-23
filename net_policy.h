@@ -22,10 +22,22 @@
 // in the other direction (presence.cpp dedupes so backends only hear real
 // changes).
 
-// May this player go online at all? Gates the menu's ONLINE row (ANDed
-// with net_available()) and the lobby's HOST/JOIN commit paths (including
-// the rejoin/invite-accept constructor).
+// May this player go online at all? Gates the lobby's HOST/JOIN commit
+// paths (including the rejoin/invite-accept constructor), the menu's
+// online-resume offer and the leaderboard upload. The menu's ONLINE row
+// stays visible on a capable build either way: a refusal has to be
+// explained where the player asked for the feature, not hidden.
 bool net_online_play_allowed();
+
+// The platform's chance to explain a refusal and let the player fix it.
+// Called once each time a lobby commit is refused by
+// net_online_play_allowed(), beside the lobby's own "ONLINE PLAY NOT
+// ALLOWED" screen. A backend whose platform has a system dialog for this
+// (an account that lacks a membership or needs a parent's approval) opens
+// it here, asynchronously, and refreshes its cached answer when the dialog
+// closes; the player then backs out and tries again. Must not block. The
+// default backend does nothing.
+void net_online_play_explain();
 
 // May this player play with THIS peer? Enforced at the single chokepoint
 // where the peer's identity becomes known — inside NetSession's handshake

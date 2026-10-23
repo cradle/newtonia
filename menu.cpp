@@ -1857,10 +1857,10 @@ int Menu::max_menu_items() const {
 }
 
 bool Menu::show_online_row() const {
-  // Build capability AND platform policy (net_policy.h; the default
-  // backend always allows — only a platform privilege backend can hide
-  // the row on a capable build).
-  return net_available() && net_online_play_allowed();
+  // Build capability only. A platform policy refusal (net_policy.h) is
+  // answered when the player commits in the lobby, where the platform can
+  // explain it (net_online_play_explain) — a hidden row explains nothing.
+  return net_available();
 }
 
 bool Menu::show_options_row() const {
@@ -2630,7 +2630,8 @@ void Menu::close_options() {
 void Menu::scan_net_resume() {
   if (net_resume_scanned_) return;
   net_resume_scanned_ = true;
-  if (!show_online_row()) return;
+  // No RESUME offer the lobby would only refuse (net_policy.h).
+  if (!show_online_row() || !net_online_play_allowed()) return;
   std::string code, token;
   long long age_ms = 0;
   if (!NetResume::read(code, token, age_ms)) return;

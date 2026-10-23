@@ -4,12 +4,14 @@
 
 // Default backend: everything allowed, everywhere — shipping this seam
 // changes no behavior on any platform. A platform backend TU defines
-// NEWTONIA_NET_POLICY_BACKEND for the whole build and provides these two
+// NEWTONIA_NET_POLICY_BACKEND for the whole build and provides these
 // functions itself (the Xbox fork's private privilege-check backend).
 
 #ifndef NEWTONIA_NET_POLICY_BACKEND
 
 bool net_online_play_allowed() { return true; }
+
+void net_online_play_explain() {}
 
 bool net_comms_allowed_with(const NetIdentity &) {
   // Test hook, inert without the env var (the pattern of the other

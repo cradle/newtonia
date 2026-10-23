@@ -369,6 +369,9 @@ void NetLobby::fail_online_not_allowed() {
   set_status("THIS ACCOUNT CANNOT PLAY ONLINE", 2 * STATUS_SHOW_MS);
   policy_blocked_ = true;
   screen_ = LobbyFailed;
+  // The platform's own dialog, if it has one (net_policy.h): the reason
+  // and, where the player can fix it, the way to.
+  net_online_play_explain();
 }
 
 NetLobby::NetLobby(const std::string &rejoin_code)
@@ -746,7 +749,8 @@ void NetLobby::confirm() {
   } else if (screen_ == LobbyFailed) {
     // A policy-blocked account gets no chooser: HOST and JOIN would both
     // refuse with the same headline, an infinite dead-end — back to the
-    // menu, where show_online_row() hides ONLINE for the same reason.
+    // menu, whose ONLINE row tries afresh (the platform's explain dialog
+    // may have fixed the account meanwhile).
     if (policy_blocked_) {
       leave_to_menu();
       return;

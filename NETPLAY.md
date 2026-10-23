@@ -993,7 +993,9 @@ current build send the short messages). The peer identity lives on
 at adoption, and refreshes with every rejoin handshake. `net_policy.h`
 (`net_online_play_allowed` / `net_comms_allowed_with`, default allow-all;
 backends must answer from a cached snapshot — hot paths): online-play
-gates the menu ONLINE row and the lobby HOST/JOIN commits; the per-peer
+gates the lobby HOST/JOIN commits (the menu ONLINE row stays visible, and a
+refused commit calls `net_online_play_explain()` so a platform can open its
+own dialog — the Xbox privilege UI); the per-peer
 comms check runs INSIDE the NetSession handshake — host: between the
 HELLO identity parse and WELCOME, refusing with MSG_REJECT reason 2
 (`RejectNotAllowed`, an appended enum value old builds render as their
