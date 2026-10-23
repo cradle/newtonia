@@ -176,7 +176,8 @@ and sends it as the credential; the worker hands it to PlayFab's public
 the token belongs to the Xbox title linked to it. Account-only like Game
 Center: PlayFab returns the Xbox user id (ban token) but no gamertag, so the
 attested name is empty. Set `PLAYFAB_TITLE_ID` as a plain var under
-`[env.beta.vars]` (and later `[vars]`) in `wrangler.toml`, or as a secret;
+`[vars]` and `[env.beta.vars]` in `wrangler.toml` (both set to the same
+title), or as a secret;
 unset means Xbox peers stay unattested.
 
 For local e2e (`test/e2e/identity_attested.sh`, `test/identity_test.js`) the
