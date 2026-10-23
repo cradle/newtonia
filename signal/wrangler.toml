@@ -9,6 +9,12 @@ compatibility_date = "2026-06-01"
 # 50 ms this used to request. If the account moves to a paid plan,
 # restore:  [limits]  cpu_ms = 50
 
+# PlayFab title linked to the Xbox title (signal/src/xbox_verify.js): Xbox
+# credentials verify through its public LoginWithXbox. Not a secret. Named
+# envs don't inherit vars, so [env.beta.vars] repeats it.
+[vars]
+PLAYFAB_TITLE_ID = "FA641"
+
 # Workers Logs in the dashboard (console.log lines + one invocation record
 # per request). Named envs do NOT inherit observability — beta repeats it.
 [observability.logs]
@@ -70,8 +76,8 @@ new_sqlite_classes = ["Limiter"]
 name = "newtonia-signal-beta"
 
 # PlayFab title linked to the Xbox title (signal/src/xbox_verify.js): Xbox
-# credentials verify through its public LoginWithXbox. Not a secret. Beta
-# only until the console path is kit-tested; production adds it to [vars].
+# credentials verify through its public LoginWithXbox. Not a secret. Repeats
+# the top-level [vars] value (named envs don't inherit vars).
 [env.beta.vars]
 PLAYFAB_TITLE_ID = "FA641"
 
