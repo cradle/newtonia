@@ -50,6 +50,10 @@ public:
     // Identity: the worker's room-scoped ban token for the attested account
     // (net_identity.h NetIdentity::ban_token); "" = none / an old worker.
     std::string key;
+    // Identity: the peer's platform account id, sent only between players
+    // verified on a platform that checks block lists by it (Xbox user ids
+    // between Xboxes); "" otherwise (net_identity.h platform_account).
+    std::string account;
     // PB-D5 (multi-join worker): the joiner id this event concerns, from
     // the frame's "from" stamp — Answer/Cand/PeerJoin/PeerLeave/Identity
     // on the host side. Empty for host-role events and legacy frames.

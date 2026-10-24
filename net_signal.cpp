@@ -279,6 +279,8 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
     json_field(frame, "from", ev.peer);  // which joiner (host side, PB-D5)
     // The worker's ban token; absent from an old worker (ev.key stays "").
     json_field(frame, "key", ev.key);
+    // Xbox user id, Xbox to Xbox only (see NetIdentity::platform_account).
+    json_field(frame, "xuid", ev.account);
     unsigned plat = 0;
     ev.platform = json_uint_field(frame, "platform", plat) ? (uint8_t)plat : 0;
     bool ver = false;

@@ -19,7 +19,8 @@
 // PlayFab exposes no gamertag here (UserXboxInfo is the user id and
 // sandbox), so like Game Center this proves the ACCOUNT only: the caller
 // attests the platform and mints the ban token from the id, and the name
-// stays unattested. The id itself never leaves the worker.
+// stays unattested. The id leaves the worker only for the room's other
+// verified Xbox players (worker.js identity_frame), for their block-list check.
 
 import { read_secret } from "./secret.js";
 

@@ -43,7 +43,7 @@ shard_drivers() {
     # clock, and this driver self-hosts its own FAKE_VERIFY relay, so it
     # costs this shard only its own runtime.
     lobby-and-lan) echo "lan_hidden lanclip lanrejoin lanrename byecard lankeep
-                         ownroom mismatch policy identity identity_legacy pairstart fly
+                         ownroom mismatch policy policy_peer identity identity_legacy pairstart fly
                          nseat_lobby_kick nseat_lobby_mouse nseat_ban_token
                          lan_anon" ;;
     netplay-core) echo "room weapons_net missile_net pickup_switch_net
@@ -54,7 +54,7 @@ shard_drivers() {
     # that decides this job's wall clock (16 min against 12 for this one),
     # and 2m20 of 4-seat flap driver costs nothing here and 2m20 there. It
     # is a loss-and-recovery driver either way.
-    netplay-resilience) echo "rejoin rejoinexit hiccup blackout invite invite_deadroom
+    netplay-resilience) echo "rejoin rejoinexit hiccup policy_peer_rejoin blackout invite invite_deadroom
                               hostresume spectate spectate_disconnect revive
                               nseat_rejoin_flap_swap" ;;
     seats-and-soak) echo "nseat nseat_rejoin nseat_rejoin_flap nseat_gameover

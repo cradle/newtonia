@@ -47,6 +47,12 @@ const int STATUS_SHOW_MS = 4000;
 // window they are almost certainly behind symmetric NATs (no relay yet).
 const int CONNECT_TIMEOUT_MS = 25000;
 
+// Joiner: how long the platform's per-peer verdict on the host
+// (net_peer_verdict) may hold us on the Connected screen. The host holds
+// its WELCOME for us up to 4 s for the same reason (net_session.cpp
+// ADMIT_WAIT_MS); our hold starts after that, so a little longer.
+const int PEER_VERDICT_WAIT_MS = 6000;
+
 // No word from the signal server in this window (room creation / join
 // acknowledgement) — treat it as unreachable and use the manual flow.
 const int SIGNAL_TIMEOUT_MS = 12000;
@@ -294,6 +300,13 @@ NetSession::Admit NetLobby::admit_verdict(const NetIdentity &claimed,
   // — the admit check re-reads it on every call.
   if (identity_banned(claimed) || identity_banned(attested))
     return NetSession::AdmitBanned;
+  // The platform's say on this particular peer (net_policy.h), ahead of the
+  // room's anonymous-players setting: it applies whatever that is set to.
+  switch (net_peer_verdict(claimed, attested)) {
+    case NET_PEER_REFUSE: return NetSession::AdmitNotAllowed;
+    case NET_PEER_WAIT:   return NetSession::AdmitWaitPolicy;
+    case NET_PEER_ALLOW:  break;
+  }
   if (g_prefs.allow_anonymous) return NetSession::AdmitAllow;
   // Policy NO with no worker behind the door: nobody on this path can
   // EVER be attested, so no wait could resolve — refuse now, with the
@@ -369,6 +382,9 @@ void NetLobby::fail_online_not_allowed() {
   set_status("THIS ACCOUNT CANNOT PLAY ONLINE", 2 * STATUS_SHOW_MS);
   policy_blocked_ = true;
   screen_ = LobbyFailed;
+  // The platform's own dialog, if it has one (net_policy.h): the reason
+  // and, where the player can fix it, the way to.
+  net_online_play_explain();
 }
 
 NetLobby::NetLobby(const std::string &rejoin_code)
@@ -746,7 +762,8 @@ void NetLobby::confirm() {
   } else if (screen_ == LobbyFailed) {
     // A policy-blocked account gets no chooser: HOST and JOIN would both
     // refuse with the same headline, an infinite dead-end — back to the
-    // menu, where show_online_row() hides ONLINE for the same reason.
+    // menu, whose ONLINE row tries afresh (the platform's explain dialog
+    // may have fixed the account meanwhile).
     if (policy_blocked_) {
       leave_to_menu();
       return;
@@ -1218,7 +1235,8 @@ void NetLobby::send_local_identity(bool late) {
 // game at hand-off); an unverified broadcast leaves the peer role-labelled
 // online. The name is re-sanitized locally, as every name-bearing path is.
 void NetLobby::apply_peer_attestation(uint8_t platform, const std::string &name,
-                                      bool verified, const std::string &key) {
+                                      bool verified, const std::string &key,
+                                      const std::string &account) {
   if (!verified) return;
   attested_peer_.platform = platform;
   attested_peer_.platform_trust = NET_TRUST_ATTESTED;
@@ -1227,6 +1245,7 @@ void NetLobby::apply_peer_attestation(uint8_t platform, const std::string &name,
   attested_peer_.name_trust =
       clean.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
   attested_peer_.ban_token = key;
+  attested_peer_.platform_account = account;
   NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
           clean.c_str(), net_platform_label(platform), (unsigned)platform);
 }
@@ -1398,6 +1417,8 @@ void NetLobby::waiting_room_update(int delta) {
         set_status("REMOVED PLAYER TRIED TO REJOIN");
       else if (why == NetSession::RejectAnonymous)
         set_status("ANONYMOUS PLAYERS ARE BLOCKED");
+      else if (why == NetSession::RejectNotAllowed)
+        set_status("A PLAYER COULD NOT JOIN");
       NET_LOG("[lobby] waiting room: refused joiner %s for seat %d (reason %u)\n",
               it->first.c_str(), pj.seat, (unsigned)why);
       closing_.push_back(std::make_pair(pj.session, 600));
@@ -1773,9 +1794,11 @@ void NetLobby::pump_signal(int delta) {
         // relays the paired peer's) fold directly.
         if (!hosting_) {
           if (ev.text2 == "host" || ev.text2.empty())
-            apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key);
+            apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key,
+                                   ev.account);
         } else if (ev.peer.empty()) {
-          apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key);
+          apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key,
+                                 ev.account);
         } else if (ev.verified) {
           NetIdentity att;
           att.platform = ev.platform;
@@ -1784,6 +1807,7 @@ void NetLobby::pump_signal(int delta) {
           att.name_trust =
               att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
           att.ban_token = ev.key;
+          att.platform_account = ev.account;
           jid_attested_[ev.peer] = att;
           // Greppable, and not just for tests: attestation now decides
           // whether the roster offers BAN at all, so "why is there no BAN
@@ -1792,7 +1816,8 @@ void NetLobby::pump_signal(int delta) {
                   ev.peer.c_str(), att.name.c_str(),
                   net_platform_label(att.platform), (unsigned)att.platform);
           if (ev.peer == paired_jid_)
-            apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key);
+            apply_peer_attestation(ev.platform, ev.text, ev.verified, ev.key,
+                                   ev.account);
           // The verdict can outrun the ban: with ALLOW ANONYMOUS on, a
           // banned account that reconnects fast is SEATED before its
           // attestation (and the token bans key on) lands. The late
@@ -2482,6 +2507,8 @@ void NetLobby::tick(int delta) {
           request_state_change(game);
           return;
         }
+        held_snapshot_.clear();
+        peer_verdict_wait_ms_ = 0;
         screen_ = Connected;
       } else if (p == NetSession::Rejected) {
         if (session_->reject_reason() == NetSession::RejectVersionMismatch) {
@@ -2572,24 +2599,63 @@ void NetLobby::tick(int delta) {
         if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;
         if (!assembler_.add_chunk(r)) continue;
 
-        Save::MemStream in(assembler_.payload());
-        Save::GameState s;
-        if (!Save::deserialize_game(in, s)) continue;
-        if (!net_state_sane(s)) continue;  // wait for a sane snapshot
-
-        NetSession *session = session_;
-        session_ = nullptr;
-        GLGame *game = new GLGame(s, session, PAD_NONE);
-        game->net_room_code_ = room_code_;  // enables client auto-rejoin
-        game->net_set_worker_session(used_worker_);
-        game->net_apply_peer_attestation(attested_peer_);
-        // A LAN-door join remembers the host's NAME the way a relay join
-        // remembers the code — it is the rejoin identity (round 4).
-        game->net_lan_host_name_ = lan_host_name_;
-        game->net_apply_extras(in, s);
-        handed_off_to_game_ = true;  // credential lifetime moves to the game
-        request_state_change(game);
-        return;
+        {
+          Save::MemStream probe(assembler_.payload());
+          Save::GameState ps;
+          if (!Save::deserialize_game(probe, ps)) continue;
+          if (!net_state_sane(ps)) continue;  // wait for a sane snapshot
+        }
+        // Keep the newest; the bootstrap below runs from it.
+        held_snapshot_ = assembler_.payload();
+      }
+      if (!held_snapshot_.empty()) {
+        // The platform's say on this host, now that the worker has said who
+        // they are (net_policy.h; the host asks the same of us before its
+        // WELCOME). Asked every tick while it is still deciding, with the
+        // snapshot held (see held_snapshot_), for a bounded time. Refused,
+        // or never decided: leave, and don't auto-rejoin a room this player
+        // may not play in.
+        NetPeerVerdict pv =
+            net_peer_verdict(session_->peer_identity(), attested_peer_);
+        if (pv == NET_PEER_WAIT && peer_verdict_wait_ms_ < PEER_VERDICT_WAIT_MS) {
+          if (peer_verdict_wait_ms_ == 0)
+            NET_LOG("[lobby] holding the bootstrap for the platform's verdict\n");
+          peer_verdict_wait_ms_ += delta > 0 ? delta : 1;
+          // Holding: fall through to the transport check below, so a link
+          // that dies meanwhile takes its usual retry path.
+        } else if (pv != NET_PEER_ALLOW) {
+          NET_LOG("[lobby] host refused by platform policy (%s)\n",
+                  pv == NET_PEER_WAIT ? "no verdict" : "refused");
+          held_snapshot_.clear();
+          mark_room_dead(room_code_);
+          fail_headline_ = "CANNOT PLAY WITH THAT PLAYER";
+          set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
+          screen_ = LobbyFailed;
+          return;
+        } else {
+          if (peer_verdict_wait_ms_ > 0)
+            NET_LOG("[lobby] platform allowed the host after %d ms\n",
+                    peer_verdict_wait_ms_);
+          Save::MemStream in(held_snapshot_);
+          held_snapshot_.clear();
+          Save::GameState s;
+          // Re-reads what the probe above accepted, so it can't fail.
+          if (Save::deserialize_game(in, s)) {
+            NetSession *session = session_;
+            session_ = nullptr;
+            GLGame *game = new GLGame(s, session, PAD_NONE);
+            game->net_room_code_ = room_code_;  // enables client auto-rejoin
+            game->net_set_worker_session(used_worker_);
+            game->net_apply_peer_attestation(attested_peer_);
+            // A LAN-door join remembers the host's NAME the way a relay join
+            // remembers the code — it is the rejoin identity (round 4).
+            game->net_lan_host_name_ = lan_host_name_;
+            game->net_apply_extras(in, s);
+            handed_off_to_game_ = true;  // credential lifetime moves to the game
+            request_state_change(game);
+            return;
+          }
+        }
       }
       if (session_->phase() == NetSession::Failed ||
           (session_->transport() && session_->transport()->failed())) {

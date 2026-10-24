@@ -400,6 +400,16 @@ private:
   // This LobbyFailed came from the online-play policy gate: the fail
   // screen's confirm leaves to the menu instead of the HOST/JOIN chooser.
   bool policy_blocked_ = false;
+  // Joiner: the newest complete, sane snapshot, held while the platform's
+  // per-peer verdict on the host (net_peer_verdict) is still WAIT. Kept
+  // rather than dropped because a PAUSED host sends exactly one keyframe to
+  // a rejoiner (GLGame::net_host_rejoin_session_update) and nothing after
+  // it until someone resumes, so the verdict is polled every tick against
+  // the held copy, never only when a snapshot arrives.
+  std::vector<uint8_t> held_snapshot_;
+  // How long the held snapshot has waited on that verdict; past
+  // PEER_VERDICT_WAIT_MS a verdict that never came counts as a refusal.
+  int peer_verdict_wait_ms_ = 0;
   // Joiner: time on the RoomJoining screen. A room can be joined while
   // hostless (reclaim grace) — if no host ever offers, fail instead of
   // showing "JOINING THE ROOM" forever.
@@ -445,7 +455,8 @@ private:
   bool identity_reannounce_ = false;
   // Consume a worker `identity` broadcast describing the peer.
   void apply_peer_attestation(uint8_t platform, const std::string &name,
-                              bool verified, const std::string &key);
+                              bool verified, const std::string &key,
+                              const std::string &account);
 
   // Controller state (stick/trigger edges live in State's shared nav
   // translator; only the picker's own bits remain here).

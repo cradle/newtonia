@@ -906,6 +906,20 @@ What would now reopen it: attestation's **content** gating something
 policy that persists a verdict ACROSS sessions rather than re-deriving
 it per handshake, or the two conditions below.
 
+**AMENDED 2026-10-24 — attestation's content now gates admission on one
+platform, and the decision still stands.** The per-peer policy seam
+(`net_peer_verdict`, `net_policy.h`) lets a platform refuse a SPECIFIC
+attested account: the Xbox fork checks its player's block list and
+privacy settings against the other Xbox player's user id, which the
+worker sends only between Xbox-verified players (`identity_frame`'s
+`xuid`). That is content, so the narrowed condition above has fired. It
+doesn't change the answer: the verdict is still derived per handshake (at
+join and rejoin, held until the platform answers, never persisted), which
+is the cadence XR-015 itself asks for ("the beginning of a session or
+when a new user joins"), and an Xbox user id is not a credential that
+goes stale the way a display name can. A block added mid-game takes
+effect at that player's next join.
+
 **What would reopen this** (in rough order of likelihood): (1) ~~identity
 becoming a POLICY input anywhere~~ — fired; see the amendment above,
 which narrows this to attestation's content rather than its presence;
@@ -993,7 +1007,9 @@ current build send the short messages). The peer identity lives on
 at adoption, and refreshes with every rejoin handshake. `net_policy.h`
 (`net_online_play_allowed` / `net_comms_allowed_with`, default allow-all;
 backends must answer from a cached snapshot — hot paths): online-play
-gates the menu ONLINE row and the lobby HOST/JOIN commits; the per-peer
+gates the lobby HOST/JOIN commits (the menu ONLINE row stays visible, and a
+refused commit calls `net_online_play_explain()` so a platform can open its
+own dialog — the Xbox privilege UI); the per-peer
 comms check runs INSIDE the NetSession handshake — host: between the
 HELLO identity parse and WELCOME, refusing with MSG_REJECT reason 2
 (`RejectNotAllowed`, an appended enum value old builds render as their
