@@ -95,6 +95,13 @@ struct NetIdentity {
   // what a display-name change can't shake, and what makes an iOS pilot —
   // account attested, alias never — bannable at all.
   std::string ban_token;
+  // The peer's platform account id, from the worker, ONLY where a platform
+  // needs it to apply its player's block list and privacy settings to that
+  // peer and both ends are verified on it (today: an Xbox user id, sent
+  // between Xbox players only — signal/src/worker.js identity_frame). Read
+  // by the policy backend (net_policy.h net_peer_verdict) and nothing else:
+  // never shown, never persisted, never sent peer to peer. "" = none.
+  std::string platform_account;
   NetIdentity()
       : platform(NET_PLATFORM_UNKNOWN),
         platform_trust(NET_TRUST_ABSENT),

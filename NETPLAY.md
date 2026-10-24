@@ -906,6 +906,20 @@ What would now reopen it: attestation's **content** gating something
 policy that persists a verdict ACROSS sessions rather than re-deriving
 it per handshake, or the two conditions below.
 
+**AMENDED 2026-10-24 — attestation's content now gates admission on one
+platform, and the decision still stands.** The per-peer policy seam
+(`net_peer_verdict`, `net_policy.h`) lets a platform refuse a SPECIFIC
+attested account: the Xbox fork checks its player's block list and
+privacy settings against the other Xbox player's user id, which the
+worker sends only between Xbox-verified players (`identity_frame`'s
+`xuid`). That is content, so the narrowed condition above has fired. It
+doesn't change the answer: the verdict is still derived per handshake (at
+join and rejoin, held until the platform answers, never persisted), which
+is the cadence XR-015 itself asks for ("the beginning of a session or
+when a new user joins"), and an Xbox user id is not a credential that
+goes stale the way a display name can. A block added mid-game takes
+effect at that player's next join.
+
 **What would reopen this** (in rough order of likelihood): (1) ~~identity
 becoming a POLICY input anywhere~~ — fired; see the amendment above,
 which narrows this to attestation's content rather than its presence;

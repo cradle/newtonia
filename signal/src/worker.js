@@ -134,6 +134,11 @@ const VERIFY_MIN_INTERVAL_MS = 3000;
 // exactly the token's scope; a room persisted from before ban_salt existed
 // mints no tokens (mint_ban_key's empty-salt guard) and degrades to the
 // name bans.
+// An identity the worker verified as an Xbox player, with its user id.
+function is_xbox_verified(id) {
+  return !!id && id.verified === true && id.platform === 6 && !!id.xuid;
+}
+
 async function mint_ban_key(salt, platform, acct) {
   if (!salt || !acct) return "";
   const data = new TextEncoder().encode(`${salt}:${platform}:${acct}`);
@@ -897,7 +902,8 @@ export class Room {
 
     let attested = { platform, name, verified: false };
     // The verified stable account id each platform backend proves — the ban
-    // token's input (never stored, never forwarded raw). "" = none proven.
+    // token's input (never forwarded raw, except an Xbox user id to the
+    // room's other Xbox players — see identity_frame). "" = none proven.
     let acct = "";
     const fake = this.env && this.env.FAKE_VERIFY === "1";
     const fake_slow = fake && /^SLOW(FAIL)?:\d+$/.test(cred);
@@ -1028,6 +1034,7 @@ export class Room {
           const lkey = await mint_ban_key(this.r.ban_salt, platform,
                                           v.acct || "");
           if (lkey) late.key = lkey;
+          if (platform === 6 /* NET_PLATFORM_XBOX */ && v.acct) late.xuid = v.acct;
           // The digest is a non-storage await too: re-check the generation
           // before writing, and write to the entry as it is NOW.
           if (this.r.host_token !== gen || !this.r.jids[jid]) return;
@@ -1095,6 +1102,13 @@ export class Room {
       const gen = this.r.host_token;
       const key = await mint_ban_key(this.r.ban_salt, platform, acct);
       if (key) attested.key = key;
+      // The Xbox user id, kept for the room's lifetime so it can go to the
+      // room's OTHER Xbox players (identity_frame) — the one exception to
+      // "the raw account never leaves the worker". An Xbox console must
+      // check its player's block list and privacy settings against each
+      // Xbox player it plays with, which takes that player's id; the PC,
+      // phone and web players in the room never receive it.
+      if (platform === 6 /* NET_PLATFORM_XBOX */ && acct) attested.xuid = acct;
       // Non-storage await (F9): the room may have been replaced meanwhile.
       if (this.r.host_token !== gen) return;
     }
@@ -1116,7 +1130,12 @@ export class Room {
   // another joiner's badge would overwrite the host's on their screen; B4's
   // roster consumer re-adds that leg. No-op for peers not connected yet —
   // the stored copy is replayed on join/reclaim instead.
-  identity_frame(role, jid) {
+  //
+  // `to` is the RECIPIENT's stored identity: an Xbox-verified subject's
+  // user id ({xuid}) rides the frame only when the recipient is an
+  // Xbox-verified player too (the console's block-list check; see
+  // attest_identity). Everyone else gets the frame without it.
+  identity_frame(role, jid, to) {
     const id = role === "host" ? this.r.host_identity
                                : (this.r.jids[jid] || {}).identity;
     if (!id) return null;
@@ -1126,24 +1145,50 @@ export class Room {
     // the extra field; old workers simply never send it — either direction
     // degrades to the name+platform ban keys.
     if (id.key) frame.key = id.key;
+    if (is_xbox_verified(id) && is_xbox_verified(to)) frame.xuid = id.xuid;
     if (role === "joiner") frame.from = String(jid);
     return frame;
   }
 
+  // The stored identity of whoever holds this socket (host or joiner).
+  identity_of(ws) {
+    if (this.state.getTags(ws).includes("host")) return this.r.host_identity;
+    const jid = this.jidOf(ws);
+    return jid === null ? null : (this.r.jids[jid] || {}).identity || null;
+  }
+
   broadcast_identity(role, jid) {
-    const frame = this.identity_frame(role, jid);
-    if (!frame) return;
+    const subject = role === "host" ? this.r.host_identity
+                                    : (this.r.jids[jid] || {}).identity;
     if (role === "host") {
-      for (const j of this.joinerWss()) this.safeSend(j, frame);
+      for (const j of this.joinerWss()) {
+        const frame = this.identity_frame(role, jid, this.identity_of(j));
+        if (frame) this.safeSend(j, frame);
+      }
     } else {
       const h = this.hostWs();
-      if (h) this.safeSend(h, frame);
+      const frame = this.identity_frame(role, jid, this.r.host_identity);
+      if (h && frame) this.safeSend(h, frame);
+    }
+    // The subject just became an Xbox player its counterparts can be told
+    // about — and that they can be told about in turn: the frames it heard
+    // before it was verified carried no ids, so send the Xbox ones again.
+    if (!is_xbox_verified(subject)) return;
+    if (role === "host") {
+      const h = this.hostWs();
+      if (!h) return;
+      for (const k of Object.keys(this.r.jids))
+        if (is_xbox_verified(this.r.jids[k].identity))
+          this.replay_identity(h, "joiner", k);
+    } else if (is_xbox_verified(this.r.host_identity)) {
+      const j = this.joinerWsById(jid);
+      if (j) this.replay_identity(j, "host");
     }
   }
 
   // Replay one stored attestation to a socket that just (re)joined.
   replay_identity(ws, role, jid) {
-    const frame = this.identity_frame(role, jid);
+    const frame = this.identity_frame(role, jid, this.identity_of(ws));
     if (frame) this.safeSend(ws, frame);
   }
 

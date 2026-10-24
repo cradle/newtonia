@@ -48,4 +48,26 @@ void net_online_play_explain();
 // Phase Rejected — no per-adopter checks to forget.
 bool net_comms_allowed_with(const NetIdentity &peer);
 
+// May this player play with this peer, now that the WORKER has said who
+// the peer is? net_comms_allowed_with() above only sees the peer's own
+// claim; a platform that checks its player's block list and privacy
+// settings against a specific account needs the worker's attestation,
+// which arrives on the signalling channel, asynchronously, often after
+// the p2p handshake (attested.platform_account carries the account id
+// where the worker sends one — net_identity.h).
+//   ALLOW   play.
+//   WAIT    the answer isn't known yet (the attestation hasn't landed, or
+//           the platform's own check is still running): ask again shortly.
+//           Waiting too long refuses the peer as not allowed.
+//   REFUSE  refused by the platform's policy for this peer.
+// Asked by the host at both of its doors, inside the handshake (the lobby's
+// waiting room and the mid-game rejoin door: NetLobby::admit_verdict, re-
+// asked each tick while the WELCOME is held; refusal = MSG_REJECT
+// RejectNotAllowed), and by a joining client before it enters the host's
+// game (NetLobby's Connected screen). Same hot-path rule: answer from a
+// cache, start any service check out of band. The default allows.
+enum NetPeerVerdict { NET_PEER_ALLOW, NET_PEER_WAIT, NET_PEER_REFUSE };
+NetPeerVerdict net_peer_verdict(const NetIdentity &claimed,
+                                const NetIdentity &attested);
+
 #endif /* NET_POLICY_H */

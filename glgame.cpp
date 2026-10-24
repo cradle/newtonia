@@ -3527,6 +3527,7 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         att.name_trust =
             att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
         att.ban_token = ev.key;
+        att.platform_account = ev.account;
         // Bank it by jid FIRST (see net_jid_attested_): a verdict that
         // beats the door's answer belongs to a peer that does not own its
         // jid yet, and dropping it is what the admission gate would read

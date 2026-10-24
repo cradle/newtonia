@@ -538,18 +538,24 @@ NetSession::~NetSession() {
 
 void NetSession::resolve_admission() {
   Admit a = admit_check_ ? admit_check_(peer_identity_) : AdmitAllow;
-  if (a == AdmitWait) {
+  if (a == AdmitWait || a == AdmitWaitPolicy) {
     if (admit_wait_ms_ < ADMIT_WAIT_MS) return;  // hold, ask again next tick
-    a = AdmitAnonymous;  // the verdict never came (see Admit in the header)
+    // The verdict never came (see Admit in the header).
+    a = a == AdmitWait ? AdmitAnonymous : AdmitNotAllowed;
   }
   if (a != AdmitAllow) {
-    uint8_t reason = a == AdmitBanned ? RejectBanned : RejectAnonymous;
+    uint8_t reason = a == AdmitBanned      ? RejectBanned
+                     : a == AdmitNotAllowed ? RejectNotAllowed
+                                            : RejectAnonymous;
     // Both doors log this one line now (it used to be one per door). The
     // wording is load-bearing — three e2e drivers grep "refusing <kind>
     // pilot" (TESTING.md), and it is the only record of why a seat was
     // refused once the transport is gone.
     NET_LOG("net: refusing %s pilot at the handshake (seat %d)\n",
-            a == AdmitBanned ? "banned" : "anonymous", (int)assigned_seat_);
+            a == AdmitBanned      ? "banned"
+            : a == AdmitNotAllowed ? "not-allowed"
+                                   : "anonymous",
+            (int)assigned_seat_);
     send_reject(transport_, reason);
     reject_reason_ = reason;
     phase_ = Rejected;

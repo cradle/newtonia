@@ -229,6 +229,11 @@ public:
     AdmitWait,
     AdmitAnonymous,  // refuse: nobody vouched for this pilot
     AdmitBanned,     // refuse: removed from this room
+    // The platform's per-peer policy (net_policy.h net_peer_verdict): still
+    // deciding, held like AdmitWait — but a verdict that never comes refuses
+    // as AdmitNotAllowed, since what was being waited on is the platform.
+    AdmitWaitPolicy,
+    AdmitNotAllowed,  // refuse: the platform's policy (RejectNotAllowed)
   };
 
   // Takes ownership of the transport (must be non-null). assign_seat (B4,

@@ -183,6 +183,8 @@ void net_apply_attested(NetIdentity &into, const NetIdentity &attested) {
   // The ban token rides the fold so the merged identity stays bannable by
   // account wherever the raw attestation isn't at hand.
   if (!attested.ban_token.empty()) into.ban_token = attested.ban_token;
+  if (!attested.platform_account.empty())
+    into.platform_account = attested.platform_account;
 }
 
 const char *net_platform_label(uint8_t platform) {

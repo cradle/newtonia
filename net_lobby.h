@@ -400,6 +400,10 @@ private:
   // This LobbyFailed came from the online-play policy gate: the fail
   // screen's confirm leaves to the menu instead of the HOST/JOIN chooser.
   bool policy_blocked_ = false;
+  // Joiner: time on the Connected screen, which bounds how long the
+  // platform's per-peer verdict (net_peer_verdict) may keep us out of the
+  // host's game before it counts as a refusal.
+  int peer_verdict_wait_ms_ = 0;
   // Joiner: time on the RoomJoining screen. A room can be joined while
   // hostless (reclaim grace) — if no host ever offers, fail instead of
   // showing "JOINING THE ROOM" forever.
@@ -445,7 +449,8 @@ private:
   bool identity_reannounce_ = false;
   // Consume a worker `identity` broadcast describing the peer.
   void apply_peer_attestation(uint8_t platform, const std::string &name,
-                              bool verified, const std::string &key);
+                              bool verified, const std::string &key,
+                              const std::string &account);
 
   // Controller state (stick/trigger edges live in State's shared nav
   // translator; only the picker's own bits remain here).

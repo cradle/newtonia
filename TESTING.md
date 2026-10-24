@@ -1226,6 +1226,13 @@ test/e2e/policy.sh   # net_policy refusal path: a host refusing all peers
                      # inert hook) must reject INSIDE the handshake (MSG_REJECT
                      # RejectNotAllowed before WELCOME); the joiner never
                      # bootstraps and both sides stay alive
+test/e2e/policy_peer.sh # net_peer_verdict, the per-peer policy a console's
+                     # block-list check rides (NEWTONIA_NET_TEST_PEER_VERDICT=
+                     # refuse|wait, inert hook): a refusing host rejects
+                     # inside the handshake ("refusing not-allowed pilot"), a
+                     # waiting host's held WELCOME times out into the same
+                     # refusal, and a refusing JOINER leaves before entering
+                     # the host's game; nobody bootstraps or crashes
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
