@@ -1,5 +1,6 @@
 #include "net_policy.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 
@@ -30,17 +31,41 @@ bool net_comms_allowed_with(const NetIdentity &) {
 }
 
 NetPeerVerdict net_peer_verdict(const NetIdentity &, const NetIdentity &) {
-  // Test hook, inert without the env var: "refuse" refuses every peer and
-  // "wait" never answers, so test/e2e/policy.sh can drive the held-WELCOME
-  // path to both of its ends without a platform backend.
+  // Test hook, inert without the env var. "refuse" refuses every peer and
+  // "wait" never answers, so test/e2e/policy_peer.sh can drive the held
+  // WELCOME and the joiner's gate to both of their ends without a platform
+  // backend. "rejoin-wait" allows the first episode and never answers
+  // later ones; "rejoin-wait:N" answers a later episode after N ms
+  // (test/e2e/policy_peer_rejoin.sh: the paused-host reconnect). An
+  // episode is a run of calls without a second's gap, which is how the
+  // joiner's per-tick poll looks while it holds a bootstrap.
   static int mode = -1;
+  static long wait_ms = -1;
   if (mode < 0) {
     const char *e = std::getenv("NEWTONIA_NET_TEST_PEER_VERDICT");
     mode = !e ? 0 : std::strcmp(e, "refuse") == 0 ? 1
-             : std::strcmp(e, "wait") == 0     ? 2 : 0;
+             : std::strcmp(e, "wait") == 0       ? 2
+             : std::strncmp(e, "rejoin-wait", 11) == 0 ? 3 : 0;
+    if (mode == 3 && e[11] == ':') wait_ms = std::atol(e + 12);
   }
-  return mode == 1 ? NET_PEER_REFUSE : mode == 2 ? NET_PEER_WAIT
-                                                 : NET_PEER_ALLOW;
+  if (mode == 1) return NET_PEER_REFUSE;
+  if (mode == 2) return NET_PEER_WAIT;
+  if (mode != 3) return NET_PEER_ALLOW;
+  typedef std::chrono::steady_clock clock;
+  static bool any = false;
+  static int episode = 0;
+  static clock::time_point last, start;
+  clock::time_point now = clock::now();
+  if (!any || now - last > std::chrono::milliseconds(1000)) {
+    ++episode;
+    start = now;
+  }
+  any = true;
+  last = now;
+  if (episode == 1) return NET_PEER_ALLOW;
+  if (wait_ms >= 0 && now - start >= std::chrono::milliseconds(wait_ms))
+    return NET_PEER_ALLOW;
+  return NET_PEER_WAIT;
 }
 
 #endif  // NEWTONIA_NET_POLICY_BACKEND

@@ -2507,6 +2507,7 @@ void NetLobby::tick(int delta) {
           request_state_change(game);
           return;
         }
+        held_snapshot_.clear();
         peer_verdict_wait_ms_ = 0;
         screen_ = Connected;
       } else if (p == NetSession::Rejected) {
@@ -2571,7 +2572,6 @@ void NetLobby::tick(int delta) {
 
     case Connected: {
       session_->update(delta);
-      peer_verdict_wait_ms_ += delta;
       // The host is already in-game streaming snapshots. The first complete
       // one bootstraps the client game: the save-restore constructor
       // rebuilds the world, then the snapshot's NetExtras are applied.
@@ -2599,43 +2599,63 @@ void NetLobby::tick(int delta) {
         if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;
         if (!assembler_.add_chunk(r)) continue;
 
-        Save::MemStream in(assembler_.payload());
-        Save::GameState s;
-        if (!Save::deserialize_game(in, s)) continue;
-        if (!net_state_sane(s)) continue;  // wait for a sane snapshot
-
+        {
+          Save::MemStream probe(assembler_.payload());
+          Save::GameState ps;
+          if (!Save::deserialize_game(probe, ps)) continue;
+          if (!net_state_sane(ps)) continue;  // wait for a sane snapshot
+        }
+        // Keep the newest; the bootstrap below runs from it.
+        held_snapshot_ = assembler_.payload();
+      }
+      if (!held_snapshot_.empty()) {
         // The platform's say on this host, now that the worker has said who
         // they are (net_policy.h; the host asks the same of us before its
-        // WELCOME). Still deciding: drop this snapshot and take a later one,
-        // for a bounded time. Refused, or never decided: leave, and don't
-        // auto-rejoin a room this player may not play in.
+        // WELCOME). Asked every tick while it is still deciding, with the
+        // snapshot held (see held_snapshot_), for a bounded time. Refused,
+        // or never decided: leave, and don't auto-rejoin a room this player
+        // may not play in.
         NetPeerVerdict pv =
             net_peer_verdict(session_->peer_identity(), attested_peer_);
-        if (pv == NET_PEER_WAIT && peer_verdict_wait_ms_ < PEER_VERDICT_WAIT_MS)
-          continue;
-        if (pv != NET_PEER_ALLOW) {
+        if (pv == NET_PEER_WAIT && peer_verdict_wait_ms_ < PEER_VERDICT_WAIT_MS) {
+          if (peer_verdict_wait_ms_ == 0)
+            NET_LOG("[lobby] holding the bootstrap for the platform's verdict\n");
+          peer_verdict_wait_ms_ += delta > 0 ? delta : 1;
+          // Holding: fall through to the transport check below, so a link
+          // that dies meanwhile takes its usual retry path.
+        } else if (pv != NET_PEER_ALLOW) {
           NET_LOG("[lobby] host refused by platform policy (%s)\n",
                   pv == NET_PEER_WAIT ? "no verdict" : "refused");
+          held_snapshot_.clear();
           mark_room_dead(room_code_);
           fail_headline_ = "CANNOT PLAY WITH THAT PLAYER";
           set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
           screen_ = LobbyFailed;
           return;
+        } else {
+          if (peer_verdict_wait_ms_ > 0)
+            NET_LOG("[lobby] platform allowed the host after %d ms\n",
+                    peer_verdict_wait_ms_);
+          Save::MemStream in(held_snapshot_);
+          held_snapshot_.clear();
+          Save::GameState s;
+          // Re-reads what the probe above accepted, so it can't fail.
+          if (Save::deserialize_game(in, s)) {
+            NetSession *session = session_;
+            session_ = nullptr;
+            GLGame *game = new GLGame(s, session, PAD_NONE);
+            game->net_room_code_ = room_code_;  // enables client auto-rejoin
+            game->net_set_worker_session(used_worker_);
+            game->net_apply_peer_attestation(attested_peer_);
+            // A LAN-door join remembers the host's NAME the way a relay join
+            // remembers the code — it is the rejoin identity (round 4).
+            game->net_lan_host_name_ = lan_host_name_;
+            game->net_apply_extras(in, s);
+            handed_off_to_game_ = true;  // credential lifetime moves to the game
+            request_state_change(game);
+            return;
+          }
         }
-
-        NetSession *session = session_;
-        session_ = nullptr;
-        GLGame *game = new GLGame(s, session, PAD_NONE);
-        game->net_room_code_ = room_code_;  // enables client auto-rejoin
-        game->net_set_worker_session(used_worker_);
-        game->net_apply_peer_attestation(attested_peer_);
-        // A LAN-door join remembers the host's NAME the way a relay join
-        // remembers the code — it is the rejoin identity (round 4).
-        game->net_lan_host_name_ = lan_host_name_;
-        game->net_apply_extras(in, s);
-        handed_off_to_game_ = true;  // credential lifetime moves to the game
-        request_state_change(game);
-        return;
       }
       if (session_->phase() == NetSession::Failed ||
           (session_->transport() && session_->transport()->failed())) {

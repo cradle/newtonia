@@ -1233,6 +1233,12 @@ test/e2e/policy_peer.sh # net_peer_verdict, the per-peer policy a console's
                      # waiting host's held WELCOME times out into the same
                      # refusal, and a refusing JOINER leaves before entering
                      # the host's game; nobody bootstraps or crashes
+test/e2e/policy_peer_rejoin.sh # the joiner's verdict across a paused-host
+                     # reconnect (hiccup.sh freeze/thaw; hook rejoin-wait[:N]
+                     # allows the first join, WAITs on the rejoin): the one
+                     # keyframe a paused host sends is held and bootstraps
+                     # when the verdict turns ALLOW, and a verdict that never
+                     # comes expires into "no verdict" with no second bootstrap
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
