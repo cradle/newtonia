@@ -23,6 +23,9 @@ fail() { echo "POLICY-PEER-REJOIN-E2E-FAIL: $*"; kill -CONT $PB 2>/dev/null; kil
 # run_case NAME JOINER_VERDICT
 run_case() {
   local name=$1 jv=$2 WINS A B CODE LOST i
+  # Own pref dir per case: the first case's paused host leaves an online
+  # save behind, and its RESUME HOSTING row would shift the next host's menu.
+  export XDG_DATA_HOME="$OUT/xdg-$name"
   PA=$(launch "$name-host"); sleep 2
   PB=$(launch "$name-joiner" NEWTONIA_NET_TEST_PEER_VERDICT=$jv); sleep 4
   WINS=$(newtonia_windows)
