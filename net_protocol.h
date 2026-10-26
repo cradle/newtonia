@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace Net {
@@ -337,6 +338,37 @@ enum MsgType {
   // INPUT (the per-peer resync point) and re-broadcast whenever a seat's
   // identity changes (attestation lands, rejoin refresh).
   MSG_PEER_IDENT = 16,
+  // Room members (3-4 player rooms), H->C rel: u8 count (0..MAX_PLAYERS-2),
+  // then per member u8 len + len bytes of the signalling worker's joiner id
+  // (decimal ASCII, the `from` its identity frames carry). The OTHER relay
+  // joiners seated with the recipient, never the recipient itself and never
+  // a LAN-door seat (no jid). Sent by the waiting room whenever its seats
+  // change, and by the mid-game rejoin door to every connected relay joiner
+  // once it seats someone. A client matches the ids against the worker's
+  // identity frames for the other joiners, so the platform's per-peer
+  // verdict (net_policy.h) covers everyone it plays with, not only the
+  // host, including a newcomer mid-game (GLGame::net_client_member_update).
+  // A TRAILING u8 marks which members took their seat after the recipient
+  // (bit i = member i), the same append rule MSG_PEER_IDENT's flags
+  // follow: an old reader stops short of it, a new reader treats absence
+  // as "all were here first". The recipient asks the host to turn a newer
+  // member it refuses away (MSG_MEMBER_REFUSED) instead of leaving.
+  // Not a PROTO bump:
+  // an older receiver ignores the unknown type and checks the host alone,
+  // exactly what it did before. The host's word on who is seated; the
+  // worker's on who each of them is.
+  MSG_ROOM_MEMBERS = 17,
+  // Member refused, C->H rel: u8 len + len bytes of a joiner id from the
+  // sender's MSG_ROOM_MEMBERS. The sender's platform refuses to play with
+  // a member who took their seat AFTER the sender (a block list, net_policy.h),
+  // so whoever was there first stays: the host removes that member with
+  // EV_ROOM_REFUSED and refuses them at the door while the sender is still
+  // seated. Honoured only from a sender with a worker-attested identity
+  // (accountable, so a host can kick a client abusing it) and only about
+  // a member seated after them. Not a PROTO bump: an older host ignores
+  // the unknown type, the member stays, and the sender leaves when its
+  // wait runs out, as it did before.
+  MSG_MEMBER_REFUSED = 18,
 };
 
 enum EventCode {
@@ -417,6 +449,11 @@ enum EventCode {
   // Older peers ignore the unknown event; no snapshot layout changes.
   EV_PLAYER_TELEPORT = 21,
   EV_PLAYER_BOOST = 22,  // packed engine-burst position; cosmetic, additive
+  // H->C, targeted: someone already in the room can't play with this peer
+  // (MSG_MEMBER_REFUSED), so the host turned it away. Terminal like
+  // EV_KICKED, with its own wording; nobody is named. Appended: an older
+  // client sees its transport close, and a rejoin is refused at the door.
+  EV_ROOM_REFUSED = 23,
 };
 
 // EV_ACHIEVEMENT arg values. Stable wire numbers — append only.
@@ -594,6 +631,76 @@ struct Reader {
 
   size_t remaining() const { return ok ? size - pos : 0; }
 };
+
+// MSG_ROOM_MEMBERS body (after the header). Ids longer than the cap or
+// past the count cap are dropped by the writer, so a reader never has to
+// trust more than it can hold.
+const size_t ROOM_MEMBER_ID_MAX = 16;
+const size_t ROOM_MEMBERS_MAX = 3;
+inline void put_room_members(std::vector<uint8_t>& buf,
+                             const std::vector<std::string>& jids) {
+  std::vector<const std::string*> keep;
+  for (size_t i = 0; i < jids.size() && keep.size() < ROOM_MEMBERS_MAX; i++)
+    if (!jids[i].empty() && jids[i].size() <= ROOM_MEMBER_ID_MAX)
+      keep.push_back(&jids[i]);
+  put_u8(buf, (uint8_t)keep.size());
+  for (size_t i = 0; i < keep.size(); i++) {
+    put_u8(buf, (uint8_t)keep[i]->size());
+    put_bytes(buf, keep[i]->data(), keep[i]->size());
+  }
+}
+// `newer` lists the jids seated after the recipient (the trailing mask).
+inline void put_room_members(std::vector<uint8_t>& buf,
+                             const std::vector<std::string>& jids,
+                             const std::vector<std::string>& newer) {
+  std::vector<std::string> keep;
+  for (size_t i = 0; i < jids.size() && keep.size() < ROOM_MEMBERS_MAX; i++)
+    if (!jids[i].empty() && jids[i].size() <= ROOM_MEMBER_ID_MAX)
+      keep.push_back(jids[i]);
+  put_room_members(buf, keep);
+  uint8_t mask = 0;
+  for (size_t i = 0; i < keep.size(); i++)
+    for (size_t k = 0; k < newer.size(); k++)
+      if (newer[k] == keep[i]) mask |= (uint8_t)(1u << i);
+  put_u8(buf, mask);
+}
+inline bool read_room_members(Reader& r, std::vector<std::string>& jids,
+                              std::vector<std::string>* newer = nullptr) {
+  jids.clear();
+  if (newer) newer->clear();
+  uint8_t n = r.u8();
+  if (!r.ok || n > ROOM_MEMBERS_MAX) return false;
+  for (uint8_t i = 0; i < n; i++) {
+    uint8_t len = r.u8();
+    if (!r.ok || len == 0 || len > ROOM_MEMBER_ID_MAX) return false;
+    const uint8_t* p = r.bytes(len);
+    if (!p) return false;
+    jids.push_back(std::string((const char*)p, len));
+  }
+  // The trailing mask: absent from an older host, which reads as "all
+  // were here first".
+  if (newer && r.remaining() >= 1) {
+    uint8_t mask = r.u8();
+    for (size_t i = 0; i < jids.size(); i++)
+      if (mask & (1u << i)) newer->push_back(jids[i]);
+  }
+  return true;
+}
+
+// MSG_MEMBER_REFUSED body: one joiner id, as MSG_ROOM_MEMBERS carries it.
+inline void put_member_refused(std::vector<uint8_t>& buf,
+                               const std::string& jid) {
+  put_u8(buf, (uint8_t)jid.size());
+  put_bytes(buf, jid.data(), jid.size());
+}
+inline bool read_member_refused(Reader& r, std::string& jid) {
+  uint8_t len = r.u8();
+  if (!r.ok || len == 0 || len > ROOM_MEMBER_ID_MAX) return false;
+  const uint8_t* p = r.bytes(len);
+  if (!p) return false;
+  jid.assign((const char*)p, len);
+  return true;
+}
 
 // Reads and validates the common header; returns false (and leaves the
 // reader failed) on short buffers or a foreign protocol version.

@@ -19,6 +19,12 @@
 //   host  -> {t:"seats", free}        how many seats the host would still
 //                                     OFFER (see room_full below); additive,
 //                                     legacy hosts never send it
+//   look  -> /ws?role=look&code=ABCDE {t:"lookready"}           or {t:"err",reason}
+//   look  -> {t:"identity", ...}      as a joiner's, so the worker knows who
+//                                     is asking (see accept_look)
+//   look  -> {t:"lookup", jids:"3,5"} who are these joiners?
+//   look  <- {t:"identity", role:"joiner", from, ...} per settled joiner,
+//            {t:"looked", jids, pending, ok}  then the socket's job is done
 //   any   <- {t:"err", reason:"no-such-room"|"room-full"|"expired"}
 //
 // Relay-only privacy: a socket opened with `&ro=1` (a build that must hide
@@ -71,6 +77,12 @@ const JOIN_LIMIT = 30;
 // build's host simply never offers to a third joiner, which then waits and
 // backs out on its own lobby timeout.
 const MAX_JOINERS = 3;
+// Lookup sockets (Room.accept_look): open at once per room, joiner ids per
+// request, and how long after a joiner's platform verify started it still
+// counts as in flight (well past every verifier's own timeout).
+const MAX_LOOKS = 8;
+const MAX_LOOKUP_JIDS = 8;
+const LOOK_VERIFY_WINDOW_MS = 15000;
 
 // SDP frames are relayed verbatim into DO memory; cap them so a peer can't
 // pin unbounded memory or flood the relay. Oversized frames are dropped.
@@ -520,6 +532,20 @@ export default {
           `https://room/join?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}${rejoin}${ro}`, request));
     }
 
+    if (role === "look") {
+      // A seated player asking who the room's joiners are (accept_look).
+      // No TURN: it pairs with nobody. Counted as a join attempt, since
+      // it needs the room code just the same.
+      const code = (url.searchParams.get("code") || "").toUpperCase();
+      if (code.length !== CODE_LEN ||
+          [...code].some((c) => !CODE_ALPHABET.includes(c)))
+        return new Response("bad code", { status: 400 });
+      if (!(await within_limit(env, ip, "join")))
+        return reject_ws(request, "rate-limited");
+      const room = env.ROOMS.get(env.ROOMS.idFromName(code));
+      return room.fetch(new Request(`https://room/look?code=${code}`, request));
+    }
+
     return new Response("bad role", { status: 400 });
   },
 };
@@ -663,12 +689,16 @@ export class Room {
                // whole life, so there is nothing to buffer for it; the
                // legacy offer/host_cands slot above keeps the unaddressed
                // 2P semantics.
-               next_jid: 1, jids: {} };
+               next_jid: 1, jids: {},
+               // Lookup sockets (accept_look), keyed by their own id from
+               // the same mint: the same bookkeeping as a jid plus the
+               // pending request. Deleted with the socket.
+               looks: {} };
     state.blockConcurrencyWhile(async () => {
       const stored = await state.storage.get("room");
       // Spread over the defaults: a room stored by the pre-multi-join
       // worker lacks the per-jid fields and must not resurrect undefined.
-      if (stored) this.r = { next_jid: 1, jids: {}, ...stored };
+      if (stored) this.r = { next_jid: 1, jids: {}, looks: {}, ...stored };
     });
   }
 
@@ -854,6 +884,18 @@ export class Room {
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
+    if (url.pathname === "/look") {
+      if (this.r.closed || !this.alive(now))
+        return this.reject_ws(this.r.closed ? "host-closed" : "no-such-room");
+      // A handful at a time is plenty (one per seated player asking); the
+      // cap keeps a flood from growing the room record.
+      if (this.state.getWebSockets("look").filter(ws_open).length >= MAX_LOOKS)
+        return this.reject_ws("room-full");
+      const pair = new WebSocketPair();
+      await this.accept_look(pair[1]);
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+
     return new Response("not found", { status: 404 });
   }
 
@@ -883,6 +925,14 @@ export class Room {
       this.r.jids[jid] = { identity: null, verify_at: 0, claim_at: 0, epoch: 0 };
     return this.r.jids[jid];
   }
+  // The same bookkeeping for whichever role announced: a joiner's, or a
+  // lookup socket's (this.r.looks, see accept_look).
+  id_entry(role, jid) {
+    if (role !== "look") return this.jid_entry(jid);
+    if (!this.r.looks[jid])
+      this.r.looks[jid] = { identity: null, verify_at: 0, claim_at: 0, epoch: 0 };
+    return this.r.looks[jid];
+  }
 
   // ---- peer identity attestation (NETPLAY.md V0/V1) ----------------------
   // A client announced {t:"identity", platform, name, cred?}. Bound the
@@ -892,6 +942,9 @@ export class Room {
   // the peers render a role label. `jid` names the announcing joiner (null
   // for the host); all its bookkeeping lives in this.r.jids[jid].
   async attest_identity(role, msg, jid) {
+    // A lookup socket's own bookkeeping lives apart from the joiners' (see
+    // accept_look): nothing that walks the room's joiners can reach it.
+    const store = role === "look" ? this.r.looks : this.r.jids;
     let platform = Number(msg.platform);
     if (!Number.isInteger(platform) || platform < 0 || platform > 255)
       platform = 0;
@@ -984,7 +1037,7 @@ export class Room {
         // client rejoin) are seconds-to-minutes apart; only a flood is
         // dropped, and a dropped frame KEEPS the last attestation (no demote).
         const now = Date.now();
-        const jent = role === "joiner" ? this.jid_entry(jid) : null;
+        const jent = role !== "host" ? this.id_entry(role, jid) : null;
         const at = jent ? jent.verify_at : this.r.host_verify_at || 0;
         if (at && now - at < VERIFY_MIN_INTERVAL_MS)
           return;  // flooded: keep the prior attestation, spend no backend call
@@ -1021,8 +1074,8 @@ export class Room {
         // await. Don't write identity back onto a dead/tombstoned room, and
         // never onto a DIFFERENT room that took the code since.
         if (this.r.closed || !this.r.host_token || this.r.host_token !== gen) return;
-        const jent2 = role === "joiner" ? this.r.jids[jid] : null;
-        const epoch_now = role === "joiner" ? (jent2 ? jent2.epoch : -1)
+        const jent2 = role !== "host" ? store[jid] : null;
+        const epoch_now = role !== "host" ? (jent2 ? jent2.epoch : -1)
                                             : this.r.host_id_epoch || 0;
         if (epoch_now !== epoch) {
           if (role === "host" || !v || !jent2) {
@@ -1037,8 +1090,8 @@ export class Room {
           if (platform === 6 /* NET_PLATFORM_XBOX */ && v.acct) late.xuid = v.acct;
           // The digest is a non-storage await too: re-check the generation
           // before writing, and write to the entry as it is NOW.
-          if (this.r.host_token !== gen || !this.r.jids[jid]) return;
-          this.r.jids[jid].identity = late;
+          if (this.r.host_token !== gen || !store[jid]) return;
+          store[jid].identity = late;
           await this.save();
           this.broadcast_identity(role, jid);
           console.log(`identity joiner j:${jid} late verify attested after ` +
@@ -1062,7 +1115,7 @@ export class Room {
     // the warmed single-use credential may be gone by then) — and none of
     // them may overwrite verified:true with verified:false: keep the stored
     // attestation and re-push it so a reclaimed peer still hears it.
-    const ent = role === "joiner" ? this.jid_entry(jid) : null;
+    const ent = role !== "host" ? this.id_entry(role, jid) : null;
     const prev = ent ? ent.identity : this.r.host_identity;
     if (!attested.verified && prev && prev.verified) {
       // Rate-limited on the claim stamp: the re-push exists for a
@@ -1124,12 +1177,13 @@ export class Room {
   }
 
   // PB-D5 identity fan-out. The host's attestation goes to every joiner; a
-  // joiner's goes to the HOST only, stamped with its jid ({from}) since
-  // "joiner" alone no longer identifies who. Joiner badges are NOT fanned
-  // to other joiners yet — 2P clients apply identity frames role-blind, so
-  // another joiner's badge would overwrite the host's on their screen; B4's
-  // roster consumer re-adds that leg. No-op for peers not connected yet —
-  // the stored copy is replayed on join/reclaim instead.
+  // joiner's goes to the HOST, stamped with its jid ({from}) since
+  // "joiner" alone no longer identifies who, and to the other joiners only
+  // when they are Xbox-verified (broadcast_identity: their block-list
+  // check). Other joiners never hear it — the oldest 2P clients apply
+  // identity frames role-blind, so another joiner's badge would overwrite
+  // the host's on their screen. No-op for peers not connected yet — the
+  // stored copy is replayed on join/reclaim instead.
   //
   // `to` is the RECIPIENT's stored identity: an Xbox-verified subject's
   // user id ({xuid}) rides the frame only when the recipient is an
@@ -1158,6 +1212,8 @@ export class Room {
   }
 
   broadcast_identity(role, jid) {
+    // A lookup socket's identity goes to nobody: it only unlocks the answer.
+    if (role === "look") { this.answer_lookup(jid); return; }
     const subject = role === "host" ? this.r.host_identity
                                     : (this.r.jids[jid] || {}).identity;
     if (role === "host") {
@@ -1169,6 +1225,18 @@ export class Room {
       const h = this.hostWs();
       const frame = this.identity_frame(role, jid, this.r.host_identity);
       if (h && frame) this.safeSend(h, frame);
+      // The other joiners hear it too when they are Xbox-verified (3-4
+      // player rooms): an Xbox console checks its player's block list and
+      // privacy settings against everyone it plays with, not only the
+      // host, and a claimed Xbox player still mid-verify is one to wait
+      // for. Nobody else gets this leg (see identity_frame).
+      for (const j of this.joinerWss()) {
+        if (String(this.jidOf(j)) === String(jid)) continue;
+        const to = this.identity_of(j);
+        if (!is_xbox_verified(to)) continue;
+        const f = this.identity_frame(role, jid, to);
+        if (f) this.safeSend(j, f);
+      }
     }
     // The subject just became an Xbox player its counterparts can be told
     // about — and that they can be told about in turn: the frames it heard
@@ -1180,9 +1248,16 @@ export class Room {
       for (const k of Object.keys(this.r.jids))
         if (is_xbox_verified(this.r.jids[k].identity))
           this.replay_identity(h, "joiner", k);
-    } else if (is_xbox_verified(this.r.host_identity)) {
+    } else {
       const j = this.joinerWsById(jid);
-      if (j) this.replay_identity(j, "host");
+      if (!j) return;
+      if (is_xbox_verified(this.r.host_identity))
+        this.replay_identity(j, "host");
+      // Every other joiner still in the room, whatever its platform: until
+      // now this joiner heard none of them (see above).
+      for (const k of Object.keys(this.r.jids))
+        if (String(k) !== String(jid) && this.joinerWsById(k))
+          this.replay_identity(j, "joiner", k);
     }
   }
 
@@ -1202,7 +1277,7 @@ export class Room {
                ban_salt: crypto.randomUUID(),
                host_lost_at: 0, created: now, closed: false,
                host_identity: null, seats_free: null,
-               next_jid: 1, jids: {} };
+               next_jid: 1, jids: {}, looks: {} };
     await this.save();
     await this.state.storage.setAlarm(now + ROOM_TTL_MS);
     this.send_ice(ws, ice);
@@ -1303,6 +1378,94 @@ export class Room {
     this.replay_identity(ws, "host");
   }
 
+  // ---- joiner lookups (3-4 player rooms) ---------------------------------
+  // A seated Xbox player asks who the room's joiners are whenever its host
+  // names one it has never heard described — someone taking a free seat
+  // mid-game, or a joiner whose socket had closed before this player was
+  // verified. An Xbox console checks its player's block list and privacy
+  // settings against everyone it plays with (net_policy.h), and the
+  // joiners' attestations outlive their sockets here (jids), so the answer
+  // never depends on having been connected at the right moment. A lookup
+  // socket pairs with nobody and is invisible to the room: the host is not
+  // told about it, it is not a joiner (no offer, no capacity, no fan-out),
+  // and its own identity is used only to decide what it may be told — an
+  // Xbox user id goes only to a verified Xbox player, as in identity_frame,
+  // and nothing at all to anyone else.
+  async accept_look(ws) {
+    const id = this.r.next_jid;
+    this.r.next_jid = id + 1;
+    this.state.acceptWebSocket(ws, ["look", "l:" + id]);
+    this.id_entry("look", id);
+    await this.save();
+    this.safeSend(ws, { t: "lookready" });
+  }
+
+  lookIdOf(ws) {
+    for (const tag of this.state.getTags(ws))
+      if (tag.startsWith("l:")) return Number(tag.slice(2));
+    return null;
+  }
+
+  async from_look(msg, id, ws) {
+    if (id === null || !this.r.looks[id]) return;
+    if (msg.t === "identity") { await this.attest_identity("look", msg, id); return; }
+    if (msg.t === "lookup" && typeof msg.jids === "string" &&
+        msg.jids.length <= 128) {
+      const ent = this.r.looks[id];
+      ent.want = msg.jids.split(",").filter((k) => /^[0-9]{1,9}$/.test(k))
+                         .slice(0, MAX_LOOKUP_JIDS);
+      // Answered once the asker's own attestation has landed (it decides
+      // what the asker may hear); immediately when it already has.
+      if (ent.identity) this.answer_lookup(id, ws);
+      else await this.save();
+    }
+  }
+
+  // Answers a lookup socket's pending request. A joiner whose description
+  // may still change — no frame yet while its socket is open, or a
+  // platform verify in flight, or an Xbox claim whose socket may yet
+  // verify it — is listed `pending`, for the asker to ask again; everyone
+  // else is settled, described by an identity frame when the worker has
+  // one (an unverified claim dies with its socket: such a joiner is simply
+  // not described).
+  answer_lookup(id, ws = null) {
+    const ent = this.r.looks[id];
+    if (!ent || !ent.want) return;
+    if (!ws) ws = this.state.getWebSockets("l:" + id).find(ws_open) || null;
+    if (!ws) return;
+    const want = ent.want;
+    ent.want = null;
+    const ok = is_xbox_verified(ent.identity);
+    const done = [], pending = [];
+    const now = Date.now();
+    for (const k of want) {
+      const e = ok ? this.r.jids[k] : null;
+      if (!e) { done.push(k); continue; }
+      const id_now = e.identity;
+      const live = !!this.joinerWsById(k);
+      const verifying = !!e.verify_at && now - e.verify_at < LOOK_VERIFY_WINDOW_MS;
+      // A verify in flight keeps the joiner pending even once its socket
+      // has closed (drop_joiner clears the claim, not the verify): the
+      // attestation still lands in r.jids, and the asker has no socket to
+      // hear it on later.
+      const unsettled = !id_now ? live || verifying
+          : !id_now.verified && (verifying || (live && id_now.platform === 6));
+      if (unsettled) { pending.push(k); continue; }
+      done.push(k);
+      const f = this.identity_frame("joiner", k, ent.identity);
+      if (f) this.safeSend(ws, f);
+    }
+    this.safeSend(ws, { t: "looked", jids: done.join(","),
+                        pending: pending.join(","), ok });
+  }
+
+  async drop_look(ws) {
+    const id = this.lookIdOf(ws);
+    if (id === null || !this.r.looks[id]) return;
+    delete this.r.looks[id];
+    await this.save();
+  }
+
   // ---- hibernation event handlers ----------------------------------------
 
   // Per-socket frame budget (see FRAME_LIMIT). Returns true when the
@@ -1339,6 +1502,7 @@ export class Room {
     const tags = this.state.getTags(ws);
     if (tags.includes("host")) await this.from_host(msg);
     else if (tags.includes("joiner")) await this.from_joiner(msg, this.jidOf(ws), ws);
+    else if (tags.includes("look")) await this.from_look(msg, this.lookIdOf(ws), ws);
   }
 
   async webSocketClose(ws) { await this.drop(ws); }
@@ -1348,6 +1512,7 @@ export class Room {
     const tags = this.state.getTags(ws);
     if (tags.includes("host")) await this.drop_host(ws);
     else if (tags.includes("joiner")) await this.drop_joiner(ws);
+    else if (tags.includes("look")) await this.drop_look(ws);
   }
 
   async from_host(msg) {
@@ -1567,7 +1732,7 @@ export class Room {
     this.r = { offer: null, offer_pv: null, host_cands: [],
                host_token: null, host_lost_at: 0, created: 0,
                closed: reason === "host-closed", host_identity: null,
-               next_jid: 1, jids: {} };
+               next_jid: 1, jids: {}, looks: {} };
     await this.save();
     await this.state.storage.setAlarm(Date.now() + HOST_GRACE_MS);
   }
@@ -1606,7 +1771,7 @@ export class Room {
     }
     this.r = { offer: null, offer_pv: null, host_cands: [],
                host_token: null, host_lost_at: 0, created: 0, closed: false,
-               host_identity: null, next_jid: 1, jids: {} };
+               host_identity: null, next_jid: 1, jids: {}, looks: {} };
     await this.state.storage.deleteAll();
   }
 }

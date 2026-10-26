@@ -101,6 +101,11 @@ jobs:
       - name: One-hand touch gesture layer unit test
         run: bash test/unit/touch_one_hand.sh
 
+      - name: Room members message unit test
+        run: |
+          g++ -std=c++11 -Wall -I. test/unit/room_members_test.cpp net_room_members.cpp -o /tmp/room_members_test
+          /tmp/room_members_test
+
       - name: Shield inventory and effect regression test
         run: CPATH=/usr/local/include/SDL2${CPATH:+:$CPATH} make NETPLAY=0 -j4 test-shield-empty
 

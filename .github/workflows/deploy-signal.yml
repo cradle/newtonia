@@ -102,6 +102,8 @@ jobs:
           node test/jid_buffer_test.mjs
           node test/identity_fanout_test.mjs
           node test/identity_xbox_test.mjs
+          node test/identity_xbox_joiners_test.mjs
+          node test/room_lookup_test.mjs
           node test/grace_broadcast_test.mjs
           node test/host_close_broadcast_test.mjs
           node test/offer_pv_test.mjs
