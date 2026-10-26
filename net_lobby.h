@@ -438,6 +438,33 @@ private:
   // which only ever relays the paired joiner) fold directly as before.
   std::map<std::string, NetIdentity> jid_attested_;
   std::string paired_jid_;  // the jid whose answer created session_
+  // Joiner, 3-4 player rooms: who the OTHER joiners are, so the platform's
+  // per-peer verdict covers everyone this player will play with, not only
+  // the host. Two sources, deliberately split: the worker says who each
+  // joiner is (identity frames stamped with their jid; it sends this leg
+  // only to Xbox-verified joiners, see signal/src/worker.js
+  // identity_frame), and the HOST says which of them are seated with us
+  // (MSG_ROOM_MEMBERS), since the worker can't tell a seated joiner from
+  // one the host turned away. A jid the host names that the worker never
+  // described is asked about with empty identities, which the default
+  // backend allows.
+  struct RoomMember {
+    NetIdentity claimed;   // the joiner's own claim, as the worker relayed it
+    NetIdentity attested;  // the worker's verified attestation, once it lands
+  };
+  std::map<std::string, RoomMember> member_ids_;
+  std::vector<std::string> room_members_;  // the host's latest member list
+  // The platform's verdict over every member the host named: REFUSE if any
+  // is refused, WAIT if any is still undecided, else ALLOW.
+  int members_verdict();  // NetPeerVerdict (net_policy.h)
+  void note_member_identity(const std::string &jid, uint8_t platform,
+                            const std::string &name, bool verified,
+                            const std::string &key,
+                            const std::string &account);
+  // Host: tell each seated joiner which other joiners sit with it, when the
+  // seats change (members_sent_ is the last list sent, for the change test).
+  void host_send_room_members();
+  std::string members_sent_;
   // A signaling worker was actually used (room-code flow) — the session is
   // ONLINE-strict for identity display. The manual clipboard fallback clears
   // this (worker-less = OFFLINE, the peer's claimed name renders). Set true

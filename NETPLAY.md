@@ -920,6 +920,14 @@ when a new user joins"), and an Xbox user id is not a credential that
 goes stale the way a display name can. A block added mid-game takes
 effect at that player's next join.
 
+**Extended 2026-10-26 to 3-4 player rooms.** A joiner used to hear only
+the host's identity, so an Xbox joiner never checked the other joiners.
+Now the worker sends an Xbox-verified joiner the other joiners' frames
+(the Xbox user id still only between Xbox players), the host tells each
+joiner which jids are seated with it (`MSG_ROOM_MEMBERS`), and the joiner
+asks `net_peer_verdict` about each before entering. The one whose block
+list has the conflict leaves; nobody else learns why.
+
 **What would reopen this** (in rough order of likelihood): (1) ~~identity
 becoming a POLICY input anywhere~~ — fired; see the amendment above,
 which narrows this to attestation's content rather than its presence;

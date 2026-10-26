@@ -223,6 +223,18 @@ continuations, remaps, and gamepad sampling. Both web JavaScript tests compile
 into a temporary directory when run standalone. In web CI they reuse the
 preceding TypeScript step's output via `NEWTONIA_WEB_JS=web/main.js`.
 
+### Room members message unit test (no SDL needed)
+
+```sh
+g++ -std=c++11 -Wall -I. test/unit/room_members_test.cpp -o /tmp/room_members_test && /tmp/room_members_test
+```
+
+Round-trips `MSG_ROOM_MEMBERS` (`net_protocol.h`): the host's list of the
+other relay joiners seated with a client, which a joiner checks against the
+worker's identity frames for them. Covers the writer's caps and the reader
+refusing an over-long count, a truncated id and an empty id. Runs in
+linux.yml.
+
 ### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
 
 ```sh
@@ -627,6 +639,9 @@ node test/reclaim_chain_test.mjs         # reclaim CHAIN: H2 takes over, drops w
 # The identity protocol test needs the FAKE_VERIFY dev flag set on the relay:
 #   npx wrangler dev --local --port 8787 --var FAKE_VERIFY:1
 node test/identity_test.js               # V0 identity attest/broadcast/replay
+node test/identity_xbox_test.mjs         # Xbox user ids between Xbox players only
+node test/identity_xbox_joiners_test.mjs # joiner identities to Xbox-verified joiners
+                                         #   (3-4 player block lists), nobody else
 ```
 
 Note on the Limiter: `wrangler dev --local` has no `CF-Connecting-IP`, so every
@@ -1239,6 +1254,14 @@ test/e2e/policy_peer_rejoin.sh # the joiner's verdict across a paused-host
                      # keyframe a paused host sends is held and bootstraps
                      # when the verdict turns ALLOW, and a verdict that never
                      # comes expires into "no verdict" with no second bootstrap
+test/e2e/policy_members.sh # the same verdict across a 3-4 player room: three
+                     # desktop builds claim Xbox (NEWTONIA_NET_TEST_PLATFORM=6)
+                     # against its own FAKE_VERIFY relay; a joiner blocking
+                     # another (hook refuse-name:NAME) hears who is seated
+                     # (MSG_ROOM_MEMBERS + the worker's joiner frames) and
+                     # leaves before START, the host frees the seat, and a
+                     # joiner blocking nobody enters and tells the platform
+                     # of both players it plays with
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings

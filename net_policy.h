@@ -64,15 +64,19 @@ bool net_comms_allowed_with(const NetIdentity &peer);
 // waiting room and the mid-game rejoin door: NetLobby::admit_verdict, re-
 // asked each tick while the WELCOME is held; refusal = MSG_REJECT
 // RejectNotAllowed), and by a joining client before it enters the host's
-// game (NetLobby's Connected screen). Same hot-path rule: answer from a
-// cache, start any service check out of band. The default allows.
+// game (NetLobby's Connected screen) — about the host, and in a 3-4 player
+// room about every other joiner the host seated with it (MSG_ROOM_MEMBERS;
+// for those `claimed` is the joiner's own claim as the worker relayed it).
+// Same hot-path rule: answer from a cache, start any service check out of
+// band. The default allows.
 enum NetPeerVerdict { NET_PEER_ALLOW, NET_PEER_WAIT, NET_PEER_REFUSE };
 NetPeerVerdict net_peer_verdict(const NetIdentity &claimed,
                                 const NetIdentity &attested);
 
 // This player now plays with this peer: the host's admission check let them
 // in (the WELCOME is going out, at the waiting room or the mid-game rejoin
-// door), or a joining client is entering the host's game. Said once per
+// door), or a joining client is entering the host's game (said for the host
+// and for each other joiner the host seated with it). Said once per
 // admission, never for a peer net_peer_verdict allowed but the room then
 // refused (the ban list, the anonymous-players setting). For a platform that
 // records who was played with (the Xbox fork reports the player's recent

@@ -71,6 +71,17 @@ const NetIdentity &local_identity_impl(bool throttled) {
 #ifdef IDENTITY_HAVE_BACKEND
     uint8_t backend_platform = NetIdentityBackend::local_platform();
     if (backend_platform != NET_PLATFORM_UNKNOWN) id.platform = backend_platform;
+#else
+    // Test hook, NEWTONIA_NET_NAME's sibling: claim another platform's tag
+    // (6 = Xbox), so a desktop build can stand in for a console against a
+    // FAKE_VERIFY relay (test/e2e/policy_members.sh). Backend builds report
+    // their own platform and ignore it; the production worker rejects the
+    // fake credential, so the claim stays a claim.
+    const char *tp = std::getenv("NEWTONIA_NET_TEST_PLATFORM");
+    if (tp && *tp) {
+      long v = std::atol(tp);
+      if (v > 0 && v < 256) id.platform = (uint8_t)v;
+    }
 #endif
   }
   // The display name can arrive LATE and must NOT be frozen empty: a backend

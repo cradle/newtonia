@@ -31,7 +31,8 @@ bool net_comms_allowed_with(const NetIdentity &) {
   return refuse == 0;
 }
 
-NetPeerVerdict net_peer_verdict(const NetIdentity &, const NetIdentity &) {
+NetPeerVerdict net_peer_verdict(const NetIdentity &claimed,
+                                const NetIdentity &attested) {
   // Test hook, inert without the env var. "refuse" refuses every peer and
   // "wait" never answers, so test/e2e/policy_peer.sh can drive the held
   // WELCOME and the joiner's gate to both of their ends without a platform
@@ -40,15 +41,25 @@ NetPeerVerdict net_peer_verdict(const NetIdentity &, const NetIdentity &) {
   // (test/e2e/policy_peer_rejoin.sh: the paused-host reconnect). An
   // episode is a run of calls without a second's gap, which is how the
   // joiner's per-tick poll looks while it holds a bootstrap.
+  // "refuse-name:NAME" refuses only the peer with that name, claimed or
+  // attested, standing in for one player on a block list
+  // (test/e2e/policy_members.sh: another joiner in a 3-4 player room).
   static int mode = -1;
   static long wait_ms = -1;
+  static std::string refused_name;
   if (mode < 0) {
     const char *e = std::getenv("NEWTONIA_NET_TEST_PEER_VERDICT");
     mode = !e ? 0 : std::strcmp(e, "refuse") == 0 ? 1
              : std::strcmp(e, "wait") == 0       ? 2
-             : std::strncmp(e, "rejoin-wait", 11) == 0 ? 3 : 0;
+             : std::strncmp(e, "rejoin-wait", 11) == 0 ? 3
+             : std::strncmp(e, "refuse-name:", 12) == 0 ? 4 : 0;
     if (mode == 3 && e[11] == ':') wait_ms = std::atol(e + 12);
+    if (mode == 4) refused_name = e + 12;
   }
+  if (mode == 4)
+    return !refused_name.empty() && (claimed.name == refused_name ||
+                                     attested.name == refused_name)
+               ? NET_PEER_REFUSE : NET_PEER_ALLOW;
   if (mode == 1) return NET_PEER_REFUSE;
   if (mode == 2) return NET_PEER_WAIT;
   if (mode != 3) return NET_PEER_ALLOW;

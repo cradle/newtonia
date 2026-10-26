@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace Net {
@@ -337,6 +338,19 @@ enum MsgType {
   // INPUT (the per-peer resync point) and re-broadcast whenever a seat's
   // identity changes (attestation lands, rejoin refresh).
   MSG_PEER_IDENT = 16,
+  // Room members (3-4 player rooms), H->C rel: u8 count (0..MAX_PLAYERS-2),
+  // then per member u8 len + len bytes of the signalling worker's joiner id
+  // (decimal ASCII, the `from` its identity frames carry). The OTHER relay
+  // joiners seated with the recipient, never the recipient itself and never
+  // a LAN-door seat (no jid). Sent by the waiting room whenever its seats
+  // change, and by the mid-game rejoin door to the adopted session. A
+  // joining client matches the ids against the worker's identity frames for
+  // the other joiners, so the platform's per-peer verdict (net_policy.h)
+  // covers everyone it will play with, not only the host. Not a PROTO bump:
+  // an older receiver ignores the unknown type and checks the host alone,
+  // exactly what it did before. The host's word on who is seated; the
+  // worker's on who each of them is.
+  MSG_ROOM_MEMBERS = 17,
 };
 
 enum EventCode {
@@ -594,6 +608,37 @@ struct Reader {
 
   size_t remaining() const { return ok ? size - pos : 0; }
 };
+
+// MSG_ROOM_MEMBERS body (after the header). Ids longer than the cap or
+// past the count cap are dropped by the writer, so a reader never has to
+// trust more than it can hold.
+const size_t ROOM_MEMBER_ID_MAX = 16;
+const size_t ROOM_MEMBERS_MAX = 3;
+inline void put_room_members(std::vector<uint8_t>& buf,
+                             const std::vector<std::string>& jids) {
+  std::vector<const std::string*> keep;
+  for (size_t i = 0; i < jids.size() && keep.size() < ROOM_MEMBERS_MAX; i++)
+    if (!jids[i].empty() && jids[i].size() <= ROOM_MEMBER_ID_MAX)
+      keep.push_back(&jids[i]);
+  put_u8(buf, (uint8_t)keep.size());
+  for (size_t i = 0; i < keep.size(); i++) {
+    put_u8(buf, (uint8_t)keep[i]->size());
+    put_bytes(buf, keep[i]->data(), keep[i]->size());
+  }
+}
+inline bool read_room_members(Reader& r, std::vector<std::string>& jids) {
+  jids.clear();
+  uint8_t n = r.u8();
+  if (!r.ok || n > ROOM_MEMBERS_MAX) return false;
+  for (uint8_t i = 0; i < n; i++) {
+    uint8_t len = r.u8();
+    if (!r.ok || len == 0 || len > ROOM_MEMBER_ID_MAX) return false;
+    const uint8_t* p = r.bytes(len);
+    if (!p) return false;
+    jids.push_back(std::string((const char*)p, len));
+  }
+  return true;
+}
 
 // Reads and validates the common header; returns false (and leaves the
 // reader failed) on short buffers or a foreign protocol version.

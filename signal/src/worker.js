@@ -1124,12 +1124,13 @@ export class Room {
   }
 
   // PB-D5 identity fan-out. The host's attestation goes to every joiner; a
-  // joiner's goes to the HOST only, stamped with its jid ({from}) since
-  // "joiner" alone no longer identifies who. Joiner badges are NOT fanned
-  // to other joiners yet — 2P clients apply identity frames role-blind, so
-  // another joiner's badge would overwrite the host's on their screen; B4's
-  // roster consumer re-adds that leg. No-op for peers not connected yet —
-  // the stored copy is replayed on join/reclaim instead.
+  // joiner's goes to the HOST, stamped with its jid ({from}) since
+  // "joiner" alone no longer identifies who, and to the other joiners only
+  // when they are Xbox-verified (broadcast_identity: their block-list
+  // check). Other joiners never hear it — the oldest 2P clients apply
+  // identity frames role-blind, so another joiner's badge would overwrite
+  // the host's on their screen. No-op for peers not connected yet — the
+  // stored copy is replayed on join/reclaim instead.
   //
   // `to` is the RECIPIENT's stored identity: an Xbox-verified subject's
   // user id ({xuid}) rides the frame only when the recipient is an
@@ -1169,6 +1170,18 @@ export class Room {
       const h = this.hostWs();
       const frame = this.identity_frame(role, jid, this.r.host_identity);
       if (h && frame) this.safeSend(h, frame);
+      // The other joiners hear it too when they are Xbox-verified (3-4
+      // player rooms): an Xbox console checks its player's block list and
+      // privacy settings against everyone it plays with, not only the
+      // host, and a claimed Xbox player still mid-verify is one to wait
+      // for. Nobody else gets this leg (see identity_frame).
+      for (const j of this.joinerWss()) {
+        if (String(this.jidOf(j)) === String(jid)) continue;
+        const to = this.identity_of(j);
+        if (!is_xbox_verified(to)) continue;
+        const f = this.identity_frame(role, jid, to);
+        if (f) this.safeSend(j, f);
+      }
     }
     // The subject just became an Xbox player its counterparts can be told
     // about — and that they can be told about in turn: the frames it heard
@@ -1180,9 +1193,16 @@ export class Room {
       for (const k of Object.keys(this.r.jids))
         if (is_xbox_verified(this.r.jids[k].identity))
           this.replay_identity(h, "joiner", k);
-    } else if (is_xbox_verified(this.r.host_identity)) {
+    } else {
       const j = this.joinerWsById(jid);
-      if (j) this.replay_identity(j, "host");
+      if (!j) return;
+      if (is_xbox_verified(this.r.host_identity))
+        this.replay_identity(j, "host");
+      // Every other joiner still in the room, whatever its platform: until
+      // now this joiner heard none of them (see above).
+      for (const k of Object.keys(this.r.jids))
+        if (String(k) !== String(jid) && this.joinerWsById(k))
+          this.replay_identity(j, "joiner", k);
     }
   }
 

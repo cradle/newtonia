@@ -4468,6 +4468,19 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // attestation fold above defers its broadcast to here; the
       // rejoiner itself re-syncs on its first INPUT as before).
       net_broadcast_seat_identities();
+      // The rejoiner's lobby holds its bootstrap on the platform's verdict
+      // for everyone in the room (3-4 players): name the other relay
+      // joiners it is coming back to (MSG_ROOM_MEMBERS), as the waiting
+      // room did. Reliable and ordered, so it lands before the keyframe.
+      {
+        std::vector<std::string> others;
+        for (NetPeer *o : net_peers_)
+          if (o != &pr && !o->jid.empty()) others.push_back(o->jid);
+        std::vector<uint8_t> msg;
+        Net::put_header(msg, Net::MSG_ROOM_MEMBERS, (uint8_t)net_local_seat());
+        Net::put_room_members(msg, others);
+        pr.session->transport()->send_reliable(&msg[0], msg.size());
+      }
       pr.have_input = false;      // re-baseline the one-shot counters
       pr.input_zeroed = false;
       pr.rtt_ms = -1.0f;          // fresh transport, fresh RTT baseline
