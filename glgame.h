@@ -81,6 +81,10 @@ public:
     NetSession *session;
     std::string jid;
     NetIdentity attested;
+    // Turn-away asks the waiting room was still holding for this peer's
+    // attestation (NetPeer::held_refusals), and how long they had waited.
+    std::vector<std::string> held_refusals;
+    int held_refusals_ms;
   };
   // Online host, waiting-room form: adopts EVERY seated session; the
   // single-session ctor above delegates here with one entry.

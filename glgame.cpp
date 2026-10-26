@@ -586,6 +586,11 @@ GLGame::GLGame(const std::vector<NetSeated> &seated,
     // fills it post-construction), so 2P keeps the global-context rule.
     p.offline_paired = seated.size() > 1 && s.jid.empty();
     p.seated_order = ++net_seat_order_;  // the lobby's seating order
+    // Asks the waiting room held for this peer's attestation keep waiting
+    // here, on what is left of their hold (net_host_poll).
+    p.held_refusals = s.held_refusals;
+    if (!p.held_refusals.empty())
+      p.held_refusals_since = SDL_GetTicks() - (uint32_t)s.held_refusals_ms;
     net_apply_attested(p.identity, s.attested);
   }
   if (!seated.empty()) net_peer_jid_ = seated.front().jid;

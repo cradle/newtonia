@@ -1804,6 +1804,10 @@ void NetLobby::waiting_room_start() {
     GLGame::NetSeated ns;
     ns.session = sp.session;
     ns.jid = sp.jid;
+    // Turn-away asks still waiting on this peer's attestation carry over:
+    // the asker sends each once.
+    ns.held_refusals = sp.held_refusals;
+    ns.held_refusals_ms = sp.held_refusals_ms;
     // Late attestation upgrades the seating-time capture; the capture
     // covers a peer whose signal socket dropped after seating.
     ns.attested = sp.attested;
