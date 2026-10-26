@@ -83,6 +83,10 @@ for _ in $(seq 1 40); do
   sleep 1
 done
 [ -n "$ok" ] || room_fail "ATTESTED PILOT WAS NOT SEATED" host
+# The platform hears of the admission (net_policy.h net_peer_admitted; the
+# Xbox fork records the pilot in its recent players): exactly once.
+[ "$(grep -ac "platform told peer admitted" "$OUT/host.log")" = 1 ] ||
+  room_fail "PLATFORM NOT TOLD OF THE ADMISSION ONCE" host
 
 echo "== a pilot with no name at all is refused"
 # No NEWTONIA_NET_NAME: the claim carries an empty name, so the worker
@@ -102,6 +106,10 @@ done
 [ -n "$ok" ] || room_fail "ANONYMOUS PILOT WAS NOT REFUSED" host
 grep -aq "seat 3 filled" "$OUT/host.log" &&
   room_fail "ANONYMOUS PILOT GOT A SEAT" host
+# The platform allowed this pilot (the default backend allows everyone),
+# but the room refused them: the platform must not hear of an admission.
+[ "$(grep -ac "platform told peer admitted" "$OUT/host.log")" = 1 ] ||
+  room_fail "PLATFORM TOLD OF A REFUSED PILOT" host
 
 echo "== ...and is TOLD why"
 # The reason the refusal moved inside the handshake: it goes out as a

@@ -294,6 +294,16 @@ void NetLobby::ban_identity(const NetIdentity &id) {
 NetSession::Admit NetLobby::admit_verdict(const NetIdentity &claimed,
                                           const NetIdentity &attested,
                                           bool worker_session) {
+  NetSession::Admit a = admit_decision(claimed, attested, worker_session);
+  // An allow is final: NetSession sends the WELCOME on it and never asks
+  // again (resolve_admission), so this is the admission, at every door.
+  if (a == NetSession::AdmitAllow) net_peer_admitted(attested);
+  return a;
+}
+
+NetSession::Admit NetLobby::admit_decision(const NetIdentity &claimed,
+                                           const NetIdentity &attested,
+                                           bool worker_session) {
   // Both identities are consulted: the claim carries the name a casual
   // rejoiner reuses, the attestation carries the TOKEN (and the attested
   // name) a rename can't shake. An attestation that lands mid-hold is seen
@@ -2641,6 +2651,8 @@ void NetLobby::tick(int delta) {
           Save::GameState s;
           // Re-reads what the probe above accepted, so it can't fail.
           if (Save::deserialize_game(in, s)) {
+            // In: the host admitted us and the platform allowed them.
+            net_peer_admitted(attested_peer_);
             NetSession *session = session_;
             session_ = nullptr;
             GLGame *game = new GLGame(s, session, PAD_NONE);
