@@ -92,6 +92,23 @@ async function look(code, platform, cred, jids) {
   check("once verified it is described", r4.looked && r4.looked.pending === "" &&
         r4c && r4c.verified === true);
 
+  // A joiner whose socket closes while its verify is still running (review
+  // on #628): pending, not settled as nobody, until the attestation lands.
+  const d = await join_room(code);
+  const d_id = (await host._recvType("peer")).from;
+  d.send(JSON.stringify({ t: "identity", platform: XBOX, name: "", cred: "SLOW:800" }));
+  await t(20);
+  d.close();
+  await t(100);
+  const r6 = await look(code, XBOX, "XUID-ME", [d_id]);
+  check("a closed joiner mid-verify is pending",
+        r6.looked && r6.looked.pending === d_id && r6.ids.length === 0);
+  await t(1100);
+  const r7 = await look(code, XBOX, "XUID-ME", [d_id]);
+  const r7d = r7.ids.find((f) => f.from === d_id);
+  check("once its verify lands it is described",
+        r7.looked && r7.looked.pending === "" && r7d && r7d.verified === true);
+
   // A player who is not a verified Xbox player is told nothing.
   const r5 = await look(code, STEAM, "x", [a_id, p_id]);
   check("a non-xbox asker is told nothing",

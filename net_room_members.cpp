@@ -44,32 +44,42 @@ std::vector<std::string> NetRoomMembers::unknown_seated() const {
   return out;
 }
 
-NetPeerVerdict NetRoomMembers::verdict_of(const std::string &jid,
-                                          bool hold_unknown) const {
+NetPeerVerdict NetRoomMembers::verdict_of(
+    const std::string &jid, bool hold_unknown,
+    std::vector<std::string> *turn_away) const {
   std::map<std::string, Member>::const_iterator it = ids_.find(jid);
+  NetPeerVerdict v;
   if (it == ids_.end()) {
     if (hold_unknown) return NET_PEER_WAIT;
     static const Member kUnknown;
-    return net_peer_verdict(kUnknown.claimed, kUnknown.attested);
+    v = net_peer_verdict(kUnknown.claimed, kUnknown.attested);
+  } else {
+    v = net_peer_verdict(it->second.claimed, it->second.attested);
   }
-  return net_peer_verdict(it->second.claimed, it->second.attested);
+  if (v == NET_PEER_REFUSE && turn_away && newer_.count(jid)) {
+    turn_away->push_back(jid);
+    return NET_PEER_WAIT;
+  }
+  return v;
 }
 
-NetPeerVerdict NetRoomMembers::verdict(bool hold_unknown) const {
+NetPeerVerdict NetRoomMembers::verdict(
+    bool hold_unknown, std::vector<std::string> *turn_away) const {
   NetPeerVerdict out = NET_PEER_ALLOW;
   for (size_t i = 0; i < seated_.size(); i++) {
-    NetPeerVerdict v = verdict_of(seated_[i], hold_unknown);
+    NetPeerVerdict v = verdict_of(seated_[i], hold_unknown, turn_away);
     if (v == NET_PEER_REFUSE) return NET_PEER_REFUSE;
     if (v == NET_PEER_WAIT) out = NET_PEER_WAIT;
   }
   return out;
 }
 
-NetPeerVerdict NetRoomMembers::admit_allowed(bool hold_unknown) {
+NetPeerVerdict NetRoomMembers::admit_allowed(
+    bool hold_unknown, std::vector<std::string> *turn_away) {
   NetPeerVerdict out = NET_PEER_ALLOW;
   for (size_t i = 0; i < seated_.size(); i++) {
     const std::string &jid = seated_[i];
-    NetPeerVerdict v = verdict_of(jid, hold_unknown);
+    NetPeerVerdict v = verdict_of(jid, hold_unknown, turn_away);
     if (v == NET_PEER_REFUSE) return NET_PEER_REFUSE;
     if (v == NET_PEER_WAIT) {
       out = NET_PEER_WAIT;

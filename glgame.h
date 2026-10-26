@@ -624,6 +624,11 @@ private:
     // going to finish" WITHOUT trusting anything a peer says about
     // itself. See net_host_rejoin_flap_check.
     int adopt_ms = 0;
+    // Host: when this pilot took their seat (net_seat_order_, bumped at
+    // every seating — the game's start and each rejoin door adoption), so
+    // MSG_ROOM_MEMBERS can say who joined after whom: a player refused by
+    // someone already here is the one turned away (MSG_MEMBER_REFUSED).
+    uint32_t seated_order = 0;
     // ---- Host input pipeline for this peer's INPUT stream ----
     uint32_t last_input_seq = 0;
     bool have_input = false;  // first INPUT initialises the counters
@@ -1087,7 +1092,9 @@ private:
   // game ended or they will just try to reconnect.
   bool net_kicked_ = false;
   // client: we left because the platform refused another player in the
-  // room (a block list, 3-4 player rooms). Terminal like a kick; its own card.
+  // room (a block list, 3-4 player rooms), or the host turned us away
+  // because someone here first can't play with us (EV_ROOM_REFUSED).
+  // Terminal like a kick; its own card.
   bool net_policy_left_ = false;
   // Client, 3-4 player rooms: the other joiners and who of them the host
   // seats with us (net_room_members.h), from the lobby and then from the
@@ -1205,6 +1212,7 @@ private:
   // nothing ends. Edge-triggered per tick; re-sent after every Room frame.
   void net_host_report_seats();
   int net_seats_reported_ = -1;
+  uint32_t net_seat_order_ = 0;  // see NetPeer::seated_order
   enum NetSignalEventResult {
     NetSigUnhandled,  // not a common event — the caller's loop handles it
     NetSigHandled,    // consumed; keep polling
@@ -1264,6 +1272,12 @@ private:
   // refuses their next handshake for this room's lifetime. Two actions on
   // the roster row (left/right), one code path.
   void net_kick_peer(NetPeer &p, bool ban);
+  // net_kick_peer's machinery, telling them why: `event` is EV_KICKED, or
+  // EV_ROOM_REFUSED when another player turned them away — `refused_by` is
+  // that player's jid, and the door refuses them while it is seated.
+  void net_remove_peer(NetPeer &p, bool ban, uint8_t event,
+                       const std::string &refused_by);
+  void net_host_member_refused(NetPeer &by, const std::string &jid);
   // Seats whose kicked session is draining, each with the ms left before it
   // is torn down. The EV_KICKED has to actually reach the wire first:
   // NetSession::update() returns immediately for a Ready session, so there

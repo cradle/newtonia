@@ -925,8 +925,21 @@ the host's identity, so an Xbox joiner never checked the other joiners.
 Now the worker sends an Xbox-verified joiner the other joiners' frames
 (the Xbox user id still only between Xbox players), the host tells each
 joiner which jids are seated with it (`MSG_ROOM_MEMBERS`), and the joiner
-asks `net_peer_verdict` about each before entering. The one whose block
-list has the conflict leaves; nobody else learns why. The check carries on
+asks `net_peer_verdict` about each before entering. **Whoever was in the
+room first stays.** A joiner refused by someone already seated leaves; a
+refused joiner who arrived later is turned away by the host instead: the
+member list carries a trailing mask of who joined after the recipient,
+the player whose platform refuses a newer member asks the host
+(`MSG_MEMBER_REFUSED`), and the host removes that member
+(`EV_ROOM_REFUSED`, the same "CANNOT PLAY WITH SOMEONE HERE" card) and
+refuses them at both doors while the asker is still seated
+(`NetLobby::refuse_identity`, keyed like a ban). The host honours it only
+from a worker-attested player and only about someone seated after them,
+so a blocked player can't push the blocker out by joining. Nobody else
+learns why. An older host ignores the ask and the asker leaves when its
+wait runs out, as before. (Microsoft's XR-015 governs communication and
+invites, not who shares a session; the avoid list is described as a
+matchmaking input, which is what this follows.) The check carries on
 in the game: the host's rejoin door sends every player the new member
 list, and an Xbox joiner that finds a jid in it nothing has described
 LOOKS IT UP (`NetRoomLookup`, `net_room_lookup.h`): a short-lived
@@ -937,8 +950,10 @@ been connected at the right moment; the socket pairs with nobody, the host
 never hears of it, and only a verified Xbox asker is told anything. A
 joiner still verifying is listed `pending` and asked about again; a
 lookup that fails five times (about half a minute) leaves, since a
-console may not play on with someone it could not check. A refusal leaves
-the game ("CANNOT PLAY WITH SOMEONE HERE"), the same rule as before START.
+console may not play on with someone it could not check. The newcomer is
+turned away, the same rule as before START. The host sends the member
+list again whenever a seat is lost or emptied, too, so nobody keeps
+checking a player who has gone.
 The same lookup covers the lobby, for a joiner whose socket closed before
 this player was verified. Replaced, before merging, a first version that
 kept the relay socket open all game as a watcher: it did not reconnect,

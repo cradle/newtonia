@@ -12,13 +12,16 @@
 # plays a player with BOB on their block list.
 #   BOB seats first.
 #   ALICE (blocks BOB) seats, hears the room members, and leaves before the
-#     game starts; the host frees her seat.
-#   CAROL (blocks DAVE, who isn't here yet) seats, the host starts, and
-#     CAROL enters the game and tells the platform about both the host and
-#     BOB.
-#   BOB drops; DAVE takes his seat mid-game. The host's new member list
-#     names someone CAROL knows nothing about, so she looks DAVE up at the
-#     room server (a short lookup socket), and leaves.
+#     game starts; the host frees her seat. BOB was there first.
+#   CAROL (blocks DAVE and ERIN, neither here yet) seats. BOB drops before
+#     the start, and DAVE takes the free seat: DAVE came after CAROL, so
+#     CAROL asks the host to turn him away (MSG_MEMBER_REFUSED) and stays.
+#   BOB comes back, the host starts, and CAROL enters the game and tells
+#     the platform about both the host and BOB.
+#   BOB drops; ERIN takes his seat mid-game. The host's new member list
+#     names someone CAROL knows nothing about, so she looks ERIN up at the
+#     room server (a short lookup socket), and the host turns her away.
+#   DAVE tries again and is refused at the door while CAROL is still here.
 # Prints POLICY-MEMBERS-E2E-OK. See TESTING.md.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
@@ -63,18 +66,46 @@ echo "room code: $ROOM_CODE"
 
 XBOX="NEWTONIA_NET_TEST_PLATFORM=6"
 
-# join_as SLOT NAME [VAR=VAL ...]: launch an "Xbox" pilot and join the room
+# join_as SLOT LOG [VAR=VAL ...]: launch an "Xbox" pilot and join the room.
+# The pilot's name is LOG up to any digit (DAVE2 is DAVE again).
 join_as() {
-  local slot=$1 name=$2 before w
+  local slot=$1 log=$2 name before w
   shift 2
+  name=${log%%[0-9]*}
   before=$(newtonia_windows)
-  ROOM_PIDS[$slot]=$(launch "$name" $XBOX NEWTONIA_NET_NAME="$name" \
+  ROOM_PIDS[$slot]=$(launch "$log" $XBOX NEWTONIA_NET_NAME="$name" \
                      NEWTONIA_NET_TEST_CRED="XUID-$name" "$@")
   sleep 4
   w=$(new_window_since "$before")
-  [ -n "$w" ] || room_fail "NO WINDOW FOR $name" "$name"
+  [ -n "$w" ] || room_fail "NO WINDOW FOR $log" "$log"
   ROOM_WINS[$slot]=$w
-  nav_join "$w" "$ROOM_CODE" "$name"
+  nav_join "$w" "$ROOM_CODE" "$log"
+}
+
+# drop SLOT: kill a pilot outright, and wait for its window to go (X can
+# hand the next instance the same window id, which would hide it from
+# new_window_since)
+drop() {
+  local w=${ROOM_WINS[$1]} i
+  kill -9 "${ROOM_PIDS[$1]}"; wait "${ROOM_PIDS[$1]}" 2>/dev/null
+  ROOM_PIDS[$1]=; ROOM_WINS[$1]=
+  for i in $(seq 1 20); do
+    newtonia_windows | grep -q "^$w$" || return 0
+    sleep 0.5
+  done
+}
+
+# count_log FILE PATTERN: matching lines so far
+count_log() { grep -ac "$2" "$OUT/$1.log"; }
+
+# wait_count FILE PATTERN N SECS: poll until at least N lines match
+wait_count() {
+  local i
+  for i in $(seq 1 "$4"); do
+    [ "$(count_log "$1" "$2")" -ge "$3" ] && return 0
+    sleep 1
+  done
+  return 1
 }
 
 # wait_log FILE PATTERN SECS: poll FILE for PATTERN
@@ -105,45 +136,71 @@ grep -aq "bootstrap adopted" "$OUT/ALICE.log" &&
 grep -aq "refused by platform policy" "$OUT/BOB.log" &&
   room_fail "BOB REFUSED SOMEONE" BOB
 
-echo "== CAROL, who blocks only DAVE, plays with the host and BOB"
-join_as 3 CAROL NEWTONIA_NET_TEST_PEER_VERDICT=refuse-name:DAVE
-ok=
-for _ in $(seq 1 40); do
-  [ "$(grep -ac "seat 3 filled" "$OUT/host.log")" -ge 2 ] && { ok=1; break; }
-  sleep 1
-done
-[ -n "$ok" ] || room_fail "CAROL WAS NOT SEATED" host
+echo "== CAROL, who blocks DAVE and ERIN, is seated"
+join_as 3 CAROL NEWTONIA_NET_TEST_PEER_VERDICT=refuse-name:DAVE,ERIN
+wait_count host "seat 3 filled" 2 40 || room_fail "CAROL WAS NOT SEATED" host
 wait_log CAROL "room members from the host: 1 other joiner" 20 ||
   room_fail "CAROL NEVER HEARD THE ROOM MEMBERS" CAROL
-echo "== host starts the game"
+
+echo "== BOB drops before the start; DAVE takes the free seat and is turned away"
+drop 1
+wait_log host "seat 2 link died pre-start" 30 || room_fail "BOB'S SEAT NOT FREED" host
+join_as 4 DAVE
+wait_count host "seat 2 filled" 2 40 || room_fail "DAVE WAS NOT SEATED" host
+wait_log CAROL "asking the host to turn away a newer player" 20 ||
+  room_fail "CAROL NEVER ASKED TO TURN DAVE AWAY" CAROL
+wait_log host "waiting room: turning away seat 2" 20 ||
+  room_fail "THE HOST DID NOT TURN DAVE AWAY" host
+wait_log DAVE "turned away" 20 || room_fail "DAVE WAS NEVER TOLD" DAVE
+grep -aq "refused by platform policy" "$OUT/CAROL.log" &&
+  room_fail "CAROL LEFT INSTEAD OF DAVE" CAROL
+drop 4
+
+echo "== BOB comes back; the host starts the game"
+join_as 1 BOB2
+wait_count host "seat 2 filled" 3 40 || room_fail "BOB WAS NOT SEATED AGAIN" host
+wait_count CAROL "room members from the host: 1 other joiner" 3 20 ||
+  room_fail "CAROL NEVER HEARD BOB WAS BACK" CAROL
 xdotool key --window "$HW" Return; sleep 1
 wait_log host "starting with 2 peer" 20 || room_fail "THE HOST DID NOT START" host
 wait_log CAROL "bootstrap adopted" 30 || room_fail "CAROL NEVER ENTERED" CAROL
-wait_log BOB "bootstrap adopted" 30 || room_fail "BOB NEVER ENTERED" BOB
+wait_log BOB2 "bootstrap adopted" 30 || room_fail "BOB NEVER ENTERED" BOB2
 # The platform hears of both players CAROL now plays with (the Xbox fork
 # records them as recent players): the host, and BOB.
-n=$(grep -ac "platform told peer admitted" "$OUT/CAROL.log")
+n=$(count_log CAROL "platform told peer admitted")
 [ "$n" = 2 ] || room_fail "CAROL TOLD THE PLATFORM OF $n PLAYERS, NOT 2" CAROL
 
-echo "== BOB drops; DAVE takes his seat mid-game"
-kill -9 "${ROOM_PIDS[1]}"; wait "${ROOM_PIDS[1]}" 2>/dev/null
-ROOM_PIDS[1]=; ROOM_WINS[1]=
+echo "== BOB drops; ERIN takes his seat mid-game and is turned away"
+drop 1
 wait_log host "player 2 lost" 45 || room_fail "BOB'S LOSS NEVER DETECTED" host
-join_as 4 DAVE
-wait_log host "player 2 rejoined" 45 || room_fail "DAVE WAS NOT SEATED" host
-wait_log CAROL "net: room members from the host: 1 other joiner" 20 ||
-  room_fail "CAROL NEVER HEARD THE NEW ROOM MEMBERS" CAROL
+join_as 4 ERIN
+wait_log host "player 2 rejoined" 45 || room_fail "ERIN WAS NOT SEATED" host
 wait_log CAROL "net: room lookup for 1 player" 20 ||
-  room_fail "CAROL NEVER LOOKED DAVE UP" CAROL
-wait_log CAROL "net: room lookup answered" 30 ||
-  room_fail "CAROL'S LOOKUP WAS NEVER ANSWERED" CAROL
-wait_log CAROL "another player in the room refused by platform policy (refused) - leaving" 20 ||
-  room_fail "CAROL DID NOT LEAVE A GAME WITH DAVE IN IT" CAROL
-grep -aq "refused by platform policy" "$OUT/DAVE.log" &&
-  room_fail "DAVE REFUSED SOMEONE" DAVE
+  room_fail "CAROL NEVER LOOKED ERIN UP" CAROL
+# No wait on the lookup's "answered" line: ERIN's identity frame lands
+# ahead of it, and the verdict can act on it in between (CI, run
+# 40321607957).
+wait_log CAROL "net: asking the host to turn away a newer player" 20 ||
+  room_fail "CAROL NEVER ASKED TO TURN ERIN AWAY MID-GAME" CAROL
+wait_log host "net: turning away player 2" 20 ||
+  room_fail "THE HOST DID NOT TURN ERIN AWAY MID-GAME" host
+wait_log ERIN "turned away" 20 || room_fail "ERIN WAS NEVER TOLD" ERIN
+grep -aq "refused by platform policy" "$OUT/CAROL.log" &&
+  room_fail "CAROL LEFT INSTEAD OF ERIN" CAROL
+grep -aq "refused by platform policy" "$OUT/ERIN.log" &&
+  room_fail "ERIN REFUSED SOMEONE" ERIN
+drop 4
+
+echo "== DAVE tries again and is refused at the door while CAROL plays"
+join_as 4 DAVE2
+wait_log host "refusing a player someone in the room can't play with" 45 ||
+  room_fail "THE DOOR LET DAVE BACK IN" host
+wait_log DAVE2 "host refused this connection (reason 2)" 30 ||
+  room_fail "DAVE WAS NEVER REFUSED" DAVE2
+drop 4
 
 room_alive
 room_kill_all
 assert_clean "$OUT/host.log" "$OUT/BOB.log" "$OUT/ALICE.log" "$OUT/CAROL.log" \
-             "$OUT/DAVE.log"
+             "$OUT/DAVE.log" "$OUT/BOB2.log" "$OUT/ERIN.log" "$OUT/DAVE2.log"
 echo "POLICY-MEMBERS-E2E-OK"

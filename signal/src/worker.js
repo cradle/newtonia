@@ -1444,7 +1444,11 @@ export class Room {
       const id_now = e.identity;
       const live = !!this.joinerWsById(k);
       const verifying = !!e.verify_at && now - e.verify_at < LOOK_VERIFY_WINDOW_MS;
-      const unsettled = !id_now ? live
+      // A verify in flight keeps the joiner pending even once its socket
+      // has closed (drop_joiner clears the claim, not the verify): the
+      // attestation still lands in r.jids, and the asker has no socket to
+      // hear it on later.
+      const unsettled = !id_now ? live || verifying
           : !id_now.verified && (verifying || (live && id_now.platform === 6));
       if (unsettled) { pending.push(k); continue; }
       done.push(k);

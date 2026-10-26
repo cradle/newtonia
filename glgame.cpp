@@ -585,6 +585,7 @@ GLGame::GLGame(const std::vector<NetSeated> &seated,
     // delegator also passes an empty jid for worker sessions (the lobby
     // fills it post-construction), so 2P keeps the global-context rule.
     p.offline_paired = seated.size() > 1 && s.jid.empty();
+    p.seated_order = ++net_seat_order_;  // the lobby's seating order
     net_apply_attested(p.identity, s.attested);
   }
   if (!seated.empty()) net_peer_jid_ = seated.front().jid;
@@ -2858,6 +2859,12 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
       }
       continue;
     }
+    if (h.msg_type == Net::MSG_MEMBER_REFUSED) {
+      std::string jid;
+      if (Net::read_member_refused(r, jid))
+        net_host_member_refused(peer, jid);
+      continue;
+    }
     if (h.msg_type == Net::MSG_SHOT) {
       // Client shot report (PROTO 14): spawn an exact clone of the
       // bullet the client fired — same spawn point, same spread-applied
@@ -3753,10 +3760,19 @@ void GLGame::net_host_signal_maintain(int delta) {
 // A ban additionally refuses their next handshake. Everything else about
 // the two is identical, which is why this is one function with a flag.
 void GLGame::net_kick_peer(NetPeer &p, bool ban) {
+  net_remove_peer(p, ban, Net::EV_KICKED, std::string());
+}
+
+void GLGame::net_remove_peer(NetPeer &p, bool ban, uint8_t event,
+                             const std::string &refused_by) {
   if (net_mode_ != NetHost) return;
-  NET_LOG("net: %s player %d\n", ban ? "banning" : "kicking", (int)p.seat);
+  if (refused_by.empty())
+    NET_LOG("net: %s player %d\n", ban ? "banning" : "kicking", (int)p.seat);
+  else
+    NET_LOG("net: turning away player %d (someone here can't play with"
+            " them)\n", (int)p.seat);
   if (p.session) {
-    net_send_event_to(p, Net::EV_KICKED);
+    net_send_event_to(p, event);
     // The session is NOT dropped here — see net_kick_closing_. The peer
     // is parked below (seat freed, hull frozen, sim ignores it), and the
     // transport is torn down a few ticks later once the goodbye has had
@@ -3781,6 +3797,14 @@ void GLGame::net_kick_peer(NetPeer &p, bool ban) {
     if (p.session) NetLobby::ban_identity(p.session->peer_identity());
     NetLobby::ban_identity(p.identity);
     NetLobby::ban_identity(p.attested);
+  }
+  // Turned away by another player: the same spread, refused at the door
+  // only while that player is still seated (NetLobby::refuse_identity).
+  if (!refused_by.empty()) {
+    if (p.session)
+      NetLobby::refuse_identity(p.session->peer_identity(), refused_by);
+    NetLobby::refuse_identity(p.identity, refused_by);
+    NetLobby::refuse_identity(p.attested, refused_by);
   }
   // Park frees the hull and opens the rejoin door (the seat becomes
   // available). The session dies on the timer above — parking alone
@@ -3835,6 +3859,9 @@ void GLGame::net_host_rejoin_park_peer(NetPeer &p, bool keep_session) {
       NET_LOG("net: paused awaiting rejoin\n");
     }
   }
+  // Everyone still here hears the room without them (an empty list too),
+  // so nobody keeps checking, or looking up, a player who has gone.
+  net_host_send_room_members();
   net_host_resume_persist();  // client-leave checkpoint (see NETPLAY.md)
 }
 
@@ -4356,7 +4383,11 @@ void GLGame::net_install_admit_check(NetSession *s, int seat) {
     // p->attested is what the worker said about the socket that answered
     // (cleared when the seat parked, so it can't be a previous pilot's),
     // and an empty jid is the LAN door — no worker, nothing to attest.
-    return NetLobby::admit_verdict(claimed, p->attested, !p->jid.empty());
+    std::vector<std::string> seated_jids;
+    for (const NetPeer *o : net_peers_)
+      if (!o->lost && !o->jid.empty()) seated_jids.push_back(o->jid);
+    return NetLobby::admit_verdict(claimed, p->attested, !p->jid.empty(),
+                                   seated_jids);
   });
 }
 
@@ -4475,6 +4506,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // room did. Reliable and ordered, so it lands before the keyframe.
       // Everyone already playing hears the new list too, and checks the
       // newcomer the same way (net_client_member_update).
+      pr.seated_order = ++net_seat_order_;
       net_host_send_room_members();
       pr.have_input = false;      // re-baseline the one-shot counters
       pr.input_zeroed = false;
@@ -6092,13 +6124,40 @@ void GLGame::net_host_send_room_members() {
   if (net_mode_ != NetHost) return;
   for (NetPeer *p : net_peers_) {
     if (!p->session || p->lost || p->jid.empty()) continue;
-    std::vector<std::string> others;
-    for (NetPeer *o : net_peers_)
-      if (o != p && !o->lost && !o->jid.empty()) others.push_back(o->jid);
+    std::vector<std::string> others, newer;
+    for (NetPeer *o : net_peers_) {
+      if (o == p || o->lost || o->jid.empty()) continue;
+      others.push_back(o->jid);
+      if (o->seated_order > p->seated_order) newer.push_back(o->jid);
+    }
     std::vector<uint8_t> msg;
     Net::put_header(msg, Net::MSG_ROOM_MEMBERS, (uint8_t)net_local_seat());
-    Net::put_room_members(msg, others);
+    Net::put_room_members(msg, others, newer);
     p->session->transport()->send_reliable(&msg[0], msg.size());
+  }
+}
+
+// A player's platform refuses someone who took a seat after them
+// (MSG_MEMBER_REFUSED): whoever was here first stays, so the newcomer is
+// turned away, and refused at the door while the player who asked is still
+// seated. Only from an accountable (worker-attested) player — one who abuses
+// it can be kicked — and only about someone seated after them; anything
+// else is ignored, and that player leaves on their own as before.
+void GLGame::net_host_member_refused(NetPeer &by, const std::string &jid) {
+  if (net_mode_ != NetHost || by.lost) return;
+  if (by.attested.platform_trust != NET_TRUST_ATTESTED) {
+    NET_LOG("net: ignoring a turn-away from an unverified player\n");
+    return;
+  }
+  for (NetPeer *p : net_peers_) {
+    if (p == &by || p->lost || p->jid != jid) continue;
+    if (p->seated_order <= by.seated_order) {
+      NET_LOG("net: ignoring a turn-away of someone seated first\n");
+      return;
+    }
+    // Parking them sends the room the list without them.
+    net_remove_peer(*p, false, Net::EV_ROOM_REFUSED, by.jid);
+    return;
   }
 }
 
@@ -6140,7 +6199,21 @@ void GLGame::net_client_member_update(int delta) {
     }
     hold_unknown = st == NetRoomLookup::Busy;
   }
-  NetPeerVerdict v = net_members_.admit_allowed(hold_unknown);
+  std::vector<std::string> turn_away;
+  NetPeerVerdict v = net_members_.admit_allowed(hold_unknown, &turn_away);
+  // A refused player who joined after us: whoever was here first stays, so
+  // ask the host to turn them away and wait for the member list without
+  // them (bounded like any wait below — an older host ignores the ask).
+  for (size_t i = 0; i < turn_away.size(); i++) {
+    if (!net_members_.first_turn_away(turn_away[i])) continue;
+    NET_LOG("net: asking the host to turn away a newer player in the room\n");
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_MEMBER_REFUSED, (uint8_t)net_local_seat());
+    Net::put_member_refused(msg, turn_away[i]);
+    for (NetPeer *p : net_peers_)
+      if (p->session && p->session->transport())
+        p->session->transport()->send_reliable(&msg[0], msg.size());
+  }
   if (v == NET_PEER_ALLOW) {
     if (net_member_wait_ms_ > 0)
       NET_LOG("net: platform allowed the new player(s) in the room\n");
@@ -6236,6 +6309,24 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
         }
         net_lan_host_name_.clear();
         NET_LOG("net: kicked by the host - no rejoin\n");
+      }
+      break;
+    case Net::EV_ROOM_REFUSED:
+      // Someone who was here first can't play with us (MSG_MEMBER_REFUSED),
+      // so the host turned us away. Terminal like a kick, with the card a
+      // policy refusal shows: nobody is named.
+      if (net_mode_ == NetClient) {
+        net_peer_make().lost = true;
+        net_policy_left_ = true;
+        net_peer_bye_ = true;
+        if (!net_room_code_.empty()) {
+          NetLobby::mark_room_dead(net_room_code_);
+          net_room_code_.clear();
+        }
+        net_lan_host_name_.clear();
+        net_lookup_.stop();
+        NET_LOG("net: turned away by the host: someone in the room can't"
+                " play with us - no rejoin\n");
       }
       break;
     case Net::EV_ACHIEVEMENT: {
@@ -7963,9 +8054,9 @@ void GLGame::net_client_poll() {
       // Who sits with us now (3-4 player rooms): sent again whenever the
       // rejoin door seats someone, who the platform is then asked about
       // (net_client_member_update).
-      std::vector<std::string> jids;
-      if (Net::read_room_members(r, jids)) {
-        net_members_.set_seated(jids);
+      std::vector<std::string> jids, newer;
+      if (Net::read_room_members(r, jids, &newer)) {
+        net_members_.set_seated(jids, newer);
         net_member_wait_ms_ = 0;
         NET_LOG("net: room members from the host: %u other joiner(s)\n",
                 (unsigned)jids.size());

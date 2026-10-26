@@ -207,6 +207,12 @@ private:
   bool host_ban_ = false;
   bool host_row_can_ban(int row) const;
   void host_kick_selected(bool ban);
+  // Remove seated_[idx], telling them why (`event`: EV_KICKED, or
+  // EV_ROOM_REFUSED when another player turned them away — `refused_by`
+  // is that player's jid, and the door refuses them while it is seated).
+  void remove_seated(size_t idx, bool ban, uint8_t event,
+                     const std::string &refused_by = std::string());
+  void host_poll_seated();
   // The one write site for the hosting policy: flip, log, persist. Every
   // input reaches it — the roster row's confirm, left/right, its mouse
   // click, and the touch band under the waiting count.
@@ -311,6 +317,11 @@ public:
   static void ban_identity(const NetIdentity &id);
   static bool identity_banned(const NetIdentity &id);
   static void clear_bans();  // hosting a NEW room starts with a clean slate
+  // Turned away by another player (MSG_MEMBER_REFUSED): someone already in
+  // the room can't play with this identity, so the doors refuse it while
+  // that player (`by_jid`) is still seated. Keyed like a ban, cleared with
+  // them. Never shown on the host: who blocks whom stays private.
+  static void refuse_identity(const NetIdentity &id, const std::string &by_jid);
 
   // The host's admission verdict for a peer answering either door — the ban
   // list and the anonymous-players preference, in ONE place for the waiting
@@ -329,15 +340,20 @@ public:
   //   worker_session — false for a door with no worker behind it (LAN,
   //                    manual invite), where attestation is structurally
   //                    impossible and the anonymous policy cannot apply.
-  static NetSession::Admit admit_verdict(const NetIdentity &claimed,
-                                         const NetIdentity &attested,
-                                         bool worker_session);
+  //   seated_jids    — the joiners seated now, for refuse_identity's
+  //                    "while that player is still here".
+  static NetSession::Admit admit_verdict(
+      const NetIdentity &claimed, const NetIdentity &attested,
+      bool worker_session,
+      const std::vector<std::string> &seated_jids = std::vector<std::string>());
 private:
   // admit_verdict's decision; admit_verdict tells the platform when it is
   // an admission (net_peer_admitted).
-  static NetSession::Admit admit_decision(const NetIdentity &claimed,
-                                          const NetIdentity &attested,
-                                          bool worker_session);
+  static NetSession::Admit admit_decision(
+      const NetIdentity &claimed, const NetIdentity &attested,
+      bool worker_session, const std::vector<std::string> &seated_jids);
+  static bool identity_refused(const NetIdentity &id,
+                               const std::vector<std::string> &seated_jids);
 
   Screen screen_;
   int selection_;  // Choose: 0 = HOST, 1 = JOIN, 2 = BACK TO MENU band

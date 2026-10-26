@@ -262,6 +262,14 @@ struct BanEntry {
   std::string token;  // "" = name-only (no attested account to key on)
 };
 static std::vector<BanEntry> s_bans;
+// refuse_identity's records: the key, and who refused (a seated joiner's jid).
+static std::vector<std::pair<BanEntry, std::string> > s_refusals;
+
+static bool ban_key_matches(const BanEntry &e, const std::string &folded,
+                            const NetIdentity &id) {
+  if (!e.token.empty() && e.token == id.ban_token) return true;
+  return !e.name.empty() && e.name == folded && e.platform == id.platform;
+}
 
 static std::string fold_name(const std::string &name) {
   std::string n;
@@ -291,25 +299,59 @@ void NetLobby::ban_identity(const NetIdentity &id) {
           e.name.c_str(), (int)e.platform, e.token.empty() ? "no" : "yes");
 }
 
-NetSession::Admit NetLobby::admit_verdict(const NetIdentity &claimed,
-                                          const NetIdentity &attested,
-                                          bool worker_session) {
-  NetSession::Admit a = admit_decision(claimed, attested, worker_session);
+void NetLobby::refuse_identity(const NetIdentity &id,
+                               const std::string &by_jid) {
+  BanEntry e;
+  e.name = fold_name(id.name);
+  e.platform = id.platform;
+  e.token = id.ban_token;
+  if ((e.name.empty() && e.token.empty()) || by_jid.empty()) return;
+  for (size_t i = 0; i < s_refusals.size(); i++)
+    if (s_refusals[i].second == by_jid && s_refusals[i].first.name == e.name &&
+        s_refusals[i].first.platform == e.platform &&
+        s_refusals[i].first.token == e.token)
+      return;
+  s_refusals.push_back(std::make_pair(e, by_jid));
+}
+
+bool NetLobby::identity_refused(const NetIdentity &id,
+                                const std::vector<std::string> &seated_jids) {
+  std::string folded = fold_name(id.name);
+  for (size_t i = 0; i < s_refusals.size(); i++) {
+    if (!ban_key_matches(s_refusals[i].first, folded, id)) continue;
+    for (size_t k = 0; k < seated_jids.size(); k++)
+      if (seated_jids[k] == s_refusals[i].second) return true;
+  }
+  return false;
+}
+
+NetSession::Admit NetLobby::admit_verdict(
+    const NetIdentity &claimed, const NetIdentity &attested,
+    bool worker_session, const std::vector<std::string> &seated_jids) {
+  NetSession::Admit a =
+      admit_decision(claimed, attested, worker_session, seated_jids);
   // An allow is final: NetSession sends the WELCOME on it and never asks
   // again (resolve_admission), so this is the admission, at every door.
   if (a == NetSession::AdmitAllow) net_peer_admitted(attested);
   return a;
 }
 
-NetSession::Admit NetLobby::admit_decision(const NetIdentity &claimed,
-                                           const NetIdentity &attested,
-                                           bool worker_session) {
+NetSession::Admit NetLobby::admit_decision(
+    const NetIdentity &claimed, const NetIdentity &attested,
+    bool worker_session, const std::vector<std::string> &seated_jids) {
   // Both identities are consulted: the claim carries the name a casual
   // rejoiner reuses, the attestation carries the TOKEN (and the attested
   // name) a rename can't shake. An attestation that lands mid-hold is seen
   // — the admit check re-reads it on every call.
   if (identity_banned(claimed) || identity_banned(attested))
     return NetSession::AdmitBanned;
+  // Someone already seated can't play with them (refuse_identity): the
+  // platform-policy refusal, since that is what it is — just not ours.
+  if (identity_refused(claimed, seated_jids) ||
+      identity_refused(attested, seated_jids)) {
+    NET_LOG("net: refusing a player someone in the room can't play with\n");
+    return NetSession::AdmitNotAllowed;
+  }
   // The platform's say on this particular peer (net_policy.h), ahead of the
   // room's anonymous-players setting: it applies whatever that is set to.
   switch (net_peer_verdict(claimed, attested)) {
@@ -337,16 +379,15 @@ NetSession::Admit NetLobby::admit_decision(const NetIdentity &claimed,
 
 bool NetLobby::identity_banned(const NetIdentity &id) {
   std::string folded = fold_name(id.name);
-  for (size_t i = 0; i < s_bans.size(); i++) {
-    const BanEntry &e = s_bans[i];
-    if (!e.token.empty() && e.token == id.ban_token) return true;
-    if (!e.name.empty() && e.name == folded && e.platform == id.platform)
-      return true;
-  }
+  for (size_t i = 0; i < s_bans.size(); i++)
+    if (ban_key_matches(s_bans[i], folded, id)) return true;
   return false;
 }
 
-void NetLobby::clear_bans() { s_bans.clear(); }
+void NetLobby::clear_bans() {
+  s_bans.clear();
+  s_refusals.clear();
+}
 
 NetLobby::NetLobby()
     : screen_(Choose),
@@ -1285,12 +1326,16 @@ void NetLobby::host_send_room_members() {
   for (size_t i = 0; i < seated_.size(); i++) {
     const SeatedPeer &sp = seated_[i];
     if (sp.jid.empty() || !sp.session || !sp.session->transport()) continue;
-    std::vector<std::string> others;
-    for (size_t k = 0; k < jids.size(); k++)
-      if (jids[k] != sp.jid) others.push_back(jids[k]);
+    // seated_ is in seating order, so everyone after i joined after them.
+    std::vector<std::string> others, newer;
+    for (size_t k = 0; k < seated_.size(); k++) {
+      if (k == i || seated_[k].jid.empty()) continue;
+      others.push_back(seated_[k].jid);
+      if (k > i) newer.push_back(seated_[k].jid);
+    }
     std::vector<uint8_t> msg;
     Net::put_header(msg, Net::MSG_ROOM_MEMBERS, 1);  // from the host, seat 1
-    Net::put_room_members(msg, others);
+    Net::put_room_members(msg, others, newer);
     sp.session->transport()->send_reliable(&msg[0], msg.size());
   }
   NET_LOG("[lobby] room members sent: %u relay joiner(s) seated\n",
@@ -1353,7 +1398,10 @@ void NetLobby::install_admit_check(NetSession *s, const std::string &jid) {
           jid_attested_.find(jid);
       if (at != jid_attested_.end()) att = at->second;
     }
-    return NetLobby::admit_verdict(claimed, att, !jid.empty());
+    std::vector<std::string> seated_jids;
+    for (size_t i = 0; i < seated_.size(); i++)
+      if (!seated_[i].jid.empty()) seated_jids.push_back(seated_[i].jid);
+    return NetLobby::admit_verdict(claimed, att, !jid.empty(), seated_jids);
   });
 }
 
@@ -1484,6 +1532,7 @@ void NetLobby::waiting_room_update(int delta) {
   }
   // A seated link dying before START frees the seat. No grace machinery
   // here — pre-start there is nothing to park; the joiner just re-joins.
+  host_poll_seated();
   for (size_t i = 0; i < seated_.size();) {
     NetTransport *t = seated_[i].session->transport();
     if (t && t->failed()) {
@@ -1617,9 +1666,66 @@ void NetLobby::toggle_allow_anonymous() {
 
 void NetLobby::host_kick_selected(bool ban) {
   if (host_sel_ < 0 || host_sel_ >= (int)seated_.size()) return;
-  SeatedPeer &sp = seated_[host_sel_];
   NET_LOG("[lobby] waiting room: %s seat %d\n", ban ? "banning" : "kicking",
-          sp.seat);
+          seated_[host_sel_].seat);
+  remove_seated(host_sel_, ban, Net::EV_KICKED);
+  host_kick_armed_ = -1;
+  host_ban_ = false;
+  host_sel_ = -1;  // back to the resting state: confirm means START again
+  set_status(ban ? "PLAYER BANNED" : "PLAYER REMOVED");
+}
+
+// Seated players' messages before the game starts: only the ask to turn a
+// newer player away (MSG_MEMBER_REFUSED) means anything here — a client
+// sends nothing else until it has the game's first snapshot.
+void NetLobby::host_poll_seated() {
+  for (size_t i = 0; i < seated_.size(); i++) {
+    NetTransport *t = seated_[i].session ? seated_[i].session->transport()
+                                         : nullptr;
+    if (!t) continue;
+    std::vector<unsigned char> msg;
+    std::string refused;
+    int polled = 0;
+    while (polled++ < 16 && t->poll(msg)) {
+      Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
+      Net::Header h;
+      if (!Net::read_header(r, h) || h.msg_type != Net::MSG_MEMBER_REFUSED)
+        continue;
+      std::string jid;
+      if (Net::read_member_refused(r, jid)) refused = jid;
+    }
+    if (refused.empty()) continue;
+    // Only from an accountable player, and only about someone seated after
+    // them: whoever was here first stays.
+    const SeatedPeer &by = seated_[i];
+    NetIdentity by_att = by.attested;
+    if (by_att.platform_trust != NET_TRUST_ATTESTED && !by.jid.empty()) {
+      std::map<std::string, NetIdentity>::const_iterator at =
+          jid_attested_.find(by.jid);
+      if (at != jid_attested_.end()) by_att = at->second;
+    }
+    if (by_att.platform_trust != NET_TRUST_ATTESTED) {
+      NET_LOG("[lobby] waiting room: ignoring a turn-away from an unverified"
+              " player\n");
+      continue;
+    }
+    for (size_t k = i + 1; k < seated_.size(); k++) {
+      if (seated_[k].jid != refused) continue;
+      NET_LOG("[lobby] waiting room: turning away seat %d (someone here"
+              " can't play with them)\n", seated_[k].seat);
+      remove_seated(k, false, Net::EV_ROOM_REFUSED, by.jid);
+      host_sel_ = -1;
+      host_kick_armed_ = -1;
+      host_ban_ = false;
+      set_status("A PLAYER COULD NOT JOIN");
+      break;
+    }
+  }
+}
+
+void NetLobby::remove_seated(size_t idx, bool ban, uint8_t event,
+                             const std::string &refused_by) {
+  SeatedPeer &sp = seated_[idx];
   // Read the identity BEFORE the session is deleted below — the ban needs
   // it, and peer_identity() through a freed session is a use-after-free.
   NetIdentity who = sp.session ? sp.session->peer_identity() : NetIdentity();
@@ -1637,7 +1743,7 @@ void NetLobby::host_kick_selected(bool ban) {
   if (sp.session) {
     std::vector<uint8_t> msg;
     Net::put_header(msg, Net::MSG_EVENT, 1);  // from the host, seat 1
-    Net::put_u8(msg, Net::EV_KICKED);
+    Net::put_u8(msg, event);
     Net::put_u32(msg, 0);
     sp.session->transport()->send_reliable(&msg[0], msg.size());
     // Do NOT delete it here: NetSession::update() is a no-op once Ready,
@@ -1661,11 +1767,12 @@ void NetLobby::host_kick_selected(bool ban) {
     ban_identity(who);
     ban_identity(att);
   }
-  seated_.erase(seated_.begin() + host_sel_);
-  host_kick_armed_ = -1;
-  host_ban_ = false;
-  host_sel_ = -1;  // back to the resting state: confirm means START again
-  set_status(ban ? "PLAYER BANNED" : "PLAYER REMOVED");
+  // Turned away by another player: refused at the door while they stay.
+  if (!refused_by.empty()) {
+    refuse_identity(who, refused_by);
+    refuse_identity(att, refused_by);
+  }
+  seated_.erase(seated_.begin() + idx);
 }
 
 void NetLobby::waiting_room_start() {
@@ -2651,12 +2758,23 @@ void NetLobby::tick(int delta) {
             screen_ = LobbyFailed;
             return;
           }
+          if (code == Net::EV_ROOM_REFUSED) {
+            // Someone already here can't play with us (MSG_MEMBER_REFUSED),
+            // and was here first. Nobody is named.
+            NET_LOG("[lobby] turned away: someone in the room can't play"
+                    " with us\n");
+            mark_room_dead(room_code_);
+            fail_headline_ = "CANNOT PLAY WITH SOMEONE HERE";
+            set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
+            screen_ = LobbyFailed;
+            return;
+          }
           continue;
         }
         if (h.msg_type == Net::MSG_ROOM_MEMBERS) {
-          std::vector<std::string> jids;
-          if (Net::read_room_members(r, jids)) {
-            members_.set_seated(jids);
+          std::vector<std::string> jids, newer;
+          if (Net::read_room_members(r, jids, &newer)) {
+            members_.set_seated(jids, newer);
             NET_LOG("[lobby] room members from the host: %u other joiner(s)\n",
                     (unsigned)jids.size());
           }
@@ -2684,8 +2802,22 @@ void NetLobby::tick(int delta) {
       NetRoomLookup::State look = NetRoomLookup::Idle;
       if (room_lookups()) look = lookup_.update(members_, room_code_, delta);
       const bool look_hold = look == NetRoomLookup::Busy;
-      if (look == NetRoomLookup::Failed ||
-          members_.verdict(look_hold) == NET_PEER_REFUSE) {
+      // A refused player who joined after us is the host's to turn away
+      // (whoever was here first stays): ask once, and hold meanwhile.
+      std::vector<std::string> turn_away;
+      const NetPeerVerdict member_v = members_.verdict(look_hold, &turn_away);
+      for (size_t i = 0; i < turn_away.size(); i++) {
+        if (!members_.first_turn_away(turn_away[i]) || !session_->transport())
+          continue;
+        NET_LOG("[lobby] asking the host to turn away a newer player in the"
+                " room\n");
+        std::vector<uint8_t> out;
+        Net::put_header(out, Net::MSG_MEMBER_REFUSED,
+                        (uint8_t)session_->player_id());
+        Net::put_member_refused(out, turn_away[i]);
+        session_->transport()->send_reliable(&out[0], out.size());
+      }
+      if (look == NetRoomLookup::Failed || member_v == NET_PEER_REFUSE) {
         NET_LOG("[lobby] another player in the room refused by platform policy\n");
         lookup_.stop();
         held_snapshot_.clear();
@@ -2715,7 +2847,7 @@ void NetLobby::tick(int delta) {
             net_peer_verdict(session_->peer_identity(), attested_peer_);
         bool member_held = false;  // the answer pending is a member's
         if (pv == NET_PEER_ALLOW) {
-          pv = members_.verdict(look_hold);
+          pv = member_v;
           member_held = pv != NET_PEER_ALLOW;
         }
         // A lookup still finding out bounds its own wait (NetRoomLookup).

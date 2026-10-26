@@ -236,6 +236,9 @@ refusing an over-long count, a truncated id and an empty id. Then
 `NetRoomMembers` (`net_room_members.h`) against a stand-in policy: the
 verdict over who is seated, undescribed members held while frames are
 expected, each member reported admitted once, and a refused newcomer.
+Also the trailing who-joined-after-you mask, `MSG_MEMBER_REFUSED`, and
+the turn-away rule: a refused member who joined later is listed to turn
+away and held, one who was there first refuses the room.
 Runs in linux.yml.
 
 ### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
@@ -1263,14 +1266,16 @@ test/e2e/policy_peer_rejoin.sh # the joiner's verdict across a paused-host
 test/e2e/policy_members.sh # the same verdict across a 3-4 player room: three
                      # desktop builds claim Xbox (NEWTONIA_NET_TEST_PLATFORM=6)
                      # against its own FAKE_VERIFY relay; a joiner blocking
-                     # another (hook refuse-name:NAME) hears who is seated
-                     # (MSG_ROOM_MEMBERS + the worker's joiner frames) and
-                     # leaves before START, the host frees the seat, and a
-                     # joiner blocking nobody enters and tells the platform
-                     # of both players it plays with; then a player drops,
-                     # a newcomer that joiner blocks takes the seat mid-game,
-                     # and the joiner looks the newcomer up at the room
-                     # server (NetRoomLookup) and leaves
+                     # someone already seated (hook refuse-name:NAME[,NAME])
+                     # hears who is seated (MSG_ROOM_MEMBERS + the worker's
+                     # joiner frames) and leaves before START; a joiner
+                     # seated first gets a newcomer it blocks turned away
+                     # (MSG_MEMBER_REFUSED -> EV_ROOM_REFUSED) in the
+                     # waiting room, enters and tells the platform of both
+                     # players it plays with; then a player drops, another
+                     # newcomer it blocks takes the seat mid-game, is looked
+                     # up at the room server (NetRoomLookup) and turned
+                     # away, and the first one is refused at the door
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings

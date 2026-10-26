@@ -144,6 +144,68 @@ int main() {
   check(lk.verdict(true) == NET_PEER_ALLOW,
         "nothing on record is asked about as-is, no longer held");
 
+  // Who joined after whom (the trailing mask): round trip, and an older
+  // host's body without it reads as "all were here first".
+  {
+    std::vector<std::string> ids, newer, got_newer;
+    ids.push_back("4");
+    ids.push_back("9");
+    newer.push_back("9");
+    std::vector<uint8_t> buf;
+    Net::put_room_members(buf, ids, newer);
+    Net::Reader r(buf);
+    check(Net::read_room_members(r, got, &got_newer) && got == ids &&
+              got_newer == newer,
+          "the newer mask round trips");
+    std::vector<uint8_t> old_body;
+    Net::put_room_members(old_body, ids);
+    Net::Reader r_old(old_body);
+    check(Net::read_room_members(r_old, got, &got_newer) && got == ids &&
+              got_newer.empty(),
+          "an older host's body has nobody newer");
+    std::vector<uint8_t> rb;
+    Net::put_member_refused(rb, "9");
+    Net::Reader rr(rb);
+    std::string jid;
+    check(Net::read_member_refused(rr, jid) && jid == "9",
+          "member refused round trips");
+    const uint8_t bad[] = {0};
+    Net::Reader rbad(bad, sizeof(bad));
+    check(!Net::read_member_refused(rbad, jid), "empty refused id refused");
+  }
+
+  // Whoever was here first stays: a refused member who joined after us is
+  // listed to turn away and held; one who was here first refuses the room.
+  {
+    NetRoomMembers tw;
+    std::vector<std::string> ids, newer, away;
+    ids.push_back("2");
+    ids.push_back("7");
+    newer.push_back("7");
+    tw.set_seated(ids, newer);
+    tw.note_identity("2", NET_PLATFORM_STEAM, "PC", true, "", "");
+    tw.note_identity("7", NET_PLATFORM_XBOX, "BAD", true, "", "XUID-7");
+    check(tw.verdict() == NET_PEER_REFUSE,
+          "without a turn-away list a newer refused member refuses");
+    check(tw.admit_allowed(false, &away) == NET_PEER_WAIT && away.size() == 1 &&
+              away[0] == "7",
+          "a newer refused member is turned away, and we hold");
+    check(tw.first_turn_away("7") && !tw.first_turn_away("7"),
+          "the host is asked once per member");
+    std::vector<std::string> left;
+    left.push_back("2");
+    tw.set_seated(left);
+    check(tw.admit_allowed(false, &away) == NET_PEER_ALLOW,
+          "once the host's list drops them we play on");
+    // Here first: we leave, as before.
+    NetRoomMembers first;
+    first.set_seated(ids);  // nobody newer
+    first.note_identity("7", NET_PLATFORM_XBOX, "BAD", true, "", "XUID-7");
+    away.clear();
+    check(first.verdict(false, &away) == NET_PEER_REFUSE && away.empty(),
+          "a refused member seated before us refuses the room");
+  }
+
   if (failures) return 1;
   std::printf("ROOM-MEMBERS-TEST-OK\n");
   return 0;

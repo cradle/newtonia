@@ -41,9 +41,9 @@ NetPeerVerdict net_peer_verdict(const NetIdentity &claimed,
   // (test/e2e/policy_peer_rejoin.sh: the paused-host reconnect). An
   // episode is a run of calls without a second's gap, which is how the
   // joiner's per-tick poll looks while it holds a bootstrap.
-  // "refuse-name:NAME" refuses only the peer with that name, claimed or
-  // attested, standing in for one player on a block list
-  // (test/e2e/policy_members.sh: another joiner in a 3-4 player room).
+  // "refuse-name:NAME[,NAME...]" refuses only the peers with those names,
+  // claimed or attested, standing in for players on a block list
+  // (test/e2e/policy_members.sh: other joiners in a 3-4 player room).
   static int mode = -1;
   static long wait_ms = -1;
   static std::string refused_name;
@@ -56,10 +56,15 @@ NetPeerVerdict net_peer_verdict(const NetIdentity &claimed,
     if (mode == 3 && e[11] == ':') wait_ms = std::atol(e + 12);
     if (mode == 4) refused_name = e + 12;
   }
-  if (mode == 4)
-    return !refused_name.empty() && (claimed.name == refused_name ||
-                                     attested.name == refused_name)
-               ? NET_PEER_REFUSE : NET_PEER_ALLOW;
+  if (mode == 4) {
+    const std::string list = "," + refused_name + ",";
+    const bool hit =
+        (!claimed.name.empty() &&
+         list.find("," + claimed.name + ",") != std::string::npos) ||
+        (!attested.name.empty() &&
+         list.find("," + attested.name + ",") != std::string::npos);
+    return hit ? NET_PEER_REFUSE : NET_PEER_ALLOW;
+  }
   if (mode == 1) return NET_PEER_REFUSE;
   if (mode == 2) return NET_PEER_WAIT;
   if (mode != 3) return NET_PEER_ALLOW;
