@@ -934,8 +934,9 @@ the player whose platform refuses a newer member asks the host
 (`EV_ROOM_REFUSED`, the same "CANNOT PLAY WITH SOMEONE HERE" card) and
 refuses them at both doors while the asker is still seated
 (`NetLobby::refuse_identity`, keyed like a ban). The host honours it only
-from a worker-attested player and only about someone seated after them,
-so a blocked player can't push the blocker out by joining. Nobody else
+from a worker-attested player (an ask that arrives before the asker's
+attestation is held up to 10 s for it, since it is sent once) and only
+about someone seated after them, so a blocked player can't push the blocker out by joining. Nobody else
 learns why. An older host ignores the ask and the asker leaves when its
 wait runs out, as before. (Microsoft's XR-015 governs communication and
 invites, not who shares a session; the avoid list is described as a
