@@ -343,10 +343,12 @@ enum MsgType {
   // (decimal ASCII, the `from` its identity frames carry). The OTHER relay
   // joiners seated with the recipient, never the recipient itself and never
   // a LAN-door seat (no jid). Sent by the waiting room whenever its seats
-  // change, and by the mid-game rejoin door to the adopted session. A
-  // joining client matches the ids against the worker's identity frames for
-  // the other joiners, so the platform's per-peer verdict (net_policy.h)
-  // covers everyone it will play with, not only the host. Not a PROTO bump:
+  // change, and by the mid-game rejoin door to every connected relay joiner
+  // once it seats someone. A client matches the ids against the worker's
+  // identity frames for the other joiners, so the platform's per-peer
+  // verdict (net_policy.h) covers everyone it plays with, not only the
+  // host, including a newcomer mid-game (GLGame::net_client_watch_update).
+  // Not a PROTO bump:
   // an older receiver ignores the unknown type and checks the host alone,
   // exactly what it did before. The host's word on who is seated; the
   // worker's on who each of them is.

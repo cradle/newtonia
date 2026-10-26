@@ -226,14 +226,17 @@ preceding TypeScript step's output via `NEWTONIA_WEB_JS=web/main.js`.
 ### Room members message unit test (no SDL needed)
 
 ```sh
-g++ -std=c++11 -Wall -I. test/unit/room_members_test.cpp -o /tmp/room_members_test && /tmp/room_members_test
+g++ -std=c++11 -Wall -I. test/unit/room_members_test.cpp net_room_members.cpp -o /tmp/room_members_test && /tmp/room_members_test
 ```
 
 Round-trips `MSG_ROOM_MEMBERS` (`net_protocol.h`): the host's list of the
 other relay joiners seated with a client, which a joiner checks against the
 worker's identity frames for them. Covers the writer's caps and the reader
-refusing an over-long count, a truncated id and an empty id. Runs in
-linux.yml.
+refusing an over-long count, a truncated id and an empty id. Then
+`NetRoomMembers` (`net_room_members.h`) against a stand-in policy: the
+verdict over who is seated, undescribed members held while frames are
+expected, each member reported admitted once, and a refused newcomer.
+Runs in linux.yml.
 
 ### One-hand touch gesture layer unit test (Linux, no SDL runtime needed)
 
@@ -642,6 +645,8 @@ node test/identity_test.js               # V0 identity attest/broadcast/replay
 node test/identity_xbox_test.mjs         # Xbox user ids between Xbox players only
 node test/identity_xbox_joiners_test.mjs # joiner identities to Xbox-verified joiners
                                          #   (3-4 player block lists), nobody else
+node test/room_watch_test.mjs            # a seated Xbox joiner kept as a watcher hears
+                                         #   who takes a free seat; offers skip it
 ```
 
 Note on the Limiter: `wrangler dev --local` has no `CF-Connecting-IP`, so every
@@ -1261,7 +1266,10 @@ test/e2e/policy_members.sh # the same verdict across a 3-4 player room: three
                      # (MSG_ROOM_MEMBERS + the worker's joiner frames) and
                      # leaves before START, the host frees the seat, and a
                      # joiner blocking nobody enters and tells the platform
-                     # of both players it plays with
+                     # of both players it plays with; then a player drops,
+                     # a newcomer that joiner blocks takes the seat mid-game,
+                     # and the joiner (watching the room through its kept
+                     # relay socket) hears who it is and leaves
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings

@@ -926,7 +926,13 @@ Now the worker sends an Xbox-verified joiner the other joiners' frames
 (the Xbox user id still only between Xbox players), the host tells each
 joiner which jids are seated with it (`MSG_ROOM_MEMBERS`), and the joiner
 asks `net_peer_verdict` about each before entering. The one whose block
-list has the conflict leaves; nobody else learns why.
+list has the conflict leaves; nobody else learns why. The check carries on
+in the game: an Xbox joiner keeps its relay socket as a WATCHER
+(`{t:"watch"}`, acknowledged `{t:"watching"}`; the worker leaves watchers
+out of pairing and room capacity), so the identity of whoever takes a free
+seat mid-game still reaches it, and the host's rejoin door sends every
+player the new member list. A refusal there leaves the game ("CANNOT PLAY
+WITH SOMEONE HERE"), the same rule as before START.
 
 **What would reopen this** (in rough order of likelihood): (1) ~~identity
 becoming a POLICY input anywhere~~ — fired; see the amendment above,

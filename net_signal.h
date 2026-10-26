@@ -41,6 +41,7 @@ public:
                   // verified in the fields below
       Error,      // text = reason ("no-such-room", "room-full", "expired")
       Closed,     // socket closed / connect failed
+      Watching,   // the worker took send_watch() (joiner, in game)
     };
     Kind kind;
     std::string text;
@@ -107,6 +108,12 @@ public:
   // nothing could end (field, 2026-09-15). Sent whenever the count changes
   // and again on every Room frame (a reclaim forgets it).
   virtual void send_seats(int free) = 0;
+  // Joiner only, once its game has started: keep this socket open as a
+  // WATCHER, to go on hearing the identity frames of whoever takes a free
+  // seat mid-game (3-4 player rooms; an Xbox console checks everyone it
+  // plays with, net_policy.h). The worker answers Watching; one that
+  // doesn't know the frame never does, and the game closes the socket.
+  virtual void send_watch() = 0;
 
   // Pops one event (main thread only); false when nothing is pending.
   virtual bool poll(Event &ev) = 0;
@@ -160,6 +167,8 @@ std::string identity_frame(uint8_t platform, const std::string &name,
                            const std::string &cred);
 // The host->worker seat report (NetSignal::send_seats).
 std::string seats_frame(int free);
+// The joiner->worker watch request (NetSignal::send_watch).
+std::string watch_frame();
 // Extracts "key":"value" from a one-level object; false if absent.
 bool json_field(const std::string &json, const char *key, std::string &out);
 // Extracts a bare numeric ("key":123) or boolean ("key":true) value from a

@@ -103,7 +103,7 @@ jobs:
 
       - name: Room members message unit test
         run: |
-          g++ -std=c++11 -Wall -I. test/unit/room_members_test.cpp -o /tmp/room_members_test
+          g++ -std=c++11 -Wall -I. test/unit/room_members_test.cpp net_room_members.cpp -o /tmp/room_members_test
           /tmp/room_members_test
 
       - name: Shield inventory and effect regression test

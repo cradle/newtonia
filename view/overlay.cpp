@@ -391,7 +391,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
     if (!is_touch_mode())
       MenuSelect::draw_row(-130, "EXIT TO MENU", 16, true);
   } else if (glgame->net_all_peers_lost()) {
-    if (glgame->net_kicked_) {
+    if (glgame->net_policy_left_) {
+      // We left (net_leave_for_policy): the platform won't let this player
+      // play with someone who took a free seat. Same words as the lobby's
+      // refusal, and like there nobody else is told why.
+      Typer::draw_centered(0, vh * 0.55f, "CANNOT PLAY WITH SOMEONE HERE", 22);
+    } else if (glgame->net_kicked_) {
       // Checked before the BYE wording (a kick sets both): the player was
       // removed, and telling them the host left would send them straight
       // back to the room code wondering why it stopped working.

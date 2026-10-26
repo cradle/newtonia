@@ -19,6 +19,9 @@
 //   host  -> {t:"seats", free}        how many seats the host would still
 //                                     OFFER (see room_full below); additive,
 //                                     legacy hosts never send it
+//   join  -> {t:"watch"}              a seated player keeping its socket for
+//   join  <- {t:"watching"}           the game, to keep hearing who takes a
+//                                     free seat (is_watcher); acknowledged
 //   any   <- {t:"err", reason:"no-such-room"|"room-full"|"expired"}
 //
 // Relay-only privacy: a socket opened with `&ro=1` (a build that must hide
@@ -688,6 +691,18 @@ export class Room {
   // with no usable host or offer (review of PR #527).
   hostWs()   { return this.state.getWebSockets("host").find(ws_open) || null; }
   joinerWss() { return this.state.getWebSockets("joiner").filter(ws_open); }
+  // A WATCHER is a seated player still holding its socket once the game has
+  // started ({t:"watch"}, from_joiner): it keeps hearing the identity frames
+  // of whoever takes a free seat mid-game, so an Xbox console can check
+  // them too (3-4 player rooms). It is no longer joining, so it takes no
+  // part in the pairing: never the unaddressed offer's target, and not a
+  // socket the room's capacity counts (its seat is in the host's report).
+  is_watcher(ws) {
+    const jid = this.jidOf(ws);
+    return jid !== null && !!(this.r.jids[jid] || {}).watch;
+  }
+  // Joiner sockets still pairing (or waiting to): everyone but watchers.
+  pairingJoinerWss() { return this.joinerWss().filter((ws) => !this.is_watcher(ws)); }
   joinerWsById(jid) {
     return this.state.getWebSockets("j:" + jid).find(ws_open) || null;
   }
@@ -697,7 +712,7 @@ export class Room {
   // (deploy-moment survivor) and counts as oldest of all.
   oldestJoinerWs() {
     let best = null, best_jid = Infinity;
-    for (const ws of this.joinerWss()) {
+    for (const ws of this.pairingJoinerWss()) {
       const jid = this.jidOf(ws);
       const k = jid === null ? 0 : jid;
       if (k < best_jid) { best_jid = k; best = ws; }
@@ -754,7 +769,7 @@ export class Room {
   //  the loss, and the rejoiner routinely gets here first (the host reads
   //  that early join AS the loss signal — net_host_signal_maintain).
   room_full(rejoin) {
-    if (this.joinerWss().length >= MAX_JOINERS) return true;
+    if (this.pairingJoinerWss().length >= MAX_JOINERS) return true;
     if (rejoin) return false;
     return this.r.seats_free === 0 && !!this.hostWs();
   }
@@ -778,7 +793,7 @@ export class Room {
       // Worker's pre-mint probe: is there an open slot worth minting for?
       // `joiner` (any-connected) kept for shape compatibility; the worker
       // reads `full` since multi-join.
-      const n = this.joinerWss().length;
+      const n = this.pairingJoinerWss().length;
       return new Response(
           JSON.stringify({ host: !!this.r.host_token && !!this.hostWs(),
                            grace: !!this.in_grace(now),
@@ -1472,6 +1487,20 @@ export class Room {
       if (jid !== null) await this.attest_identity("joiner", msg, jid);
       return;
     }
+    // A seated player keeping its socket for the game (see is_watcher). The
+    // ack tells the game this worker knows the frame: against an older one
+    // the socket would still count as a joiner and could be handed the
+    // host's next unaddressed offer, so the game closes it unacknowledged.
+    if (msg.t === "watch") {
+      if (jid === null || !ws) return;
+      const ent = this.jid_entry(jid);
+      if (!ent.watch) {
+        ent.watch = true;
+        await this.save();
+      }
+      this.safeSend(ws, { t: "watching" });
+      return;
+    }
     // Joiner frames are stamped {from: jid} for the host (PB-D5) — the
     // joiner itself never learns its jid; the worker derives it from the
     // socket's tag, so old joiners need no change. A null jid (pre-deploy
@@ -1537,7 +1566,7 @@ export class Room {
       // across the deploy): give it the old drop semantics — clear the
       // legacy offer slot when it was the last joiner and tell the host,
       // unstamped, so the lobby's re-offer flow still runs.
-      if (this.joinerWss().length === 0) {
+      if (this.pairingJoinerWss().length === 0) {
         this.r.offer = null;
         this.r.offer_pv = null;
         this.r.host_cands = [];
@@ -1554,7 +1583,7 @@ export class Room {
     // 2P flow this room may be serving; the host re-offers on peer-leave
     // (lobby) or its rejoin flow (game). Addressed offers are relay-only,
     // so there is no per-jid buffer to clear.
-    if (this.joinerWss().length === 0) {
+    if (this.pairingJoinerWss().length === 0) {
       this.r.offer = null;
       this.r.offer_pv = null;
       this.r.host_cands = [];

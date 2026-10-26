@@ -13,8 +13,11 @@
 #   BOB seats first.
 #   ALICE (blocks BOB) seats, hears the room members, and leaves before the
 #     game starts; the host frees her seat.
-#   CAROL (blocks nobody) seats, the host starts, and CAROL enters the game
-#     and tells the platform about both the host and BOB.
+#   CAROL (blocks DAVE, who isn't here yet) seats, the host starts, and
+#     CAROL enters the game and tells the platform about both the host and
+#     BOB. Her room-server socket stays open as a watcher.
+#   BOB drops; DAVE takes his seat mid-game. CAROL hears who DAVE is through
+#     the watcher and the new member list from the host, and leaves.
 # Prints POLICY-MEMBERS-E2E-OK. See TESTING.md.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
@@ -101,8 +104,8 @@ grep -aq "bootstrap adopted" "$OUT/ALICE.log" &&
 grep -aq "refused by platform policy" "$OUT/BOB.log" &&
   room_fail "BOB REFUSED SOMEONE" BOB
 
-echo "== CAROL, who blocks nobody, plays with the host and BOB"
-join_as 3 CAROL NEWTONIA_NET_TEST_PEER_VERDICT=refuse-name:NOBODY
+echo "== CAROL, who blocks only DAVE, plays with the host and BOB"
+join_as 3 CAROL NEWTONIA_NET_TEST_PEER_VERDICT=refuse-name:DAVE
 ok=
 for _ in $(seq 1 40); do
   [ "$(grep -ac "seat 3 filled" "$OUT/host.log")" -ge 2 ] && { ok=1; break; }
@@ -120,8 +123,24 @@ wait_log BOB "bootstrap adopted" 30 || room_fail "BOB NEVER ENTERED" BOB
 # records them as recent players): the host, and BOB.
 n=$(grep -ac "platform told peer admitted" "$OUT/CAROL.log")
 [ "$n" = 2 ] || room_fail "CAROL TOLD THE PLATFORM OF $n PLAYERS, NOT 2" CAROL
+wait_log CAROL "net: room watch open" 20 ||
+  room_fail "CAROL'S ROOM WATCH NEVER OPENED" CAROL
+
+echo "== BOB drops; DAVE takes his seat mid-game"
+kill -9 "${ROOM_PIDS[1]}"; wait "${ROOM_PIDS[1]}" 2>/dev/null
+ROOM_PIDS[1]=; ROOM_WINS[1]=
+wait_log host "player 2 lost" 45 || room_fail "BOB'S LOSS NEVER DETECTED" host
+join_as 4 DAVE
+wait_log host "player 2 rejoined" 45 || room_fail "DAVE WAS NOT SEATED" host
+wait_log CAROL "net: room members from the host: 1 other joiner" 20 ||
+  room_fail "CAROL NEVER HEARD THE NEW ROOM MEMBERS" CAROL
+wait_log CAROL "another player in the room refused by platform policy (refused) - leaving" 20 ||
+  room_fail "CAROL DID NOT LEAVE A GAME WITH DAVE IN IT" CAROL
+grep -aq "refused by platform policy" "$OUT/DAVE.log" &&
+  room_fail "DAVE REFUSED SOMEONE" DAVE
 
 room_alive
 room_kill_all
-assert_clean "$OUT/host.log" "$OUT/BOB.log" "$OUT/ALICE.log" "$OUT/CAROL.log"
+assert_clean "$OUT/host.log" "$OUT/BOB.log" "$OUT/ALICE.log" "$OUT/CAROL.log" \
+             "$OUT/DAVE.log"
 echo "POLICY-MEMBERS-E2E-OK"

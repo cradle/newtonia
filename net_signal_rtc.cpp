@@ -78,6 +78,7 @@ public:
   }
 
   void send_seats(int free) override { send_frame(NetSig::seats_frame(free)); }
+  void send_watch() override { send_frame(NetSig::watch_frame()); }
 
   bool poll(Event &ev) override {
     // Reset up front so the SYNTHESIZED Closed event below can't carry a
