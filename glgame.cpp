@@ -3372,7 +3372,26 @@ void GLGame::net_host_poll_peer(NetPeer &peer) {
   }
 }
 
+// How long a turn-away ask waits for its sender's attestation: well past
+// the asker's own wait (MEMBER_VERDICT_WAIT_MS), which is what bounds it.
+static const uint32_t TURN_AWAY_HOLD_MS = 10000;
+
 void GLGame::net_host_poll() {
+  for (NetPeer *p : net_peers_) {
+    if (p->held_refusals.empty()) continue;
+    if (p->lost) {
+      p->held_refusals.clear();
+    } else if (p->attested.platform_trust == NET_TRUST_ATTESTED) {
+      std::vector<std::string> held;
+      held.swap(p->held_refusals);
+      for (size_t i = 0; i < held.size(); i++)
+        net_host_member_refused(*p, held[i]);
+      break;  // a removal may have changed the list; the rest go next tick
+    } else if (SDL_GetTicks() - p->held_refusals_since > TURN_AWAY_HOLD_MS) {
+      NET_LOG("net: dropping a turn-away from a player who never verified\n");
+      p->held_refusals.clear();
+    }
+  }
   for (NetPeer *p : net_peers_)
     // A LOST peer's session is a door adoption mid-handshake (B5): its
     // transport belongs to NetSession::update until Ready — draining it
@@ -6141,12 +6160,21 @@ void GLGame::net_host_send_room_members() {
 // (MSG_MEMBER_REFUSED): whoever was here first stays, so the newcomer is
 // turned away, and refused at the door while the player who asked is still
 // seated. Only from an accountable (worker-attested) player — one who abuses
-// it can be kicked — and only about someone seated after them; anything
+// it can be kicked — and only about someone seated after them; an ask that
+// beats the asker's attestation is held for it (net_host_poll), anything
 // else is ignored, and that player leaves on their own as before.
 void GLGame::net_host_member_refused(NetPeer &by, const std::string &jid) {
   if (net_mode_ != NetHost || by.lost) return;
   if (by.attested.platform_trust != NET_TRUST_ATTESTED) {
-    NET_LOG("net: ignoring a turn-away from an unverified player\n");
+    // Its attestation may still be on the way (a separate socket): hold the
+    // ask until it lands rather than lose it, since the asker sends it once.
+    for (size_t i = 0; i < by.held_refusals.size(); i++)
+      if (by.held_refusals[i] == jid) return;
+    if (by.held_refusals.size() >= 4) return;
+    if (by.held_refusals.empty()) by.held_refusals_since = SDL_GetTicks();
+    by.held_refusals.push_back(jid);
+    NET_LOG("net: holding a turn-away until the player's verification"
+            " lands\n");
     return;
   }
   for (NetPeer *p : net_peers_) {

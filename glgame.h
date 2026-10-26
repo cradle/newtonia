@@ -629,6 +629,12 @@ private:
     // MSG_ROOM_MEMBERS can say who joined after whom: a player refused by
     // someone already here is the one turned away (MSG_MEMBER_REFUSED).
     uint32_t seated_order = 0;
+    // Host: turn-away asks (MSG_MEMBER_REFUSED) that arrived before this
+    // pilot's worker attestation, which travels the signalling socket and
+    // can land after the game link's message. Held, not dropped, until the
+    // attestation arrives or TURN_AWAY_HOLD_MS passes.
+    std::vector<std::string> held_refusals;
+    uint32_t held_refusals_since = 0;
     // ---- Host input pipeline for this peer's INPUT stream ----
     uint32_t last_input_seq = 0;
     bool have_input = false;  // first INPUT initialises the counters

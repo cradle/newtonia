@@ -173,6 +173,10 @@ private:
     // SIGNAL socket later drops keeps its badge (the p2p link is what
     // seats it; PeerLeave erases the jid_attested_ entry).
     NetIdentity attested;
+    // Turn-away asks (MSG_MEMBER_REFUSED) that beat this peer's worker
+    // attestation, held until it lands or TURN_AWAY_HOLD_MS passes.
+    std::vector<std::string> held_refusals;
+    int held_refusals_ms = 0;
   };
   std::vector<SeatedPeer> seated_;
   // Waiting-room roster selection (host, FOURPLAYER.md O3). -1 = no row
@@ -212,7 +216,7 @@ private:
   // is that player's jid, and the door refuses them while it is seated).
   void remove_seated(size_t idx, bool ban, uint8_t event,
                      const std::string &refused_by = std::string());
-  void host_poll_seated();
+  void host_poll_seated(int delta);
   // The one write site for the hosting policy: flip, log, persist. Every
   // input reaches it — the roster row's confirm, left/right, its mouse
   // click, and the touch band under the waiting count.

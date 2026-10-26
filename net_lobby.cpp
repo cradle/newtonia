@@ -1532,7 +1532,7 @@ void NetLobby::waiting_room_update(int delta) {
   }
   // A seated link dying before START frees the seat. No grace machinery
   // here — pre-start there is nothing to park; the joiner just re-joins.
-  host_poll_seated();
+  host_poll_seated(delta);
   for (size_t i = 0; i < seated_.size();) {
     NetTransport *t = seated_[i].session->transport();
     if (t && t->failed()) {
@@ -1675,16 +1675,20 @@ void NetLobby::host_kick_selected(bool ban) {
   set_status(ban ? "PLAYER BANNED" : "PLAYER REMOVED");
 }
 
+// How long a turn-away ask waits for its sender's attestation: well past
+// the asker's own wait, which is what bounds it.
+static const int TURN_AWAY_HOLD_MS = 10000;
+
 // Seated players' messages before the game starts: only the ask to turn a
 // newer player away (MSG_MEMBER_REFUSED) means anything here — a client
 // sends nothing else until it has the game's first snapshot.
-void NetLobby::host_poll_seated() {
+void NetLobby::host_poll_seated(int delta) {
   for (size_t i = 0; i < seated_.size(); i++) {
     NetTransport *t = seated_[i].session ? seated_[i].session->transport()
                                          : nullptr;
     if (!t) continue;
+    SeatedPeer &by = seated_[i];
     std::vector<unsigned char> msg;
-    std::string refused;
     int polled = 0;
     while (polled++ < 16 && t->poll(msg)) {
       Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
@@ -1692,12 +1696,19 @@ void NetLobby::host_poll_seated() {
       if (!Net::read_header(r, h) || h.msg_type != Net::MSG_MEMBER_REFUSED)
         continue;
       std::string jid;
-      if (Net::read_member_refused(r, jid)) refused = jid;
+      if (!Net::read_member_refused(r, jid)) continue;
+      bool dup = false;
+      for (size_t k = 0; k < by.held_refusals.size(); k++)
+        if (by.held_refusals[k] == jid) dup = true;
+      if (dup || by.held_refusals.size() >= 4) continue;
+      if (by.held_refusals.empty()) by.held_refusals_ms = 0;
+      by.held_refusals.push_back(jid);
     }
-    if (refused.empty()) continue;
+    if (by.held_refusals.empty()) continue;
     // Only from an accountable player, and only about someone seated after
-    // them: whoever was here first stays.
-    const SeatedPeer &by = seated_[i];
+    // them: whoever was here first stays. The worker's attestation travels
+    // the signalling socket and can land after the ask, which the asker
+    // sends once, so an ask from a player not yet attested is held.
     NetIdentity by_att = by.attested;
     if (by_att.platform_trust != NET_TRUST_ATTESTED && !by.jid.empty()) {
       std::map<std::string, NetIdentity>::const_iterator at =
@@ -1705,20 +1716,29 @@ void NetLobby::host_poll_seated() {
       if (at != jid_attested_.end()) by_att = at->second;
     }
     if (by_att.platform_trust != NET_TRUST_ATTESTED) {
-      NET_LOG("[lobby] waiting room: ignoring a turn-away from an unverified"
-              " player\n");
+      by.held_refusals_ms += delta;
+      if (by.held_refusals_ms > TURN_AWAY_HOLD_MS) {
+        NET_LOG("[lobby] waiting room: dropping a turn-away from a player"
+                " who never verified\n");
+        by.held_refusals.clear();
+      }
       continue;
     }
-    for (size_t k = i + 1; k < seated_.size(); k++) {
-      if (seated_[k].jid != refused) continue;
-      NET_LOG("[lobby] waiting room: turning away seat %d (someone here"
-              " can't play with them)\n", seated_[k].seat);
-      remove_seated(k, false, Net::EV_ROOM_REFUSED, by.jid);
-      host_sel_ = -1;
-      host_kick_armed_ = -1;
-      host_ban_ = false;
-      set_status("A PLAYER COULD NOT JOIN");
-      break;
+    std::vector<std::string> held;
+    held.swap(by.held_refusals);
+    const std::string by_jid = by.jid;
+    for (size_t h = 0; h < held.size(); h++) {
+      for (size_t k = i + 1; k < seated_.size(); k++) {
+        if (seated_[k].jid != held[h]) continue;
+        NET_LOG("[lobby] waiting room: turning away seat %d (someone here"
+                " can't play with them)\n", seated_[k].seat);
+        remove_seated(k, false, Net::EV_ROOM_REFUSED, by_jid);
+        host_sel_ = -1;
+        host_kick_armed_ = -1;
+        host_ban_ = false;
+        set_status("A PLAYER COULD NOT JOIN");
+        break;
+      }
     }
   }
 }
