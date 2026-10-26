@@ -107,6 +107,43 @@ int main() {
   m.clear();
   check(m.seated().empty() && !m.known("2"), "clear forgets the room");
 
+  // Let in before its description arrived (review on #628): the member is
+  // asked about again once described, refused, and the late description of
+  // an allowed one is reported then.
+  NetRoomMembers late;
+  std::vector<std::string> one;
+  one.push_back("2");
+  late.set_seated(one);
+  int before = admitted_calls;
+  check(late.admit_allowed() == NET_PEER_ALLOW && admitted_calls == before,
+        "an undescribed member let in has nothing to report");
+  late.note_identity("2", NET_PLATFORM_STEAM, "BAD", true, "", "");
+  check(late.admit_allowed(true) == NET_PEER_REFUSE,
+        "a member described after it was let in is asked about again");
+  NetRoomMembers late2;
+  late2.set_seated(one);
+  late2.admit_allowed();
+  late2.note_identity("2", NET_PLATFORM_STEAM, "PC", true, "", "");
+  check(late2.admit_allowed() == NET_PEER_ALLOW && admitted_calls == before + 1,
+        "a late description is reported once it lands");
+
+  // The lookup's work list and its "nothing on record" answer.
+  NetRoomMembers lk;
+  std::vector<std::string> three;
+  three.push_back("2");
+  three.push_back("3");
+  three.push_back("4");
+  lk.set_seated(three);
+  lk.note_identity("3", NET_PLATFORM_STEAM, "PC", true, "", "");
+  check(lk.unknown_seated().size() == 2 && lk.unknown_seated()[0] == "2",
+        "undescribed seated members are the lookup's work list");
+  lk.note_looked("2");
+  lk.note_looked("4");
+  check(lk.unknown_seated().empty() && lk.known("4"),
+        "a looked-up member is known even with nothing on record");
+  check(lk.verdict(true) == NET_PEER_ALLOW,
+        "nothing on record is asked about as-is, no longer held");
+
   if (failures) return 1;
   std::printf("ROOM-MEMBERS-TEST-OK\n");
   return 0;

@@ -347,7 +347,7 @@ enum MsgType {
   // once it seats someone. A client matches the ids against the worker's
   // identity frames for the other joiners, so the platform's per-peer
   // verdict (net_policy.h) covers everyone it plays with, not only the
-  // host, including a newcomer mid-game (GLGame::net_client_watch_update).
+  // host, including a newcomer mid-game (GLGame::net_client_member_update).
   // Not a PROTO bump:
   // an older receiver ignores the unknown type and checks the host alone,
   // exactly what it did before. The host's word on who is seated; the

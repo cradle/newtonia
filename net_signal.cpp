@@ -141,7 +141,9 @@ std::string identity_frame(uint8_t platform, const std::string &name,
   return f;
 }
 
-std::string watch_frame() { return "{\"t\":\"watch\"}"; }
+std::string lookup_frame(const std::string &jids) {
+  return "{\"t\":\"lookup\",\"jids\":\"" + json_escape(jids) + "\"}";
+}
 
 std::string seats_frame(int free) {
   if (free < 0) free = 0;
@@ -245,7 +247,14 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
     return json_field(frame, "code", ev.text);
   }
   if (t == "joined") { ev.kind = NetSignal::Event::Joined; return true; }
-  if (t == "watching") { ev.kind = NetSignal::Event::Watching; return true; }
+  if (t == "lookready") { ev.kind = NetSignal::Event::LookReady; return true; }
+  if (t == "looked") {
+    ev.kind = NetSignal::Event::Looked;
+    json_field(frame, "jids", ev.text);
+    json_field(frame, "pending", ev.text2);
+    json_bool_field(frame, "ok", ev.verified);
+    return true;
+  }
   if (t == "ice") {
     std::string u, n, p;
     if (!json_field(frame, "urls", u)) return false;

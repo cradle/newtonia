@@ -728,11 +728,7 @@ GLGame::~GLGame() {
   // reclaim grace, leaving joiners — including this very player rejoining
   // their own code — waiting forever on "JOINING THE ROOM". A crash sends
   // nothing, so the grace window still covers real host drops.
-  if (net_watch_) {  // the relay socket a seated Xbox joiner kept open
-    net_watch_->close();
-    delete net_watch_;
-    net_watch_ = nullptr;
-  }
+  net_lookup_.stop();  // a room lookup still asking (3-4 player rooms)
   if (net_signal_) {
     net_signal_->send_close();
     net_signal_->close();
@@ -4478,7 +4474,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // joiners it is coming back to (MSG_ROOM_MEMBERS), as the waiting
       // room did. Reliable and ordered, so it lands before the keyframe.
       // Everyone already playing hears the new list too, and checks the
-      // newcomer the same way (net_client_watch_update).
+      // newcomer the same way (net_client_member_update).
       net_host_send_room_members();
       pr.have_input = false;      // re-baseline the one-shot counters
       pr.input_zeroed = false;
@@ -6109,79 +6105,41 @@ void GLGame::net_host_send_room_members() {
 // ---- 3-4 player rooms: checking whoever takes a free seat mid-game ------
 // The lobby asked the platform (net_policy.h) about everyone seated before
 // the game started; this keeps asking about anyone the host's rejoin door
-// seats later. Their identity reaches us through the relay socket an Xbox
-// player keeps open as a watcher; a refusal means we leave, as the lobby
-// does — the player whose block list has the conflict goes, and nobody
-// else learns why.
+// seats later, every tick, so a description that lands late still counts.
+// Who a newcomer is comes from the room's worker on a short lookup socket
+// (NetRoomLookup), opened only when the host names someone we know nothing
+// about. A refusal, or a lookup that keeps failing, means we leave, as the
+// lobby does — the player whose block list has the conflict goes, and
+// nobody else learns why.
 
-void GLGame::net_adopt_room_watch(NetSignal *watch,
-                                  const NetRoomMembers &members) {
+void GLGame::net_adopt_room_members(const NetRoomMembers &members,
+                                    bool lookups) {
   net_members_ = members;
   net_member_wait_ms_ = 0;
-  if (!watch) return;
-  net_watch_ = watch;
-  net_watch_acked_ = false;
-  net_watch_ack_ms_ = 0;
-  net_watch_->send_watch();
+  net_lookups_ = lookups;
 }
 
-void GLGame::net_close_room_watch(const char *why) {
-  if (!net_watch_) return;
-  NET_LOG("net: room watch closed (%s)\n", why);
-  net_watch_->close();
-  delete net_watch_;
-  net_watch_ = nullptr;
-}
-
-// How long a newcomer the host named may go undescribed by the worker
-// before it is asked about as-is (empty identities): its frame normally
-// lands before the host has even finished its handshake.
-static const int ROOM_WATCH_ACK_MS = 5000;
-static const int MEMBER_FRAME_HOLD_MS = 3000;
+// How long the platform may take to decide about a described player.
 static const int MEMBER_VERDICT_WAIT_MS = 6000;  // as the lobby's
 
-void GLGame::net_client_watch_update(int delta) {
+void GLGame::net_client_member_update(int delta) {
   if (delta < 1) delta = 1;
-  // The host link is gone: a rejoin opens a fresh socket of its own.
-  if (net_watch_ && net_all_peers_lost())
-    net_close_room_watch("host link lost");
-  if (net_watch_) {
-    NetSignal::Event ev;
-    while (net_watch_ && net_watch_->poll(ev)) {
-      switch (ev.kind) {
-        case NetSignal::Event::Watching:
-          net_watch_acked_ = true;
-          NET_LOG("net: room watch open\n");
-          break;
-        case NetSignal::Event::Identity:
-          if (ev.text2 == "joiner" && !ev.peer.empty())
-            net_members_.note_identity(ev.peer, ev.platform, ev.text,
-                                       ev.verified, ev.key, ev.account);
-          break;
-        case NetSignal::Event::Error:
-        case NetSignal::Event::Closed:
-          net_close_room_watch(ev.kind == NetSignal::Event::Error
-                                   ? ev.text.c_str() : "socket closed");
-          break;
-        case NetSignal::Event::Offer:
-          // Only a worker that never took the watch routes an offer here
-          // (it still counts us as a joiner): close, so the next one goes
-          // to whoever is really joining.
-          net_close_room_watch("offer for a joiner");
-          break;
-        default:
-          break;  // host-lost/back and the rest: the game's own link decides
-      }
-    }
-    if (net_watch_ && !net_watch_acked_ &&
-        (net_watch_ack_ms_ += delta) > ROOM_WATCH_ACK_MS)
-      net_close_room_watch("the room server did not take the watch");
-  }
   if (net_policy_left_ || net_all_peers_lost() ||
-      net_members_.seated().empty())
+      net_members_.seated().empty()) {
+    // The host link is gone: a rejoin starts from a fresh lobby.
+    net_lookup_.stop();
     return;
-  bool hold_unknown =
-      net_watch_ && net_watch_acked_ && net_member_wait_ms_ < MEMBER_FRAME_HOLD_MS;
+  }
+  bool hold_unknown = false;
+  if (net_lookups_) {
+    NetRoomLookup::State st =
+        net_lookup_.update(net_members_, net_room_code_, delta);
+    if (st == NetRoomLookup::Failed) {
+      net_leave_for_policy("could not find out who joined");
+      return;
+    }
+    hold_unknown = st == NetRoomLookup::Busy;
+  }
   NetPeerVerdict v = net_members_.admit_allowed(hold_unknown);
   if (v == NET_PEER_ALLOW) {
     if (net_member_wait_ms_ > 0)
@@ -6192,6 +6150,11 @@ void GLGame::net_client_watch_update(int delta) {
   if (v == NET_PEER_WAIT) {
     if (net_member_wait_ms_ == 0)
       NET_LOG("net: waiting on the platform's verdict for a new player\n");
+    // A lookup still finding out bounds its own wait (NetRoomLookup).
+    if (hold_unknown) {
+      net_member_wait_ms_ = 1;
+      return;
+    }
     net_member_wait_ms_ += delta;
     if (net_member_wait_ms_ < MEMBER_VERDICT_WAIT_MS) return;
   }
@@ -6209,7 +6172,7 @@ void GLGame::net_leave_for_policy(const char *why) {
   net_peer_make().lost = true;
   net_room_code_.clear();
   net_lan_host_name_.clear();
-  net_close_room_watch("left the room");
+  net_lookup_.stop();
 }
 
 void GLGame::net_handle_event(uint8_t code, uint32_t arg, NetPeer *from) {
@@ -6954,7 +6917,7 @@ void GLGame::tick_net_client(int delta) {
   }
   if (net_mode_ == NetClient && net_session()->transport()->failed())
     net_peer_make().lost = true;
-  if (net_mode_ == NetClient) net_client_watch_update(delta);
+  if (net_mode_ == NetClient) net_client_member_update(delta);
   // Final-score freeze, client side: the host froze a fully-out pilot's
   // score at their last death (Ship::freeze_score) and sends that figure,
   // but this side still resolves its own shots locally for feedback, so a
@@ -7999,7 +7962,7 @@ void GLGame::net_client_poll() {
     if (h.msg_type == Net::MSG_ROOM_MEMBERS) {
       // Who sits with us now (3-4 player rooms): sent again whenever the
       // rejoin door seats someone, who the platform is then asked about
-      // (net_client_watch_update).
+      // (net_client_member_update).
       std::vector<std::string> jids;
       if (Net::read_room_members(r, jids)) {
         net_members_.set_seated(jids);

@@ -30,6 +30,7 @@
 
 #include "net_lan.h"
 #include "net_session.h"
+#include "net_room_lookup.h"
 #include "net_room_members.h"
 #include "state.h"
 
@@ -444,6 +445,11 @@ private:
   // per-peer verdict covers everyone this player will play with, not only
   // the host. Handed to the game at the bootstrap, which keeps checking.
   NetRoomMembers members_;
+  // Finds out who a seated member is when no frame has described them
+  // (one whose relay socket closed before we were verified); an Xbox
+  // player in a worker room only (room_lookups()).
+  NetRoomLookup lookup_;
+  bool room_lookups() const;
   // Host: tell each seated joiner which other joiners sit with it, when the
   // seats change (members_sent_ is the last list sent, for the change test).
   void host_send_room_members();

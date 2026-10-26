@@ -621,6 +621,7 @@ void NetLobby::reset_to_choose() {
   room_code_.clear();
   code_entry_.clear();
   members_.clear();
+  lookup_.stop();
   offer_sent_ = false;
   answer_sent_ = false;
   signal_wait_ms_ = 0;
@@ -1232,6 +1233,13 @@ void NetLobby::copy_local_description() {
 // (Steam Web-API ticket, "" otherwise) for the worker to attest. Sent when a
 // socket comes up (Room/Joined) — the worker verifies and broadcasts the
 // result to the peer.
+// Only a verified Xbox player is told who the other joiners are (the
+// worker's rule, signal/src/worker.js answer_lookup), and only an Xbox
+// console checks them, so nobody else looks anyone up.
+bool NetLobby::room_lookups() const {
+  return used_worker_ && net_local_identity().platform == NET_PLATFORM_XBOX;
+}
+
 void NetLobby::send_local_identity(bool late) {
   if (!signal_) return;
   const NetIdentity &me = net_local_identity();
@@ -1752,7 +1760,8 @@ void NetLobby::pump_signal(int delta) {
       case NetSignal::Event::Ice:
         ice_servers_.push_back(ev.text);
         break;
-      case NetSignal::Event::Watching:  // the game's (net_adopt_room_watch)
+      case NetSignal::Event::LookReady:  // lookup sockets only (lookup_)
+      case NetSignal::Event::Looked:
         break;
       case NetSignal::Event::Cand: {
         // Trickle ICE: feed the peer's candidate into whichever transport
@@ -2669,8 +2678,16 @@ void NetLobby::tick(int delta) {
       // the platform refuses means we leave now, before the game starts,
       // rather than sit in a waiting room for a game we can't play. Not a
       // dead room: once that player is gone, joining again works.
-      if (members_.verdict() == NET_PEER_REFUSE) {
+      // A member nothing has described yet is looked up at the worker
+      // (NetRoomLookup) and held undecided meanwhile; a lookup that keeps
+      // failing leaves, like a refusal.
+      NetRoomLookup::State look = NetRoomLookup::Idle;
+      if (room_lookups()) look = lookup_.update(members_, room_code_, delta);
+      const bool look_hold = look == NetRoomLookup::Busy;
+      if (look == NetRoomLookup::Failed ||
+          members_.verdict(look_hold) == NET_PEER_REFUSE) {
         NET_LOG("[lobby] another player in the room refused by platform policy\n");
+        lookup_.stop();
         held_snapshot_.clear();
         delete session_;  // closes the link, so the host frees our seat
         session_ = nullptr;
@@ -2698,13 +2715,17 @@ void NetLobby::tick(int delta) {
             net_peer_verdict(session_->peer_identity(), attested_peer_);
         bool member_held = false;  // the answer pending is a member's
         if (pv == NET_PEER_ALLOW) {
-          pv = members_.verdict();
+          pv = members_.verdict(look_hold);
           member_held = pv != NET_PEER_ALLOW;
         }
-        if (pv == NET_PEER_WAIT && peer_verdict_wait_ms_ < PEER_VERDICT_WAIT_MS) {
+        // A lookup still finding out bounds its own wait (NetRoomLookup).
+        const bool looking = member_held && look_hold;
+        if (pv == NET_PEER_WAIT &&
+            (looking || peer_verdict_wait_ms_ < PEER_VERDICT_WAIT_MS)) {
           if (peer_verdict_wait_ms_ == 0)
             NET_LOG("[lobby] holding the bootstrap for the platform's verdict\n");
-          peer_verdict_wait_ms_ += delta > 0 ? delta : 1;
+          if (!looking) peer_verdict_wait_ms_ += delta > 0 ? delta : 1;
+          else if (peer_verdict_wait_ms_ == 0) peer_verdict_wait_ms_ = 1;
           // Holding: fall through to the transport check below, so a link
           // that dies meanwhile takes its usual retry path.
         } else if (pv != NET_PEER_ALLOW) {
@@ -2747,16 +2768,9 @@ void NetLobby::tick(int delta) {
             game->net_lan_host_name_ = lan_host_name_;
             game->net_apply_extras(in, s);
             // The game keeps checking whoever takes a free seat later
-            // (3-4 player rooms). An Xbox player keeps its relay socket as
-            // a watcher for that: only Xbox-verified joiners hear the other
-            // joiners' identity frames, so nobody else would gain anything.
-            NetSignal *watch = nullptr;
-            if (signal_ && used_worker_ &&
-                net_local_identity().platform == NET_PLATFORM_XBOX) {
-              watch = signal_;
-              signal_ = nullptr;
-            }
-            game->net_adopt_room_watch(watch, members_);
+            // (3-4 player rooms), looking newcomers up the same way.
+            lookup_.stop();
+            game->net_adopt_room_members(members_, room_lookups());
             handed_off_to_game_ = true;  // credential lifetime moves to the game
             request_state_change(game);
             return;

@@ -32,6 +32,7 @@
 #include "turret_pickup.h"
 #include "net_identity.h"
 #include "net_signal.h"
+#include "net_room_lookup.h"
 #include "net_room_members.h"
 #include "view/tap_band.h"
 #include <SDL.h>
@@ -1091,19 +1092,17 @@ private:
   // Client, 3-4 player rooms: the other joiners and who of them the host
   // seats with us (net_room_members.h), from the lobby and then from the
   // host's MSG_ROOM_MEMBERS whenever someone takes a free seat mid-game.
-  // net_watch_ is the lobby's relay socket kept open as a WATCHER (an Xbox
-  // player only; signal/src/worker.js is_watcher), so the newcomer's
-  // identity frame still reaches us; null otherwise.
+  // A member nothing has described is looked up at the room's worker
+  // (net_lookup_) when net_lookups_ (an Xbox player in a worker room: the
+  // only one the worker tells, and the only one whose platform checks).
   NetRoomMembers net_members_;
-  NetSignal *net_watch_ = nullptr;
-  bool net_watch_acked_ = false;
-  int net_watch_ack_ms_ = 0;     // waiting on the worker's Watching ack
+  NetRoomLookup net_lookup_;
+  bool net_lookups_ = false;
   int net_member_wait_ms_ = 0;   // a member's verdict pending this long
  public:
-  void net_adopt_room_watch(NetSignal *watch, const NetRoomMembers &members);
+  void net_adopt_room_members(const NetRoomMembers &members, bool lookups);
  private:
-  void net_client_watch_update(int delta);
-  void net_close_room_watch(const char *why);
+  void net_client_member_update(int delta);
   void net_leave_for_policy(const char *why);
   // Host: tell each connected relay joiner which other relay joiners sit
   // with it now (MSG_ROOM_MEMBERS), after the rejoin door seats someone.

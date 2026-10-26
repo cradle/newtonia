@@ -645,8 +645,9 @@ node test/identity_test.js               # V0 identity attest/broadcast/replay
 node test/identity_xbox_test.mjs         # Xbox user ids between Xbox players only
 node test/identity_xbox_joiners_test.mjs # joiner identities to Xbox-verified joiners
                                          #   (3-4 player block lists), nobody else
-node test/room_watch_test.mjs            # a seated Xbox joiner kept as a watcher hears
-                                         #   who takes a free seat; offers skip it
+node test/room_lookup_test.mjs           # a seated Xbox joiner looks the room's joiners
+                                         #   up (closed sockets too); invisible to the
+                                         #   room, pending ones re-asked, Xbox askers only
 ```
 
 Note on the Limiter: `wrangler dev --local` has no `CF-Connecting-IP`, so every
@@ -1268,8 +1269,8 @@ test/e2e/policy_members.sh # the same verdict across a 3-4 player room: three
                      # joiner blocking nobody enters and tells the platform
                      # of both players it plays with; then a player drops,
                      # a newcomer that joiner blocks takes the seat mid-game,
-                     # and the joiner (watching the room through its kept
-                     # relay socket) hears who it is and leaves
+                     # and the joiner looks the newcomer up at the room
+                     # server (NetRoomLookup) and leaves
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings

@@ -10,7 +10,8 @@
 // the HOST says which of them are seated with us (MSG_ROOM_MEMBERS), since
 // the worker can't tell a seated joiner from one the host turned away.
 // Used by the lobby before the game starts and by the game afterwards,
-// when someone takes a free seat mid-game.
+// when someone takes a free seat mid-game. A seated joiner nobody has
+// described yet is looked up (NetRoomLookup, net_room_lookup.h).
 
 #include <stdint.h>
 
@@ -40,16 +41,24 @@ public:
     admitted_.clear();
   }
   bool known(const std::string &jid) const { return ids_.count(jid) != 0; }
+  // A lookup answered for this jid with nothing to say about it (a player
+  // who never proved who they are): it is known now, as nobody in
+  // particular, and asked about with empty identities.
+  void note_looked(const std::string &jid);
+  // Seated jids nothing has been heard about yet, the lookup's work list.
+  std::vector<std::string> unknown_seated() const;
 
   // The platform's verdict over everyone seated: REFUSE if any is refused,
-  // WAIT if any is still undecided, else ALLOW. A jid the worker never
-  // described is asked about with empty identities (the default backend
-  // allows), unless `hold_unknown`, when it counts as undecided: a watching
-  // game expects its frame shortly (GLGame::net_client_watch_update).
+  // WAIT if any is still undecided, else ALLOW. A jid nothing has been
+  // heard about is asked about with empty identities (the default backend
+  // allows), unless `hold_unknown`, when it counts as undecided while a
+  // lookup is still finding out (NetRoomLookup).
   NetPeerVerdict verdict(bool hold_unknown = false) const;
-  // Tells the platform about every seated member it now allows and hasn't
-  // been told about yet (net_peer_admitted, once per jid), and returns the
-  // verdict over the ones still not admitted (ALLOW when none are left).
+  // The verdict over everyone seated, as verdict(), asked afresh every
+  // time: what was allowed before is asked again, so a description that
+  // lands later still counts. Tells the platform about each allowed member
+  // with a verified identity once (net_peer_admitted), including one that
+  // was let in before its description arrived.
   NetPeerVerdict admit_allowed(bool hold_unknown = false);
 
 private:
@@ -60,7 +69,7 @@ private:
   NetPeerVerdict verdict_of(const std::string &jid, bool hold_unknown) const;
   std::map<std::string, Member> ids_;
   std::vector<std::string> seated_;
-  std::set<std::string> admitted_;
+  std::set<std::string> admitted_;  // reported to net_peer_admitted
 };
 
 #endif /* NET_ROOM_MEMBERS_H */

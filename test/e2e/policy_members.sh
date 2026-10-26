@@ -15,9 +15,10 @@
 #     game starts; the host frees her seat.
 #   CAROL (blocks DAVE, who isn't here yet) seats, the host starts, and
 #     CAROL enters the game and tells the platform about both the host and
-#     BOB. Her room-server socket stays open as a watcher.
-#   BOB drops; DAVE takes his seat mid-game. CAROL hears who DAVE is through
-#     the watcher and the new member list from the host, and leaves.
+#     BOB.
+#   BOB drops; DAVE takes his seat mid-game. The host's new member list
+#     names someone CAROL knows nothing about, so she looks DAVE up at the
+#     room server (a short lookup socket), and leaves.
 # Prints POLICY-MEMBERS-E2E-OK. See TESTING.md.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
@@ -123,8 +124,6 @@ wait_log BOB "bootstrap adopted" 30 || room_fail "BOB NEVER ENTERED" BOB
 # records them as recent players): the host, and BOB.
 n=$(grep -ac "platform told peer admitted" "$OUT/CAROL.log")
 [ "$n" = 2 ] || room_fail "CAROL TOLD THE PLATFORM OF $n PLAYERS, NOT 2" CAROL
-wait_log CAROL "net: room watch open" 20 ||
-  room_fail "CAROL'S ROOM WATCH NEVER OPENED" CAROL
 
 echo "== BOB drops; DAVE takes his seat mid-game"
 kill -9 "${ROOM_PIDS[1]}"; wait "${ROOM_PIDS[1]}" 2>/dev/null
@@ -134,6 +133,10 @@ join_as 4 DAVE
 wait_log host "player 2 rejoined" 45 || room_fail "DAVE WAS NOT SEATED" host
 wait_log CAROL "net: room members from the host: 1 other joiner" 20 ||
   room_fail "CAROL NEVER HEARD THE NEW ROOM MEMBERS" CAROL
+wait_log CAROL "net: room lookup for 1 player" 20 ||
+  room_fail "CAROL NEVER LOOKED DAVE UP" CAROL
+wait_log CAROL "net: room lookup answered" 30 ||
+  room_fail "CAROL'S LOOKUP WAS NEVER ANSWERED" CAROL
 wait_log CAROL "another player in the room refused by platform policy (refused) - leaving" 20 ||
   room_fail "CAROL DID NOT LEAVE A GAME WITH DAVE IN IT" CAROL
 grep -aq "refused by platform policy" "$OUT/DAVE.log" &&

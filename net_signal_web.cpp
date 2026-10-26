@@ -139,7 +139,19 @@ public:
   }
 
   void send_seats(int free) override { send_frame(NetSig::seats_frame(free)); }
-  void send_watch() override { send_frame(NetSig::watch_frame()); }
+  void connect_lookup(const std::string &url,
+                      const std::string &code) override {
+    std::string upper;
+    for (size_t i = 0; i < code.size(); i++) {
+      char c = code[i];
+      if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+      upper += c;
+    }
+    open(url + "?role=look&code=" + upper);
+  }
+  void send_lookup(const std::string &jids) override {
+    send_frame(NetSig::lookup_frame(jids));
+  }
 
   bool poll(Event &ev) override {
     if (!handle_) return false;

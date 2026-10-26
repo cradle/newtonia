@@ -927,12 +927,22 @@ Now the worker sends an Xbox-verified joiner the other joiners' frames
 joiner which jids are seated with it (`MSG_ROOM_MEMBERS`), and the joiner
 asks `net_peer_verdict` about each before entering. The one whose block
 list has the conflict leaves; nobody else learns why. The check carries on
-in the game: an Xbox joiner keeps its relay socket as a WATCHER
-(`{t:"watch"}`, acknowledged `{t:"watching"}`; the worker leaves watchers
-out of pairing and room capacity), so the identity of whoever takes a free
-seat mid-game still reaches it, and the host's rejoin door sends every
-player the new member list. A refusal there leaves the game ("CANNOT PLAY
-WITH SOMEONE HERE"), the same rule as before START.
+in the game: the host's rejoin door sends every player the new member
+list, and an Xbox joiner that finds a jid in it nothing has described
+LOOKS IT UP (`NetRoomLookup`, `net_room_lookup.h`): a short-lived
+`role=look` socket announces this player, asks `{t:"lookup", jids}` and
+closes on `{t:"looked"}`. The worker answers from its records, which keep
+verified identities after a socket closes, so nothing depends on having
+been connected at the right moment; the socket pairs with nobody, the host
+never hears of it, and only a verified Xbox asker is told anything. A
+joiner still verifying is listed `pending` and asked about again; a
+lookup that fails five times (about half a minute) leaves, since a
+console may not play on with someone it could not check. A refusal leaves
+the game ("CANNOT PLAY WITH SOMEONE HERE"), the same rule as before START.
+The same lookup covers the lobby, for a joiner whose socket closed before
+this player was verified. Replaced, before merging, a first version that
+kept the relay socket open all game as a watcher: it did not reconnect,
+and a newcomer who joined while it was down was never checked.
 
 **What would reopen this** (in rough order of likelihood): (1) ~~identity
 becoming a POLICY input anywhere~~ — fired; see the amendment above,
