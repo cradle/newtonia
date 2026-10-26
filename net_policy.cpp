@@ -1,4 +1,5 @@
 #include "net_policy.h"
+#include "net_protocol.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -66,6 +67,12 @@ NetPeerVerdict net_peer_verdict(const NetIdentity &, const NetIdentity &) {
   if (wait_ms >= 0 && now - start >= std::chrono::milliseconds(wait_ms))
     return NET_PEER_ALLOW;
   return NET_PEER_WAIT;
+}
+
+void net_peer_admitted(const NetIdentity &) {
+  // The e2e drivers count this line (test/e2e/nseat_anon.sh): one per
+  // admitted pilot, none for a refused one.
+  NET_LOG("net: platform told peer admitted\n");
 }
 
 #endif  // NEWTONIA_NET_POLICY_BACKEND

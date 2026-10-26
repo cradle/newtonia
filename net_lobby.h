@@ -331,6 +331,11 @@ public:
                                          const NetIdentity &attested,
                                          bool worker_session);
 private:
+  // admit_verdict's decision; admit_verdict tells the platform when it is
+  // an admission (net_peer_admitted).
+  static NetSession::Admit admit_decision(const NetIdentity &claimed,
+                                          const NetIdentity &attested,
+                                          bool worker_session);
 
   Screen screen_;
   int selection_;  // Choose: 0 = HOST, 1 = JOIN, 2 = BACK TO MENU band

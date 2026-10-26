@@ -70,4 +70,14 @@ enum NetPeerVerdict { NET_PEER_ALLOW, NET_PEER_WAIT, NET_PEER_REFUSE };
 NetPeerVerdict net_peer_verdict(const NetIdentity &claimed,
                                 const NetIdentity &attested);
 
+// This player now plays with this peer: the host's admission check let them
+// in (the WELCOME is going out, at the waiting room or the mid-game rejoin
+// door), or a joining client is entering the host's game. Said once per
+// admission, never for a peer net_peer_verdict allowed but the room then
+// refused (the ban list, the anonymous-players setting). For a platform that
+// records who was played with (the Xbox fork reports the player's recent
+// players); `attested` is the worker's attestation as above. Main thread,
+// must not block. The default does nothing but log.
+void net_peer_admitted(const NetIdentity &attested);
+
 #endif /* NET_POLICY_H */
