@@ -682,7 +682,27 @@ void NetLobby::leave_to_menu() {
   // without deleting), leaking the constructed game with its live
   // session — and, for a host, send_close would kill the room the game
   // is about to own. Ignore the exit; the swap happens next tick.
-  if (handed_off_to_game_) return;
+  if (handed_off_to_game_ || leaving_ms_ > 0) return;
+  // A seated joiner tells the host it is going, so the host frees the seat
+  // and its count now, not when the link finally times out (field,
+  // 2026-10-27: the host's roster kept a player who had left). Old hosts
+  // ignore an event they don't expect pre-start, so this needs no PROTO
+  // bump.
+  if (!hosting_ && screen_ == Connected && session_ &&
+      session_->phase() == NetSession::Ready && session_->transport()) {
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_EVENT, (uint8_t)session_->player_id());
+    Net::put_u8(msg, Net::EV_BYE);
+    Net::put_u32(msg, 0);
+    session_->transport()->send_reliable(&msg[0], msg.size());
+    NET_LOG("[lobby] leaving the waiting room - told the host\n");
+    leaving_ms_ = LEAVE_DRAIN_MS;
+    return;
+  }
+  finish_leave_to_menu();
+}
+
+void NetLobby::finish_leave_to_menu() {
   code_entry_keyboard(false);
   floating_kb_up_ = false;
   // Host abandoning the room: kill it at the relay now, or its code stays
@@ -1535,12 +1555,16 @@ void NetLobby::waiting_room_update(int delta) {
   host_poll_seated(delta);
   for (size_t i = 0; i < seated_.size();) {
     NetTransport *t = seated_[i].session->transport();
-    if (t && t->failed()) {
+    if ((t && t->failed()) || seated_[i].said_bye) {
       char buf[48];
       snprintf(buf, sizeof(buf), "PLAYER %d LEFT", seated_[i].seat);
       set_status(buf);
-      NET_LOG("[lobby] waiting room: seat %d link died pre-start\n",
-              seated_[i].seat);
+      if (seated_[i].said_bye)
+        NET_LOG("[lobby] waiting room: seat %d left pre-start\n",
+                seated_[i].seat);
+      else
+        NET_LOG("[lobby] waiting room: seat %d link died pre-start\n",
+                seated_[i].seat);
       delete seated_[i].session;
       seated_.erase(seated_.begin() + i);
       // The roster just shifted under the highlight: a selection (and
@@ -1693,8 +1717,12 @@ void NetLobby::host_poll_seated(int delta) {
     while (polled++ < 16 && t->poll(msg)) {
       Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
       Net::Header h;
-      if (!Net::read_header(r, h) || h.msg_type != Net::MSG_MEMBER_REFUSED)
+      if (!Net::read_header(r, h)) continue;
+      if (h.msg_type == Net::MSG_EVENT) {
+        if (r.u8() == Net::EV_BYE) by.said_bye = true;
         continue;
+      }
+      if (h.msg_type != Net::MSG_MEMBER_REFUSED) continue;
       std::string jid;
       if (!Net::read_member_refused(r, jid)) continue;
       bool dup = false;
@@ -2325,6 +2353,13 @@ void NetLobby::tick(int delta) {
   viewpoint += Point(1, 0) * (0.025 * delta);
   if (viewpoint.x() > WORLD_W) viewpoint += Point(-WORLD_W, 0);
   if (status_ms_ > 0) status_ms_ -= delta;
+  // Leaving the waiting room: the goodbye is on its way, so nothing else
+  // runs (a snapshot landing now must not start the game we just left).
+  if (leaving_ms_ > 0) {
+    leaving_ms_ -= delta;
+    if (leaving_ms_ <= 0) finish_leave_to_menu();
+    return;
+  }
 
   pump_signal(delta);
   host_report_seats();
