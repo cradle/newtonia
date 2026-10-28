@@ -21,6 +21,8 @@ NetPeerVerdict net_peer_verdict(const NetIdentity &claimed,
   return NET_PEER_ALLOW;
 }
 void net_peer_admitted(const NetIdentity &) { admitted_calls++; }
+static bool online_ok = true;
+bool net_online_play_allowed() { return online_ok; }
 std::string net_sanitize_name(const std::string &raw) { return raw; }
 const char *net_platform_label(uint8_t) { return "X"; }
 
@@ -192,6 +194,15 @@ int main() {
           "a newer refused member is turned away, and we hold");
     check(tw.first_turn_away("7") && !tw.first_turn_away("7"),
           "the host is asked once per member");
+    // Losing our own permission to play online (the platform then refuses
+    // everyone) is about us: we leave, and nobody newer is turned away.
+    online_ok = false;
+    std::vector<std::string> mine;
+    check(tw.admit_allowed(false, &mine) == NET_PEER_REFUSE && mine.empty(),
+          "no online permission: leave, turning nobody away");
+    check(tw.verdict(false, &mine) == NET_PEER_REFUSE && mine.empty(),
+          "no online permission: the lobby's verdict leaves too");
+    online_ok = true;
     std::vector<std::string> left;
     left.push_back("2");
     tw.set_seated(left);

@@ -68,7 +68,10 @@ public:
   // Whoever was here first stays: with `turn_away` given, a refused member
   // who took their seat after us is listed there and counts as undecided
   // while the host turns them away (MSG_MEMBER_REFUSED), instead of
-  // refusing the room. One who was here before us still refuses it.
+  // refusing the room. One who was here before us still refuses it, and so
+  // does any refusal while this player may not play online at all
+  // (net_online_play_allowed false): the platform refuses everyone then,
+  // which is about us, not them, so nobody is turned away for it.
   NetPeerVerdict verdict(bool hold_unknown = false,
                          std::vector<std::string> *turn_away = nullptr) const;
   // The verdict over everyone seated, as verdict(), asked afresh every
