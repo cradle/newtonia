@@ -2,6 +2,18 @@
 
 Follow-ups that need a person, a device or an account we don't have to hand.
 
+## Waiting-room host: reconnect when the signal connection drops
+
+A host sitting in the online waiting room ignores its signal socket
+closing (`NetLobby::pump_signal`, `NetSignal::Event::Closed`: "Later
+screens no longer need the relay; ignore"). The worker keeps the room for
+`HOST_GRACE_MS` (2 min) and then deletes it, so the host keeps showing a
+room code that nobody can join (no-such-room). Seen on the kit test
+2026-10-27: the server side closed the host's socket about 35 minutes in,
+with no worker deploy at the time. A host already in a game reclaims the
+room (`connect_host_reclaim`); the waiting room should do the same with
+its reclaim token, and say so on screen if the reclaim fails.
+
 ## Google Play Games on PC: Play Console and a field test
 
 The APK has a desktop mode for the Windows client (CLAUDE.md, "Google Play
