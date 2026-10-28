@@ -177,6 +177,11 @@ private:
     // attestation, held until it lands or TURN_AWAY_HOLD_MS passes.
     std::vector<std::string> held_refusals;
     int held_refusals_ms = 0;
+    // The joiner backed out of the waiting room and said so (EV_BYE).
+    // Without it the host only learned of the leave when the link timed
+    // out, which can be half a minute or more, and the roster kept the
+    // seat the whole time.
+    bool said_bye = false;
   };
   std::vector<SeatedPeer> seated_;
   // Waiting-room roster selection (host, FOURPLAYER.md O3). -1 = no row
@@ -485,6 +490,13 @@ private:
   // a ticket the worker may still be validating. Only a lobby that ends the
   // netplay chain (backed out to the menu) mops the credential up.
   bool handed_off_to_game_ = false;
+  // A seated joiner leaving the waiting room: its EV_BYE is queued, and
+  // deleting the session at once can take it off the wire with it (the
+  // kick's goodbye drain, from the other side). The lobby holds its
+  // teardown for this long, then goes to the menu.
+  static const int LEAVE_DRAIN_MS = 600;
+  int leaving_ms_ = 0;
+  void finish_leave_to_menu();
   // Announce our identity to the worker; re-sent on every Room/Joined event
   // (each fresh socket, including a host reclaim), which the worker re-attests.
   // `late` = tick's re-announce, which never re-arms itself.

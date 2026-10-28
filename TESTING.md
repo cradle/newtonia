@@ -976,6 +976,15 @@ test/e2e/nseat_lobby_kick.sh # O3 host kick, LOBBY half — a different code
                      # kicked session is handed
                      # to a drain that closes it ~600 ms later, so starting
                      # inside that window is the case that leaked it
+test/e2e/lobby_leave.sh # A seated joiner pressing Esc in the waiting room
+                     # frees its seat AT ONCE: the joiner sends EV_BYE and
+                     # holds its teardown ~600 ms so it reaches the wire,
+                     # and the host logs "seat 3 left pre-start" within a
+                     # few seconds. Without it the host waited for the link
+                     # to die, which a relayed link can take half a minute
+                     # to notice (field, 2026-10-27). Then the joiner who
+                     # stayed still starts. A killed joiner (no goodbye)
+                     # still waits for the link timeout
 test/e2e/nseat_anon.sh # O3 admission policy: the host sets ALLOW ANONYMOUS
                      # PLAYERS to NO from the waiting room's own row, then a
                      # NAMED pilot (attested by this driver's own FAKE_VERIFY
