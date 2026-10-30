@@ -52,7 +52,6 @@ jobs:
             mingw-w64-x86_64-freeglut
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
-            mingw-w64-x86_64-tools
 
       # Netplay (NETPLAY.md): static libdatachannel, MinGW flavour — same
       # recipe as windows.yml (the dev CI is the compile gate for this).
@@ -89,11 +88,11 @@ jobs:
           Invoke-WebRequest -Uri $asset.url -Headers $dlHeaders -OutFile steamworks_sdk.zip
           Expand-Archive -Path steamworks_sdk.zip -DestinationPath .
 
-      - name: Generate MinGW import library for steam_api64
-        run: |
-          cp sdk/redistributable_bin/win64/steam_api64.dll .
-          gendef steam_api64.dll
-          dlltool -D steam_api64.dll -d steam_api64.def -l libsteam_api64.a
+      # MinGW's linker links straight against the DLL, as the Makefile's
+      # Windows Steam build does, so no gendef/dlltool import library: MSYS2
+      # dropped the package that shipped gendef (2026-10-30).
+      - name: Stage steam_api64.dll
+        run: cp sdk/redistributable_bin/win64/steam_api64.dll .
 
       - name: Build
         run: |
@@ -117,7 +116,7 @@ jobs:
             -Wl,--start-group $NETLIBS -Wl,--end-group \
             -lssl -lcrypto -lws2_32 -liphlpapi -lbcrypt -lcrypt32 \
             -lopengl32 -lglu32 \
-            -L. -lsteam_api64
+            ./steam_api64.dll
 
       - name: Netplay loopback self-test
         run: |
