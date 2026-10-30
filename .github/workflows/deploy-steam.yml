@@ -52,7 +52,7 @@ jobs:
             mingw-w64-x86_64-freeglut
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
-            mingw-w64-x86_64-tools-git
+            mingw-w64-x86_64-tools
 
       # Netplay (NETPLAY.md): static libdatachannel, MinGW flavour — same
       # recipe as windows.yml (the dev CI is the compile gate for this).
