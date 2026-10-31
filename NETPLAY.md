@@ -987,7 +987,13 @@ the timeout. Found along the way: the lookup and verdict clocks counted
 every tick as at least 1 ms, and the game loop can tick several times a
 millisecond, so five lookups "a couple of seconds apart" took 1.5 s and a
 seated Xbox player left when a newcomer's verification took a few seconds.
-They count real time now.
+They count real time now. Newcomers queue: the door serves one seat at a
+time and a held newcomer keeps it busy, so a second arrival waits its turn
+(up to the hold, about 8 s, per newcomer ahead) and is then checked against
+the first like anyone seated, and whoever got in first stays. In the
+waiting room each check gets the full verdict wait: the budget resets once
+everyone is allowed, so a later joiner's check never inherits time an
+earlier one spent (door_hold_queue.sh).
 
 **What would reopen this** (in rough order of likelihood): (1) ~~identity
 becoming a POLICY input anywhere~~ — fired; see the amendment above,

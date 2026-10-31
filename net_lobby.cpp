@@ -2961,7 +2961,16 @@ void NetLobby::tick(int delta) {
           set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
           screen_ = LobbyFailed;
           return;
-        } else if (!held_snapshot_.empty()) {
+        } else if (held_snapshot_.empty()) {
+          // Allowed, still in the waiting room: the budget belonged to the
+          // check that just finished. A later joiner's check gets its own
+          // full PEER_VERDICT_WAIT_MS, not what this one left over.
+          if (peer_verdict_wait_ms_ > 0) {
+            NET_LOG("[lobby] platform allowed everyone here after %d ms\n",
+                    peer_verdict_wait_ms_);
+            peer_verdict_wait_ms_ = 0;
+          }
+        } else {
           if (peer_verdict_wait_ms_ > 0)
             NET_LOG("[lobby] platform allowed the host after %d ms\n",
                     peer_verdict_wait_ms_);

@@ -1295,6 +1295,11 @@ test/e2e/door_hold_ban.sh # a banned account back under a new name, admitted
                      # on its claim, whose token lands late (worker hook
                      # cred SLOW:<ms>:<acct>) while the rejoin door holds it:
                      # turned away from the door (EV_KICKED), never seated
+test/e2e/door_hold_queue.sh # checks that queue up: in the waiting room each
+                     # joiner gets its own full verdict wait (hook
+                     # slow-each:N), and two newcomers reaching the rejoin
+                     # door together are held one at a time; the second,
+                     # who blocks the first, leaves from the door unseated
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
