@@ -1284,7 +1284,12 @@ test/e2e/policy_members.sh # the same verdict across a 3-4 player room: three
                      # players it plays with; then a player drops, another
                      # newcomer it blocks takes the seat mid-game, is looked
                      # up at the room server (NetRoomLookup) and turned
-                     # away, and the first one is refused at the door
+                     # away from the rejoin door's hold without ever being
+                     # seated, and the first one is refused at the door; a
+                     # newcomer blocking someone seated leaves from the
+                     # door unseated, and one whose own check is slow (hook
+                     # slow:N) is held until it and the seated player have
+                     # answered (MSG_ROOM_ALLOWED / MSG_MEMBER_ALLOWED)
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings

@@ -442,6 +442,11 @@ private:
   // How long the held snapshot has waited on that verdict; past
   // PEER_VERDICT_WAIT_MS a verdict that never came counts as a refusal.
   int peer_verdict_wait_ms_ = 0;
+  // Joiner: the host's MSG_ROOM_MEMBERS has arrived for this session, and
+  // we have told it we allow everyone (MSG_ROOM_ALLOWED) — the rejoin
+  // door may be holding us for that (GLGame::net_host_door_hold).
+  bool members_heard_ = false;
+  bool room_allowed_sent_ = false;
   // Joiner: time on the RoomJoining screen. A room can be joined while
   // hostless (reclaim grace) — if no host ever offers, fail instead of
   // showing "JOINING THE ROOM" forever.

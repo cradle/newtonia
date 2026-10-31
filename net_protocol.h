@@ -369,6 +369,23 @@ enum MsgType {
   // the unknown type, the member stays, and the sender leaves when its
   // wait runs out, as it did before.
   MSG_MEMBER_REFUSED = 18,
+  // Member allowed, C->H rel: the same body as MSG_MEMBER_REFUSED. The
+  // sender's platform allows a member who took their seat AFTER the sender
+  // (the newer mask of its MSG_ROOM_MEMBERS). The host's rejoin door holds
+  // a newcomer before seating them until every seated Xbox-attested player
+  // has answered (GLGame::net_host_door_hold), so a player someone has
+  // blocked is turned away before they ever fly, instead of a second or
+  // two after. Not a PROTO bump: an older host ignores it, and a host
+  // waiting on an older client seats the newcomer when its wait runs out,
+  // which is what it did before.
+  MSG_MEMBER_ALLOWED = 19,
+  // Room allowed, C->H rel, empty body: the sender's platform allows the
+  // host and every member of the host's latest MSG_ROOM_MEMBERS, so it is
+  // ready to be seated. Sent once by a joiner's lobby, after the member
+  // list has arrived. The rejoin door holds an Xbox newcomer for it, so a
+  // newcomer who has blocked someone here leaves from the door, never
+  // seen in the game. Not a PROTO bump, as MSG_MEMBER_ALLOWED.
+  MSG_ROOM_ALLOWED = 20,
 };
 
 enum EventCode {

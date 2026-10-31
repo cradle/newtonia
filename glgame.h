@@ -639,6 +639,15 @@ private:
     // attestation arrives or TURN_AWAY_HOLD_MS passes.
     std::vector<std::string> held_refusals;
     uint32_t held_refusals_since = 0;
+    // Host: the rejoin door is holding this newcomer before seating them
+    // (net_host_door_hold) — Ready, but not yet in the game — while the
+    // seated Xbox players check them (MSG_MEMBER_ALLOWED, seats in
+    // door_allowed_by) and they check everyone here (MSG_ROOM_ALLOWED,
+    // door_room_ok). Cleared when they are seated or their session goes.
+    bool door_held = false;
+    bool door_room_ok = false;
+    uint32_t door_hold_since = 0;
+    std::vector<int> door_allowed_by;
     // ---- Host input pipeline for this peer's INPUT stream ----
     uint32_t last_input_seq = 0;
     bool have_input = false;  // first INPUT initialises the counters
@@ -1124,6 +1133,13 @@ private:
   // Host: tell each connected relay joiner which other relay joiners sit
   // with it now (MSG_ROOM_MEMBERS), after the rejoin door seats someone.
   void net_host_send_room_members();
+  // Host, rejoin door: hold a Ready newcomer until the room's platform
+  // checks have answered (see NetPeer::door_held). True while holding.
+  bool net_host_door_hold(NetPeer &dp);
+  // Host: drop the door's session and re-offer the free seat.
+  void net_host_door_reoffer(NetPeer &dp);
+  // Host: a seated player's platform allows a newcomer (MSG_MEMBER_ALLOWED).
+  void net_host_member_allowed(NetPeer &by, const std::string &jid);
   // True while the connection-lost card owns input: every lost link EXCEPT
   // the host-with-an-open-door notice, where the game plays on. While this
   // holds, keyboard_up/controller answer only the leaderboard prompt

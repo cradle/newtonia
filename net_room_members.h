@@ -50,6 +50,7 @@ public:
     clear_seated();
     admitted_.clear();
     turned_away_.clear();
+    allowed_reported_.clear();
   }
   bool known(const std::string &jid) const { return ids_.count(jid) != 0; }
   // A lookup answered for this jid with nothing to say about it (a player
@@ -86,6 +87,14 @@ public:
   bool first_turn_away(const std::string &jid) {
     return turned_away_.insert(jid).second;
   }
+  // Members seated after us whom the platform allows, for the host's
+  // door hold (MSG_MEMBER_ALLOWED). A member nothing has described counts
+  // as undecided while `hold_unknown`, as in verdict().
+  std::vector<std::string> newer_allowed(bool hold_unknown = false) const;
+  // True the first time a member is reported allowed: once per member.
+  bool first_allowed(const std::string &jid) {
+    return allowed_reported_.insert(jid).second;
+  }
 
 private:
   struct Member {
@@ -99,6 +108,7 @@ private:
   std::set<std::string> newer_;        // seated after us
   std::set<std::string> admitted_;     // reported to net_peer_admitted
   std::set<std::string> turned_away_;  // the host was asked to turn away
+  std::set<std::string> allowed_reported_;  // told the host we allow them
 };
 
 #endif /* NET_ROOM_MEMBERS_H */

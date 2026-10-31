@@ -2732,6 +2732,8 @@ void NetLobby::tick(int delta) {
         held_snapshot_.clear();
         peer_verdict_wait_ms_ = 0;
         members_.clear_seated();  // this session's host sends its own list
+        members_heard_ = false;
+        room_allowed_sent_ = false;
         screen_ = Connected;
       } else if (p == NetSession::Rejected) {
         if (session_->reject_reason() == NetSession::RejectVersionMismatch) {
@@ -2834,6 +2836,7 @@ void NetLobby::tick(int delta) {
           std::vector<std::string> jids, newer;
           if (Net::read_room_members(r, jids, &newer)) {
             members_.set_seated(jids, newer);
+            members_heard_ = true;
             NET_LOG("[lobby] room members from the host: %u other joiner(s)\n",
                     (unsigned)jids.size());
           }
@@ -2893,6 +2896,21 @@ void NetLobby::tick(int delta) {
         set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
         screen_ = LobbyFailed;
         return;
+      }
+      // Everyone here allowed, host included: say so once, since a host's
+      // rejoin door may be holding us until we do (the snapshot comes
+      // after). Only once the host has named who is here, or an empty
+      // room would allow by default. An older host ignores it.
+      if (members_heard_ && !room_allowed_sent_ && member_v == NET_PEER_ALLOW &&
+          session_->transport() &&
+          net_peer_verdict(session_->peer_identity(), attested_peer_) ==
+              NET_PEER_ALLOW) {
+        room_allowed_sent_ = true;
+        NET_LOG("[lobby] telling the host we allow everyone in the room\n");
+        std::vector<uint8_t> out;
+        Net::put_header(out, Net::MSG_ROOM_ALLOWED,
+                        (uint8_t)session_->player_id());
+        session_->transport()->send_reliable(&out[0], out.size());
       }
       if (!held_snapshot_.empty()) {
         // The platform's say on this host, now that the worker has said who
