@@ -960,6 +960,41 @@ this player was verified. Replaced, before merging, a first version that
 kept the relay socket open all game as a watcher: it did not reconnect,
 and a newcomer who joined while it was down was never checked.
 
+**The rejoin door holds a newcomer until the room has checked them
+(2026-10-31, fork NETPLAY_XBOX.md 7e).** The door used to seat a
+newcomer the moment the handshake finished and let the checks run after,
+so a player on someone's block list flew in the game for a second or more
+before being turned away, and a newcomer who had blocked someone here
+showed as RECONNECTED until it backed out (kit, 2026-10-28: about 1.5 s).
+Now an admitted newcomer waits at the door, not seated, while the host
+sends everyone the member list with them in it
+(`GLGame::net_host_door_hold`). Every seated Xbox-verified player answers
+`MSG_MEMBER_ALLOWED` or asks to turn them away (which now ends the hold
+at the door), and an Xbox newcomer answers `MSG_ROOM_ALLOWED` once its
+platform allows the host and everyone named, or leaves, which drops it at
+the door like a failed handshake. Only Xbox players can refuse, so rooms
+without one never wait, and the hold is bounded (8 s, the joiner's 6 s
+verdict wait plus a lookup): past it the newcomer is seated and the late
+checks apply as before, which is also what happens with an older build
+that never answers. No PROTO bump: both messages are new types an older
+peer ignores. The worker's attestation can land while a newcomer waits,
+and a door seat is not yet a seated peer, so the late-ban sweep does not
+reach it: the hold re-asks the door's own admission each tick and turns a
+banned or refused account away before seating it. A newcomer's lobby acts
+on its verdicts without waiting for the snapshot, which the hold withholds,
+so one that has blocked the host leaves at once instead of being seated on
+the timeout. Found along the way: the lookup and verdict clocks counted
+every tick as at least 1 ms, and the game loop can tick several times a
+millisecond, so five lookups "a couple of seconds apart" took 1.5 s and a
+seated Xbox player left when a newcomer's verification took a few seconds.
+They count real time now. Newcomers queue: the door serves one seat at a
+time and a held newcomer keeps it busy, so a second arrival waits its turn
+(up to the hold, about 8 s, per newcomer ahead) and is then checked against
+the first like anyone seated, and whoever got in first stays. In the
+waiting room each check gets the full verdict wait: the budget resets once
+everyone is allowed, so a later joiner's check never inherits time an
+earlier one spent (door_hold_queue.sh).
+
 **What would reopen this** (in rough order of likelihood): (1) ~~identity
 becoming a POLICY input anywhere~~ — fired; see the amendment above,
 which narrows this to attestation's content rather than its presence;
