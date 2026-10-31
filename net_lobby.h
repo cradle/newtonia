@@ -355,12 +355,14 @@ public:
       const NetIdentity &claimed, const NetIdentity &attested,
       bool worker_session,
       const std::vector<std::string> &seated_jids = std::vector<std::string>());
-private:
   // admit_verdict's decision; admit_verdict tells the platform when it is
-  // an admission (net_peer_admitted).
+  // an admission (net_peer_admitted). Public for the game's rejoin door,
+  // which re-asks it while holding a newcomer it has already admitted
+  // (an attestation can land after the handshake: GLGame::net_host_door_hold).
   static NetSession::Admit admit_decision(
       const NetIdentity &claimed, const NetIdentity &attested,
       bool worker_session, const std::vector<std::string> &seated_jids);
+private:
   static bool identity_refused(const NetIdentity &id,
                                const std::vector<std::string> &seated_jids);
 

@@ -30,7 +30,10 @@ shard_drivers() {
     # tutorial.sh (the new-player start screen + tutorial) is solo and
     # never touches wrangler, so it rides the one shard that skips it.
     solo-replay)  echo "replay_keyframe replay_menu fourplayer replay replay_playback tutorial" ;;
-    solo-misc)    echo "lan replay_failures video identity_attested identity_tick" ;;
+    # door_hold_ban (policy_members' sibling) rides solo-misc for load:
+    # lobby-and-lan decides this suite's wall clock, and the driver brings
+    # its own FAKE_VERIFY relay, so here it costs only its own ~2 minutes.
+    solo-misc)    echo "lan replay_failures video identity_attested identity_tick door_hold_ban" ;;
     # leaderboard.sh alone: it stands up its own board worker and plays six
     # scenarios through it, two of them needing a dedicated worker of their
     # own, and its S1 scoring spray retries until a fresh world actually
@@ -101,7 +104,7 @@ shard_needs_relay() {
 
 # Wider than shard_needs_relay: solo-misc and leaderboard skip the shard
 # relay but their DRIVERS self-host workers (identity_attested.sh,
-# identity_tick.sh, leaderboard.sh) — only solo-replay never touches
+# identity_tick.sh, door_hold_ban.sh, leaderboard.sh) — only solo-replay never touches
 # wrangler at all.
 shard_needs_wrangler() {
   case "$1" in

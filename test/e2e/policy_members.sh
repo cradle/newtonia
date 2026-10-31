@@ -26,6 +26,8 @@
 #   DAVE tries again and is refused at the door while CAROL is still here.
 #   FRANK (blocks CAROL) takes the free seat: the door holds him, he leaves
 #     from the door, and he is never seated either.
+#   HANK (blocks the host) takes the free seat: he leaves from the door on
+#     the host's verdict alone, with no snapshot to wait for.
 #   GINA, whose own platform check takes 2.5 s, takes the free seat: the
 #     door holds her until she and CAROL have both answered, then seats her.
 # Prints POLICY-MEMBERS-E2E-OK. See TESTING.md.
@@ -60,7 +62,8 @@ relay_check
 export NEWTONIA_NET_TEST_SEATS=4   # a room that stays open until START
 
 ROOM_PIDS=(); ROOM_WINS=(); ROOM_CODE=
-ROOM_PIDS[0]=$(launch host)
+# Named, so a pilot's block list can name the host (HANK below).
+ROOM_PIDS[0]=$(launch host NEWTONIA_NET_NAME=HOST)
 sleep 3
 ROOM_WINS[0]=$(newtonia_windows | head -1)
 [ -n "${ROOM_WINS[0]}" ] || room_fail "NO HOST WINDOW" host
@@ -228,6 +231,24 @@ grep -aq "refused by platform policy" "$OUT/CAROL.log" &&
   room_fail "CAROL LEFT INSTEAD OF FRANK" CAROL
 drop 4
 
+echo "== HANK, who blocks the host, leaves from the door"
+holds=$(count_log host "holding the newcomer for seat 2 at the door")
+lefts=$(count_log host "the newcomer for seat 2 left the door")
+join_as 4 HANK NEWTONIA_NET_TEST_PEER_VERDICT=refuse-name:HOST
+wait_count host "holding the newcomer for seat 2 at the door" $((holds + 1)) 45 ||
+  room_fail "THE DOOR DID NOT HOLD HANK" host
+wait_log HANK "host refused by platform policy (refused)" 20 ||
+  room_fail "HANK DID NOT LEAVE ON THE HOST'S VERDICT" HANK
+wait_count host "the newcomer for seat 2 left the door" $((lefts + 1)) 20 ||
+  room_fail "THE HOST NEVER SAW HANK LEAVE THE DOOR" host
+grep -aq "unanswered after" "$OUT/host.log" &&
+  room_fail "THE DOOR TIMED OUT ON HANK INSTEAD OF SEEING HIM LEAVE" host
+grep -aq "player 2 rejoined" "$OUT/host.log" &&
+  room_fail "HANK WAS SEATED BEFORE HE LEFT" host
+grep -aq "bootstrap adopted" "$OUT/HANK.log" &&
+  room_fail "HANK ENTERED THE GAME" HANK
+drop 4
+
 echo "== GINA, whose own check is slow, is held at the door and then seated"
 holds=$(count_log host "holding the newcomer for seat 2 at the door")
 join_as 4 GINA NEWTONIA_NET_TEST_PEER_VERDICT=slow:2500
@@ -253,5 +274,5 @@ room_alive
 room_kill_all
 assert_clean "$OUT/host.log" "$OUT/BOB.log" "$OUT/ALICE.log" "$OUT/CAROL.log" \
              "$OUT/DAVE.log" "$OUT/BOB2.log" "$OUT/ERIN.log" "$OUT/DAVE2.log" \
-             "$OUT/FRANK.log" "$OUT/GINA.log"
+             "$OUT/FRANK.log" "$OUT/HANK.log" "$OUT/GINA.log"
 echo "POLICY-MEMBERS-E2E-OK"

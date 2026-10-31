@@ -4633,6 +4633,15 @@ void GLGame::net_host_rejoin_session_update(int delta) {
   }
 }
 
+void GLGame::net_host_door_turn_away(NetPeer &dp, uint8_t event) {
+  net_send_event_to(dp, event, 0, false);
+  // The goodbye is queued, not flushed: drain it like a door REJECT.
+  net_closing_.push_back(std::make_pair(dp.session, 600));
+  dp.session = nullptr;
+  net_host_door_reoffer(dp);
+  net_host_send_room_members();
+}
+
 void GLGame::net_host_door_reoffer(NetPeer &dp) {
   dp.attested = NetIdentity();
   dp.adopt_claim = NetIdentity();  // same rule, same reason
@@ -4694,6 +4703,36 @@ bool GLGame::net_host_door_hold(NetPeer &dp) {
     }
     return n;
   };
+  // Admitted on what was known at the handshake; the worker's attestation
+  // can land since, while they wait here, and a seated peer's would be
+  // checked against the ban list at that moment
+  // (net_host_signal_common_event), a door seat's only here. So re-ask
+  // the door's own admission every tick of the hold, and before letting
+  // them in: a banned account, or one someone seated has turned away,
+  // goes no further. Only hard refusals: the handshake already waited out
+  // everything else.
+  {
+    std::vector<std::string> seated_jids;
+    for (const NetPeer *o : net_peers_)
+      if (!o->lost && !o->jid.empty()) seated_jids.push_back(o->jid);
+    const NetSession::Admit a = NetLobby::admit_decision(
+        dp.session->peer_identity(), dp.attested, !dp.jid.empty(),
+        seated_jids);
+    if (a == NetSession::AdmitBanned) {
+      NET_LOG("net: banned pilot attested at the door - turning away seat"
+              " %d\n", (int)dp.seat);
+      NetLobby::ban_identity(dp.session->peer_identity());
+      NetLobby::ban_identity(dp.attested);
+      net_host_door_turn_away(dp, Net::EV_KICKED);
+      return true;
+    }
+    if (a == NetSession::AdmitNotAllowed) {
+      NET_LOG("net: newcomer for seat %d refused at the door after"
+              " admission\n", (int)dp.seat);
+      net_host_door_turn_away(dp, Net::EV_ROOM_REFUSED);
+      return true;
+    }
+  }
   if (!dp.door_held) {
     dp.door_held = true;
     dp.door_room_ok = false;
@@ -6315,14 +6354,9 @@ void GLGame::net_host_member_refused(NetPeer &by, const std::string &jid) {
       // session's own claim and attestation are refused.
       NET_LOG("net: turning away the newcomer held at the door for seat %d"
               " (someone here can't play with them)\n", (int)p->seat);
-      net_send_event_to(*p, Net::EV_ROOM_REFUSED, 0, false);
       NetLobby::refuse_identity(p->session->peer_identity(), by.jid);
       NetLobby::refuse_identity(p->attested, by.jid);
-      // The goodbye is queued, not flushed: drain it like a door REJECT.
-      net_closing_.push_back(std::make_pair(p->session, 600));
-      p->session = nullptr;
-      net_host_door_reoffer(*p);
-      net_host_send_room_members();
+      net_host_door_turn_away(*p, Net::EV_ROOM_REFUSED);
       return;
     }
     // Parking them sends the room the list without them.
@@ -6369,7 +6403,7 @@ void GLGame::net_adopt_room_members(const NetRoomMembers &members,
 static const int MEMBER_VERDICT_WAIT_MS = 6000;  // as the lobby's
 
 void GLGame::net_client_member_update(int delta) {
-  if (delta < 1) delta = 1;
+  if (delta < 0) delta = 0;  // real time: sub-ms ticks are 0 (NetRoomLookup)
   if (net_policy_left_ || net_all_peers_lost() ||
       net_members_.seated().empty()) {
     // The host link is gone: a rejoin starts from a fresh lobby.
@@ -6432,6 +6466,7 @@ void GLGame::net_client_member_update(int delta) {
       return;
     }
     net_member_wait_ms_ += delta;
+    if (net_member_wait_ms_ == 0) net_member_wait_ms_ = 1;  // waiting began
     if (net_member_wait_ms_ < MEMBER_VERDICT_WAIT_MS) return;
   }
   net_leave_for_policy(v == NET_PEER_WAIT ? "no verdict" : "refused");

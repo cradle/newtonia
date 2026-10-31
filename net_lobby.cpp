@@ -2897,14 +2897,31 @@ void NetLobby::tick(int delta) {
         screen_ = LobbyFailed;
         return;
       }
-      // Everyone here allowed, host included: say so once, since a host's
-      // rejoin door may be holding us until we do (the snapshot comes
-      // after). Only once the host has named who is here, or an empty
-      // room would allow by default. An older host ignores it.
-      if (members_heard_ && !room_allowed_sent_ && member_v == NET_PEER_ALLOW &&
-          session_->transport() &&
-          net_peer_verdict(session_->peer_identity(), attested_peer_) ==
-              NET_PEER_ALLOW) {
+      // The platform's say on this host, now that the worker has said who
+      // they are (net_policy.h; the host asks the same of us before its
+      // WELCOME), and on every other joiner the host seated with us. Asked
+      // every tick while it is still deciding, for a bounded time, whether
+      // or not the snapshot has come: a host's rejoin door holds it back
+      // until we answer (MSG_ROOM_ALLOWED below, GLGame::net_host_door_hold),
+      // so a refusal or a verdict that never comes has to be acted on
+      // without it. Refused, or never decided: leave, closing the link so
+      // the host frees the seat, and don't auto-rejoin a room this player
+      // may not play in.
+      const bool deciding = !held_snapshot_.empty() || members_heard_;
+      NetPeerVerdict pv = NET_PEER_WAIT;
+      bool member_held = false;  // the answer pending is a member's
+      if (deciding) {
+        pv = net_peer_verdict(session_->peer_identity(), attested_peer_);
+        if (pv == NET_PEER_ALLOW) {
+          pv = member_v;
+          member_held = pv != NET_PEER_ALLOW;
+        }
+      }
+      // Everyone here allowed, host included: say so once. Only once the
+      // host has named who is here, or an empty room would allow by
+      // default. An older host ignores it.
+      if (deciding && pv == NET_PEER_ALLOW && members_heard_ &&
+          !room_allowed_sent_ && session_->transport()) {
         room_allowed_sent_ = true;
         NET_LOG("[lobby] telling the host we allow everyone in the room\n");
         std::vector<uint8_t> out;
@@ -2912,29 +2929,17 @@ void NetLobby::tick(int delta) {
                         (uint8_t)session_->player_id());
         session_->transport()->send_reliable(&out[0], out.size());
       }
-      if (!held_snapshot_.empty()) {
-        // The platform's say on this host, now that the worker has said who
-        // they are (net_policy.h; the host asks the same of us before its
-        // WELCOME), and on every other joiner the host seated with us.
-        // Asked every tick while it is still deciding, with the snapshot
-        // held (see held_snapshot_), for a bounded time. Refused, or never
-        // decided: leave, and don't auto-rejoin a room this player may not
-        // play in.
-        NetPeerVerdict pv =
-            net_peer_verdict(session_->peer_identity(), attested_peer_);
-        bool member_held = false;  // the answer pending is a member's
-        if (pv == NET_PEER_ALLOW) {
-          pv = member_v;
-          member_held = pv != NET_PEER_ALLOW;
-        }
+      if (deciding) {
         // A lookup still finding out bounds its own wait (NetRoomLookup).
         const bool looking = member_held && look_hold;
         if (pv == NET_PEER_WAIT &&
             (looking || peer_verdict_wait_ms_ < PEER_VERDICT_WAIT_MS)) {
           if (peer_verdict_wait_ms_ == 0)
             NET_LOG("[lobby] holding the bootstrap for the platform's verdict\n");
-          if (!looking) peer_verdict_wait_ms_ += delta > 0 ? delta : 1;
-          else if (peer_verdict_wait_ms_ == 0) peer_verdict_wait_ms_ = 1;
+          // Real time, zero for a sub-ms tick (see NetRoomLookup::update);
+          // nonzero marks the wait as begun.
+          if (!looking) peer_verdict_wait_ms_ += delta > 0 ? delta : 0;
+          if (peer_verdict_wait_ms_ == 0) peer_verdict_wait_ms_ = 1;
           // Holding: fall through to the transport check below, so a link
           // that dies meanwhile takes its usual retry path.
         } else if (pv != NET_PEER_ALLOW) {
@@ -2943,6 +2948,9 @@ void NetLobby::tick(int delta) {
                   pv == NET_PEER_WAIT ? "no verdict" : "refused");
           held_snapshot_.clear();
           mark_room_dead(room_code_);
+          lookup_.stop();
+          delete session_;  // closes the link, so the host frees our seat
+          session_ = nullptr;
           if (signal_) {  // see the member refusal above
             signal_->close();
             delete signal_;
@@ -2953,7 +2961,7 @@ void NetLobby::tick(int delta) {
           set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
           screen_ = LobbyFailed;
           return;
-        } else {
+        } else if (!held_snapshot_.empty()) {
           if (peer_verdict_wait_ms_ > 0)
             NET_LOG("[lobby] platform allowed the host after %d ms\n",
                     peer_verdict_wait_ms_);

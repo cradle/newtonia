@@ -1138,6 +1138,9 @@ private:
   bool net_host_door_hold(NetPeer &dp);
   // Host: drop the door's session and re-offer the free seat.
   void net_host_door_reoffer(NetPeer &dp);
+  // Host: send a newcomer held at the door away with `event` (EV_KICKED or
+  // EV_ROOM_REFUSED), draining the goodbye, and re-offer the seat.
+  void net_host_door_turn_away(NetPeer &dp, uint8_t event);
   // Host: a seated player's platform allows a newcomer (MSG_MEMBER_ALLOWED).
   void net_host_member_allowed(NetPeer &by, const std::string &jid);
   // True while the connection-lost card owns input: every lost link EXCEPT

@@ -977,7 +977,17 @@ without one never wait, and the hold is bounded (8 s, the joiner's 6 s
 verdict wait plus a lookup): past it the newcomer is seated and the late
 checks apply as before, which is also what happens with an older build
 that never answers. No PROTO bump: both messages are new types an older
-peer ignores.
+peer ignores. The worker's attestation can land while a newcomer waits,
+and a door seat is not yet a seated peer, so the late-ban sweep does not
+reach it: the hold re-asks the door's own admission each tick and turns a
+banned or refused account away before seating it. A newcomer's lobby acts
+on its verdicts without waiting for the snapshot, which the hold withholds,
+so one that has blocked the host leaves at once instead of being seated on
+the timeout. Found along the way: the lookup and verdict clocks counted
+every tick as at least 1 ms, and the game loop can tick several times a
+millisecond, so five lookups "a couple of seconds apart" took 1.5 s and a
+seated Xbox player left when a newcomer's verification took a few seconds.
+They count real time now.
 
 **What would reopen this** (in rough order of likelihood): (1) ~~identity
 becoming a POLICY input anywhere~~ — fired; see the amendment above,

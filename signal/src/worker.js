@@ -959,7 +959,7 @@ export class Room {
     // room's other Xbox players — see identity_frame). "" = none proven.
     let acct = "";
     const fake = this.env && this.env.FAKE_VERIFY === "1";
-    const fake_slow = fake && /^SLOW(FAIL)?:\d+$/.test(cred);
+    const fake_slow = fake && /^SLOW(FAIL)?:\d+(:[A-Za-z0-9]+)?$/.test(cred);
     if (fake && !fake_slow) {
       // Dev/e2e shortcut (wrangler dev only): attest the claim without
       // contacting any platform backend. NEVER set in production. Compared
@@ -992,11 +992,16 @@ export class Room {
         // epoch capture, the vacant-slot late path — with an injected delay
         // standing in for the platform round-trip, succeeding/failing the
         // verify respectively. identity_test.js races it against a socket
-        // close.
+        // close. An optional third field names the fake account
+        // ("SLOW:<ms>:<acct>"), so a slow verify can land a banned account's
+        // token late (test/e2e/door_hold_ban.sh); without it the account
+        // is the name, as before.
         verify = async () => {
-          const delay_ms = Math.min(Number(cred.split(":")[1]) || 0, 5000);
+          const parts = cred.split(":");
+          const delay_ms = Math.min(Number(parts[1]) || 0, 5000);
           await new Promise((res) => setTimeout(res, delay_ms));
-          return cred.startsWith("SLOWFAIL") ? null : { name, acct: name };
+          return cred.startsWith("SLOWFAIL") ? null
+                                             : { name, acct: parts[2] || name };
         };
       else if (platform === 2 /* NET_PLATFORM_STEAM */)
         verify = async () => {

@@ -1289,7 +1289,12 @@ test/e2e/policy_members.sh # the same verdict across a 3-4 player room: three
                      # newcomer blocking someone seated leaves from the
                      # door unseated, and one whose own check is slow (hook
                      # slow:N) is held until it and the seated player have
-                     # answered (MSG_ROOM_ALLOWED / MSG_MEMBER_ALLOWED)
+                     # answered (MSG_ROOM_ALLOWED / MSG_MEMBER_ALLOWED);
+                     # a newcomer blocking the HOST leaves from the door too
+test/e2e/door_hold_ban.sh # a banned account back under a new name, admitted
+                     # on its claim, whose token lands late (worker hook
+                     # cred SLOW:<ms>:<acct>) while the rejoin door holds it:
+                     # turned away from the door (EV_KICKED), never seated
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
