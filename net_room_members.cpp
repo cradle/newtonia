@@ -63,6 +63,17 @@ NetPeerVerdict NetRoomMembers::verdict_of(
   return v;
 }
 
+std::vector<std::string> NetRoomMembers::newer_allowed(
+    bool hold_unknown) const {
+  std::vector<std::string> out;
+  if (!net_online_play_allowed()) return out;
+  for (size_t i = 0; i < seated_.size(); i++)
+    if (newer_.count(seated_[i]) &&
+        verdict_of(seated_[i], hold_unknown, nullptr) == NET_PEER_ALLOW)
+      out.push_back(seated_[i]);
+  return out;
+}
+
 NetPeerVerdict NetRoomMembers::verdict(
     bool hold_unknown, std::vector<std::string> *turn_away) const {
   // A refusal while this player may not play online at all says nothing

@@ -18,10 +18,18 @@
 #     CAROL asks the host to turn him away (MSG_MEMBER_REFUSED) and stays.
 #   BOB comes back, the host starts, and CAROL enters the game and tells
 #     the platform about both the host and BOB.
-#   BOB drops; ERIN takes his seat mid-game. The host's new member list
-#     names someone CAROL knows nothing about, so she looks ERIN up at the
-#     room server (a short lookup socket), and the host turns her away.
+#   BOB drops; ERIN takes his seat mid-game. The rejoin door holds her
+#     before seating her (fork NETPLAY_XBOX.md 7e), and its member list
+#     names someone CAROL knows nothing about, so CAROL looks ERIN up at
+#     the room server (a short lookup socket), and the host turns ERIN away
+#     from the door: she never enters the game.
 #   DAVE tries again and is refused at the door while CAROL is still here.
+#   FRANK (blocks CAROL) takes the free seat: the door holds him, he leaves
+#     from the door, and he is never seated either.
+#   HANK (blocks the host) takes the free seat: he leaves from the door on
+#     the host's verdict alone, with no snapshot to wait for.
+#   GINA, whose own platform check takes 2.5 s, takes the free seat: the
+#     door holds her until she and CAROL have both answered, then seats her.
 # Prints POLICY-MEMBERS-E2E-OK. See TESTING.md.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
@@ -54,7 +62,8 @@ relay_check
 export NEWTONIA_NET_TEST_SEATS=4   # a room that stays open until START
 
 ROOM_PIDS=(); ROOM_WINS=(); ROOM_CODE=
-ROOM_PIDS[0]=$(launch host)
+# Named, so a pilot's block list can name the host (HANK below).
+ROOM_PIDS[0]=$(launch host NEWTONIA_NET_NAME=HOST)
 sleep 3
 ROOM_WINS[0]=$(newtonia_windows | head -1)
 [ -n "${ROOM_WINS[0]}" ] || room_fail "NO HOST WINDOW" host
@@ -174,7 +183,8 @@ echo "== BOB drops; ERIN takes his seat mid-game and is turned away"
 drop 1
 wait_log host "player 2 lost" 45 || room_fail "BOB'S LOSS NEVER DETECTED" host
 join_as 4 ERIN
-wait_log host "player 2 rejoined" 45 || room_fail "ERIN WAS NOT SEATED" host
+wait_log host "holding the newcomer for seat 2 at the door" 45 ||
+  room_fail "THE DOOR DID NOT HOLD ERIN" host
 wait_log CAROL "net: room lookup for 1 player" 20 ||
   room_fail "CAROL NEVER LOOKED ERIN UP" CAROL
 # No wait on the lookup's "answered" line: ERIN's identity frame lands
@@ -182,9 +192,14 @@ wait_log CAROL "net: room lookup for 1 player" 20 ||
 # 40321607957).
 wait_log CAROL "net: asking the host to turn away a newer player" 20 ||
   room_fail "CAROL NEVER ASKED TO TURN ERIN AWAY MID-GAME" CAROL
-wait_log host "net: turning away player 2" 20 ||
+wait_log host "turning away the newcomer held at the door for seat 2" 20 ||
   room_fail "THE HOST DID NOT TURN ERIN AWAY MID-GAME" host
 wait_log ERIN "turned away" 20 || room_fail "ERIN WAS NEVER TOLD" ERIN
+# Turned away from the door, never seated: no RECONNECTED, no game.
+grep -aq "player 2 rejoined" "$OUT/host.log" &&
+  room_fail "ERIN WAS SEATED BEFORE SHE WAS TURNED AWAY" host
+grep -aq "bootstrap adopted" "$OUT/ERIN.log" &&
+  room_fail "ERIN ENTERED THE GAME" ERIN
 grep -aq "refused by platform policy" "$OUT/CAROL.log" &&
   room_fail "CAROL LEFT INSTEAD OF ERIN" CAROL
 grep -aq "refused by platform policy" "$OUT/ERIN.log" &&
@@ -199,8 +214,65 @@ wait_log DAVE2 "host refused this connection (reason 2)" 30 ||
   room_fail "DAVE WAS NEVER REFUSED" DAVE2
 drop 4
 
+echo "== FRANK, who blocks CAROL, takes the free seat and leaves from the door"
+holds=$(count_log host "holding the newcomer for seat 2 at the door")
+join_as 4 FRANK NEWTONIA_NET_TEST_PEER_VERDICT=refuse-name:CAROL
+wait_count host "holding the newcomer for seat 2 at the door" $((holds + 1)) 45 ||
+  room_fail "THE DOOR DID NOT HOLD FRANK" host
+wait_log FRANK "another player in the room refused by platform policy" 20 ||
+  room_fail "FRANK DID NOT LEAVE A ROOM WITH CAROL IN IT" FRANK
+wait_log host "the newcomer for seat 2 left the door" 30 ||
+  room_fail "THE HOST NEVER SAW FRANK LEAVE THE DOOR" host
+grep -aq "player 2 rejoined" "$OUT/host.log" &&
+  room_fail "FRANK WAS SEATED BEFORE HE LEFT" host
+grep -aq "bootstrap adopted" "$OUT/FRANK.log" &&
+  room_fail "FRANK ENTERED THE GAME" FRANK
+grep -aq "refused by platform policy" "$OUT/CAROL.log" &&
+  room_fail "CAROL LEFT INSTEAD OF FRANK" CAROL
+drop 4
+
+echo "== HANK, who blocks the host, leaves from the door"
+holds=$(count_log host "holding the newcomer for seat 2 at the door")
+lefts=$(count_log host "the newcomer for seat 2 left the door")
+join_as 4 HANK NEWTONIA_NET_TEST_PEER_VERDICT=refuse-name:HOST
+wait_count host "holding the newcomer for seat 2 at the door" $((holds + 1)) 45 ||
+  room_fail "THE DOOR DID NOT HOLD HANK" host
+wait_log HANK "host refused by platform policy (refused)" 20 ||
+  room_fail "HANK DID NOT LEAVE ON THE HOST'S VERDICT" HANK
+wait_count host "the newcomer for seat 2 left the door" $((lefts + 1)) 20 ||
+  room_fail "THE HOST NEVER SAW HANK LEAVE THE DOOR" host
+grep -aq "unanswered after" "$OUT/host.log" &&
+  room_fail "THE DOOR TIMED OUT ON HANK INSTEAD OF SEEING HIM LEAVE" host
+grep -aq "player 2 rejoined" "$OUT/host.log" &&
+  room_fail "HANK WAS SEATED BEFORE HE LEFT" host
+grep -aq "bootstrap adopted" "$OUT/HANK.log" &&
+  room_fail "HANK ENTERED THE GAME" HANK
+drop 4
+
+echo "== GINA, whose own check is slow, is held at the door and then seated"
+holds=$(count_log host "holding the newcomer for seat 2 at the door")
+join_as 4 GINA NEWTONIA_NET_TEST_PEER_VERDICT=slow:2500
+wait_count host "holding the newcomer for seat 2 at the door" $((holds + 1)) 45 ||
+  room_fail "THE DOOR DID NOT HOLD GINA" host
+wait_log host "player 2 rejoined" 30 || room_fail "GINA WAS NOT SEATED" host
+wait_log GINA "telling the host we allow everyone in the room" 5 ||
+  room_fail "GINA NEVER ANSWERED THE DOOR" GINA
+wait_log CAROL "telling the host a newer player is allowed" 5 ||
+  room_fail "CAROL NEVER ANSWERED FOR GINA" CAROL
+# Seated only once both had answered: after GINA's 2.5 s check.
+ms=$(grep -a "door checks for seat 2 done after" "$OUT/host.log" | tail -1 |
+     sed 's/.*done after \([0-9]*\) ms.*/\1/')
+[ -n "$ms" ] && [ "$ms" -ge 2000 ] ||
+  room_fail "GINA WAS SEATED BEFORE HER CHECK FINISHED (${ms:-no line})" host
+grep -aq "unanswered after" "$OUT/host.log" &&
+  room_fail "THE DOOR TIMED OUT INSTEAD OF HEARING THE ANSWERS" host
+wait_log GINA "bootstrap adopted" 30 || room_fail "GINA NEVER ENTERED" GINA
+grep -aq "refused by platform policy" "$OUT/GINA.log" &&
+  room_fail "GINA REFUSED SOMEONE" GINA
+
 room_alive
 room_kill_all
 assert_clean "$OUT/host.log" "$OUT/BOB.log" "$OUT/ALICE.log" "$OUT/CAROL.log" \
-             "$OUT/DAVE.log" "$OUT/BOB2.log" "$OUT/ERIN.log" "$OUT/DAVE2.log"
+             "$OUT/DAVE.log" "$OUT/BOB2.log" "$OUT/ERIN.log" "$OUT/DAVE2.log" \
+             "$OUT/FRANK.log" "$OUT/HANK.log" "$OUT/GINA.log"
 echo "POLICY-MEMBERS-E2E-OK"

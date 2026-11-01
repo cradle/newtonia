@@ -51,7 +51,12 @@ void NetRoomLookup::stop() {
 NetRoomLookup::State NetRoomLookup::update(NetRoomMembers &members,
                                            const std::string &room_code,
                                            int delta_ms) {
-  if (delta_ms < 1) delta_ms = 1;
+  // Real elapsed time, zero included: the game loop can tick several times
+  // a millisecond, and counting each of those as 1 ms ran the retry and
+  // attempt clocks many times too fast — five "attempts a couple of
+  // seconds apart" took 1.5 s, so a newcomer whose verification took a
+  // few seconds made this player give up and leave (door_hold_ban.sh).
+  if (delta_ms < 0) delta_ms = 0;
   if (members.unknown_seated().empty()) {
     if (sig_ || attempts_) stop();
     return Idle;
