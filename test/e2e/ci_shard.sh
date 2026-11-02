@@ -61,7 +61,7 @@ shard_drivers() {
     # is a loss-and-recovery driver either way.
     netplay-resilience) echo "rejoin rejoinexit hiccup policy_peer_rejoin blackout invite invite_deadroom
                               hostresume spectate spectate_disconnect revive
-                              nseat_rejoin_flap_swap" ;;
+                              nseat_rejoin_flap_swap hostsuspend" ;;
     seats-and-soak) echo "nseat nseat_rejoin nseat_rejoin_flap nseat_gameover
                           nseat_swap nseat_soak gensoak nseat_kick nseat_anon" ;;
     *) return 1 ;;

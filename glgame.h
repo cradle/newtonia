@@ -767,6 +767,8 @@ private:
   // name. Default ONLINE (strict): the lobby sets it false for the manual
   // path, so forgetting to set it can only under-render, never leak a claim.
   bool net_worker_session_ = true;
+  // Door adoptions answered so far this game (log + test hook only).
+  int net_rehost_attempts_ = 0;
   NetIdentityCtx net_id_ctx() const {
     return net_worker_session_ ? NET_ID_ONLINE : NET_ID_OFFLINE;
   }
