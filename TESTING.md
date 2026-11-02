@@ -985,6 +985,15 @@ test/e2e/lobby_leave.sh # A seated joiner pressing Esc in the waiting room
                      # to notice (field, 2026-10-27). Then the joiner who
                      # stayed still starts. A killed joiner (no goodbye)
                      # still waits for the link timeout
+test/e2e/relay_retry.sh # A join whose relay-only transport gets no TURN
+                     # relay retries ONCE by itself with a fresh transport
+                     # and signalling socket, about 10 s in, and connects
+                     # (NEWTONIA_NET_TEST_RELAY_FAIL_ONCE=1 makes only the
+                     # first attempt relay-only; the local relay mints no
+                     # TURN, so it can never get one). Field, Xbox dev kit
+                     # 2026-11-02: the Allocates went unanswered, the join
+                     # failed at 63 s as COULD NOT CONNECT, and a manual
+                     # retry worked at once
 test/e2e/nseat_anon.sh # O3 admission policy: the host sets ALLOW ANONYMOUS
                      # PLAYERS to NO from the waiting room's own row, then a
                      # NAMED pilot (attested by this driver's own FAKE_VERIFY

@@ -191,7 +191,35 @@ public:
   }
 
   bool connected() const override { return rel_open_ && unrel_open_; }
-  bool failed() const override { return failed_; }
+  bool failed() const override { return failed_ || relay_unavailable(); }
+
+  // Relay-only and no TURN relay candidate yet, past the point where one
+  // could still arrive. A healthy allocation answers in well under a
+  // second; libjuice's own verdict comes only after its whole Allocate
+  // retransmission ladder (~23.5 s), and the ICE agent then sits out its
+  // connectivity timer as well, so a dead allocation used to cost a joiner
+  // a full minute before "COULD NOT CONNECT". Field, Xbox dev kit
+  // 2026-11-02: one join's Allocates to turn.cloudflare.com went
+  // unanswered for all 23.5 s while the SAME socket's STUN bindings to
+  // stun.cloudflare.com kept succeeding, and a fresh join seconds later
+  // allocated at once (with the very same credentials) - so the remedy
+  // is a fresh transport, not waiting longer. RELAY_WAIT_MS leaves room
+  // for four Allocate retransmissions on a lossy path.
+  static const int RELAY_WAIT_MS = 10000;
+  bool relay_unavailable() const override {
+    if (!gather_started_ || pc_ < 0 || relay_seen_ || !relay_policy())
+      return false;
+    if (rel_open_ || unrel_open_) return false;
+    int waited = (int)std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - gather_start_).count();
+    if (!gather_done_ && waited < RELAY_WAIT_MS) return false;
+    if (!relay_fail_logged_.exchange(true))
+      NET_LOG("net: relay-only - no TURN relay after %d ms (%s, %d TURN"
+              " server(s)) - this transport cannot connect\n",
+              waited, gather_done_ ? "gathering ended" : "still waiting",
+              (int)ice_extra_.size());
+    return true;
+  }
 
   int buffered_amount() const override {
     int total = 0, b;
@@ -431,6 +459,7 @@ private:
                                          const char *mid, void *ptr) {
     RtcTransport *self = (RtcTransport *)ptr;
     if (!cand || !cand[0]) return;  // end-of-candidates marker
+    if (cand_type(cand) == "relay") self->relay_seen_ = true;
     std::lock_guard<std::mutex> lock(self->cand_mutex_);
     self->cand_out_.push_back(std::string(mid ? mid : "0") + "\n" + cand);
   }
@@ -478,6 +507,10 @@ private:
       std::lock_guard<std::mutex> lock(self->desc_mutex_);
       self->local_desc_.assign(buffer);
     }
+    // Non-trickle flows never see on_local_candidate; the full SDP lists
+    // the same candidates.
+    if (std::strstr(buffer, " typ relay")) self->relay_seen_ = true;
+    self->gather_done_ = true;
     self->desc_ready_ = true;
   }
 
@@ -530,6 +563,9 @@ private:
   std::atomic<bool> failed_;
   bool closed_;
   bool gather_started_ = false;
+  std::atomic<bool> relay_seen_{false};    // a local relay candidate exists
+  std::atomic<bool> gather_done_{false};   // ICE gathering reported complete
+  mutable std::atomic<bool> relay_fail_logged_{false};
   std::chrono::steady_clock::time_point gather_start_;
 
   mutable std::mutex desc_mutex_;
