@@ -22,54 +22,72 @@ fi
 relay_check
 export NEWTONIA_NET_TEST_SEATS=4
 
-PA=$(launch host)
+# MODE 1: no relay ever arrives, caught by the 10 s wait (after the answer).
+# MODE 2: gathering ends at once with no relay and the answer is held back,
+# so the failure is found before a session exists (the pre-session path).
+run_mode() {
+  MODE=$1; LIMIT=$2
+  echo "== mode $MODE"
+  # Fresh prefs per mode: the first run's save would add a CONTINUE row
+  # and shift the menu the key presses below expect.
+  export XDG_DATA_HOME="$OUT/xdg$MODE"
+  PA=$(launch host$MODE)
+  sleep 2
+  PB=$(launch joiner$MODE NEWTONIA_NET_TEST_RELAY_FAIL_ONCE=$MODE)
+  sleep 4
+
+  WINS=$(newtonia_windows)
+  A=$(echo "$WINS" | head -1); B=$(echo "$WINS" | tail -1)
+  [ "$A" != "$B" ] || { echo "only one window"; kill $PA $PB; exit 1; }
+
+  key $A Return; sleep 1; key $A s; key $A Return; sleep 1; key $A Return
+  CODE=$(host_room_code host$MODE)
+  [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
+  echo "room code: $CODE"
+
+  nav_join $B "$CODE" joiner$MODE
+  T0=$(date +%s)
+  RETRIED=""
+  for i in $(seq 1 40); do
+    sleep 1; alive $PA host; alive $PB joiner
+    grep -aq "joining room $CODE again with a fresh transport" "$OUT/joiner$MODE.log" && {
+      RETRIED=$(( $(date +%s) - T0 )); break; }
+  done
+  [ -n "$RETRIED" ] || { echo "NO RETRY"; tail -30 "$OUT/joiner$MODE.log"; kill $PA $PB; exit 1; }
+  echo "== retried after ${RETRIED}s"
+  grep -aq "relay-only - no TURN relay after" "$OUT/joiner$MODE.log" || {
+    echo "NO RELAY-FAILURE LINE"; kill $PA $PB; exit 1; }
+  # 10 s relay wait plus the time the offer took; the old path took ~63 s.
+  [ "$RETRIED" -le $LIMIT ] || { echo "RETRY TOO SLOW (${RETRIED}s)"; kill $PA $PB; exit 1; }
+
+  for i in $(seq 1 30); do
+    grep -aq "seat 2 filled" "$OUT/host$MODE.log" && break; sleep 1
+  done
+  grep -aq "seat 2 filled" "$OUT/host$MODE.log" || {
+    echo "RETRY NEVER SEATED"; tail -30 "$OUT/joiner$MODE.log"; kill $PA $PB; exit 1; }
+  echo "== seated after the retry; host starts"
+  key $A Return; sleep 2
+  for i in $(seq 1 30); do
+    grep -aq "bootstrap adopted" "$OUT/joiner$MODE.log" && break; sleep 1
+  done
+  alive $PA host; alive $PB joiner
+  grep -aq "bootstrap adopted" "$OUT/joiner$MODE.log" || {
+    echo "RETRY DID NOT CONNECT"; tail -30 "$OUT/joiner$MODE.log"; kill $PA $PB; exit 1; }
+  if [ "$MODE" = 2 ]; then
+    grep -aq "transport failed during signaling" "$OUT/joiner$MODE.log" || {
+      echo "MODE 2 DID NOT TAKE THE PRE-SESSION PATH"; kill $PA $PB; exit 1; }
+  fi
+  [ "$(grep -ac 'relay-only ICE policy ACTIVE' "$OUT/joiner$MODE.log")" -eq 1 ] || {
+    echo "THE RETRY WAS RELAY-ONLY TOO"; kill $PA $PB; exit 1; }
+  grep -aq "rejoin\|LobbyFailed\|COULD NOT CONNECT" "$OUT/joiner$MODE.log" && {
+    echo "THE FIRST FAILURE REACHED THE PLAYER"; kill $PA $PB; exit 1; }
+  shot $B relay-retry-joiner$MODE
+
+  kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null
+  assert_clean "$OUT/host$MODE.log" "$OUT/joiner$MODE.log"
+}
+
+run_mode 1 25
 sleep 2
-PB=$(launch joiner NEWTONIA_NET_TEST_RELAY_FAIL_ONCE=1)
-sleep 4
-
-WINS=$(newtonia_windows)
-A=$(echo "$WINS" | head -1); B=$(echo "$WINS" | tail -1)
-[ "$A" != "$B" ] || { echo "only one window"; kill $PA $PB; exit 1; }
-
-key $A Return; sleep 1; key $A s; key $A Return; sleep 1; key $A Return
-CODE=$(host_room_code host)
-[ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
-echo "room code: $CODE"
-
-nav_join $B "$CODE" joiner
-T0=$(date +%s)
-RETRIED=""
-for i in $(seq 1 40); do
-  sleep 1; alive $PA host; alive $PB joiner
-  grep -aq "joining room $CODE again with a fresh transport" "$OUT/joiner.log" && {
-    RETRIED=$(( $(date +%s) - T0 )); break; }
-done
-[ -n "$RETRIED" ] || { echo "NO RETRY"; tail -30 "$OUT/joiner.log"; kill $PA $PB; exit 1; }
-echo "== retried after ${RETRIED}s"
-grep -aq "relay-only - no TURN relay after" "$OUT/joiner.log" || {
-  echo "NO RELAY-FAILURE LINE"; kill $PA $PB; exit 1; }
-# 10 s relay wait plus the time the offer took; the old path took ~63 s.
-[ "$RETRIED" -le 25 ] || { echo "RETRY TOO SLOW (${RETRIED}s)"; kill $PA $PB; exit 1; }
-
-for i in $(seq 1 30); do
-  grep -aq "seat 2 filled" "$OUT/host.log" && break; sleep 1
-done
-grep -aq "seat 2 filled" "$OUT/host.log" || {
-  echo "RETRY NEVER SEATED"; tail -30 "$OUT/joiner.log"; kill $PA $PB; exit 1; }
-echo "== seated after the retry; host starts"
-key $A Return; sleep 2
-for i in $(seq 1 30); do
-  grep -aq "bootstrap adopted" "$OUT/joiner.log" && break; sleep 1
-done
-alive $PA host; alive $PB joiner
-grep -aq "bootstrap adopted" "$OUT/joiner.log" || {
-  echo "RETRY DID NOT CONNECT"; tail -30 "$OUT/joiner.log"; kill $PA $PB; exit 1; }
-[ "$(grep -ac 'relay-only ICE policy ACTIVE' "$OUT/joiner.log")" -eq 1 ] || {
-  echo "THE RETRY WAS RELAY-ONLY TOO"; kill $PA $PB; exit 1; }
-grep -aq "rejoin\|LobbyFailed\|COULD NOT CONNECT" "$OUT/joiner.log" && {
-  echo "THE FIRST FAILURE REACHED THE PLAYER"; kill $PA $PB; exit 1; }
-shot $B relay-retry-joiner
-
-kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null
-assert_clean "$OUT/host.log" "$OUT/joiner.log"
+run_mode 2 12
 echo "RELAY-RETRY-E2E-OK"

@@ -84,10 +84,18 @@ static bool s_join_force_relay = false;
 // e2e hook (test/e2e/relay_retry.sh): the FIRST attempt of each typed join
 // runs relay-only, which on the local test relay (no TURN credentials)
 // can never get a relay - the stand-in for a TURN allocation that goes
-// unanswered. The automatic retry then joins normally.
-static bool test_relay_fail_once() {
-  const char *v = SDL_getenv("NEWTONIA_NET_TEST_RELAY_FAIL_ONCE");
-  return v && v[0] == '1';
+// unanswered (=1: found out by the 10 s wait, after the answer went out).
+// =2 also drops every ICE server, so gathering ends at once with no relay,
+// and holds that attempt's answer back: the failure is found before a
+// session exists (the pre-session path). The automatic retry then joins
+// normally.
+static int test_relay_fail_once() {
+  static int mode = -1;
+  if (mode < 0) {
+    const char *v = SDL_getenv("NEWTONIA_NET_TEST_RELAY_FAIL_ONCE");
+    mode = v ? std::atoi(v) : 0;
+  }
+  return mode;
 }
 
 // Lobby tap bands — one definition each for the drawn label AND the
@@ -855,9 +863,11 @@ void NetLobby::confirm() {
       // Applied here, not at transport creation: the "0" arming happens
       // while typing, after the transport already exists. The pc (and its
       // ICE policy) is only built at start_join, so this is in time.
-      if (transport_)
-        transport_->set_force_relay(s_join_force_relay ||
-                                    test_relay_fail_once());
+      if (transport_) {
+        int fail = test_relay_fail_once();
+        transport_->set_force_relay(s_join_force_relay || fail > 0);
+        if (fail == 2) transport_->set_lan_only(true);
+      }
       relay_retry_used_ = false;  // each typed join gets its one retry
       NET_LOG("[lobby] joining room %s\n", code_entry_.c_str());
       signal_->connect_join(net_signal_url(), code_entry_, false);
@@ -1958,8 +1968,11 @@ void NetLobby::pump_signal(int delta) {
   }
 
   // Joiner: answer ready -> push it and start waiting on the transport.
+  // (The relay_retry e2e's mode 2 holds the first attempt's answer back,
+  // so its no-relay failure is found before any session exists.)
+  bool hold_answer = test_relay_fail_once() == 2 && !relay_retry_used_;
   if (!hosting_ && !answer_sent_ && screen_ == RoomJoining && transport_ &&
-      transport_->local_description_ready()) {
+      !hold_answer && transport_->local_description_ready()) {
     signal_->send_answer(transport_->local_description());
     answer_sent_ = true;
     NET_LOG("[lobby] answer sent to room %s\n", room_code_.c_str());
@@ -2733,6 +2746,10 @@ void NetLobby::tick(int delta) {
 
   if (transport_ && transport_->failed() && screen_ != LobbyFailed) {
     NET_LOG("[lobby] transport failed during signaling\n");
+    // A relay-only join can learn it has no relay before its answer has
+    // even gone out (gathering finished fast and empty), so the session
+    // the WaitConnect retry looks at does not exist yet.
+    if (retry_join_after_relay_failure()) return;
     if (rejoin_retry_after_session_loss("transport failed during signaling"))
       return;
     set_status("CONNECTION FAILED");
