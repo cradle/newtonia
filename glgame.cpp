@@ -3963,8 +3963,14 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // replay above (poll_local_candidate drains each exactly once).
       if (t == net_rehost_) net_rehost_cands_.push_back(c);
       size_t nl = c.find('\n');
-      if (nl != std::string::npos)
+      if (nl != std::string::npos) {
+        // Logged like the lobby's "cand out" lines: a rejoin that dies in
+        // ICE is otherwise unreadable from the host's log (NETPLAY_XBOX.md
+        // item 12, kit68: one relay-only rejoin failed after 40 s and the
+        // log could not say which candidates crossed).
+        NET_LOG("net: rejoin cand out: %s\n", c.substr(nl + 1, 48).c_str());
         net_signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
+      }
     }
   }
 
@@ -3988,6 +3994,9 @@ void GLGame::net_host_rejoin_poll(int delta) {
         continue;
       }
       net_rehost_->set_remote_answer(ev.text);
+      net_rehost_attempts_++;
+      NET_LOG("net: rejoin answer for seat %d (jid %s, attempt %d)\n",
+              (int)dp->seat, ev.peer.c_str(), net_rehost_attempts_);
       dp->session =
           new NetSession(net_rehost_, NetSession::HostRole, dp->seat);
       dp->adopt_ms = 0;  // handshake clock (flap resolver)
@@ -4069,11 +4078,28 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // rejoiner's candidates belong to a future offer, not this
       // transport (ICE would discard them, but why feed it noise).
       NetPeer *hs2 = net_handshaking_lost_peer();
-      if (hs2 && !ev.peer.empty() && hs2->jid != ev.peer) continue;
+      if (hs2 && !ev.peer.empty() && hs2->jid != ev.peer) {
+        NET_LOG("net: rejoin cand in (other jid %s, skipped): %s\n",
+                ev.peer.c_str(), ev.text.substr(0, 48).c_str());
+        continue;
+      }
       NetTransport *t =
           net_rehost_ ? net_rehost_
                       : (hs2 ? hs2->session->transport() : nullptr);
-      if (t) t->add_remote_candidate(ev.text2, ev.text);
+      // Test hook (test/e2e/hostsuspend.sh): the first N door attempts
+      // never hear the rejoiner's candidates, so a relay-only host's ICE
+      // dies the way the kit's did — what the joiner's rejoin connect
+      // timeout (net_lobby.cpp) has to recover from.
+      static int test_drop_cands = -2;
+      if (test_drop_cands == -2) {
+        const char *e = std::getenv("NEWTONIA_NET_TEST_DROP_REJOIN_CANDS");
+        test_drop_cands = e ? atoi(e) : 0;
+      }
+      const bool test_drop = t && net_rehost_attempts_ <= test_drop_cands;
+      NET_LOG("net: rejoin cand in (%s): %s\n",
+              !t ? "DROPPED" : test_drop ? "TEST-DROPPED" : "applied",
+              ev.text.substr(0, 48).c_str());
+      if (t && !test_drop) t->add_remote_candidate(ev.text2, ev.text);
     } else if (ev.kind == NetSignal::Event::Room) {
       // Reclaimed mid-rejoin: the room's stored offer died with the old
       // socket — resend the current one.
@@ -4619,6 +4645,9 @@ void GLGame::net_host_rejoin_session_update(int delta) {
                 (int)dp->seat, (unsigned)dp->session->reject_reason());
         net_closing_.push_back(std::make_pair(dp->session, 600));
         dp->session = nullptr;
+      } else {
+        NET_LOG("net: rejoin attempt for seat %d failed after %d ms\n",
+                (int)dp->seat, dp->adopt_ms);
       }
       // Bad handshake (wrong build?): drop it and re-open the doors for
       // another try — the relay re-offer only where a signal exists, and

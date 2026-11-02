@@ -36,6 +36,7 @@
 #include "render_target.h"
 
 #include <cstdio>
+#include <csignal>
 #include <string>
 
 #ifdef __APPLE__
@@ -884,11 +885,41 @@ static void check_windows_focus() {
 }
 #endif // _WIN32
 
+#if !defined(_WIN32)
+// Test hook: NEWTONIA_NET_TEST_SUSPEND=1 makes SIGUSR1 run the console's
+// suspend sequence (xbox_main.cpp: close the online links, give the close
+// 150 ms, freeze) and then stop this process; SIGCONT resumes it, and the
+// delta spanning the freeze is discarded as the console does. Lets an e2e
+// driver reproduce a console suspend/resume on the desktop build
+// (test/e2e/hostsuspend.sh).
+static volatile sig_atomic_t s_test_suspend_req = 0;
+static void test_suspend_signal(int) { s_test_suspend_req = 1; }
+static void test_suspend_install() {
+  const char *e = getenv("NEWTONIA_NET_TEST_SUSPEND");
+  if (e && e[0] == '1') signal(SIGUSR1, test_suspend_signal);
+}
+static bool test_suspend_poll() {
+  if (!s_test_suspend_req) return false;
+  s_test_suspend_req = 0;
+  std::cout << "test: suspending" << std::endl;
+  if (game && game->platform_suspending()) SDL_Delay(150);
+  raise(SIGSTOP);
+  std::cout << "test: resumed" << std::endl;
+  return true;
+}
+#endif
+
 int last_tick_time;
 void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   int delta = current_time - last_tick_time;
   last_tick_time = current_time;
+#if !defined(_WIN32)
+  if (test_suspend_poll()) {
+    last_tick_time = glutGet(GLUT_ELAPSED_TIME);
+    delta = 0;  // discard the delta spanning the freeze, like the console
+  }
+#endif
   // NEWTONIA_FRAME_LOG=1: log every frame slower than 50 ms (sim + draw +
   // swap, since tick idles between redisplays). Greppable in headless runs
   // and cheap enough to leave in — field reports like "frame rate collapsed
@@ -1257,6 +1288,9 @@ int main(int argc, char* argv[]) {
   install_macos_focus_observer(on_focus_lost, on_focus_gained);
 #endif
   resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
+#if !defined(_WIN32)
+  test_suspend_install();
+#endif
   startup_trace("entering main loop");
   glutMainLoop();
   startup_trace("main loop returned");

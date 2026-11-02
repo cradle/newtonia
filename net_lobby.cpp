@@ -46,6 +46,19 @@ const int STATUS_SHOW_MS = 4000;
 // STUN-only in Milestone 1: if a paste-complete pair can't connect in this
 // window they are almost certainly behind symmetric NATs (no relay yet).
 const int CONNECT_TIMEOUT_MS = 25000;
+// An AUTO-rejoin attempt whose transport has not connected in this long is
+// abandoned and retried. Both ends are machines here (no human ferrying a
+// reply code), so a healthy rejoin connects in a few seconds even over a
+// relay — measured 0.5-3.5 s (hostsuspend.sh over TURN), about 1.4-3 s on
+// the dev kit. A dead one otherwise sits out libjuice's whole ICE check
+// timeout (39.5 s) before anyone notices: a relay-only host has exactly
+// one candidate path, so a single lost candidate kills the attempt, and a
+// rejoin after a 30 s console suspend took 82 s that way (NETPLAY_XBOX.md
+// item 12, kit68). The retry's fresh join reaches the host as a PeerJoin
+// onto its stale session, which re-offers at once (net_host_rejoin_poll).
+// Only the transport is timed: the handshake's AdmitWait runs after it
+// connects, so a strict room's attestation wait is never cut short.
+const int REJOIN_CONNECT_TIMEOUT_MS = 15000;
 
 // Joiner: how long the platform's per-peer verdict on the host
 // (net_peer_verdict) may hold us on the Connected screen. The host holds
@@ -2775,6 +2788,15 @@ void NetLobby::tick(int delta) {
           fail_headline_ = "HOST REFUSED THE CONNECTION";
         }
         screen_ = LobbyFailed;
+      } else if (rejoin_mode_ && !cold_invite_ && !lan_rejoin_ &&
+                 session_->role() == NetSession::ClientRole &&
+                 connect_wait_ms_ > REJOIN_CONNECT_TIMEOUT_MS &&
+                 session_->transport() &&
+                 !session_->transport()->connected() &&
+                 rejoin_retry_after_session_loss(
+                     "rejoin attempt did not connect in time")) {
+        NET_LOG("[lobby] rejoin attempt not connected after %d ms - "
+                "retrying\n", REJOIN_CONNECT_TIMEOUT_MS);
       } else if (p == NetSession::Failed ||
                  (session_->role() == NetSession::HostRole &&
                   connect_wait_ms_ > CONNECT_TIMEOUT_MS)) {

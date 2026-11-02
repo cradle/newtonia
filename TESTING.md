@@ -819,6 +819,19 @@ test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts loca
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
 test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH
 test/e2e/hiccup.sh   # transport dies under live processes -> auto-pause -> AUTO-rejoin
+test/e2e/hostsuspend.sh # console suspend/resume of the HOST on the desktop build:
+                        # NEWTONIA_NET_TEST_SUSPEND=1 makes SIGUSR1 run the
+                        # console's suspend sequence (close links, 150 ms,
+                        # SIGSTOP); the driver SIGCONTs after SUSPEND_S and
+                        # times the joiner's auto-rejoin, CYCLES times. The
+                        # kit-like run (NETPLAY_XBOX.md item 12) needs a local
+                        # coturn: HOST_BIN=<a -DNEWTONIA_NET_RELAY_ONLY build>
+                        # TURN="turn:127.0.0.1:3478|user|pass" DROP_CANDS=1
+                        # (NEWTONIA_NET_TEST_DROP_REJOIN_CANDS: the host ignores
+                        # the first door attempt's candidates, so that relay-only
+                        # attempt dies in ICE) asserts the joiner's 15 s rejoin
+                        # connect timeout recovers it: 17.7 s, against 70.6 s
+                        # with a joiner from before the timeout (2026-11-02)
 test/e2e/turnexpiry.sh # REAL TURN expiry on a relay-forced pair (needs UDP egress)
 test/e2e/spectate.sh # one player out of lives -> "SPECTATING IN N" -> camera to peer
 test/e2e/spectate_disconnect.sh # joiner spectating -> host process killed -> GAME OVER
