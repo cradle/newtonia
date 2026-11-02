@@ -90,6 +90,12 @@ public:
   virtual bool connected() const = 0;
   virtual bool failed() const = 0;
 
+  // True when this transport is relay-only and its TURN allocation came to
+  // nothing, so it can never connect. failed() also reports it; this says
+  // WHY, so a joiner can retry once with a fresh socket instead of telling
+  // the player a firewall is in the way. Default: never.
+  virtual bool relay_unavailable() const { return false; }
+
   // Diagnostics: the selected ICE path once connected, as
   // "local/remote" candidate types — "host/host" (direct), "srflx/..."
   // (NAT-punched), "relay/..." (TURN). Empty when unknown. Cheap enough

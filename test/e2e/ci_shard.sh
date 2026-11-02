@@ -49,6 +49,7 @@ shard_drivers() {
     lobby-and-lan) echo "lan_hidden lanclip lanrejoin lanrename byecard lankeep
                          ownroom mismatch policy policy_peer policy_members identity identity_legacy pairstart fly
                          nseat_lobby_kick nseat_lobby_mouse nseat_ban_token lobby_leave
+                         relay_retry
                          lan_anon" ;;
     netplay-core) echo "room weapons_net missile_net pickup_switch_net
                         turret_net shock_net shock_hazards_net hazards_net

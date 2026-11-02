@@ -117,6 +117,9 @@ private:
   // the retry loop instead of failing terminally. Returns true if it did;
   // false means this isn't a retryable rejoin and the caller should fail.
   bool rejoin_retry_after_session_loss(const char *why);
+  // A first join whose relay-only transport got no TURN relay: drop the
+  // socket and join again once with a fresh one (net_lobby.cpp).
+  bool retry_join_after_relay_failure();
   // Controller support (Steam Deck / gamepad-only setups): CodeEntry
   // shows a character-picker grid of the code alphabet once a controller
   // is seen — d-pad/stick moves, A or right trigger types, B deletes.
@@ -396,6 +399,7 @@ private:
   std::string code_entry_;   // joiner: code being typed
   bool offer_sent_;          // host: offer pushed to the room
   bool answer_sent_;         // joiner: answer pushed to the room
+  bool relay_retry_used_ = false;  // this join already retried for a relay
   int signal_wait_ms_;       // time waiting on the signal server
 
   bool paste_pending_;
