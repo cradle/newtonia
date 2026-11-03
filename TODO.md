@@ -14,6 +14,29 @@ with no worker deploy at the time. A host already in a game reclaims the
 room (`connect_host_reclaim`); the waiting room should do the same with
 its reclaim token, and say so on screen if the reclaim fails.
 
+## Consider: ALLOW ANONYMOUS NO refuses verified Xbox and iOS players
+
+Not a bug to fix now, a decision to revisit. With the host's ALLOW
+ANONYMOUS PLAYERS set to NO, a joiner whose Xbox account the worker
+verified is still refused as anonymous ("HOST BLOCKS ANONYMOUS PLAYERS"),
+and so is a verified iOS player. Seen on the kit72 test, 2026-11-03.
+
+Why: the admission check (`NetLobby::admit_decision`, the
+`net_identity_anonymous(attested)` line) counts a player as known only when
+the worker attested their NAME. Xbox (PlayFab `LoginWithXbox`) and Game
+Center prove the account but return no name, so those players stay
+anonymous on purpose: there is no verified name to show the host.
+
+They do carry a worker ban token (minted from the Xbox user id or the Game
+Center id), which is why the roster already offers BAN on their rows
+(`net_identity_bannable`). Letting them in under NO would mean swapping
+that one line for `!net_identity_bannable(attested)`, updating the
+`Preferences::allow_anonymous` and `net_identity_anonymous` comments, and
+extending `test/e2e/nseat_anon.sh` with a verified nameless joiner (the
+FAKE_VERIFY `SLOW:<ms>:<acct>` cred with an empty name mints a token).
+The cost: the host would admit a player shown only as "PLAYER N - XBOX",
+with no name to judge them by.
+
 ## Google Play Games on PC: Play Console and a field test
 
 The APK has a desktop mode for the Windows client (CLAUDE.md, "Google Play
