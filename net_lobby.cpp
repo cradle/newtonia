@@ -621,8 +621,13 @@ void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
 //    instead of 3 s, so a driver can knock on the room in the gap;
 //  NEWTONIA_NET_TEST_LOBBY_DROP_ON_JOIN=1    the same drop, the moment the
 //    first joiner's PeerJoin arrives (before its offer is gathered);
+//  NEWTONIA_NET_TEST_LOBBY_DROP_AFTER_OFFER_MS=N  the same drop, N ms
+//    after the first addressed offer went out (the joiner holds the
+//    offer; its answer is what the gap loses);
 //  NEWTONIA_NET_TEST_LOBBY_RECLAIM_BAD_TOKEN=1  the reclaim sends a wrong
-//    token, which the worker refuses as no-such-room: the lost-room path.
+//    token, which the worker refuses as no-such-room: the lost-room path;
+//  NEWTONIA_NET_TEST_JOIN_ANSWER_DELAY_MS=N  a JOINER holds its first
+//    answer N ms after it is ready, so it lands inside the host's gap.
 static int test_env_int(const char *name, int dflt) {
   const char *v = SDL_getenv(name);
   return v ? std::atoi(v) : dflt;
@@ -756,8 +761,14 @@ bool NetLobby::retry_join_after_relay_failure() {
 // instead: the old jid's leave frees the host's half-made pairing and the
 // new jid's join gets a fresh offer — the same path a player backing out
 // and retyping the code takes. A connected link needs no relay; leave it.
+//
+// A cold invite / deep-link accept rides the rejoin ctor (rejoin_mode_ is
+// set) but is a first join, with no retry loop of its own to fall back on,
+// so it takes this recovery too. A true mid-game rejoin keeps its own
+// retry loop (schedule_rejoin_retry) and is left to it.
 bool NetLobby::rejoin_after_host_back() {
-  if (hosting_ || rejoin_mode_ || code_entry_.empty()) return false;
+  if (hosting_ || (rejoin_mode_ && !cold_invite_) || code_entry_.empty())
+    return false;
   if (screen_ != RoomJoining && screen_ != WaitConnect) return false;
   NetTransport *t = session_ ? session_->transport() : transport_;
   if (t && t->connected()) return false;
@@ -798,7 +809,7 @@ void NetLobby::restart_join(NetSignal *fresh) {
   connect_wait_ms_ = 0;
   signal_wait_ms_ = 0;
   join_wait_ms_ = 0;
-  set_status("CONNECTING");
+  set_status(cold_invite_ ? "JOINING THE ROOM" : "CONNECTING");
   screen_ = RoomJoining;
   signal_->connect_join(net_signal_url(), code_entry_, false);
 }
@@ -2093,7 +2104,22 @@ void NetLobby::pump_signal(int delta) {
         signal_->send_offer(pj.transport->local_description(), it->first);
         pj.offer_sent = true;
         NET_LOG("[lobby] offer sent to joiner %s\n", it->first.c_str());
+        if (test_drop_after_offer_ms_ == 0)
+          test_drop_after_offer_ms_ = test_env_int(
+              "NEWTONIA_NET_TEST_LOBBY_DROP_AFTER_OFFER_MS", -1);
       }
+    }
+  }
+  // e2e hook (lobby_reclaim.sh A3): the socket dies after an offer went
+  // out, so the joiner's answer is sent into the gap and lost.
+  if (test_drop_after_offer_ms_ > 0 && !host_reclaiming_) {
+    test_drop_after_offer_ms_ -= delta;
+    if (test_drop_after_offer_ms_ <= 0) {
+      test_drop_after_offer_ms_ = -1;
+      NET_LOG("[lobby] TEST dropping the relay socket after the offer\n");
+      signal_->close();
+      schedule_host_reclaim("test drop after offer", host_reclaim_first_ms());
+      return;
     }
   }
 
@@ -2101,6 +2127,20 @@ void NetLobby::pump_signal(int delta) {
   // (The relay_retry e2e's mode 2 holds the first attempt's answer back,
   // so its no-relay failure is found before any session exists.)
   bool hold_answer = test_relay_fail_once() == 2 && !relay_retry_used_;
+  // e2e hook (lobby_reclaim.sh A3): hold the FIRST answer back so it lands
+  // inside the host's reclaim gap; the join again after host-back answers
+  // at once.
+  if (!hosting_ && !answer_sent_ && transport_ &&
+      transport_->local_description_ready() && test_answer_delay_ms_ != -1) {
+    if (test_answer_delay_ms_ == 0)
+      test_answer_delay_ms_ =
+          test_env_int("NEWTONIA_NET_TEST_JOIN_ANSWER_DELAY_MS", -1);
+    if (test_answer_delay_ms_ > 0) {
+      test_answer_delay_ms_ -= delta;
+      if (test_answer_delay_ms_ <= 0) test_answer_delay_ms_ = -1;
+      else hold_answer = true;
+    }
+  }
   if (!hosting_ && !answer_sent_ && screen_ == RoomJoining && transport_ &&
       !hold_answer && transport_->local_description_ready()) {
     signal_->send_answer(transport_->local_description());

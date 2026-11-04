@@ -419,6 +419,9 @@ private:
   // errors and a hand-off to the game carries the pending reattach.
   int host_reclaim_ms_ = 0;
   bool host_reclaiming_ = false;
+  // e2e hooks (lobby_reclaim.sh A3): 0 = not read yet, -1 = off/spent.
+  int test_drop_after_offer_ms_ = 0;
+  int test_answer_delay_ms_ = 0;
 
   bool paste_pending_;
   std::string paste_buffer_;

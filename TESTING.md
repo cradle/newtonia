@@ -1009,6 +1009,9 @@ test/e2e/lobby_reclaim.sh # A waiting-room host whose relay socket drops
                      # usual. A2: the drop lands on a joiner's join, before
                      # its offer; the host holds its output while down and
                      # the joiner, told host-back, joins again and seats.
+                     # A3: the same for a "+connect CODE" invite joiner
+                     # (cold invite), whose held-back answer lands in the
+                     # gap after its offer arrived.
                      # B: a refused reclaim (wrong-token hook) ends an
                      # empty room on "THE ROOM WAS LOST". C: on its own
                      # FAKE_TURN relay, the reclaim replaces the TURN list

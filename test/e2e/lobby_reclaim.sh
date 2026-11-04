@@ -15,6 +15,10 @@
 #      its signalling output while the socket is down; the joiner, told the
 #      host is back (host-back), joins again on a fresh socket and is
 #      seated.
+#   A3. An invite / deep-link joiner (+connect CODE, the cold-invite path)
+#      gets its offer, then the host's socket drops and the joiner's answer
+#      lands in the gap, where the worker has no host to relay it to. On
+#      host-back the joiner joins again and is seated.
 #   B. The reclaim is refused (a wrong token, as a room past its grace would
 #      be): an empty room says the room was lost instead of showing a dead
 #      code.
@@ -121,6 +125,42 @@ room_alive
 room_kill_all
 assert_clean "$OUT/host.log" "$OUT/joiner1.log"
 mv "$OUT/host.log" "$OUT/host-a2.log"
+
+echo "== A3: an invite joiner's answer is lost in the gap"
+fresh_menu_state 2>/dev/null || true
+mv "$OUT/joiner1.log" "$OUT/joiner1-a2.log"
+ROOM_PIDS=(); ROOM_WINS=()
+ROOM_PIDS[0]=$(launch host NEWTONIA_NET_TEST_LOBBY_DROP_AFTER_OFFER_MS=300 \
+                           NEWTONIA_NET_TEST_LOBBY_RECLAIM_MS=6000)
+wait_for_menu host || room_fail "HOST NEVER REACHED THE MENU" host
+ROOM_WINS[0]=$(newtonia_windows | head -1)
+nav_host "${ROOM_WINS[0]}"
+CODE_A3=$(host_room_code host)
+[ -n "$CODE_A3" ] || room_fail "NO ROOM CODE (A3)" host
+# The game reads "+connect CODE" exactly as the platform invite backends
+# hand it over (invite_deadroom.sh), so this is a cold-invite join.
+env NEWTONIA_NET_TEST_JOIN_ANSWER_DELAY_MS=2500 \
+  "$ROOT/newtonia" +connect "$CODE_A3" > "$OUT/joiner1.log" 2>&1 &
+ROOM_PIDS[1]=$!
+wait_log host "TEST dropping the relay socket after the offer" 30 ||
+  room_fail "HOST NEVER DROPPED AFTER THE OFFER" host
+wait_log joiner1 "answer sent to room" 20 ||
+  room_fail "INVITE JOINER NEVER ANSWERED" joiner1
+grep -aq "reclaiming room" "$OUT/host.log" &&
+  room_fail "ANSWER WAS TOO SLOW: the reclaim beat it (not a test)" host
+wait_log host "room $CODE_A3 reclaimed" 30 ||
+  room_fail "HOST NEVER RECLAIMED (A3)" host
+wait_log joiner1 "host reclaimed room $CODE_A3 - joining again" 20 ||
+  room_fail "INVITE JOINER DID NOT JOIN AGAIN AFTER HOST-BACK" joiner1
+wait_log host "seat 2 filled" 40 ||
+  room_fail "INVITE JOINER NEVER SEATED" host
+grep -aq "cold invite failed" "$OUT/joiner1.log" &&
+  room_fail "INVITE JOINER FAILED DESPITE BEING SEATED" joiner1
+echo "invite joiner seated"
+room_alive
+room_kill_all
+assert_clean "$OUT/host.log" "$OUT/joiner1.log"
+mv "$OUT/host.log" "$OUT/host-a3.log"
 
 echo "== B: the reclaim is refused"
 fresh_menu_state 2>/dev/null || true
