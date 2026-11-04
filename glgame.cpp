@@ -3412,11 +3412,16 @@ void GLGame::net_host_poll() {
 
 void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
                               const std::vector<std::string> &ice_servers,
-                              const std::string &room_token) {
+                              const std::string &room_token,
+                              bool reclaim_pending) {
   net_signal_ = signal;
   net_room_code_ = room_code;
   net_room_token_ = room_token;
   net_ice_ = ice_servers;
+  // The lobby lost its relay socket and had a reclaim counting down: the
+  // game's own reclaim loop takes it over (an attempt already in flight
+  // needs nothing — its Room or Closed lands here like any other).
+  if (reclaim_pending && !room_token.empty()) net_signal_retry_ms_ = 1;
   // First process-death resume checkpoint the moment the room identity
   // exists — the session is resumable from minute one, not first pause.
   net_host_resume_persist();

@@ -111,6 +111,14 @@ private:
   void cold_invite_failed(const char *headline);
   void code_entry_key(unsigned char key);
   void schedule_rejoin_retry(const char *why, int delay_ms);
+  // Host: the relay socket closed after the room existed (the worker or a
+  // network box dropped it — seen ~35 min into an idle waiting room on the
+  // kit, 2026-10-27). Reclaim the room with room_token_ after delay_ms,
+  // the same reattach the in-game host does (GLGame::net_host_signal_*).
+  void schedule_host_reclaim(const char *why, int delay_ms);
+  void host_reclaim_tick(int delta);
+  // The reclaim was refused for good (the room is gone): say so.
+  void host_room_lost(const std::string &reason);
   // A rejoin that got as far as a live session (handshake done) but then had
   // its transport flap — common in the first seconds after a network returns.
   // In rejoin mode with budget left, tear the dead session down and re-enter
@@ -120,6 +128,10 @@ private:
   // A first join whose relay-only transport got no TURN relay: drop the
   // socket and join again once with a fresh one (net_lobby.cpp).
   bool retry_join_after_relay_failure();
+  // The host reclaimed the room (host-back): re-join an unconnected
+  // pairing on a fresh socket. Deletes signal_ when it acts.
+  bool rejoin_after_host_back();
+  void restart_join(NetSignal *fresh);  // shared by both retries above
   // Controller support (Steam Deck / gamepad-only setups): CodeEntry
   // shows a character-picker grid of the code alphabet once a controller
   // is seen — d-pad/stick moves, A or right trigger types, B deletes.
@@ -401,6 +413,15 @@ private:
   bool answer_sent_;         // joiner: answer pushed to the room
   bool relay_retry_used_ = false;  // this join already retried for a relay
   int signal_wait_ms_;       // time waiting on the signal server
+  // Host reclaim (schedule_host_reclaim): >0 counts down to the next
+  // reclaim attempt; host_reclaiming_ is true from the drop until the
+  // reclaimed Room frame lands, so errors in between read as reclaim
+  // errors and a hand-off to the game carries the pending reattach.
+  int host_reclaim_ms_ = 0;
+  bool host_reclaiming_ = false;
+  // e2e hooks (lobby_reclaim.sh A3): 0 = not read yet, -1 = off/spent.
+  int test_drop_after_offer_ms_ = 0;
+  int test_answer_delay_ms_ = 0;
 
   bool paste_pending_;
   std::string paste_buffer_;

@@ -305,8 +305,10 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
     if (!json_field(frame, "ev", e)) return false;
     json_field(frame, "from", ev.peer);  // which joiner (host side, PB-D5)
     if (e == "join") { ev.kind = NetSignal::Event::PeerJoin; return true; }
+    if (e == "waiting") { ev.kind = NetSignal::Event::PeerWaiting; return true; }
     if (e == "leave" || e == "host-lost") { ev.kind = NetSignal::Event::PeerLeave; return true; }
-    return false;  // unknown peer events (e.g. host-back) are skipped
+    if (e == "host-back") { ev.kind = NetSignal::Event::HostBack; return true; }
+    return false;  // unknown peer events are skipped
   }
   return false;
 }

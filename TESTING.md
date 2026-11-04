@@ -998,6 +998,24 @@ test/e2e/lobby_leave.sh # A seated joiner pressing Esc in the waiting room
                      # to notice (field, 2026-10-27). Then the joiner who
                      # stayed still starts. A killed joiner (no goodbye)
                      # still waits for the link timeout
+test/e2e/lobby_reclaim.sh # A waiting-room host whose relay socket drops
+                     # reclaims the room with its token (the kit saw the
+                     # relay close an idle host ~35 min in, 2026-10-27, and
+                     # the code went dead after the worker's 2 min grace).
+                     # A: the drop hook holds the reclaim back 15 s, a
+                     # joiner knocks in the gap, and the worker's
+                     # "waiting" notice to the reclaimed host gets it
+                     # seated; a second joiner after the reclaim seats as
+                     # usual. A2: the drop lands on a joiner's join, before
+                     # its offer; the host holds its output while down and
+                     # the joiner, told host-back, joins again and seats.
+                     # A3: the same for a "+connect CODE" invite joiner
+                     # (cold invite), whose held-back answer lands in the
+                     # gap after its offer arrived.
+                     # B: a refused reclaim (wrong-token hook) ends an
+                     # empty room on "THE ROOM WAS LOST". C: on its own
+                     # FAKE_TURN relay, the reclaim replaces the TURN list
+                     # (1 server after, not 2)
 test/e2e/relay_retry.sh # A join whose relay-only transport gets no TURN
                      # relay retries ONCE by itself with a fresh transport
                      # and signalling socket, about 10 s in, and connects

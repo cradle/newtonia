@@ -15,6 +15,8 @@
 //   both  -> {t:"cand", mid, cand[, to]}  trickle ICE, same addressing rules;
 //                                     joiner->host cands are stamped {from}
 //   host  <- {t:"peer", ev:"join"|"leave", from}
+//   host  <- {t:"peer", ev:"waiting", from}  on a token reclaim, one per
+//                                     joiner still on the room (reclaim_host)
 //   join  <- {t:"peer", ev:"host-lost"|"host-back"}   (broadcast to all)
 //   host  -> {t:"seats", free}        how many seats the host would still
 //                                     OFFER (see room_full below); additive,
@@ -1324,6 +1326,16 @@ export class Room {
     // on the fresh Room frame.
     for (const jid of Object.keys(this.r.jids))
       this.replay_identity(ws, "joiner", jid);
+    // Name every joiner still on the room to the fresh host socket: one
+    // who knocked while the host was away got no join event (it went
+    // nowhere), and a waiting-room host offers only to jids it has heard
+    // of, so it would sit unoffered for good. A distinct event, not a
+    // replayed "join": an in-game host reads "join" as a seated peer's
+    // loss, and old builds skip unknown peer events.
+    for (const j of this.joinerWss()) {
+      const jid = this.jidOf(j);
+      if (jid !== null) this.safeSend(ws, { t: "peer", ev: "waiting", from: String(jid) });
+    }
   }
 
   async accept_joiner(ws, ice, ro = false) {

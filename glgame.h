@@ -1224,7 +1224,8 @@ private:
 public:
   void net_adopt_signal(NetSignal *signal, const std::string &room_code,
                         const std::vector<std::string> &ice_servers,
-                        const std::string &room_token);
+                        const std::string &room_token,
+                        bool reclaim_pending = false);
 private:
   void net_host_rejoin_poll(int delta);
   // M3-1: relay-socket upkeep while the CLIENT is healthy — detects a
