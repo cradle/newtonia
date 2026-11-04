@@ -403,6 +403,13 @@ NetSession::Admit NetLobby::admit_decision(
   // "No verdict yet" and "verdict said nothing" are the same stored state
   // here — both are Wait, and the session's hold turns a Wait that never
   // resolves into the refusal.
+  //
+  // Decided 2026-11-04 (maintainer): a verified ACCOUNT with no verified
+  // NAME stays anonymous here, so Xbox (PlayFab) and Game Center players
+  // are refused under NO even though their ban token would make a ban
+  // hold (net_identity_bannable). Under NO the host admits only players
+  // it can see by name; "PLAYER N - XBOX" tells them nothing. Admitting
+  // them would be `!net_identity_bannable(attested)` on the line below.
   if (net_identity_anonymous(attested)) return NetSession::AdmitWait;
   return NetSession::AdmitAllow;
 }
