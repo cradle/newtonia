@@ -17,6 +17,9 @@
 #      log must record a token, not just the name;
 #   2. the same account back under a NEW name (MALLORY2, cred ACCT1) is
 #      REFUSED and told why (reason 4) — the rename bypass, closed;
+#   2b. the same account with NO name (cred ACCT1) is refused too — the
+#      verified-account-without-a-name shape Xbox and iOS pilots have,
+#      which ALLOW ANONYMOUS NO admits on the token;
 #   3. a DIFFERENT account (CLEAN, cred ACCT2) still seats — the ban took
 #      the account, not the room;
 #   4. the host survives it all.
@@ -136,6 +139,26 @@ done
 grep -aq "seat 2 filled" <(sed -n '/banning seat 2/,$p' "$OUT/host.log") &&
   room_fail "RENAMED ACCOUNT GOT A SEAT" host
 
+echo "== the same account with NO name is refused too (the Xbox / iOS shape)"
+# ALLOW ANONYMOUS NO now admits a verified account with no name on its
+# token (net_identity_bannable) — what PlayFab and Game Center attest — so
+# this is the promise that makes that safe: the ban still holds on it.
+before=$(newtonia_windows)
+ROOM_PIDS[4]=$(launch nameless NEWTONIA_NET_TEST_CRED=ACCT1)
+sleep 4
+W=$(new_window_since "$before")
+[ -n "$W" ] || room_fail "NO WINDOW FOR THE NAMELESS ACCOUNT" nameless
+nav_join "$W" "$ROOM_CODE" nameless
+ok=
+for _ in $(seq 1 40); do
+  grep -aq "host refused this connection (reason 4)" "$OUT/nameless.log" &&
+    { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "NAMELESS BANNED ACCOUNT WAS NOT REFUSED" nameless
+grep -aq "seat 2 filled" <(sed -n '/banning seat 2/,$p' "$OUT/host.log") &&
+  room_fail "NAMELESS BANNED ACCOUNT GOT A SEAT" host
+
 echo "== a different account still seats (the ban took the account, not the room)"
 before=$(newtonia_windows)
 ROOM_PIDS[3]=$(launch clean NEWTONIA_NET_NAME=CLEAN NEWTONIA_NET_TEST_CRED=ACCT2)
@@ -153,4 +176,4 @@ done
 
 room_alive
 room_kill_all
-echo "NSEAT-BAN-TOKEN-OK (token banned, rename refused, other account seated)"
+echo "NSEAT-BAN-TOKEN-OK (token banned, rename and nameless refused, other account seated)"

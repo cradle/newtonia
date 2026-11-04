@@ -766,7 +766,11 @@ on attested frames only, stable across a rename, distinct per account).
 predicate, as a row on both screens — the waiting room's list and the
 in-game roster — writing one preference (`Preferences::allow_anonymous`,
 saved on change, default YES = the behaviour that always existed). NO
-refuses every unattested peer at the same two points the ban is enforced.
+refuses every peer a ban could not hold — no attested name and no
+account token (`net_identity_bannable`) — at the same two points the ban
+is enforced. A verified Xbox or iOS pilot (account proven, no name) is
+admitted on the token (2026-11-04; it used to need an attested NAME,
+which refused every one of them as anonymous).
 On TOUCH neither of those lists draws (the touch waiting room is the
 sparse code-and-count screen, and the pause roster never opens on touch),
 which left the policy invisible and unsettable there (field, 2026-08-26 —
@@ -791,7 +795,7 @@ count line becomes a steady `PLAYERS n/4 - TAP TO MANAGE` band
 seated pilot (name via `NetLobby::seated_display_name`, the same
 attested/late-attestation/LAN-claim ladder the desktop rows use) with
 finger-sized KICK / BAN zones under it (BAN only where a ban would hold,
-the same `net_identity_anonymous` rule as every other surface). First
+the same `net_identity_bannable` rule as every other surface). First
 tap on a zone ARMS it (`CONFIRM KICK`), a second on the same zone
 performs through the desktop rows' own `host_kick_selected`, and any
 other tap disarms — the touch spelling of the two-confirm rule. The

@@ -253,10 +253,10 @@ bool net_identity_verified(const NetIdentity &id, NetIdentityCtx ctx);
 // attested with no alias at all — platform-only would make "everyone on
 // that platform" one identity, which is exactly what the name prevents.
 //
-// One predicate, two host-facing consequences (FOURPLAYER.md O3): a ban
-// keyed on an anonymous identity would hold nothing, so the roster offers
-// only KICK there; and the ALLOW ANONYMOUS PLAYERS row refuses them the
-// room outright when the host turns it off.
+// The host-facing consequences (FOURPLAYER.md O3) go through
+// net_identity_bannable below, which widens this with the account token:
+// the roster offers BAN, and ALLOW ANONYMOUS PLAYERS NO admits, exactly
+// where a ban would hold.
 bool net_identity_anonymous(const NetIdentity &id);
 
 // BANNABLE: a ban keyed on this identity would hold. The attested-name rule
@@ -264,7 +264,9 @@ bool net_identity_anonymous(const NetIdentity &id);
 // on its own — the token pins the platform ACCOUNT, so it holds through a
 // rename and covers the iOS account-without-alias case the name rule never
 // could. What the KICK/BAN rows and bands ask before offering the second
-// action (FOURPLAYER.md O3).
+// action, and what ALLOW ANONYMOUS PLAYERS NO admits (NetLobby::
+// admit_decision) — so a verified Xbox or iOS player, account proven with
+// no name, is let in, and stays bannable once in (FOURPLAYER.md O3).
 bool net_identity_bannable(const NetIdentity &id);
 
 // True when the Typer font can draw `c`. DEFINED IN typer.cpp, right next
