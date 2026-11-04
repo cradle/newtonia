@@ -34,6 +34,7 @@ public:
       Answer,     // text = answer SDP (host)
       PeerJoin,   // a joiner entered the room (host)
       PeerWaiting,  // a joiner already in the room when ours was reclaimed
+      HostBack,   // the host reclaimed the room after a drop (joiner)
       PeerLeave,  // the joiner left the room (host)
       Ice,        // text = "urls\nusername\ncredential" (one per server)
       Cand,       // trickle ICE: text = candidate line, text2 = mid

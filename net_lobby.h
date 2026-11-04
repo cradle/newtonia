@@ -128,6 +128,10 @@ private:
   // A first join whose relay-only transport got no TURN relay: drop the
   // socket and join again once with a fresh one (net_lobby.cpp).
   bool retry_join_after_relay_failure();
+  // The host reclaimed the room (host-back): re-join an unconnected
+  // pairing on a fresh socket. Deletes signal_ when it acts.
+  bool rejoin_after_host_back();
+  void restart_join(NetSignal *fresh);  // shared by both retries above
   // Controller support (Steam Deck / gamepad-only setups): CodeEntry
   // shows a character-picker grid of the code alphabet once a controller
   // is seen — d-pad/stick moves, A or right trigger types, B deletes.

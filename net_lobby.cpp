@@ -619,6 +619,8 @@ void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
 //    ordinary drop and holds the room in grace, as for the kit's 35 min);
 //  NEWTONIA_NET_TEST_LOBBY_RECLAIM_MS=N      first reclaim waits N ms
 //    instead of 3 s, so a driver can knock on the room in the gap;
+//  NEWTONIA_NET_TEST_LOBBY_DROP_ON_JOIN=1    the same drop, the moment the
+//    first joiner's PeerJoin arrives (before its offer is gathered);
 //  NEWTONIA_NET_TEST_LOBBY_RECLAIM_BAD_TOKEN=1  the reclaim sends a wrong
 //    token, which the worker refuses as no-such-room: the lost-room path.
 static int test_env_int(const char *name, int dflt) {
@@ -653,6 +655,12 @@ void NetLobby::host_reclaim_tick(int delta) {
   static bool bad_token =
       test_env_int("NEWTONIA_NET_TEST_LOBBY_RECLAIM_BAD_TOKEN", 0) != 0;
   NET_LOG("[lobby] reclaiming room %s\n", room_code_.c_str());
+  // Fresh TURN credentials ride the reclaim reply, and the Ice handler only
+  // appends: keep the old set and a transport minted after the reclaim
+  // would get the stale credentials first (libjuice keeps the first entry
+  // per server address), failing relay joins once they expire. The
+  // in-game host clears the same way (net_host_signal_reclaim_tick).
+  ice_servers_.clear();
   signal_->connect_host_reclaim(net_signal_url(), room_code_,
                                 bad_token ? std::string("bad") : room_token_);
 }
@@ -736,6 +744,34 @@ bool NetLobby::retry_join_after_relay_failure() {
   relay_retry_used_ = true;
   NET_LOG("[lobby] no TURN relay - joining room %s again with a fresh"
           " transport\n", code_entry_.c_str());
+  restart_join(fresh);
+  return true;
+}
+
+// The room's host lost its relay socket and reclaimed the room
+// ({t:"peer", ev:"host-back"}). Whatever we were negotiating may have
+// crossed the gap: an answer or candidates sent while the host was away
+// went nowhere (the worker has no host to relay them to), so a pairing not
+// yet connected would wait out its timeout. Join again on a fresh socket
+// instead: the old jid's leave frees the host's half-made pairing and the
+// new jid's join gets a fresh offer — the same path a player backing out
+// and retyping the code takes. A connected link needs no relay; leave it.
+bool NetLobby::rejoin_after_host_back() {
+  if (hosting_ || rejoin_mode_ || code_entry_.empty()) return false;
+  if (screen_ != RoomJoining && screen_ != WaitConnect) return false;
+  NetTransport *t = session_ ? session_->transport() : transport_;
+  if (t && t->connected()) return false;
+  NetSignal *fresh = NetSignal::create();
+  if (!fresh) return false;
+  NET_LOG("[lobby] host reclaimed room %s - joining again\n",
+          code_entry_.c_str());
+  restart_join(fresh);
+  return true;
+}
+
+// A fresh transport and signalling socket for the same room code; the old
+// socket's close tells the host to drop the half-made pairing.
+void NetLobby::restart_join(NetSignal *fresh) {
   delete session_;  // closes + deletes the transport it owns
   session_ = nullptr;
   if (transport_) {
@@ -765,7 +801,6 @@ bool NetLobby::retry_join_after_relay_failure() {
   set_status("CONNECTING");
   screen_ = RoomJoining;
   signal_->connect_join(net_signal_url(), code_entry_, false);
-  return true;
 }
 
 NetLobby::~NetLobby() {
@@ -2036,8 +2071,11 @@ void NetLobby::pump_signal(int delta) {
 
   // Host: the offer goes to the room the moment gathering yields it; the
   // worker replays it to a joiner arriving later.
+  // Nothing goes out while a reclaim is under way: the socket is dead, and
+  // a send would mark the offer/candidates delivered when they were lost.
+  // They go out on the reclaimed socket instead.
   if (hosting_ && !offer_sent_ && !room_code_.empty() && transport_ &&
-      transport_->local_description_ready()) {
+      !host_reclaiming_ && transport_->local_description_ready()) {
     signal_->send_offer(transport_->local_description());
     offer_sent_ = true;
     NET_LOG("[lobby] offer sent to room %s\n", room_code_.c_str());
@@ -2046,7 +2084,7 @@ void NetLobby::pump_signal(int delta) {
   // Waiting room (B4b): each pending joiner's offer goes out ADDRESSED the
   // moment its own gathering yields it (PB-D5 {t:"offer", to}) — the
   // worker stores it per-jid and never routes it to anyone else.
-  if (waiting_room() && !room_code_.empty()) {
+  if (waiting_room() && !room_code_.empty() && !host_reclaiming_) {
     for (std::map<std::string, PendingJoiner>::iterator it = pending_.begin();
          it != pending_.end(); ++it) {
       PendingJoiner &pj = it->second;
@@ -2138,7 +2176,8 @@ void NetLobby::pump_signal(int delta) {
           send_local_identity();
           if (!waiting_room() && transport_ && !session_) offer_sent_ = false;
           status_ms_ = 0;  // drop any RECONNECTING line
-          NET_LOG("[lobby] room %s reclaimed\n", room_code_.c_str());
+          NET_LOG("[lobby] room %s reclaimed (%d turn servers)\n",
+                  room_code_.c_str(), (int)ice_servers_.size());
           break;
         }
         room_code_ = ev.text;
@@ -2249,6 +2288,10 @@ void NetLobby::pump_signal(int delta) {
           }
         }
         break;
+      case NetSignal::Event::HostBack:
+        // rejoin_after_host_back deletes signal_ when it acts: stop polling.
+        if (rejoin_after_host_back()) return;
+        break;
       case NetSignal::Event::PeerWaiting:
         // A joiner who knocked while our socket was down (worker.js
         // reclaim_host replays them). Only the waiting room mints per-jid
@@ -2275,6 +2318,19 @@ void NetLobby::pump_signal(int delta) {
               pending_[ev.peer] = pj;
               NET_LOG("[lobby] waiting room: gathering an offer for %s\n",
                       ev.peer.c_str());
+              // e2e hook (lobby_reclaim.sh): the socket dies right here,
+              // after the join and before its offer can go out — the
+              // negotiation the reclaim has to recover.
+              static bool drop_on_join =
+                  test_env_int("NEWTONIA_NET_TEST_LOBBY_DROP_ON_JOIN", 0) != 0;
+              if (drop_on_join && ev.kind == NetSignal::Event::PeerJoin) {
+                drop_on_join = false;
+                NET_LOG("[lobby] TEST dropping the relay socket on join\n");
+                signal_->close();
+                schedule_host_reclaim("test drop on join",
+                                      host_reclaim_first_ms());
+                return;
+              }
             }
           } else if (!known) {
             NET_LOG("[lobby] waiting room: joiner %s waits (room full)\n",
@@ -2647,7 +2703,7 @@ void NetLobby::tick(int delta) {
   // our SDP has gone out: a candidate sent BEFORE its offer is buffered by
   // the relay and then wiped when the offer arrives (fresh-offer rule) —
   // and candidates can be gathered before the description is ready.
-  if (signal_ && (hosting_ ? offer_sent_ : answer_sent_)) {
+  if (signal_ && !host_reclaiming_ && (hosting_ ? offer_sent_ : answer_sent_)) {
     NetTransport *t =
         transport_ ? transport_ : (session_ ? session_->transport() : nullptr);
     std::string c;
@@ -2662,7 +2718,7 @@ void NetLobby::tick(int delta) {
   // Waiting room: each pending joiner's candidates go out ADDRESSED, and
   // only after ITS offer (same fresh-offer wipe rule as above). Seated
   // peers are connected; their gathering is done.
-  if (signal_ && waiting_room()) {
+  if (signal_ && waiting_room() && !host_reclaiming_) {
     for (std::map<std::string, PendingJoiner>::iterator it = pending_.begin();
          it != pending_.end(); ++it) {
       if (it->second.lan || !it->second.offer_sent) continue;

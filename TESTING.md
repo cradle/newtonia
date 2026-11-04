@@ -1006,8 +1006,13 @@ test/e2e/lobby_reclaim.sh # A waiting-room host whose relay socket drops
                      # joiner knocks in the gap, and the worker's
                      # "waiting" notice to the reclaimed host gets it
                      # seated; a second joiner after the reclaim seats as
-                     # usual. B: a refused reclaim (wrong-token hook) ends
-                     # an empty room on "THE ROOM WAS LOST"
+                     # usual. A2: the drop lands on a joiner's join, before
+                     # its offer; the host holds its output while down and
+                     # the joiner, told host-back, joins again and seats.
+                     # B: a refused reclaim (wrong-token hook) ends an
+                     # empty room on "THE ROOM WAS LOST". C: on its own
+                     # FAKE_TURN relay, the reclaim replaces the TURN list
+                     # (1 server after, not 2)
 test/e2e/relay_retry.sh # A join whose relay-only transport gets no TURN
                      # relay retries ONCE by itself with a fresh transport
                      # and signalling socket, about 10 s in, and connects
