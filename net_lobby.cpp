@@ -400,10 +400,16 @@ NetSession::Admit NetLobby::admit_decision(
   if (!worker_session) return NetSession::AdmitAnonymous;
   // Deliberately NOT the peer's own claim: an unattested name is a
   // self-report, which is exactly what this policy exists to refuse.
-  // "No verdict yet" and "verdict said nothing" are the same stored state
-  // here — both are Wait, and the session's hold turns a Wait that never
-  // resolves into the refusal.
-  if (net_identity_anonymous(attested)) return NetSession::AdmitWait;
+  // BANNABLE, not merely named (decided 2026-11-04, kit72): a verified
+  // account with no name — Xbox (PlayFab) and Game Center prove the
+  // account but return no alias — carries the worker's ban token, so a
+  // ban on that pilot holds through any rename, which is what NO exists
+  // to guarantee. It used to ask for an attested NAME
+  // (net_identity_anonymous) and refused every verified Xbox and iOS
+  // player as anonymous. "No verdict yet" and "verdict said nothing" are
+  // the same stored state here — both are Wait, and the session's hold
+  // turns a Wait that never resolves into the refusal.
+  if (!net_identity_bannable(attested)) return NetSession::AdmitWait;
   return NetSession::AdmitAllow;
 }
 

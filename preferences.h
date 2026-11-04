@@ -141,8 +141,10 @@ struct Preferences {
 #endif
     // Hosting policy (FOURPLAYER.md O3): may players the signalling worker
     // could not vouch for take a seat? Default YES, which is the behaviour
-    // that always existed. NO refuses every peer whose NAME the worker did
-    // not attest (net_identity_anonymous) at the two points a handshake
+    // that always existed. NO refuses every peer the worker did not attest
+    // as bannable — an attested name or an account ban token
+    // (net_identity_bannable; Xbox and iOS pilots pass on the token
+    // alone) — at the two points a handshake
     // first says who answered — the waiting room and the mid-game rejoin
     // door. Note this is strict by design: a room of desktop builds attests
     // nobody, so turning it off there closes the room to everyone.

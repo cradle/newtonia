@@ -5,8 +5,9 @@
 #
 # The whole test hinges on the difference between the two kinds of joiner,
 # so it drives its own FAKE_VERIFY relay (identity_attested.sh's pattern):
-# a NAMED pilot gets attested and must be seated, a NAMELESS one cannot be
-# and must be refused. Against the plain :8787 dev relay nobody is attested
+# a NAMED pilot gets attested and must be seated, so must a nameless one
+# whose account is verified (Xbox/iOS), and one with neither must be
+# refused. Against the plain :8787 dev relay nobody is attested
 # and the first half would fail for the wrong reason.
 #
 # Also proves the hold: the worker's verdict is async and normally lands
@@ -88,12 +89,36 @@ done
 [ "$(grep -ac "platform told peer admitted" "$OUT/host.log")" = 1 ] ||
   room_fail "PLATFORM NOT TOLD OF THE ADMISSION ONCE" host
 
-echo "== a pilot with no name at all is refused"
-# No NEWTONIA_NET_NAME: the claim carries an empty name, so the worker
-# attests the platform and nothing else — anonymous by the same rule that
-# decides whether BAN is offered (net_identity_anonymous).
+echo "== a verified account with no name is seated (the Xbox / iOS case)"
+# No NEWTONIA_NET_NAME but a credential: the worker proves an ACCOUNT and
+# attests no name, exactly what PlayFab (Xbox) and Game Center (iOS) give
+# it — and mints the account's ban token. NO admits on the token
+# (net_identity_bannable): a ban on this pilot would hold. It used to
+# require an attested NAME and refused every verified Xbox player as
+# anonymous (kit72, 2026-11-03).
 before=$(newtonia_windows)
-ROOM_PIDS[2]=$(launch anon)
+ROOM_PIDS[2]=$(launch nameless NEWTONIA_NET_TEST_CRED=XBOXACCT)
+sleep 4
+W=$(new_window_since "$before")
+[ -n "$W" ] || room_fail "NO WINDOW FOR THE NAMELESS VERIFIED PILOT" nameless
+nav_join "$W" "$ROOM_CODE" nameless
+ok=
+for _ in $(seq 1 40); do
+  grep -aq "seat 3 filled" "$OUT/host.log" && { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "VERIFIED NAMELESS PILOT WAS NOT SEATED" host
+grep -aq "refusing anonymous pilot" "$OUT/host.log" &&
+  room_fail "VERIFIED NAMELESS PILOT WAS REFUSED AS ANONYMOUS" host
+[ "$(grep -ac "platform told peer admitted" "$OUT/host.log")" = 2 ] ||
+  room_fail "PLATFORM NOT TOLD OF THE SECOND ADMISSION ONCE" host
+
+echo "== a pilot with no name and no account is refused"
+# No NEWTONIA_NET_NAME and no credential: the worker attests the platform
+# and nothing else, mints no token — a ban could not hold, by the same
+# rule that decides whether BAN is offered (net_identity_bannable).
+before=$(newtonia_windows)
+ROOM_PIDS[3]=$(launch anon)
 sleep 4
 W=$(new_window_since "$before")
 [ -n "$W" ] || room_fail "NO WINDOW FOR THE ANONYMOUS PILOT" anon
@@ -104,11 +129,11 @@ for _ in $(seq 1 40); do
   sleep 1
 done
 [ -n "$ok" ] || room_fail "ANONYMOUS PILOT WAS NOT REFUSED" host
-grep -aq "seat 3 filled" "$OUT/host.log" &&
+grep -aq "seat 4 filled" "$OUT/host.log" &&
   room_fail "ANONYMOUS PILOT GOT A SEAT" host
 # The platform allowed this pilot (the default backend allows everyone),
 # but the room refused them: the platform must not hear of an admission.
-[ "$(grep -ac "platform told peer admitted" "$OUT/host.log")" = 1 ] ||
+[ "$(grep -ac "platform told peer admitted" "$OUT/host.log")" = 2 ] ||
   room_fail "PLATFORM TOLD OF A REFUSED PILOT" host
 
 echo "== ...and is TOLD why"
@@ -126,4 +151,4 @@ done
 
 room_alive
 room_kill_all
-echo "NSEAT-ANON-OK (attested seated, anonymous refused)"
+echo "NSEAT-ANON-OK (named and nameless-verified seated, anonymous refused)"
