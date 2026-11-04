@@ -103,6 +103,7 @@ jobs:
           node test/offer_pv_test.mjs
           node test/frame_bounds_test.mjs
           node test/reclaim_chain_test.mjs
+          node test/reclaim_waiting_test.mjs
           kill $DEV_PID
           # Which joins get TURN: its own server with FAKE_TURN, since the
           # placeholder ice frames would reorder the tests above.

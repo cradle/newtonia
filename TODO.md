@@ -2,17 +2,16 @@
 
 Follow-ups that need a person, a device or an account we don't have to hand.
 
-## Waiting-room host: reconnect when the signal connection drops
+## Waiting-room host reconnect: field check
 
-A host sitting in the online waiting room ignores its signal socket
-closing (`NetLobby::pump_signal`, `NetSignal::Event::Closed`: "Later
-screens no longer need the relay; ignore"). The worker keeps the room for
-`HOST_GRACE_MS` (2 min) and then deletes it, so the host keeps showing a
-room code that nobody can join (no-such-room). Seen on the kit test
-2026-10-27: the server side closed the host's socket about 35 minutes in,
-with no worker deploy at the time. A host already in a game reclaims the
-room (`connect_host_reclaim`); the waiting room should do the same with
-its reclaim token, and say so on screen if the reclaim fails.
+A waiting-room host now reclaims its room when the relay socket closes
+(`NetLobby::schedule_host_reclaim`), and the reclaimed worker names the
+joiners who knocked meanwhile (`{t:"peer", ev:"waiting"}`), covered by
+`test/e2e/lobby_reclaim.sh` and `signal/test/reclaim_waiting_test.mjs`.
+Still to do by hand: leave a kit (or PC) host idle in the waiting room
+past the ~35 min mark seen on 2026-10-27, against the beta worker, and
+check its log for `[lobby] room XXXXX reclaimed` and that a join still
+works afterwards.
 
 ## Google Play Games on PC: Play Console and a field test
 

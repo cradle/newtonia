@@ -613,6 +613,81 @@ void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
   if (rejoin_retry_ms_ <= 0) rejoin_retry_ms_ = delay_ms;
 }
 
+// e2e hooks (test/e2e/lobby_reclaim.sh), read once:
+//  NEWTONIA_NET_TEST_LOBBY_DROP_SIGNAL_MS=N  the waiting-room host closes
+//    its relay socket N ms after its Room frame, once (the worker sees an
+//    ordinary drop and holds the room in grace, as for the kit's 35 min);
+//  NEWTONIA_NET_TEST_LOBBY_RECLAIM_MS=N      first reclaim waits N ms
+//    instead of 3 s, so a driver can knock on the room in the gap;
+//  NEWTONIA_NET_TEST_LOBBY_RECLAIM_BAD_TOKEN=1  the reclaim sends a wrong
+//    token, which the worker refuses as no-such-room: the lost-room path.
+static int test_env_int(const char *name, int dflt) {
+  const char *v = SDL_getenv(name);
+  return v ? std::atoi(v) : dflt;
+}
+static int host_reclaim_first_ms() {
+  static int ms = test_env_int("NEWTONIA_NET_TEST_LOBBY_RECLAIM_MS", 3000);
+  return ms;
+}
+
+void NetLobby::schedule_host_reclaim(const char *why, int delay_ms) {
+  NET_LOG("[lobby] relay socket lost for room %s (%s), reclaim in %d ms\n",
+          room_code_.c_str(), why, delay_ms);
+  // A failed attempt (none still counting down) is worth a line on screen.
+  // The first drop is silent: its reclaim normally lands in a few seconds,
+  // before anyone could have used the dead code.
+  if (host_reclaiming_ && host_reclaim_ms_ <= 0)
+    set_status("RECONNECTING TO THE ROOM SERVER", 20000);
+  // Warm a fresh verification credential now, as the in-game host does:
+  // the mint is async and the reclaimed Room frame's re-announce reads it.
+  if (!host_reclaiming_) (void)net_local_verify_credential();
+  host_reclaiming_ = true;
+  if (host_reclaim_ms_ <= 0) host_reclaim_ms_ = delay_ms;
+}
+
+void NetLobby::host_reclaim_tick(int delta) {
+  if (host_reclaim_ms_ <= 0 || !signal_) return;
+  host_reclaim_ms_ -= delta;
+  if (host_reclaim_ms_ > 0) return;
+  host_reclaim_ms_ = 0;
+  static bool bad_token =
+      test_env_int("NEWTONIA_NET_TEST_LOBBY_RECLAIM_BAD_TOKEN", 0) != 0;
+  NET_LOG("[lobby] reclaiming room %s\n", room_code_.c_str());
+  signal_->connect_host_reclaim(net_signal_url(), room_code_,
+                                bad_token ? std::string("bad") : room_token_);
+}
+
+// The room is gone for good (the reclaim came too late, or was refused).
+// Seated players are still connected peer to peer, so a room with anyone
+// in it carries on — only the code is dead. An empty room has nothing
+// left: say so instead of showing a code nobody can use.
+void NetLobby::host_room_lost(const std::string &reason) {
+  NET_LOG("[lobby] room %s lost (%s)\n", room_code_.c_str(), reason.c_str());
+  host_reclaiming_ = false;
+  host_reclaim_ms_ = 0;
+  if (signal_) {
+    signal_->close();
+    delete signal_;
+    signal_ = nullptr;
+  }
+  room_token_.clear();
+  mark_room_dead(room_code_);
+  Invites::clear_joinable();
+  if (!seated_.empty() || session_) {
+    set_status("THE ROOM CODE EXPIRED - NO ONE NEW CAN JOIN", 30000);
+    return;
+  }
+  teardown_waiting_room();
+  if (transport_) {
+    transport_->close();
+    delete transport_;
+    transport_ = nullptr;
+  }
+  fail_headline_ = "THE ROOM WAS LOST";
+  set_status("HOST A NEW ROOM", 2 * STATUS_SHOW_MS);
+  screen_ = LobbyFailed;
+}
+
 // The handshake completed on a rejoin (WaitConnect Ready / Connected), then
 // the fresh transport failed — a WebRTC path routinely flaps once in the
 // first seconds after wifi/cell returns. Giving up here stranded the joiner
@@ -1483,7 +1558,9 @@ int NetLobby::next_free_seat() const {
 // the crowd at the door. Re-sent after every Room frame: a reclaimed room
 // forgets it (worker.js reclaim_host).
 void NetLobby::host_report_seats() {
-  if (!hosting_ || !signal_ || room_code_.empty() || !waiting_room()) return;
+  if (!hosting_ || !signal_ || room_code_.empty() || !waiting_room() ||
+      host_reclaiming_)
+    return;  // a socket mid-reclaim would drop the report
   int free = 0;
   for (int s = 2; s <= net_seat_cap(); s++) {
     bool used = false;
@@ -1945,7 +2022,8 @@ void NetLobby::waiting_room_start() {
   game->net_set_worker_session(used_worker_);
   game->net_lan_beacon_name_ = lan_beacon_name_;
   if (signal_) {
-    game->net_adopt_signal(signal_, room_code_, ice_servers_, room_token_);
+    game->net_adopt_signal(signal_, room_code_, ice_servers_, room_token_,
+                           host_reclaim_ms_ > 0);
     signal_ = nullptr;
   }
   handed_off_to_game_ = true;  // credential lifetime moves to the game
@@ -1954,6 +2032,7 @@ void NetLobby::waiting_room_start() {
 
 void NetLobby::pump_signal(int delta) {
   if (!signal_) return;
+  host_reclaim_tick(delta);
 
   // Host: the offer goes to the room the moment gathering yields it; the
   // worker replays it to a joiner arriving later.
@@ -2044,6 +2123,24 @@ void NetLobby::pump_signal(int delta) {
         break;
       }
       case NetSignal::Event::Room:
+        if (host_reclaiming_ && hosting_ && ev.text == room_code_) {
+          // Our own room, reclaimed on a fresh socket. The code, clipboard
+          // link, invite and transports all still stand; what the worker
+          // forgot is ours to resend: identity (re-attest), the seat count,
+          // and a classic pair's still-unanswered offer (reclaim_host drops
+          // the stored one with the old socket). A waiting room's per-jid
+          // offers went out live and aren't stored, and the joiners who
+          // knocked while we were gone arrive as PeerWaiting next.
+          host_reclaiming_ = false;
+          host_reclaim_ms_ = 0;
+          if (!ev.text2.empty()) room_token_ = ev.text2;
+          seats_reported_ = -1;
+          send_local_identity();
+          if (!waiting_room() && transport_ && !session_) offer_sent_ = false;
+          status_ms_ = 0;  // drop any RECONNECTING line
+          NET_LOG("[lobby] room %s reclaimed\n", room_code_.c_str());
+          break;
+        }
         room_code_ = ev.text;
         seats_reported_ = -1;    // a (re)claimed room has no seat count yet
         room_token_ = ev.text2;  // reclaim proof, handed to the game
@@ -2152,6 +2249,14 @@ void NetLobby::pump_signal(int delta) {
           }
         }
         break;
+      case NetSignal::Event::PeerWaiting:
+        // A joiner who knocked while our socket was down (worker.js
+        // reclaim_host replays them). Only the waiting room mints per-jid
+        // offers; a classic pair's re-sent offer reaches them anyway.
+        if (!waiting_room() || ev.peer.empty()) break;
+        NET_LOG("[lobby] waiting room: %s was waiting during the reclaim\n",
+                ev.peer.c_str());
+        // fall through: the same as a fresh arrival (known jids are skipped)
       case NetSignal::Event::PeerJoin:
         if (waiting_room() && !ev.peer.empty()) {
           // One transport per joiner, offer addressed to its jid (an SDP
@@ -2341,6 +2446,23 @@ void NetLobby::pump_signal(int delta) {
         }
         break;
       case NetSignal::Event::Error:
+        if (hosting_ && host_reclaiming_) {
+          // The reclaim's verdict, mirroring the in-game host
+          // (GLGame::net_host_signal_common_event): a throttle or our own
+          // not-yet-evicted ghost socket means try again; anything else
+          // (no-such-room, expired, host-closed) means the room is gone.
+          NET_LOG("[lobby] room %s reclaim refused: %s\n", room_code_.c_str(),
+                  ev.text.c_str());
+          if (ev.text == "rate-limited") {
+            schedule_host_reclaim("rate-limited", 15000);
+          } else if (ev.text == "room-in-use") {
+            schedule_host_reclaim("room-in-use", 3000);
+          } else {
+            host_room_lost(ev.text);  // deletes signal_
+            return;
+          }
+          break;
+        }
         if (rejoin_mode_ && (screen_ == RoomJoining || screen_ == CodeEntry)) {
           if (cold_invite_) {
             // A fresh invite: every relay error is terminal — no reconnect
@@ -2423,6 +2545,17 @@ void NetLobby::pump_signal(int delta) {
           }
           join_unreachable("socket closed while joining");
           return;
+        } else if (hosting_ && !room_code_.empty() && !room_token_.empty()) {
+          // The room exists and we hold its token: reattach. Seen on the
+          // kit (2026-10-27): the relay closed an idle waiting-room host's
+          // socket ~35 min in, and the worker deletes a hostless room after
+          // 2 min (HOST_GRACE_MS), so the code on screen went dead. A
+          // reclaim costs one connection, only when a drop actually
+          // happens — no keepalive traffic on a healthy idle socket.
+          schedule_host_reclaim("socket closed", host_reclaiming_
+                                                     ? 3000
+                                                     : host_reclaim_first_ms());
+          break;
         }
         // Later screens no longer need the relay; ignore.
         break;
@@ -2454,6 +2587,24 @@ void NetLobby::tick(int delta) {
     leaving_ms_ -= delta;
     if (leaving_ms_ <= 0) finish_leave_to_menu();
     return;
+  }
+
+  // e2e hook (see host_reclaim_first_ms): drop the host's relay socket
+  // once, N ms after the room exists. A local close emits no Closed event,
+  // so arm the reclaim the way that event would.
+  {
+    static int drop_ms =
+        test_env_int("NEWTONIA_NET_TEST_LOBBY_DROP_SIGNAL_MS", -1);
+    if (drop_ms > 0 && hosting_ && signal_ && !room_code_.empty() &&
+        !host_reclaiming_) {
+      drop_ms -= delta;
+      if (drop_ms <= 0) {
+        drop_ms = -1;
+        NET_LOG("[lobby] TEST dropping the relay socket\n");
+        signal_->close();
+        schedule_host_reclaim("test drop", host_reclaim_first_ms());
+      }
+    }
   }
 
   pump_signal(delta);
@@ -2821,7 +2972,7 @@ void NetLobby::tick(int delta) {
           game->net_lan_beacon_name_ = lan_beacon_name_;
           if (signal_) {
             game->net_adopt_signal(signal_, room_code_, ice_servers_,
-                                   room_token_);
+                                   room_token_, host_reclaim_ms_ > 0);
             signal_ = nullptr;
           }
           handed_off_to_game_ = true;  // credential lifetime moves to the game

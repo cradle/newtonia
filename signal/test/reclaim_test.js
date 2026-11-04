@@ -70,6 +70,9 @@ function check(name, cond) {
   check("token stable across reclaim", re.token === token);
   const hb = await join1._recv();
   check("joiner sees host-back", hb.t === "peer" && hb.ev === "host-back");
+  // ...and the reclaimed host is told that joiner is still waiting.
+  const w1 = await host2._recv();
+  check("reclaimed host told who is waiting", w1.t === "peer" && w1.ev === "waiting");
 
   // 7. Fresh offer relays to the waiting joiner.
   host2.send(JSON.stringify({ t: "offer", sdp: "sdp-after-reclaim" }));
@@ -91,6 +94,10 @@ function check(name, cond) {
   const host3 = await connect(`?role=host&code=${code}&token=${encodeURIComponent(token)}`);
   const re3 = await host3._recv();
   check("reclaim with joiner waiting", re3.t === "room");
+  // The joiner who arrived during grace is named to the reclaimed host
+  // (it never got the join event: there was no host socket to send it to).
+  const w3 = await host3._recv();
+  check("joiner who knocked in grace is named", w3.t === "peer" && w3.ev === "waiting");
   // joiner got host-back too
   const hb2 = await join2._recv();
   check("waiting joiner sees host-back", hb2.t === "peer" && hb2.ev === "host-back");
