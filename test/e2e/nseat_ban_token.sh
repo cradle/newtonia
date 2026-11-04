@@ -139,6 +139,12 @@ done
 grep -aq "seat 2 filled" <(sed -n '/banning seat 2/,$p' "$OUT/host.log") &&
   room_fail "RENAMED ACCOUNT GOT A SEAT" host
 
+# Close the refused rename first: the worker holds at most MAX_JOINERS (3)
+# open joiner sockets, and the banned MALLORY plus two refused processes
+# still parked on their cards would fill the room before CLEAN arrives.
+kill_tree "${ROOM_PIDS[2]}" 2>/dev/null; ROOM_PIDS[2]=
+sleep 2
+
 echo "== the same account with NO name is refused too (the Xbox / iOS shape)"
 # ALLOW ANONYMOUS NO now admits a verified account with no name on its
 # token (net_identity_bannable) — what PlayFab and Game Center attest — so
