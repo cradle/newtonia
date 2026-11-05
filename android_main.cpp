@@ -695,13 +695,32 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         Mix_PlayChannel(-1, &warm, 0);
     }
 
-    // Game controller (Android may have a physical gamepad via USB/BT)
+    // Game controller (Android may have a physical gamepad via USB/BT).
+    // Only a pad with a stick counts. SDL's Java layer treats every input
+    // device with a D-pad source as a joystick, and gives one with a
+    // D-pad centre and a Back key but no B button a made-up mapping where
+    // Back IS the B button ("for TV remotes", SDL_gamecontroller.c). A
+    // car's controls under Android Auto are such a device: opened here,
+    // the car's Back key arrived as an unknown pad's B, which seats a
+    // player 2 instead of leaving the game (field, 2026-11-05). Left
+    // closed, SDL hands the same keys over as keyboard keys (Back becomes
+    // Esc, the centre Return, the D-pad the arrows), which the key paths
+    // below already answer: Esc is the platform Back.
     SDL_JoystickEventState(SDL_ENABLE);
     SDL_GameController *controller = nullptr;
-    for (int i = 0; i < SDL_NumJoysticks(); i++) {
-        if (SDL_IsGameController(i)) {
-            controller = SDL_GameControllerOpen(i);
-            if (controller) break;
+    for (int i = 0; i < SDL_NumJoysticks() && !controller; i++) {
+        if (!SDL_IsGameController(i)) continue;
+        SDL_GameController *c = SDL_GameControllerOpen(i);
+        if (!c) continue;
+        const char *name = SDL_GameControllerName(c);
+        if (SDL_GameControllerHasAxis(c, SDL_CONTROLLER_AXIS_LEFTX) &&
+            SDL_GameControllerHasAxis(c, SDL_CONTROLLER_AXIS_LEFTY)) {
+            SDL_Log("Controller: %s", name ? name : "?");
+            controller = c;
+        } else {
+            SDL_Log("Controller skipped (no stick, keys stay keyboard): %s",
+                    name ? name : "?");
+            SDL_GameControllerClose(c);
         }
     }
 
