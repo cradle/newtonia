@@ -464,14 +464,51 @@ NetLobby::NetLobby()
   (void)net_local_verify_credential();
 }
 
-void NetLobby::fail_online_not_allowed() {
-  fail_headline_ = "ONLINE PLAY NOT ALLOWED";
-  set_status("THIS ACCOUNT CANNOT PLAY ONLINE", 2 * STATUS_SHOW_MS);
+void NetLobby::fail_online_not_allowed(bool from_choose) {
   policy_blocked_ = true;
+  policy_from_choose_ = from_choose;
   screen_ = LobbyFailed;
+  set_policy_fail_text();
+  NET_LOG("[lobby] online play refused (reason %d)\n", (int)policy_reason_);
   // The platform's own dialog, if it has one (net_policy.h): the reason
-  // and, where the player can fix it, the way to.
+  // and, where the player can fix it, the way to — for a player who isn't
+  // signed in, the platform's sign-in.
   net_online_play_explain();
+}
+
+void NetLobby::set_policy_fail_text() {
+  policy_reason_ = net_online_play_refusal();
+  switch (policy_reason_) {
+    case NET_ONLINE_REFUSED_SIGN_IN:
+      // Said plainly: "not allowed" read as a ban when the only thing
+      // missing was a signed-in player (Xbox kit, 2026-11-08).
+      fail_headline_ = "SIGN IN TO PLAY ONLINE";
+      set_status("NO PLAYER IS SIGNED IN", 2 * STATUS_SHOW_MS);
+      break;
+    case NET_ONLINE_REFUSED_OTHER_PLAYER:
+      fail_headline_ = "RESTART TO PLAY AS THIS PLAYER";
+      set_status("A DIFFERENT PLAYER SIGNED IN", 2 * STATUS_SHOW_MS);
+      break;
+    case NET_ONLINE_REFUSED_ACCOUNT:
+    default:
+      fail_headline_ = "ONLINE PLAY NOT ALLOWED";
+      set_status("THIS ACCOUNT CANNOT PLAY ONLINE", 2 * STATUS_SHOW_MS);
+      break;
+  }
+}
+
+void NetLobby::tick_policy_block() {
+  if (!policy_blocked_ || screen_ != LobbyFailed) return;
+  if (net_online_play_allowed()) {
+    if (!policy_from_choose_) return;  // TRY AGAIN goes back to the menu
+    NET_LOG("[lobby] online play allowed again - back to the chooser\n");
+    policy_blocked_ = false;
+    policy_from_choose_ = false;
+    reset_to_choose();
+    set_status("READY TO PLAY ONLINE");
+    return;
+  }
+  if (net_online_play_refusal() != policy_reason_) set_policy_fail_text();
 }
 
 NetLobby::NetLobby(const std::string &rejoin_code)
@@ -935,7 +972,7 @@ void NetLobby::confirm() {
     // allows). The menu already hides ONLINE when disallowed — this covers
     // a mid-session privilege change and any path straight into the lobby.
     if (!net_online_play_allowed()) {
-      fail_online_not_allowed();
+      fail_online_not_allowed(/*from_choose=*/true);
       return;
     }
     hosting_ = (selection_ == 0);
@@ -1057,6 +1094,13 @@ void NetLobby::confirm() {
     // menu, whose ONLINE row tries afresh (the platform's explain dialog
     // may have fixed the account meanwhile).
     if (policy_blocked_) {
+      // Nobody signed in: confirm asks for the platform's sign-in again
+      // (the first one may have been cancelled), and a sign-in brings the
+      // chooser back by itself (tick_policy_block).
+      if (policy_reason_ == NET_ONLINE_REFUSED_SIGN_IN) {
+        net_online_play_explain();
+        return;
+      }
       leave_to_menu();
       return;
     }
@@ -2683,6 +2727,7 @@ void NetLobby::tick(int delta) {
   viewpoint += Point(1, 0) * (0.025 * delta);
   if (viewpoint.x() > WORLD_W) viewpoint += Point(-WORLD_W, 0);
   if (status_ms_ > 0) status_ms_ -= delta;
+  tick_policy_block();
   // Leaving the waiting room: the goodbye is on its way, so nothing else
   // runs (a snapshot landing now must not start the game we just left).
   if (leaving_ms_ > 0) {
@@ -3952,11 +3997,23 @@ void NetLobby::draw() {
       if (blink) lines.push_back("WAITING FOR HOST START");
       break;
     }
-    case LobbyFailed:
+    case LobbyFailed: {
       lines.push_back(fail_headline_);
       lines.push_back("");
-      lines.push_back(is_touch_mode() ? "TAP TO TRY AGAIN" : "ENTER - TRY AGAIN");
+      // A sign-in screen answers confirm with the platform's sign-in, so
+      // it says so; a pad pilot reads the pad's confirm button, not ENTER.
+      const bool sign_in =
+          policy_blocked_ && policy_reason_ == NET_ONLINE_REFUSED_SIGN_IN;
+      if (is_touch_mode()) {
+        lines.push_back(sign_in ? "TAP TO SIGN IN" : "TAP TO TRY AGAIN");
+      } else {
+        lines.push_back(std::string(controller_seen_
+                                        ? pad_action_label_any(PAD_ACT_CONFIRM)
+                                        : "ENTER") +
+                        (sign_in ? " - SIGN IN" : " - TRY AGAIN"));
+      }
       break;
+    }
   }
 
   // Fit the list above the BACK TO MENU band instead of walking into it.

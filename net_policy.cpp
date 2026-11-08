@@ -14,9 +14,44 @@
 
 #ifndef NEWTONIA_NET_POLICY_BACKEND
 
-bool net_online_play_allowed() { return true; }
+// Test hook, inert without the env var: "signin:N" refuses online play as
+// SIGN_IN until N ms after the first explain() call (the platform's sign-in
+// dialog opening and a player signing in), so test/e2e/policy_signin.sh can
+// drive the lobby's sign-in screen and its recovery without a platform
+// backend. Cached: allowed() is a hot-path call (see net_policy.h).
+namespace {
+typedef std::chrono::steady_clock signin_clock;
+long test_signin_ms() {
+  static long ms = -2;
+  if (ms == -2) {
+    const char *e = std::getenv("NEWTONIA_NET_TEST_ONLINE_SIGNIN");
+    ms = (e && std::strncmp(e, "signin:", 7) == 0) ? std::atol(e + 7) : -1;
+  }
+  return ms;
+}
+bool s_test_explained = false;
+signin_clock::time_point s_test_explained_at;
+}  // namespace
 
-void net_online_play_explain() {}
+bool net_online_play_allowed() {
+  const long ms = test_signin_ms();
+  if (ms < 0) return true;
+  return s_test_explained &&
+         signin_clock::now() - s_test_explained_at >=
+             std::chrono::milliseconds(ms);
+}
+
+void net_online_play_explain() {
+  if (test_signin_ms() < 0 || s_test_explained) return;
+  s_test_explained = true;
+  s_test_explained_at = signin_clock::now();
+  NET_LOG("net: platform sign-in dialog opened (test hook)\n");
+}
+
+NetOnlineRefusal net_online_play_refusal() {
+  return test_signin_ms() < 0 ? NET_ONLINE_REFUSED_ACCOUNT
+                              : NET_ONLINE_REFUSED_SIGN_IN;
+}
 
 bool net_comms_allowed_with(const NetIdentity &) {
   // Test hook, inert without the env var (the pattern of the other

@@ -1299,6 +1299,11 @@ test/e2e/policy.sh   # net_policy refusal path: a host refusing all peers
                      # inert hook) must reject INSIDE the handshake (MSG_REJECT
                      # RejectNotAllowed before WELCOME); the joiner never
                      # bootstraps and both sides stay alive
+test/e2e/policy_signin.sh # the lobby's SIGN-IN refusal (net_online_play_refusal
+                     # SIGN_IN; hook NEWTONIA_NET_TEST_ONLINE_SIGNIN=signin:N
+                     # refuses until N ms after explain()): HOST says sign in
+                     # and asks for the platform's sign-in, the chooser comes
+                     # back by itself once it lands, and HOST then opens a room
 test/e2e/policy_peer.sh # net_peer_verdict, the per-peer policy a console's
                      # block-list check rides (NEWTONIA_NET_TEST_PEER_VERDICT=
                      # refuse|wait, inert hook): a refusing host rejects

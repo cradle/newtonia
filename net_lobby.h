@@ -87,7 +87,15 @@ private:
   // every lobby commit point (interactive HOST/JOIN and the rejoin/invite
   // ctor). Sets LobbyFailed with policy_blocked_, whose TRY AGAIN exits to
   // the menu — re-offering the HOST/JOIN chooser would just refuse again.
-  void fail_online_not_allowed();
+  // from_choose: refused at the HOST/JOIN chooser, which a sign-in can
+  // return to (tick_policy_block).
+  void fail_online_not_allowed(bool from_choose = false);
+  // The refusal screen's words for net_online_play_refusal()'s reason.
+  void set_policy_fail_text();
+  // Each tick while a policy refusal is up: follow a changed reason, and go
+  // back to the HOST/JOIN chooser once the player can play (a sign-in from
+  // the platform's dialog) when the refusal came from the chooser.
+  void tick_policy_block();
   // show_ms <= 0 = the default 4 s; known-error advisories pass longer.
   void set_status(const char *text, int show_ms = -1);
   // Summon (open=true) / dismiss the code-entry keyboard: the touch soft
@@ -459,6 +467,10 @@ private:
   // This LobbyFailed came from the online-play policy gate: the fail
   // screen's confirm leaves to the menu instead of the HOST/JOIN chooser.
   bool policy_blocked_ = false;
+  // ...and it came from the HOST/JOIN chooser (not the rejoin/invite ctor,
+  // whose room code a chooser would drop), so it can return there.
+  bool policy_from_choose_ = false;
+  NetOnlineRefusal policy_reason_ = NET_ONLINE_REFUSED_ACCOUNT;
   // Joiner: the newest complete, sane snapshot, held while the platform's
   // per-peer verdict on the host (net_peer_verdict) is still WAIT. Kept
   // rather than dropped because a PAUSED host sends exactly one keyframe to
