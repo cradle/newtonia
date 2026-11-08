@@ -620,8 +620,23 @@ jobs:
           name: steam-linux
           path: steam_output/linux/
 
+      # Artifacts drop file modes, so put the executable bits back before
+      # the upload: the Mac bundle's main binary and the Linux binary must
+      # reach the depot executable (chmod does not touch the code seal).
+      - name: Restore executable bits
+        run: |
+          chmod +x steam_output/macos/Newtonia.app/Contents/MacOS/newtonia
+          chmod +x steam_output/linux/newtonia
+          ls -l steam_output/macos/Newtonia.app/Contents/MacOS/ steam_output/linux/newtonia
+
+      # Pinned to a commit, not the moving v3 tag. Between v1.71.2 and
+      # v1.72.0 the tag moved from 50f6b29 (steamcmd run directly) to
+      # 87f8a36, which uploads through an EXPERIMENTAL game-ci CLI, and the
+      # Mac depot it built opened as "damaged" on macOS (2026-11-08) while
+      # the live default-branch build (older action) still launched. Move the
+      # pin deliberately, and test a beta upload on a Mac before promoting.
       - name: Deploy to Steam
-        uses: game-ci/steam-deploy@v3
+        uses: game-ci/steam-deploy@50f6b29fc64922e19a16d202a88fe199d394b536 # v3, before the game-ci CLI
         with:
           username: ${{ secrets.STEAM_USERNAME }}
           configVdf: ${{ secrets.STEAM_CONFIG_VDF }}
