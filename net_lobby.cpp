@@ -564,6 +564,10 @@ NetLobby::NetLobby(const std::string &invite_code, InviteAcceptTag)
     : NetLobby(invite_code, /*relay_rejoin=*/false) {
   cold_invite_ = true;
   if (screen_ == RoomJoining) set_status("JOINING THE ROOM");
+  // e2e hook (relay_retry.sh mode 4): the invite's first attempt is
+  // relay-only and so fails with no relay before the 15 s connect timer,
+  // the path that must reach retry_join_after_connect_failure.
+  if (transport_ && test_relay_fail_once() == 1) transport_->set_force_relay(true);
 }
 
 // CodeEntry character picker for controllers: the code alphabet drawn as
@@ -753,6 +757,11 @@ void NetLobby::host_room_lost(const std::string &reason) {
 // next attempt reclaims the room within the remaining budget.
 bool NetLobby::rejoin_retry_after_session_loss(const char *why) {
   if (!rejoin_mode_ || rejoin_budget_ms_ <= 0) return false;
+  // A cold invite rides the rejoin ctor (rejoin_mode_, a budget) but the
+  // retry loop in tick() never runs for it, so a retry scheduled here would
+  // never fire and the invite would sit on JOINING THE ROOM for good. Its
+  // one retry is retry_join_after_connect_failure (PR #641 review).
+  if (cold_invite_) return false;
   // LAN rejoin: the retry is a fresh browse, not a relay reconnect.
   if (lan_rejoin_) {
     connect_wait_ms_ = 0;
@@ -792,6 +801,45 @@ bool NetLobby::retry_join_after_relay_failure() {
   relay_retry_used_ = true;
   NET_LOG("[lobby] no TURN relay - joining room %s again with a fresh"
           " transport\n", code_entry_.c_str());
+  restart_join(fresh);
+  return true;
+}
+
+// A first room join whose transport has not connected: the host's offer
+// and our answer crossed, so a healthy pairing connects within seconds
+// (0.5-3.5 s measured, relay to relay included). Field, Xbox dev kit host
+// 2026-11-08: the kit's TURN Allocate for our pairing got no answer at
+// all, so after 10 s the host found it had no relay and dropped the
+// pairing (RtcTransport::relay_unavailable, "dropping joiner"), and
+// nothing told us: we sat on FOUND THE HOST / CONNECTING until libjuice's
+// 39.5 s check timeout and read "COULD NOT CONNECT / A FIREWALL MAY BE
+// BLOCKING THE GAME". The next join, a minute later, allocated at once.
+// The same wait covers a relay-only host's single candidate path losing a
+// candidate (the cause #635 found for the auto-rejoin, which got
+// REJOIN_CONNECT_TIMEOUT_MS and a retry loop then; a first join got
+// neither). So retry once, straight away, on a fresh transport and
+// signalling socket: the old socket's leave frees whatever the host still
+// holds and the fresh join gets a fresh offer and a fresh host transport,
+// the same path a player backing out and typing the code again takes. The
+// retry itself runs to the transport's own verdict, so a slow but live
+// path is never cut short twice. Only the transport is timed (the
+// handshake's admission waits run after it connects). Room joins only:
+// the manual paste flow's wait includes humans ferrying codes, and a LAN
+// join has its own door.
+bool NetLobby::retry_join_after_connect_failure(const char *why) {
+  if (hosting_ || !signal_ || lan_joining_ || connect_retry_used_ ||
+      code_entry_.empty())
+    return false;
+  // A true mid-game rejoin has its own retry loop; a cold invite rides the
+  // rejoin ctor but is a first join, with none (rejoin_after_host_back).
+  if (rejoin_mode_ && !cold_invite_) return false;
+  NetTransport *t = session_ ? session_->transport() : transport_;
+  if (t && t->connected()) return false;
+  NetSignal *fresh = NetSignal::create();
+  if (!fresh) return false;
+  connect_retry_used_ = true;
+  NET_LOG("[lobby] %s after %d ms - joining room %s again with a fresh"
+          " transport\n", why, connect_wait_ms_, code_entry_.c_str());
   restart_join(fresh);
   return true;
 }
@@ -1046,6 +1094,7 @@ void NetLobby::confirm() {
         if (fail == 2) transport_->set_lan_only(true);
       }
       relay_retry_used_ = false;  // each typed join gets its one retry
+      connect_retry_used_ = false;
       NET_LOG("[lobby] joining room %s\n", code_entry_.c_str());
       signal_->connect_join(net_signal_url(), code_entry_, false);
       signal_wait_ms_ = 0;
@@ -2404,6 +2453,17 @@ void NetLobby::pump_signal(int delta) {
             if (pj.transport) {
               pj.transport->set_trickle(true);
               pj.transport->set_ice_servers(ice_servers_);
+              // e2e hook (relay_retry.sh mode 3): this host's FIRST joiner
+              // transport is relay-only and so never gets a relay here (the
+              // local relay mints no TURN credentials) - the kit host's
+              // unanswered Allocate of 2026-11-08, which the joiner has to
+              // recover from by joining again.
+              static bool test_host_relay_fail =
+                  test_env_int("NEWTONIA_NET_TEST_HOST_RELAY_FAIL_ONCE", 0) != 0;
+              if (test_host_relay_fail) {
+                test_host_relay_fail = false;
+                pj.transport->set_force_relay(true);
+              }
               pj.transport->start_host();
               pending_[ev.peer] = pj;
               NET_LOG("[lobby] waiting room: gathering an offer for %s\n",
@@ -3063,6 +3123,8 @@ void NetLobby::tick(int delta) {
     if (retry_join_after_relay_failure()) return;
     if (rejoin_retry_after_session_loss("transport failed during signaling"))
       return;
+    if (retry_join_after_connect_failure("transport failed during signaling"))
+      return;
     set_status("CONNECTION FAILED");
     screen_ = LobbyFailed;
     return;
@@ -3172,6 +3234,13 @@ void NetLobby::tick(int delta) {
           fail_headline_ = "HOST REFUSED THE CONNECTION";
         }
         screen_ = LobbyFailed;
+      } else if (session_->role() == NetSession::ClientRole &&
+                 connect_wait_ms_ > REJOIN_CONNECT_TIMEOUT_MS &&
+                 session_->transport() &&
+                 !session_->transport()->connected() &&
+                 retry_join_after_connect_failure(
+                     "first join not connected in time")) {
+        // Handled (logged inside): restart_join left WaitConnect.
       } else if (rejoin_mode_ && !cold_invite_ && !lan_rejoin_ &&
                  session_->role() == NetSession::ClientRole &&
                  connect_wait_ms_ > REJOIN_CONNECT_TIMEOUT_MS &&
@@ -3194,6 +3263,11 @@ void NetLobby::tick(int delta) {
                session_->transport() ? (int)session_->transport()->failed() : -1);
         if (retry_join_after_relay_failure()) break;
         if (rejoin_retry_after_session_loss("transport failed mid-handshake"))
+          break;
+        // Transport failed before the timer above fired (or the handshake
+        // timed out on a connected link that then went quiet).
+        if (session_->role() == NetSession::ClientRole &&
+            retry_join_after_connect_failure("first join failed"))
           break;
         fail_headline_ = "COULD NOT CONNECT";
         set_status("A FIREWALL MAY BE BLOCKING THE GAME", 2 * STATUS_SHOW_MS);

@@ -1024,7 +1024,11 @@ test/e2e/relay_retry.sh # A join whose relay-only transport gets no TURN
                      # TURN, so it can never get one). Field, Xbox dev kit
                      # 2026-11-02: the Allocates went unanswered, the join
                      # failed at 63 s as COULD NOT CONNECT, and a manual
-                     # retry worked at once
+                     # retry worked at once. Mode 3 is the HOST end
+                     # (NEWTONIA_NET_TEST_HOST_RELAY_FAIL_ONCE=1, kit host
+                     # 2026-11-08): the host drops a pairing that got no
+                     # relay, and the joiner, answer sent, joins again once
+                     # 15 s in instead of waiting ~40 s for COULD NOT CONNECT
 test/e2e/nseat_anon.sh # O3 admission policy: the host sets ALLOW ANONYMOUS
                      # PLAYERS to NO from the waiting room's own row, then a
                      # NAMED pilot (attested by this driver's own FAKE_VERIFY

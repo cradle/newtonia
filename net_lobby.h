@@ -136,6 +136,9 @@ private:
   // A first join whose relay-only transport got no TURN relay: drop the
   // socket and join again once with a fresh one (net_lobby.cpp).
   bool retry_join_after_relay_failure();
+  // A first room join whose transport never connected (an ICE check that
+  // went nowhere): drop the socket and join again once (net_lobby.cpp).
+  bool retry_join_after_connect_failure(const char *why);
   // The host reclaimed the room (host-back): re-join an unconnected
   // pairing on a fresh socket. Deletes signal_ when it acts.
   bool rejoin_after_host_back();
@@ -420,6 +423,7 @@ private:
   bool offer_sent_;          // host: offer pushed to the room
   bool answer_sent_;         // joiner: answer pushed to the room
   bool relay_retry_used_ = false;  // this join already retried for a relay
+  bool connect_retry_used_ = false;  // ...or for an ICE check that failed
   int signal_wait_ms_;       // time waiting on the signal server
   // Host reclaim (schedule_host_reclaim): >0 counts down to the next
   // reclaim attempt; host_reclaiming_ is true from the drop until the
