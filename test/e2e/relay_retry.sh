@@ -13,7 +13,14 @@
 # joiner's FIRST attempt relay-only; the retry joins normally and must
 # connect. A 4-seat room, so the host runs the waiting room (what every
 # shipped build does) and offers the retry a fresh pairing; the 2-seat
-# test room makes a single offer and cannot. Prints RELAY-RETRY-E2E-OK.
+# test room makes a single offer and cannot.
+#
+# MODE 3 is the other end (kit host, 2026-11-08): the HOST's transport for
+# the joiner's first attempt gets no relay, so the host drops that pairing
+# and the joiner, its answer sent, sat on FOUND THE HOST / CONNECTING until
+# ICE gave up at ~40 s and said COULD NOT CONNECT. The joiner now joins
+# again once when its first room join has not connected in 15 s
+# (retry_join_after_connect_failure). Prints RELAY-RETRY-E2E-OK.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -31,9 +38,15 @@ run_mode() {
   # Fresh prefs per mode: the first run's save would add a CONTINUE row
   # and shift the menu the key presses below expect.
   export XDG_DATA_HOME="$OUT/xdg$MODE"
-  PA=$(launch host$MODE)
-  sleep 2
-  PB=$(launch joiner$MODE NEWTONIA_NET_TEST_RELAY_FAIL_ONCE=$MODE)
+  if [ "$MODE" = 3 ]; then
+    PA=$(launch host$MODE NEWTONIA_NET_TEST_HOST_RELAY_FAIL_ONCE=1)
+    sleep 2
+    PB=$(launch joiner$MODE)
+  else
+    PA=$(launch host$MODE)
+    sleep 2
+    PB=$(launch joiner$MODE NEWTONIA_NET_TEST_RELAY_FAIL_ONCE=$MODE)
+  fi
   sleep 4
 
   WINS=$(newtonia_windows)
@@ -55,7 +68,9 @@ run_mode() {
   done
   [ -n "$RETRIED" ] || { echo "NO RETRY"; tail -30 "$OUT/joiner$MODE.log"; kill $PA $PB; exit 1; }
   echo "== retried after ${RETRIED}s"
-  grep -aq "relay-only - no TURN relay after" "$OUT/joiner$MODE.log" || {
+  RELAY_LOG="$OUT/joiner$MODE.log"
+  [ "$MODE" = 3 ] && RELAY_LOG="$OUT/host$MODE.log"
+  grep -aq "relay-only - no TURN relay after" "$RELAY_LOG" || {
     echo "NO RELAY-FAILURE LINE"; kill $PA $PB; exit 1; }
   # 10 s relay wait plus the time the offer took; the old path took ~63 s.
   [ "$RETRIED" -le $LIMIT ] || { echo "RETRY TOO SLOW (${RETRIED}s)"; kill $PA $PB; exit 1; }
@@ -77,8 +92,15 @@ run_mode() {
     grep -aq "transport failed during signaling" "$OUT/joiner$MODE.log" || {
       echo "MODE 2 DID NOT TAKE THE PRE-SESSION PATH"; kill $PA $PB; exit 1; }
   fi
-  [ "$(grep -ac 'relay-only ICE policy ACTIVE' "$OUT/joiner$MODE.log")" -eq 1 ] || {
-    echo "THE RETRY WAS RELAY-ONLY TOO"; kill $PA $PB; exit 1; }
+  if [ "$MODE" = 3 ]; then
+    grep -aq "first join not connected in time" "$OUT/joiner$MODE.log" || {
+      echo "MODE 3 DID NOT TAKE THE CONNECT-TIMEOUT PATH"; kill $PA $PB; exit 1; }
+    [ "$(grep -ac 'relay-only ICE policy ACTIVE' "$OUT/host$MODE.log")" -eq 1 ] || {
+      echo "THE HOST'S SECOND TRANSPORT WAS RELAY-ONLY TOO"; kill $PA $PB; exit 1; }
+  else
+    [ "$(grep -ac 'relay-only ICE policy ACTIVE' "$OUT/joiner$MODE.log")" -eq 1 ] || {
+      echo "THE RETRY WAS RELAY-ONLY TOO"; kill $PA $PB; exit 1; }
+  fi
   grep -aq "rejoin\|LobbyFailed\|COULD NOT CONNECT" "$OUT/joiner$MODE.log" && {
     echo "THE FIRST FAILURE REACHED THE PLAYER"; kill $PA $PB; exit 1; }
   shot $B relay-retry-joiner$MODE
@@ -90,4 +112,6 @@ run_mode() {
 run_mode 1 25
 sleep 2
 run_mode 2 12
+sleep 2
+run_mode 3 22
 echo "RELAY-RETRY-E2E-OK"
