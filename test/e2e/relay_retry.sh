@@ -109,9 +109,56 @@ run_mode() {
   assert_clean "$OUT/host$MODE.log" "$OUT/joiner$MODE.log"
 }
 
+# MODE 4: a cold invite (+connect CODE, as the platform invite backends
+# hand it over) whose first attempt is relay-only and so FAILS with no
+# relay at ~10 s, before the 15 s connect timer. The invite rides the
+# rejoin ctor but not its retry loop, so the auto-rejoin helper must not
+# claim it (that retry never fired and stranded it on JOINING THE ROOM);
+# its one retry is the first-join one (PR #641 review).
+run_invite() {
+  echo "== mode 4 (cold invite)"
+  export XDG_DATA_HOME="$OUT/xdg4"
+  PA=$(launch host4)
+  sleep 4
+  A=$(newtonia_windows | head -1)
+  key $A Return; sleep 1; key $A s; key $A Return; sleep 1; key $A Return
+  CODE=$(host_room_code host4)
+  [ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA; exit 1; }
+  echo "room code: $CODE"
+  env NEWTONIA_NET_TEST_RELAY_FAIL_ONCE=1 "$ROOT/newtonia" +connect "$CODE" \
+    > "$OUT/joiner4.log" 2>&1 & PB=$!
+  T0=$(date +%s)
+  RETRIED=""
+  for i in $(seq 1 30); do
+    sleep 1; alive $PA host; alive $PB joiner
+    grep -aq "first join failed after .* joining room $CODE again" "$OUT/joiner4.log" && {
+      RETRIED=$(( $(date +%s) - T0 )); break; }
+  done
+  [ -n "$RETRIED" ] || { echo "NO RETRY"; tail -30 "$OUT/joiner4.log"; kill $PA $PB; exit 1; }
+  echo "== retried after ${RETRIED}s"
+  grep -aq "relay-only - no TURN relay after" "$OUT/joiner4.log" || {
+    echo "NO RELAY-FAILURE LINE"; kill $PA $PB; exit 1; }
+  # Failed before the 15 s timer: the transport's own failure got it.
+  [ "$RETRIED" -le 15 ] || { echo "RETRY TOO SLOW (${RETRIED}s)"; kill $PA $PB; exit 1; }
+  grep -aq "rejoin retry\|retrying in" "$OUT/joiner4.log" && {
+    echo "THE AUTO-REJOIN LOOP CLAIMED THE INVITE"; kill $PA $PB; exit 1; }
+  for i in $(seq 1 30); do
+    grep -aq "seat 2 filled" "$OUT/host4.log" && break; sleep 1
+  done
+  grep -aq "seat 2 filled" "$OUT/host4.log" || {
+    echo "INVITE RETRY NEVER SEATED"; tail -30 "$OUT/joiner4.log"; kill $PA $PB; exit 1; }
+  grep -aq "cold invite failed" "$OUT/joiner4.log" && {
+    echo "THE INVITE FAILED"; kill $PA $PB; exit 1; }
+  echo "== invite seated after the retry"
+  kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null
+  assert_clean "$OUT/host4.log" "$OUT/joiner4.log"
+}
+
 run_mode 1 25
 sleep 2
 run_mode 2 12
 sleep 2
 run_mode 3 22
+sleep 2
+run_invite
 echo "RELAY-RETRY-E2E-OK"

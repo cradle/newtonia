@@ -527,6 +527,10 @@ NetLobby::NetLobby(const std::string &invite_code, InviteAcceptTag)
     : NetLobby(invite_code, /*relay_rejoin=*/false) {
   cold_invite_ = true;
   if (screen_ == RoomJoining) set_status("JOINING THE ROOM");
+  // e2e hook (relay_retry.sh mode 4): the invite's first attempt is
+  // relay-only and so fails with no relay before the 15 s connect timer,
+  // the path that must reach retry_join_after_connect_failure.
+  if (transport_ && test_relay_fail_once() == 1) transport_->set_force_relay(true);
 }
 
 // CodeEntry character picker for controllers: the code alphabet drawn as
@@ -716,6 +720,11 @@ void NetLobby::host_room_lost(const std::string &reason) {
 // next attempt reclaims the room within the remaining budget.
 bool NetLobby::rejoin_retry_after_session_loss(const char *why) {
   if (!rejoin_mode_ || rejoin_budget_ms_ <= 0) return false;
+  // A cold invite rides the rejoin ctor (rejoin_mode_, a budget) but the
+  // retry loop in tick() never runs for it, so a retry scheduled here would
+  // never fire and the invite would sit on JOINING THE ROOM for good. Its
+  // one retry is retry_join_after_connect_failure (PR #641 review).
+  if (cold_invite_) return false;
   // LAN rejoin: the retry is a fresh browse, not a relay reconnect.
   if (lan_rejoin_) {
     connect_wait_ms_ = 0;
@@ -3068,6 +3077,8 @@ void NetLobby::tick(int delta) {
     // the WaitConnect retry looks at does not exist yet.
     if (retry_join_after_relay_failure()) return;
     if (rejoin_retry_after_session_loss("transport failed during signaling"))
+      return;
+    if (retry_join_after_connect_failure("transport failed during signaling"))
       return;
     set_status("CONNECTION FAILED");
     screen_ = LobbyFailed;
