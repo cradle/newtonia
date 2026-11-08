@@ -39,6 +39,24 @@ bool net_online_play_allowed();
 // default backend does nothing.
 void net_online_play_explain();
 
+// Why net_online_play_allowed() is false, so the lobby's refusal screen can
+// say what the player should do instead of one catch-all line. Only read
+// while online play is refused; cached like the rest (it is read every
+// lobby tick while the refusal screen is up, and may change while it is:
+// the explain dialog above may sign a player in, and the lobby then goes
+// back to the HOST/JOIN chooser by itself). The default backend never
+// refuses, so it never answers anything but ACCOUNT.
+//   ACCOUNT       the signed-in account may not play online.
+//   SIGN_IN       nobody is signed in; signing in fixes it.
+//   OTHER_PLAYER  a different player signed in after this one signed out;
+//                 the game has to restart to play as them.
+enum NetOnlineRefusal {
+  NET_ONLINE_REFUSED_ACCOUNT,
+  NET_ONLINE_REFUSED_SIGN_IN,
+  NET_ONLINE_REFUSED_OTHER_PLAYER
+};
+NetOnlineRefusal net_online_play_refusal();
+
 // May this player play with THIS peer? Enforced at the single chokepoint
 // where the peer's identity becomes known — inside NetSession's handshake
 // (net_session.cpp): the host checks between parsing the HELLO identity
