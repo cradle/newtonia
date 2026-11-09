@@ -22,14 +22,13 @@ WINDOWED; Linux has no BORDERLESS step, see `port_display.h`), saved as
 Windows build by hand on 2026-11-09 (all three modes, the F toggle, the
 choice kept across a restart, a FULLSCREEN 720P launch, and alt-tab out of
 FULLSCREEN at 720P minimising the game and giving the desktop mode back).
-Still to do by hand:
+The macOS build passed by hand the same day: FULLSCREEN and WINDOWED,
+alt-tab out of FULLSCREEN, and BORDERLESS dropping behind the app switched
+to (GLUT raises its window above other apps; the build now lowers it while
+inactive). Still to do by hand:
 
 - Windows: alt-tab out of FULLSCREEN at NATIVE minimises too; BORDERLESS
   stays on screen behind the other app.
-
-- macOS: FULLSCREEN is the fullscreen Space as before; BORDERLESS covers
-  the screen in the current Space (GLUT's own fullscreen); switching
-  straight between the two waits for the Space animation.
 - Steam: a launch from Big Picture (and the Deck's Gaming Mode) opens
   fullscreen over a saved WINDOWED without changing the saved choice.
 
