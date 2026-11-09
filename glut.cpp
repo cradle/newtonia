@@ -1145,8 +1145,34 @@ static void check_linux_focus() {
 // NULL when another application is in the foreground.
 static bool windows_has_focus = true;
 
+// While a screen-covering mode has focus, keep the window on the monitor's
+// current rect. An exclusive display change resizes the monitor under the
+// window, and at launch freeglut's queued glutFullScreen can still lay the
+// window out at the desktop size afterwards: the display then shows only the
+// window's top-left corner, stretched over the screen, until something else
+// reshapes it (field, 2026-11-09, 720P on a 3440x1440 monitor).
+static void keep_window_covering() {
+  if (s_window_mode == PORT_WINDOW_WINDOWED) return;
+  HWND h = game_hwnd();
+  if (!h || IsIconic(h)) return;
+  MONITORINFOEXW mi;
+  if (!game_monitor(h, &mi)) return;
+  RECT w;
+  if (!GetWindowRect(h, &w)) return;
+  const RECT &m = mi.rcMonitor;
+  if (w.left == m.left && w.top == m.top && w.right == m.right &&
+      w.bottom == m.bottom)
+    return;
+  std::cout << "window mode: window " << (long)(w.right - w.left) << "x"
+            << (long)(w.bottom - w.top) << " re-laid over the "
+            << (long)(m.right - m.left) << "x" << (long)(m.bottom - m.top)
+            << " screen" << std::endl;
+  cover_monitor(h);
+}
+
 static void check_windows_focus() {
   bool has_focus = (GetActiveWindow() != NULL);
+  if (has_focus) keep_window_covering();
   if (!has_focus && windows_has_focus) {
     windows_has_focus = false;
     if (game) game->focus_lost();
