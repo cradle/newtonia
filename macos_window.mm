@@ -65,6 +65,20 @@ extern "C" void set_native_fullscreen_macos(int want_fullscreen) {
   }
 }
 
+// True while the game window is in (or entering) its fullscreen Space. The
+// window mode switch polls this to finish a Space exit (animated, async)
+// before it puts the window into GLUT's own cover-the-screen fullscreen.
+extern "C" int is_native_fullscreen_macos() {
+  NSWindow *win = [NSApp mainWindow];
+  if (!win) {
+    for (NSWindow *w in [NSApp windows]) {
+      if ([w isVisible]) { win = w; break; }
+    }
+  }
+  if (!win) return 0;
+  return ([win styleMask] & NSWindowStyleMaskFullScreen) != 0 ? 1 : 0;
+}
+
 // --- macOS Game Mode / performance activity ---
 
 // Holds the NSProcessInfo activity token for the lifetime of the game.

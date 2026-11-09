@@ -206,6 +206,7 @@ private:
   int  friendly_fire_index_  = 0;       // 0=OFF, 1=ON (Preferences::friendly_fire)
   int  vibration_index_      = 1;       // 0=OFF, 1=ON (Preferences::vibration)
   int  resolution_index_     = 0;       // RESOLUTION_LABELS index (Preferences::render_height; port_display.h)
+  int  window_mode_index_    = 0;       // WINDOW MODE row step (port_window_modes; port_display.h)
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
   int  input_index_          = 0;       // 0=TWO HANDS, 1=ONE HAND (Preferences::touch_one_hand)
   int  handedness_index_     = 1;       // 0=LEFT, 1=CENTRE, 2=RIGHT (Preferences::touch_handedness)

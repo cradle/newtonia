@@ -13,6 +13,23 @@ past the ~35 min mark seen on 2026-10-27, against the beta worker, and
 check its log for `[lobby] room XXXXX reclaimed` and that a join still
 works afterwards.
 
+## Window mode: hand tests on Windows, macOS and Steam
+
+The desktop Options list has a WINDOW MODE row (FULLSCREEN / BORDERLESS /
+WINDOWED; Linux has no BORDERLESS step, see `port_display.h`), saved as
+`fullscreen` + `borderless` in the INI. The Linux path is covered headless
+(Xvfb, row and F key, the Big Picture launch). Still to do by hand:
+
+- Windows: FULLSCREEN with RESOLUTION 720P/1080P switches the monitor's
+  mode and gives it back on alt-tab (the game minimises), on quit, and on
+  a switch to BORDERLESS or WINDOWED; BORDERLESS covers the screen at the
+  desktop mode; WINDOWED restores the last window size and place.
+- macOS: FULLSCREEN is the fullscreen Space as before; BORDERLESS covers
+  the screen in the current Space (GLUT's own fullscreen); switching
+  straight between the two waits for the Space animation.
+- Steam: a launch from Big Picture (and the Deck's Gaming Mode) opens
+  fullscreen over a saved WINDOWED without changing the saved choice.
+
 ## Google Play Games on PC: Play Console and a field test
 
 The APK has a desktop mode for the Windows client (CLAUDE.md, "Google Play

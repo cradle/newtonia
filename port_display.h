@@ -23,6 +23,7 @@
     !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP) && \
     !defined(NEWTONIA_PORT_RESOLUTION)
 #  define NEWTONIA_PORT_RESOLUTION
+#  define NEWTONIA_PORT_WINDOW_MODE
 #endif
 
 #if defined(NEWTONIA_PORT_RESOLUTION)
@@ -47,6 +48,34 @@ bool port_render_windowed();
 // a dimmed notice over everything until any input dismisses it. Supplied by
 // the shared code (menu.cpp), not by the port.
 void port_render_resolution_failed(int wanted_height);
+#endif
+
+// Window mode: the Options WINDOW MODE row, desktop entry point only (glut.cpp
+// — switched on beside the resolution hooks above; the ports run fullscreen
+// and have no window to change). The mode values are what the port reports
+// and takes; which of them a platform offers, in row order, comes from
+// port_window_modes():
+//   FULLSCREEN  Windows: the display itself switches to the RESOLUTION pick
+//               (exclusive; minimised while another app is in front).
+//               macOS: its own fullscreen Space. Linux: the window
+//               manager's fullscreen state, at the screen's own mode.
+//   BORDERLESS  a window with no frame covering the screen, at the screen's
+//               own mode (the RESOLUTION pick is scaled up as in a window).
+//               Windows and macOS only: on Linux FULLSCREEN is already that.
+//   WINDOWED    an ordinary resizable window.
+// port_set_window_mode() saves the pick (Preferences::fullscreen +
+// ::borderless) and applies it between frames; port_window_mode() reads
+// what is on screen, which a launch from Steam Big Picture or the Deck's
+// Gaming Mode keeps at FULLSCREEN over a saved WINDOWED (not saved).
+#if defined(NEWTONIA_PORT_WINDOW_MODE)
+enum PortWindowMode {
+  PORT_WINDOW_FULLSCREEN = 0,
+  PORT_WINDOW_BORDERLESS = 1,
+  PORT_WINDOW_WINDOWED   = 2,
+};
+int  port_window_modes(const int **modes);  // the row's modes; returns the count
+int  port_window_mode();
+void port_set_window_mode(int mode);
 #endif
 
 #endif

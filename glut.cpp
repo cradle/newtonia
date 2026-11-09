@@ -45,6 +45,7 @@
 extern "C" void activate_app_macos();
 extern "C" void enable_game_mode_macos();
 extern "C" void set_native_fullscreen_macos(int want_fullscreen);
+extern "C" int is_native_fullscreen_macos();
 extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 #endif
 
@@ -89,13 +90,22 @@ static void activate_app() {
 }
 #endif
 #ifdef __APPLE__
-// Set when the game launches with fullscreen saved in preferences.  We defer
-// the native-fullscreen transition until the window is on screen (handled in
-// draw()), since toggleFullScreen: is unreliable before the app has finished
-// launching.
-static bool s_needs_fullscreen = false;
+// The window mode the game launches into (port_display.h), when it is not
+// WINDOWED. We defer the transition until the window is on screen (handled
+// in draw()), since toggleFullScreen: is unreliable before the app has
+// finished launching.
+static int s_launch_window_mode = -1;
 void hide_cursor_after_fullscreen(int);
 #endif
+#ifdef _WIN32
+// Windows FULLSCREEN switches the display mode (see apply_exclusive_display);
+// set when that has to be redone, and done between frames in draw().
+static bool s_win_display_pending = false;
+static void win_apply_display_pending();
+static int  win_desktop_height();
+#endif
+static int s_window_mode = PORT_WINDOW_WINDOWED;   // what is on screen
+static void apply_window_mode(int want);
 
 static int s_last_frame_draws = 0, s_last_frame_segs = 0;
 
@@ -172,6 +182,14 @@ void port_render_size(int *w, int *h) {
 // an 800-line window broke the menu text up), so a taller pick draws at the
 // window's size and the Options line says so, as on the console.
 int port_render_max_height() {
+#ifdef _WIN32
+  // Exclusive FULLSCREEN changes the display to the pick, so the limit is
+  // the screen's own (desktop) mode, not the window it is in right now.
+  if (s_window_mode == PORT_WINDOW_FULLSCREEN) {
+    int dh = win_desktop_height();
+    if (dh > 0) return dh;
+  }
+#endif
   int w = 0, h = 0;
   port_render_size(&w, &h);
   return s_win_h > 0 ? s_win_h : h;
@@ -184,8 +202,15 @@ void draw() {
   if (!game) return;
   if (s_resolution_pending) {
     s_resolution_pending = false;
+#ifdef _WIN32
+    // In exclusive FULLSCREEN the RESOLUTION pick is the display mode.
+    if (s_window_mode == PORT_WINDOW_FULLSCREEN) s_win_display_pending = true;
+#endif
     apply_render_size();
   }
+#ifdef _WIN32
+  win_apply_display_pending();
+#endif
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   last_render_time = current_time;
   RenderTarget::bind();
@@ -224,11 +249,11 @@ void draw() {
   }
 #endif
 #ifdef __APPLE__
-  // Enter the fullscreen Space once the window is actually on screen.
-  if (s_needs_fullscreen) {
-    s_needs_fullscreen = false;
-    set_native_fullscreen_macos(1);
-    glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+  // Enter the saved window mode once the window is actually on screen.
+  if (s_launch_window_mode >= 0) {
+    int mode = s_launch_window_mode;
+    s_launch_window_mode = -1;
+    apply_window_mode(mode);
   }
 #endif
 }
@@ -257,6 +282,269 @@ void set_cursor_hidden(bool hide) {
   }
 }
 
+// ---- Window mode: the Options WINDOW MODE row and the F / Alt+Enter toggle
+// (port_display.h for what each mode means on each platform). ----
+
+#if defined(_WIN32) || defined(__APPLE__)
+#  define NEWTONIA_HAS_BORDERLESS 1
+#endif
+
+// The mode the saved preferences ask for.
+static int pref_window_mode() {
+  if (!g_prefs.fullscreen) return PORT_WINDOW_WINDOWED;
+#if defined(NEWTONIA_HAS_BORDERLESS)
+  if (g_prefs.borderless) return PORT_WINDOW_BORDERLESS;
+#endif
+  return PORT_WINDOW_FULLSCREEN;
+}
+
+int port_window_modes(const int **modes) {
+#if defined(NEWTONIA_HAS_BORDERLESS)
+  static const int m[] = {PORT_WINDOW_FULLSCREEN, PORT_WINDOW_BORDERLESS,
+                          PORT_WINDOW_WINDOWED};
+#else
+  // Linux: the window manager's fullscreen state is already a frameless
+  // window at the screen's own mode, so a BORDERLESS step would draw the
+  // same thing, and an undecorated window sized to the screen stays under
+  // the desktop's panels. Two steps only.
+  static const int m[] = {PORT_WINDOW_FULLSCREEN, PORT_WINDOW_WINDOWED};
+#endif
+  *modes = m;
+  return (int)(sizeof(m) / sizeof(m[0]));
+}
+
+int port_window_mode() { return s_window_mode; }
+
+// Launched from Steam's TV interface — Big Picture (SteamTenfoot) or the
+// gamescope session of the Deck's Gaming Mode and SteamOS (SteamGamepadUI).
+// There a window is never what the player wants, so a saved WINDOWED opens
+// FULLSCREEN for that launch, without overwriting the saved choice (a Deck
+// in Desktop Mode, or the same PC launched from the desktop, keeps it).
+static bool steam_tv_launch() {
+  const char *bp = getenv("SteamTenfoot");
+  const char *ui = getenv("SteamGamepadUI");
+  return (bp && bp[0] == '1') || (ui && ui[0] == '1');
+}
+
+#ifdef _WIN32
+// FULLSCREEN on Windows is exclusive: freeglut's glutFullScreen() is
+// already a frameless window over the monitor (what BORDERLESS is), so on
+// top of it the display itself switches to the RESOLUTION pick — the
+// monitor scales the picture instead of our blit, the classic exclusive
+// mode. NATIVE (or a pick the monitor has no mode for) keeps the desktop
+// mode, where FULLSCREEN and BORDERLESS draw the same picture and differ
+// only in FULLSCREEN minimising while another app is in front. The change
+// is CDS_FULLSCREEN, which Windows undoes by itself if the process dies.
+static bool  s_display_changed = false;
+static WCHAR s_display_device[CCHDEVICENAME] = {0};
+
+static HWND game_hwnd() {
+  HDC dc = wglGetCurrentDC();
+  return dc ? WindowFromDC(dc) : NULL;
+}
+
+static bool game_monitor(HWND h, MONITORINFOEXW *mi) {
+  mi->cbSize = sizeof(*mi);
+  return GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST),
+                         (MONITORINFO *)mi) != 0;
+}
+
+static void cover_monitor(HWND h) {
+  MONITORINFOEXW mi;
+  if (!game_monitor(h, &mi)) return;
+  const RECT &r = mi.rcMonitor;
+  SetWindowPos(h, HWND_TOP, r.left, r.top, r.right - r.left, r.bottom - r.top,
+               SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+}
+
+static void restore_display() {
+  if (!s_display_changed) return;
+  s_display_changed = false;
+  ChangeDisplaySettingsExW(s_display_device, NULL, NULL, 0, NULL);
+}
+
+static int win_desktop_height() {
+  HWND h = game_hwnd();
+  MONITORINFOEXW mi;
+  DEVMODEW dm;
+  ZeroMemory(&dm, sizeof(dm));
+  dm.dmSize = sizeof(dm);
+  if (!h || !game_monitor(h, &mi) ||
+      !EnumDisplaySettingsW(mi.szDevice, ENUM_REGISTRY_SETTINGS, &dm))
+    return 0;
+  return (int)dm.dmPelsHeight;
+}
+
+static void apply_exclusive_display() {
+  HWND h = game_hwnd();
+  MONITORINFOEXW mi;
+  if (!h || !game_monitor(h, &mi)) return;
+  DEVMODEW desk;
+  ZeroMemory(&desk, sizeof(desk));
+  desk.dmSize = sizeof(desk);
+  if (!EnumDisplaySettingsW(mi.szDevice, ENUM_REGISTRY_SETTINGS, &desk)) return;
+  int want = g_prefs.render_height;
+  DEVMODEW best;
+  ZeroMemory(&best, sizeof(best));
+  bool found = false;
+  if (want > 0 && want < (int)desk.dmPelsHeight) {
+    // That height at the desktop's aspect if the monitor has it, else the
+    // nearest width; the highest refresh rate among equals.
+    long target_w = (long)desk.dmPelsWidth * want / (long)desk.dmPelsHeight;
+    DEVMODEW dm;
+    ZeroMemory(&dm, sizeof(dm));
+    dm.dmSize = sizeof(dm);
+    for (DWORD i = 0; EnumDisplaySettingsW(mi.szDevice, i, &dm); i++) {
+      if ((int)dm.dmPelsHeight != want || dm.dmBitsPerPel < 32) continue;
+      long dw = labs((long)dm.dmPelsWidth - target_w);
+      long bw = labs((long)best.dmPelsWidth - target_w);
+      if (!found || dw < bw ||
+          (dw == bw && dm.dmDisplayFrequency > best.dmDisplayFrequency)) {
+        best = dm;
+        found = true;
+      }
+    }
+  }
+  if (found) {
+    best.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL |
+                    DM_DISPLAYFREQUENCY;
+    LONG r = ChangeDisplaySettingsExW(mi.szDevice, &best, NULL, CDS_FULLSCREEN,
+                                      NULL);
+    if (r == DISP_CHANGE_SUCCESSFUL) {
+      s_display_changed = true;
+      wcsncpy(s_display_device, mi.szDevice, CCHDEVICENAME - 1);
+      std::cout << "window mode: display at " << (unsigned)best.dmPelsWidth
+                << "x" << (unsigned)best.dmPelsHeight << " "
+                << (unsigned)best.dmDisplayFrequency << " Hz" << std::endl;
+    } else {
+      std::cout << "window mode: display switch to " << want
+                << " lines refused (" << (long)r << "), keeping the desktop mode"
+                << std::endl;
+      restore_display();
+    }
+  } else {
+    restore_display();  // NATIVE, or a height this monitor has no mode for
+  }
+  cover_monitor(h);
+}
+
+// Between frames: the frameless window freeglut made last frame now sits on
+// the monitor, so the display can change under it and the window be laid
+// over the result.
+static void win_apply_display_pending() {
+  if (!s_win_display_pending) return;
+  s_win_display_pending = false;
+  if (s_window_mode == PORT_WINDOW_FULLSCREEN) {
+    apply_exclusive_display();
+  } else {
+    restore_display();
+    HWND h = game_hwnd();
+    if (h && s_window_mode == PORT_WINDOW_BORDERLESS) cover_monitor(h);
+  }
+}
+#endif // _WIN32
+
+#ifdef __APPLE__
+// macOS moves one state at a time: its fullscreen Space is animated and has
+// to be fully left before GLUT's cover-the-screen fullscreen (BORDERLESS)
+// can take the window, and GLUT's must be left before the Space is entered.
+// A timer polls the Space's exit; s_macos_gen drops a stale chain when the
+// mode changes again mid-way.
+static bool s_macos_glut_cover = false;  // glutFullScreen() in force
+static bool s_macos_leaving = false;     // a Space exit is animating
+static int  s_macos_gen = 0, s_macos_polls = 0;
+
+static void macos_window_step(int gen) {
+  if (gen != s_macos_gen) return;
+  bool in_space = is_native_fullscreen_macos() != 0;
+  if (s_macos_leaving) {
+    if (in_space && ++s_macos_polls < 50) {
+      glutTimerFunc(100, macos_window_step, gen);
+      return;
+    }
+    s_macos_leaving = false;
+    s_macos_polls = 0;
+  }
+  int want = s_window_mode;
+  if (want == PORT_WINDOW_FULLSCREEN) {
+    if (s_macos_glut_cover) {
+      s_macos_glut_cover = false;
+      glutPositionWindow(old_x, old_y);
+      glutReshapeWindow(old_width, old_height);
+      glutTimerFunc(100, macos_window_step, gen);
+      return;
+    }
+    // Use a real fullscreen Space so macOS 14+ can engage Game Mode.
+    if (!in_space) set_native_fullscreen_macos(1);
+    glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+    return;
+  }
+  if (in_space) {
+    s_macos_leaving = true;
+    s_macos_polls = 0;
+    // Leaving the fullscreen Space restores the previous window frame.
+    set_native_fullscreen_macos(0);
+    glutTimerFunc(100, macos_window_step, gen);
+    return;
+  }
+  if (want == PORT_WINDOW_BORDERLESS) {
+    if (!s_macos_glut_cover) {
+      s_macos_glut_cover = true;
+      glutFullScreen();
+    }
+    glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+  } else {
+    set_cursor_hidden(false);
+    if (s_macos_glut_cover) {
+      s_macos_glut_cover = false;
+      glutPositionWindow(old_x, old_y);
+      glutReshapeWindow(old_width, old_height);
+    }
+  }
+}
+#endif // __APPLE__
+
+// Put the window into `want` (screen only — port_set_window_mode saves).
+static void apply_window_mode(int want) {
+  if (want == s_window_mode) return;
+  int from = s_window_mode;
+  if (from == PORT_WINDOW_WINDOWED) {
+    old_x = glutGet(GLUT_WINDOW_X);
+    old_y = glutGet(GLUT_WINDOW_Y);
+    old_width = glutGet(GLUT_WINDOW_WIDTH);
+    old_height = glutGet(GLUT_WINDOW_HEIGHT);
+  }
+  s_window_mode = want;
+  is_fullscreen = (want != PORT_WINDOW_WINDOWED);
+#ifdef __APPLE__
+  macos_window_step(++s_macos_gen);
+#else
+#ifdef _WIN32
+  // The desktop mode comes back before the window leaves the monitor, so
+  // freeglut restores the window into desktop coordinates.
+  if (from == PORT_WINDOW_FULLSCREEN) restore_display();
+  s_win_display_pending = (want != PORT_WINDOW_WINDOWED);
+#endif
+  if (want == PORT_WINDOW_WINDOWED) {
+    set_cursor_hidden(false);
+    glutPositionWindow(old_x, old_y);
+    glutReshapeWindow(old_width, old_height);
+    return;
+  }
+  if (from == PORT_WINDOW_WINDOWED) glutFullScreen();
+  set_cursor_hidden(true);
+#endif
+}
+
+void port_set_window_mode(int mode) {
+  g_prefs.fullscreen = (mode != PORT_WINDOW_WINDOWED);
+  // WINDOWED keeps the kind of fullscreen, for the F / Alt+Enter toggle.
+  if (mode != PORT_WINDOW_WINDOWED)
+    g_prefs.borderless = (mode == PORT_WINDOW_BORDERLESS);
+  save_preferences();
+  apply_window_mode(mode);
+}
+
 // GLUT delivers the ASCII char with modifiers applied, so Caps Lock (or a
 // held Shift) turns every letter binding into its uppercase twin and the
 // whole keyboard goes dead except Space (field: "keys stopped working
@@ -280,33 +568,14 @@ void keyboard(unsigned char key, int x, int y) {
        !game->text_entry_active())
     || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
   if (do_fullscreen) {
-    if (!is_fullscreen) {
-      old_x = glutGet(GLUT_WINDOW_X);
-      old_y = glutGet(GLUT_WINDOW_Y);
-      old_width = glutGet(GLUT_WINDOW_WIDTH);
-      old_height = glutGet(GLUT_WINDOW_HEIGHT);
-      is_fullscreen = true;
-#ifdef __APPLE__
-      // Use a real fullscreen Space so macOS 14+ can engage Game Mode.
-      set_native_fullscreen_macos(1);
-      glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
-#else
-      glutFullScreen();
-      set_cursor_hidden(true);
+    // Between a window and the player's kind of fullscreen (the WINDOW
+    // MODE row's last non-window pick).
+    int full = PORT_WINDOW_FULLSCREEN;
+#if defined(NEWTONIA_HAS_BORDERLESS)
+    if (g_prefs.borderless) full = PORT_WINDOW_BORDERLESS;
 #endif
-    } else {
-      is_fullscreen = false;
-      set_cursor_hidden(false);
-#ifdef __APPLE__
-      // Leaving the fullscreen Space restores the previous window frame.
-      set_native_fullscreen_macos(0);
-#else
-      glutPositionWindow(old_x, old_y);
-      glutReshapeWindow(old_width, old_height);
-#endif
-    }
-    g_prefs.fullscreen = is_fullscreen;
-    save_preferences();
+    port_set_window_mode(s_window_mode == PORT_WINDOW_WINDOWED
+                             ? full : PORT_WINDOW_WINDOWED);
   }
   game->keyboard(key, x, y);
 }
@@ -615,6 +884,9 @@ static void touch_listener_poll() {
 #endif // __linux__
 
 void resize(int width, int height) {
+  // Minimised (Windows exclusive FULLSCREEN minimises on alt-tab): nothing
+  // to draw into, and no size to remember. The restore reshapes again.
+  if (width <= 0 || height <= 0) return;
   s_win_w = width;
   s_win_h = height;
   apply_render_size();
@@ -878,8 +1150,17 @@ static void check_windows_focus() {
   if (!has_focus && windows_has_focus) {
     windows_has_focus = false;
     if (game) game->focus_lost();
+    // Exclusive FULLSCREEN gives the display back while another app is in
+    // front, and gets out of its way (what exclusive games do); the
+    // taskbar or alt-tab brings it back and the mode is made again.
+    if (s_window_mode == PORT_WINDOW_FULLSCREEN && s_display_changed) {
+      restore_display();
+      HWND h = game_hwnd();
+      if (h) ShowWindow(h, SW_MINIMIZE);
+    }
   } else if (has_focus && !windows_has_focus) {
     windows_has_focus = true;
+    if (s_window_mode == PORT_WINDOW_FULLSCREEN) s_win_display_pending = true;
     if (game) game->focus_gained();
   }
 }
@@ -1265,21 +1546,29 @@ int main(int argc, char* argv[]) {
 #ifdef __APPLE__
   enable_game_mode_macos();
 #endif
-  if (g_prefs.fullscreen) {
-    is_fullscreen = true;
+  {
+    int launch_mode = pref_window_mode();
+    if (launch_mode == PORT_WINDOW_WINDOWED && steam_tv_launch()) {
+      std::cout << "window mode: Steam Big Picture / Gaming Mode launch, "
+                   "fullscreen for this session" << std::endl;
+      launch_mode = PORT_WINDOW_FULLSCREEN;
+    }
 #ifdef __APPLE__
-    // Defer the native fullscreen transition until the window is on screen
-    // (handled in draw()); toggleFullScreen: is unreliable before launch
-    // finishes.  The cursor is hidden once that transition completes.
-    s_needs_fullscreen = true;
+    // Deferred until the window is on screen (handled in draw());
+    // toggleFullScreen: is unreliable before launch finishes. The cursor is
+    // hidden once that transition completes.
+    if (launch_mode != PORT_WINDOW_WINDOWED) s_launch_window_mode = launch_mode;
 #else
-    glutFullScreen();
-    set_cursor_hidden(true);
+    apply_window_mode(launch_mode);
 #endif
   }
   init_controllers_and_audio();
   startup_trace("controllers + audio done");
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_input_shutdown(); steam_shutdown(); });
+  atexit([]{
+#ifdef _WIN32
+    restore_display();
+#endif
+    save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_input_shutdown(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < MAX_PLAYERS; i++) {
     if(controllers[i]) game->controller_added(controller_ids[i]);

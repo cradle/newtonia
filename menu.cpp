@@ -172,6 +172,21 @@ void port_render_resolution_failed(int wanted_height) {
   s_resolution_failed = resolution_index_for(wanted_height);
 }
 #endif
+// Window mode (port_display.h): the desktop entry point's FULLSCREEN /
+// BORDERLESS / WINDOWED, indexed by PortWindowMode. Which steps the row
+// offers, in what order, is the port's (port_window_modes — Linux has no
+// BORDERLESS); the row reads the mode on screen, not a saved index, since a
+// Steam Big Picture launch can be fullscreen over a saved WINDOWED.
+#if defined(NEWTONIA_PORT_WINDOW_MODE)
+static const char* WINDOW_MODE_NAMES[] = {"FULLSCREEN", "BORDERLESS", "WINDOWED"};
+static int window_mode_row_index() {
+  const int *modes;
+  int n = port_window_modes(&modes);
+  for (int i = 0; i < n; i++)
+    if (modes[i] == port_window_mode()) return i;
+  return 0;
+}
+#endif
 // Any input while the notice is up: dismiss it and report it consumed.
 static bool dismiss_resolution_notice() {
   if (s_resolution_failed < 0) return false;
@@ -193,7 +208,8 @@ static bool dismiss_resolution_notice() {
 // layout places its pause circle off the classic HUD stack, so the HUD
 // there stays at the size the OSD was laid out for — Overlay::hud_grow
 // ignores the pref in touch mode); 15=friendly fire; 16=render resolution
-// (desktop list, NEWTONIA_PORT_RESOLUTION ports only). P2 rows are
+// (desktop list, NEWTONIA_PORT_RESOLUTION ports only); 18=window mode
+// (desktop list, NEWTONIA_PORT_WINDOW_MODE — the desktop entry point only). P2 rows are
 // desktop-only — mobile (touch) shows Player 1 plus the shared options.
 // Options is desktop/controller-only today (see Menu::show_options_row),
 // so the touch list is future-proofing.
@@ -208,6 +224,9 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {14, 0, "HUD  SIZE"},
 #if defined(NEWTONIA_PORT_RESOLUTION)
   {16, 0, "RESOLUTION"},
+#endif
+#if defined(NEWTONIA_PORT_WINDOW_MODE)
+  {18, 0, "WINDOW  MODE"},
 #endif
   {8, 0, "AUDIO"},
   {15, 0, "FRIENDLY  FIRE"},
@@ -958,6 +977,17 @@ void Menu::draw() {
         // Read off the pref, not the index: a port that can't make the
         // new size puts the pref back (port_display.h), and the row follows.
         case 16: num_steps = NUM_RESOLUTION;  cur_idx = resolution_index_for(g_prefs.render_height); lbl = RESOLUTION_LABELS; break;
+#if defined(NEWTONIA_PORT_WINDOW_MODE)
+        case 18: {
+          const int *modes;
+          num_steps = port_window_modes(&modes);
+          cur_idx = window_mode_row_index();
+          static const char *labels[3];
+          for (int i = 0; i < num_steps; i++) labels[i] = WINDOW_MODE_NAMES[modes[i]];
+          lbl = labels;
+          break;
+        }
+#endif
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -1018,7 +1048,13 @@ void Menu::draw() {
           Typer::draw(x + 0.5f * step_sz, y, ']', step_sz);
         }
       }
-      Typer::draw(VALUE_X, y, lbl[cur_idx], 12);         // value description, right
+      // The value column spans VALUE_X..CURSOR_R (192 units), but an eighth
+      // glyph at size 12 meets the closing cursor mark (WINDOWED did): a
+      // value longer than seven (WINDOW MODE's three) is drawn smaller, to
+      // seven glyphs' width, rather than run into it.
+      int value_len = (int)strlen(lbl[cur_idx]);
+      float value_sz = value_len > 7 ? 168.0f / (value_len * 2) : 12.0f;
+      Typer::draw(VALUE_X, y, lbl[cur_idx], value_sz);   // value description, right
       // Same note. Size 8 and no parentheses because the value column only
       // spans VALUE_X..CURSOR_R (192 units): "OFF (ENV ON)" overruns the
       // closing cursor mark, "OFF ENV ON" clears it with room to spare.
@@ -2549,6 +2585,17 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 16:
       resolution_index_ = resolution_index_for(g_prefs.render_height);  // the port may have put it back
       idx = &resolution_index_;                        num = NUM_RESOLUTION;   break;
+#if defined(NEWTONIA_PORT_WINDOW_MODE)
+    case 18: {
+      // Live like RESOLUTION, from the mode on screen (F / Alt+Enter change
+      // it too). The port saves it.
+      const int *modes;
+      num = port_window_modes(&modes);
+      window_mode_index_ = window_mode_row_index();
+      idx = &window_mode_index_;
+      break;
+    }
+#endif
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -2578,6 +2625,14 @@ void Menu::adjust_active_row(int delta, bool wrap) {
         Haptics::pad(pad_id_at(i), Haptics::BOOST);
     }
   }
+#if defined(NEWTONIA_PORT_WINDOW_MODE)
+  if (r.kind == 18) {
+    const int *modes;
+    port_window_modes(&modes);
+    if (modes[window_mode_index_] != port_window_mode())
+      port_set_window_mode(modes[window_mode_index_]);
+  }
+#endif
 #if defined(NEWTONIA_PORT_RESOLUTION)
   if (r.kind == 16 && g_prefs.render_height != RESOLUTION_HEIGHTS[resolution_index_]) {
     // Live too: the picture changing under the cursor is the feedback.
