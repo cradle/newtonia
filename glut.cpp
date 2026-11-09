@@ -1170,8 +1170,32 @@ static void keep_window_covering() {
   cover_monitor(h);
 }
 
+// Logs the window leaving or returning from minimised, and its size
+// changing, in the screen-covering modes: what a field alt-tab report needs.
+static void trace_window_state() {
+  static int last_iconic = -1;
+  static long last_w = -1, last_h = -1;
+  if (s_window_mode == PORT_WINDOW_WINDOWED) return;
+  HWND h = game_hwnd();
+  if (!h) return;
+  int iconic = IsIconic(h) ? 1 : 0;
+  RECT r;
+  if (!GetWindowRect(h, &r)) return;
+  long w = r.right - r.left, ht = r.bottom - r.top;
+  if (iconic != last_iconic || (!iconic && (w != last_w || ht != last_h))) {
+    std::cout << "window mode: window now "
+              << (iconic ? std::string("minimised")
+                         : std::to_string(w) + "x" + std::to_string(ht))
+              << (GetActiveWindow() ? ", active" : ", inactive") << std::endl;
+  }
+  last_iconic = iconic;
+  last_w = w;
+  last_h = ht;
+}
+
 static void check_windows_focus() {
   bool has_focus = (GetActiveWindow() != NULL);
+  trace_window_state();
   if (has_focus) keep_window_covering();
   if (!has_focus && windows_has_focus) {
     windows_has_focus = false;
@@ -1184,10 +1208,14 @@ static void check_windows_focus() {
     // tells FULLSCREEN from BORDERLESS, and restore_display() does nothing
     // when there is no mode to give back.
     if (s_window_mode == PORT_WINDOW_FULLSCREEN) {
+      // Minimise BEFORE the display goes back: restoring the mode under a
+      // screen-sized window makes Windows grow it to the new desktop size,
+      // and the game was left covering the screen behind the other app
+      // (field, 2026-11-09).
       bool had_mode = s_display_changed;
-      restore_display();
       HWND h = game_hwnd();
       if (h) ShowWindow(h, SW_MINIMIZE);
+      restore_display();
       std::cout << "window mode: focus lost, display "
                 << (had_mode ? "given back" : "unchanged")
                 << (h ? (IsIconic(h) ? ", minimised" : ", NOT minimised")
