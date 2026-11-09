@@ -604,7 +604,10 @@ jobs:
 
   deploy-steam:
     needs: [build-windows, build-macos, build-linux]
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: on the Ubuntu 26.04 image it moved to (2026-11-09)
+    # the action's 32-bit steamcmd can't self-update ("Steamcmd needs to be
+    # online to update"), game-ci/steam-deploy#99 / steamcmd/docker#93.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
