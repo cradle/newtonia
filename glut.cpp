@@ -1152,8 +1152,12 @@ static void check_windows_focus() {
     if (game) game->focus_lost();
     // Exclusive FULLSCREEN gives the display back while another app is in
     // front, and gets out of its way (what exclusive games do); the
-    // taskbar or alt-tab brings it back and the mode is made again.
-    if (s_window_mode == PORT_WINDOW_FULLSCREEN && s_display_changed) {
+    // taskbar or alt-tab brings it back and the mode is made again. It
+    // minimises even when the display mode never changed (NATIVE, a pick
+    // at or above the desktop height, or no matching mode): that is what
+    // tells FULLSCREEN from BORDERLESS, and restore_display() does nothing
+    // when there is no mode to give back.
+    if (s_window_mode == PORT_WINDOW_FULLSCREEN) {
       restore_display();
       HWND h = game_hwnd();
       if (h) ShowWindow(h, SW_MINIMIZE);

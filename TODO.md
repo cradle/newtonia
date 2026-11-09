@@ -22,6 +22,10 @@ WINDOWED; Linux has no BORDERLESS step, see `port_display.h`), saved as
 Windows build by hand on 2026-11-09 (all three modes, the F toggle, the
 choice kept across a restart). Still to do by hand:
 
+- Windows: alt-tab out of FULLSCREEN minimises the game at NATIVE as well
+  as at a lower RESOLUTION (where the desktop mode also comes back);
+  BORDERLESS stays on screen behind the other app.
+
 - macOS: FULLSCREEN is the fullscreen Space as before; BORDERLESS covers
   the screen in the current Space (GLUT's own fullscreen); switching
   straight between the two waits for the Space animation.
