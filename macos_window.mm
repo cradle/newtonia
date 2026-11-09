@@ -191,4 +191,37 @@ extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)()) {
            object:nil];
 }
 
+
+// --- BORDERLESS behind other apps ---
+
+// GLUT's glutFullScreen() covers the menu bar by raising the window above the
+// normal window level, and leaves it there when the player switches apps, so
+// the game stayed in front of every other window. Drop it to the normal level
+// while another app is active and put GLUT's level back on return.
+static NSWindow *s_lowered_window = nil;
+static NSInteger s_cover_level = 0;
+
+extern "C" void macos_lower_cover_window() {
+  if (s_lowered_window) return;
+  for (NSWindow *w in [NSApp windows]) {
+    if (![w isVisible] || [w level] <= NSNormalWindowLevel) continue;
+    s_cover_level = [w level];
+    s_lowered_window = w;
+    [w setLevel:NSNormalWindowLevel];
+    NSLog(@"window mode: borderless window lowered from level %ld",
+          (long)s_cover_level);
+    return;
+  }
+}
+
+// still_covering: BORDERLESS is still in force (otherwise just forget it).
+extern "C" void macos_restore_cover_window(int still_covering) {
+  NSWindow *w = s_lowered_window;
+  s_lowered_window = nil;
+  if (!w || !still_covering) return;
+  [w setLevel:s_cover_level];
+  NSLog(@"window mode: borderless window back at level %ld",
+        (long)s_cover_level);
+}
+
 #endif // __APPLE__

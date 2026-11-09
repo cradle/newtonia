@@ -47,6 +47,8 @@ extern "C" void enable_game_mode_macos();
 extern "C" void set_native_fullscreen_macos(int want_fullscreen);
 extern "C" int is_native_fullscreen_macos();
 extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
+extern "C" void macos_lower_cover_window();
+extern "C" void macos_restore_cover_window(int still_covering);
 #endif
 
 #ifdef __linux__
@@ -926,8 +928,15 @@ void mouse_passive(int x, int y) {
   set_cursor_hidden(true);
 }
 
-static void on_focus_lost()   { if (game) game->focus_lost(); }
-static void on_focus_gained() { if (game) game->focus_gained(); }
+// BORDERLESS must not stay above the app the player switched to.
+static void on_focus_lost() {
+  if (s_macos_glut_cover) macos_lower_cover_window();
+  if (game) game->focus_lost();
+}
+static void on_focus_gained() {
+  macos_restore_cover_window(s_macos_glut_cover ? 1 : 0);
+  if (game) game->focus_gained();
+}
 #endif // __APPLE__
 
 
