@@ -20,11 +20,12 @@ WINDOWED; Linux has no BORDERLESS step, see `port_display.h`), saved as
 `fullscreen` + `borderless` in the INI. The Linux path is covered headless
 (Xvfb, row and F key, the Big Picture launch), and Glenn tested the
 Windows build by hand on 2026-11-09 (all three modes, the F toggle, the
-choice kept across a restart). Still to do by hand:
+choice kept across a restart, a FULLSCREEN 720P launch, and alt-tab out of
+FULLSCREEN at 720P minimising the game and giving the desktop mode back).
+Still to do by hand:
 
-- Windows: alt-tab out of FULLSCREEN minimises the game at NATIVE as well
-  as at a lower RESOLUTION (where the desktop mode also comes back);
-  BORDERLESS stays on screen behind the other app.
+- Windows: alt-tab out of FULLSCREEN at NATIVE minimises too; BORDERLESS
+  stays on screen behind the other app.
 
 - macOS: FULLSCREEN is the fullscreen Space as before; BORDERLESS covers
   the screen in the current Space (GLUT's own fullscreen); switching
