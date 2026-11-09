@@ -1158,13 +1158,24 @@ static void check_windows_focus() {
     // tells FULLSCREEN from BORDERLESS, and restore_display() does nothing
     // when there is no mode to give back.
     if (s_window_mode == PORT_WINDOW_FULLSCREEN) {
+      bool had_mode = s_display_changed;
       restore_display();
       HWND h = game_hwnd();
       if (h) ShowWindow(h, SW_MINIMIZE);
+      std::cout << "window mode: focus lost, display "
+                << (had_mode ? "given back" : "unchanged")
+                << (h ? (IsIconic(h) ? ", minimised" : ", NOT minimised")
+                      : ", no window to minimise")
+                << std::endl;
     }
   } else if (has_focus && !windows_has_focus) {
     windows_has_focus = true;
-    if (s_window_mode == PORT_WINDOW_FULLSCREEN) s_win_display_pending = true;
+    if (s_window_mode == PORT_WINDOW_FULLSCREEN) {
+      HWND h = game_hwnd();
+      std::cout << "window mode: focus back"
+                << (h && IsIconic(h) ? " (still minimised)" : "") << std::endl;
+      s_win_display_pending = true;
+    }
     if (game) game->focus_gained();
   }
 }
