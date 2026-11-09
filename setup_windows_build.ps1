@@ -5,9 +5,9 @@
 #   ./setup_windows_build.ps1 -SkipNetplay    # plain (netless) build: make NETPLAY=0
 #   ./setup_windows_build.ps1 -SkipBuild      # toolchain/deps only, no game build
 #
-# Mirrors .github/workflows/windows.yml: MSYS2 MINGW64 gcc + static SDL2/
-# SDL2_mixer/freeglut, and a static libdatachannel for the default netplay
-# build (built by build_netplay_deps.sh, which has a matching Windows branch).
+# Mirrors .github/workflows/windows.yml: MSYS2 MINGW64 gcc + freeglut, static
+# SDL2/SDL2_mixer built from source (build_sdl_deps_mingw.sh), and a static
+# libdatachannel for the default netplay build (built by build_netplay_deps.sh, which has a matching Windows branch).
 #
 # After setup, day-to-day builds don't need this script: open the
 # "MSYS2 MINGW64" shell and run `make -j8` (netplay by default) or
@@ -50,8 +50,19 @@ if ($fresh) { Invoke-Mingw 'pacman -Syu --noconfirm --ask=4' }
 Write-Host '== installing toolchain packages'
 Invoke-Mingw ('pacman -S --noconfirm --ask=4 --needed make git ' +
     'mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf ' +
-    'mingw-w64-x86_64-freeglut mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_mixer ' +
+    'mingw-w64-x86_64-freeglut ' +
     'mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-openssl')
+
+# --- static SDL2 + SDL2_mixer -------------------------------------------------
+# Built from pinned source (build_sdl_deps_mingw.sh): MSYS2's SDL2_mixer now
+# pulls in sdl2-compat, which has no static libSDL2.a (2026-11-09). Remove any
+# pacman SDL2 packages first, or their headers and .pc files would shadow ours.
+Write-Host '== removing pacman SDL2 packages (if any)'
+Invoke-Mingw ('for p in mingw-w64-x86_64-SDL2_mixer mingw-w64-x86_64-sdl2-mixer ' +
+    'mingw-w64-x86_64-sdl2-compat mingw-w64-x86_64-SDL2; do ' +
+    'if pacman -Q $p >/dev/null 2>&1; then pacman -Rdd --noconfirm $p; fi; done')
+Write-Host '== building static SDL2 + SDL2_mixer'
+Invoke-Mingw "cd '$Repo' && ./build_sdl_deps_mingw.sh"
 
 # --- netplay deps (static libdatachannel into ./netplay-libs) ---------------
 if (-not $SkipNetplay) {

@@ -122,7 +122,7 @@ make NETPLAY=0 -j8    # plain netless build
 The Makefile's `_NT` branch mirrors `.github/workflows/windows.yml`: fully
 static `newtonia.exe` (no MinGW DLLs needed), GUI subsystem so stdout only
 shows when piped from a shell (e.g. the `NEWTONIA_NET_SELFTEST=1` gate).
-`./build_netplay_deps.sh` has a matching Windows branch: static
+SDL2 and SDL2_mixer are static builds from pinned source (`./build_sdl_deps_mingw.sh`, run by the setup script and both Windows workflows), not pacman packages: MSYS2's SDL2_mixer started pulling in sdl2-compat on 2026-11-09, which displaces SDL2 and ships no `libSDL2.a`, so the static link failed with `cannot find -lSDL2`. `./build_netplay_deps.sh` has a matching Windows branch: static
 libdatachannel + vendored archives copied into `netplay-libs/lib/*.a`, all
 linked in one `--start-group` with msys2's static OpenSSL. `%zu` in
 `SDL_Log` formats warns (and misprints) under MinGW — cast to `unsigned`
