@@ -290,17 +290,43 @@ static int audio_row_count() {
 static const OptRow &audio_row(int r) {
   return is_touch_mode() ? OPT_ROWS_AUDIO_TOUCH[r] : OPT_ROWS_AUDIO_DESKTOP[r];
 }
+// A row this session can't use: WINDOW MODE inside the Deck's Gaming Mode,
+// where the game is full screen whatever it picks.
+static bool opt_row_hidden(const OptRow &row) {
+#if defined(NEWTONIA_PORT_WINDOW_MODE)
+  if (row.kind == 18 && !port_window_mode_offered()) return true;
+#else
+  (void)row;
+#endif
+  return false;
+}
+static int opt_rows_all(const OptRow **rows) {
+  if (is_touch_mode()) {
+    *rows = OPT_ROWS_TOUCH;
+    return (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]));
+  }
+  *rows = OPT_ROWS_DESKTOP;
+  return (int)(sizeof(OPT_ROWS_DESKTOP) / sizeof(OPT_ROWS_DESKTOP[0]));
+}
 static int opt_row_count() {
-  int n = is_touch_mode()
-              ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
-              : (int)(sizeof(OPT_ROWS_DESKTOP) / sizeof(OPT_ROWS_DESKTOP[0]));
+  const OptRow *rows;
+  int all = opt_rows_all(&rows), n = 0;
+  for (int i = 0; i < all; i++)
+    if (!opt_row_hidden(rows[i])) n++;
   // No leaderboard on this build/session (netless, web-v1, policy-blocked):
   // a prompts toggle for a feature that cannot appear would only confuse.
   if (!net_board_available()) n--;
   return n;
 }
+// The r-th row shown (hidden rows skipped).
 static const OptRow &opt_row(int r) {
-  return is_touch_mode() ? OPT_ROWS_TOUCH[r] : OPT_ROWS_DESKTOP[r];
+  const OptRow *rows;
+  int all = opt_rows_all(&rows);
+  for (int i = 0; i < all; i++) {
+    if (opt_row_hidden(rows[i])) continue;
+    if (r-- == 0) return rows[i];
+  }
+  return rows[all - 1];
 }
 
 // ---- main-menu vertical anchors ----

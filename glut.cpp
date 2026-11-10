@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <csignal>
 #include <string>
+#include <cstring>
 
 #ifdef __APPLE__
 // CGL is needed for VSync configuration only.
@@ -328,6 +329,19 @@ static bool steam_tv_launch() {
   return (bp && bp[0] == '1') || (ui && ui[0] == '1');
 }
 
+// Inside gamescope (the Deck's Gaming Mode, SteamOS): the compositor shows
+// the game full screen whatever it asks for, so a window mode means nothing
+// there. Big Picture on a desktop is still a desktop, and keeps the row.
+static bool gamescope_session() {
+  const char *ui = getenv("SteamGamepadUI");
+  const char *gs = getenv("GAMESCOPE_WAYLAND_DISPLAY");
+  const char *de = getenv("XDG_CURRENT_DESKTOP");
+  return (ui && ui[0] == '1') || (gs && gs[0])
+      || (de && strcmp(de, "gamescope") == 0);
+}
+
+bool port_window_mode_offered() { return !gamescope_session(); }
+
 #ifdef _WIN32
 // FULLSCREEN on Windows is exclusive: freeglut's glutFullScreen() is
 // already a frameless window over the monitor (what BORDERLESS is), so on
@@ -569,7 +583,7 @@ void keyboard(unsigned char key, int x, int y) {
       (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen &&
        !game->text_entry_active())
     || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
-  if (do_fullscreen) {
+  if (do_fullscreen && port_window_mode_offered()) {
     // Between a window and the player's kind of fullscreen (the WINDOW
     // MODE row's last non-window pick).
     int full = PORT_WINDOW_FULLSCREEN;
@@ -1626,7 +1640,8 @@ int main(int argc, char* argv[]) {
 #endif
   {
     int launch_mode = pref_window_mode();
-    if (launch_mode == PORT_WINDOW_WINDOWED && steam_tv_launch()) {
+    if (launch_mode == PORT_WINDOW_WINDOWED
+        && (steam_tv_launch() || gamescope_session())) {
       std::cout << "window mode: Steam Big Picture / Gaming Mode launch, "
                    "fullscreen for this session" << std::endl;
       launch_mode = PORT_WINDOW_FULLSCREEN;

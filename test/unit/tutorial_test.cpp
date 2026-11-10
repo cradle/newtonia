@@ -36,6 +36,7 @@ int port_window_modes(const int **modes) {
 }
 int port_window_mode() { return PORT_WINDOW_WINDOWED; }
 void port_set_window_mode(int) {}
+bool port_window_mode_offered() { return true; }
 #endif
 
 static void press(GLGame &g, unsigned char key) {

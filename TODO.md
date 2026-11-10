@@ -30,7 +30,8 @@ inactive). Still to do by hand:
 - Windows: alt-tab out of FULLSCREEN at NATIVE minimises too; BORDERLESS
   stays on screen behind the other app.
 - Steam: a launch from Big Picture (and the Deck's Gaming Mode) opens
-  fullscreen over a saved WINDOWED without changing the saved choice.
+  fullscreen over a saved WINDOWED without changing the saved choice; in
+  Gaming Mode OPTIONS has no WINDOW MODE row and F does nothing.
 
 ## Google Play Games on PC: Play Console and a field test
 

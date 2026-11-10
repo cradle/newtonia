@@ -74,6 +74,9 @@ enum PortWindowMode {
   PORT_WINDOW_WINDOWED   = 2,
 };
 int  port_window_modes(const int **modes);  // the row's modes; returns the count
+// False inside the Deck's Gaming Mode (gamescope): there the game is always
+// full screen, so the row is hidden and the F / Alt+Enter toggle is off.
+bool port_window_mode_offered();
 int  port_window_mode();
 void port_set_window_mode(int mode);
 #endif
