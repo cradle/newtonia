@@ -27,10 +27,9 @@ alt-tab out of FULLSCREEN, and BORDERLESS dropping behind the app switched
 to (GLUT raises its window above other apps; the build now lowers it while
 inactive). The Steam beta from this branch passed on the Deck on
 2026-11-10: Gaming Mode opens fullscreen and OPTIONS has no WINDOW MODE
-row. Still to do by hand:
+row. Windows alt-tab at NATIVE (FULLSCREEN minimises, BORDERLESS stays
+behind the other app) passed the same day. Still to do by hand:
 
-- Windows: alt-tab out of FULLSCREEN at NATIVE minimises too; BORDERLESS
-  stays on screen behind the other app.
 - Steam on a PC: a launch from Big Picture opens fullscreen over a saved
   WINDOWED without changing the saved choice.
 
