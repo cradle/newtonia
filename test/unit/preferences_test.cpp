@@ -203,6 +203,27 @@ int main() {
     assert(g_prefs.render_height == 1080);
   }
 
+  // 8. The WINDOW MODE row (port_display.h): fullscreen + borderless. An
+  //    INI from before the key opens the classic (non-borderless)
+  //    fullscreen; both keys round-trip, and fullscreen= stays the line an
+  //    older build reads.
+  {
+    std::string dir = fresh_pref_dir();
+    touch(dir + "preferences.ini", "fullscreen=1\n");
+    load_preferences();
+    assert(g_prefs.fullscreen);
+    assert(!g_prefs.borderless);
+    g_prefs.borderless = true;
+    save_preferences();
+    load_preferences();
+    assert(g_prefs.fullscreen && g_prefs.borderless);
+    assert(contents(dir + "preferences.ini").find("fullscreen=1\n") != std::string::npos);
+    g_prefs.fullscreen = false;  // WINDOWED keeps the kind for the toggle
+    save_preferences();
+    load_preferences();
+    assert(!g_prefs.fullscreen && g_prefs.borderless);
+  }
+
   std::printf("preferences_test: all checks passed\n");
   return 0;
 }

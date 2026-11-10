@@ -50,8 +50,11 @@ jobs:
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-freeglut
-            mingw-w64-x86_64-SDL2
-            mingw-w64-x86_64-SDL2_mixer
+
+      # Static SDL2 + SDL2_mixer from pinned source: MSYS2's SDL2_mixer now
+      # pulls in sdl2-compat, which ships no static libSDL2.a (2026-11-09).
+      - name: Build SDL2 + SDL2_mixer (static)
+        run: ./build_sdl_deps_mingw.sh
 
       # Netplay (NETPLAY.md): static libdatachannel, MinGW flavour — same
       # recipe as windows.yml (the dev CI is the compile gate for this).
@@ -601,7 +604,10 @@ jobs:
 
   deploy-steam:
     needs: [build-windows, build-macos, build-linux]
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: on the Ubuntu 26.04 image it moved to (2026-11-09)
+    # the action's 32-bit steamcmd can't self-update ("Steamcmd needs to be
+    # online to update"), game-ci/steam-deploy#99 / steamcmd/docker#93.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

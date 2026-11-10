@@ -84,6 +84,10 @@ bool RenderTarget::ensure(int w, int h) {
     SDL_Log("resolution: %dx%d is over this GPU's %d limit", w, h, (int)max_rb);
     return false;
   }
+  // Drain errors left by earlier GL calls: the check below reads
+  // glGetError(), and a stale one made a complete buffer look like a
+  // failure (status 0x8cd5 = complete), which reset RESOLUTION to NATIVE.
+  while (glGetError() != GL_NO_ERROR) {}
   glGenRenderbuffers(1, &s_colour);
   glBindRenderbuffer(GL_RENDERBUFFER, s_colour);
   glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, w, h);

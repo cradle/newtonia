@@ -122,6 +122,13 @@ struct GeneralKeys {
 
 struct Preferences {
     bool fullscreen          = true;   // desktop only; ignored on mobile/web
+    // Which fullscreen, when fullscreen is set (desktop, the Options WINDOW
+    // MODE row, port_display.h): false = FULLSCREEN (exclusive on Windows,
+    // the fullscreen Space on macOS), true = BORDERLESS (a frameless window
+    // over the screen at its own mode). A separate key beside fullscreen so
+    // an older build reading the INI still opens fullscreen or windowed as
+    // the player left it; the F / Alt+Enter toggle returns to this kind.
+    bool borderless          = false;
     bool rotate_view         = true;   // LEGACY global (pre-per-player): only a
                                        // migration/downgrade seed now — the game
                                        // reads PlayerKeys::rotate_view per player

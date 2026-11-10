@@ -32,8 +32,11 @@ jobs:
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-freeglut
-            mingw-w64-x86_64-SDL2
-            mingw-w64-x86_64-SDL2_mixer
+
+      # Static SDL2 + SDL2_mixer from pinned source: MSYS2's SDL2_mixer now
+      # pulls in sdl2-compat, which ships no static libSDL2.a (2026-11-09).
+      - name: Build SDL2 + SDL2_mixer (static)
+        run: ./build_sdl_deps_mingw.sh
 
       # Netplay (NETPLAY.md): static libdatachannel, MinGW flavour. Uses
       # msys2's OpenSSL (static libs ship with the package) instead of the

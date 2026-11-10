@@ -28,6 +28,16 @@ void port_render_size(int *w, int *h) { *w = 0; *h = 0; }
 int port_render_max_height() { return 0; }
 bool port_render_windowed() { return false; }
 #endif
+#if defined(NEWTONIA_PORT_WINDOW_MODE)
+int port_window_modes(const int **modes) {
+  static const int m[] = {PORT_WINDOW_WINDOWED};
+  *modes = m;
+  return 1;
+}
+int port_window_mode() { return PORT_WINDOW_WINDOWED; }
+void port_set_window_mode(int) {}
+bool port_window_mode_offered() { return true; }
+#endif
 
 static void press(GLGame &g, unsigned char key) {
   g.keyboard(key, 0, 0);

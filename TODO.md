@@ -13,6 +13,26 @@ past the ~35 min mark seen on 2026-10-27, against the beta worker, and
 check its log for `[lobby] room XXXXX reclaimed` and that a join still
 works afterwards.
 
+## Window mode: hand tests on macOS and Steam
+
+The desktop Options list has a WINDOW MODE row (FULLSCREEN / BORDERLESS /
+WINDOWED; Linux has no BORDERLESS step, see `port_display.h`), saved as
+`fullscreen` + `borderless` in the INI. The Linux path is covered headless
+(Xvfb, row and F key, the Big Picture launch), and Glenn tested the
+Windows build by hand on 2026-11-09 (all three modes, the F toggle, the
+choice kept across a restart, a FULLSCREEN 720P launch, and alt-tab out of
+FULLSCREEN at 720P minimising the game and giving the desktop mode back).
+The macOS build passed by hand the same day: FULLSCREEN and WINDOWED,
+alt-tab out of FULLSCREEN, and BORDERLESS dropping behind the app switched
+to (GLUT raises its window above other apps; the build now lowers it while
+inactive). The Steam beta from this branch passed on the Deck on
+2026-11-10: Gaming Mode opens fullscreen and OPTIONS has no WINDOW MODE
+row. Windows alt-tab at NATIVE (FULLSCREEN minimises, BORDERLESS stays
+behind the other app) passed the same day. Still to do by hand:
+
+- Steam on a PC: a launch from Big Picture opens fullscreen over a saved
+  WINDOWED without changing the saved choice.
+
 ## Google Play Games on PC: Play Console and a field test
 
 The APK has a desktop mode for the Windows client (CLAUDE.md, "Google Play

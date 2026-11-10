@@ -268,6 +268,8 @@ static void parse_line(const char *key, const char *val) {
     // Scalar preferences
     if (strcmp(key, "fullscreen") == 0) {
         g_prefs.fullscreen = (val[0] == '1');
+    } else if (strcmp(key, "borderless") == 0) {
+        g_prefs.borderless = (val[0] == '1');
     } else if (strcmp(key, "rotate_view") == 0) {
         // Legacy single global (pre-per-player). Seed EVERY player from it so
         // an old INI's one setting migrates; explicit pN_rotate_view lines
@@ -431,6 +433,7 @@ void save_preferences() {
 
     // Scalar preferences
     fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen         ? 1 : 0);
+    fprintf(f, "borderless=%d\n",              g_prefs.borderless         ? 1 : 0);
     // Legacy global written from P1 so a downgrade to a pre-per-player build
     // still reads a sane camera setting; new builds use p1_/p2_rotate_view.
     fprintf(f, "rotate_view=%d\n",             g_prefs.player_keys[0].rotate_view ? 1 : 0);
