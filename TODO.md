@@ -2,6 +2,17 @@
 
 Follow-ups that need a person, a device or an account we don't have to hand.
 
+## Tutorial skip beacon, one-hand RIGHT: phone check
+
+In the one-hand RIGHT touch layout the tutorial's red skip beacon sat on
+the right of the ship, in among the joystick ring, the action buttons and
+the zoom column on a portrait phone. It now goes off the nose's LEFT hand
+in that layout (and the practice rocks fan out on the right, so the two
+never meet), mirroring the LEFT layout; every other layout is unchanged.
+Checked headless at 540x960 and 960x540. Still to do by hand: run the
+tutorial on a phone in portrait, ONE HAND + RIGHT, and check the beacon is
+clear of the controls and reachable.
+
 ## Waiting-room host reconnect: field check
 
 A waiting-room host now reclaims its room when the relay socket closes
