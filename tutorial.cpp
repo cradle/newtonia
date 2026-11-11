@@ -233,10 +233,16 @@ void Tutorial::tick(GLGame &g, int delta) {
       if (s->is_alive()) {
         // Off the nose's right hand, where the two calibration turns
         // (135 degrees each way) and the straight thrust run never lead.
+        // The one-hand RIGHT layout rests its ring, action buttons and zoom
+        // column on that side, and on a portrait phone the beacon landed
+        // in among them, so there it goes off the LEFT hand instead: the
+        // side the thumb leaves clear, as the LEFT layout already does.
         Point f = s->facing.normalized();
         float dist = std::min(SKIP_BEACON_DIST, 0.7f * view_half_min(g.window, gs));
-        float sx = s->position.x() + f.y() * dist;
-        float sy = s->position.y() - f.x() * dist;
+        skip_side_ = (is_touch_mode() && touch_one_handed() &&
+                      touch_handedness_side() > 0) ? -1.0f : 1.0f;
+        float sx = s->position.x() + skip_side_ * f.y() * dist;
+        float sy = s->position.y() - skip_side_ * f.x() * dist;
         skip_beacon_ = WrappedPoint(sx, sy);
         skip_beacon_.wrap();
         skip_on_ = true;
@@ -381,7 +387,9 @@ void Tutorial::spawn_practice_asteroids(GLGame &g) {
   // momentum on desktop. Place the fan beside the current flight path so
   // a coasting pilot has time to read FIRE before hitting a target.
   Point flight = s->velocity.magnitude() > 0.01f ? s->velocity.normalized() : f;
-  f = Point(-flight.y(), flight.x());
+  // The fan goes on the hand the skip beacon doesn't hold, so a rock
+  // never sits on the beacon (which mirrors under one-hand RIGHT).
+  f = Point(-flight.y(), flight.x()) * skip_side_;
   const float dist = std::min(420.0f, 0.6f * view_half_min(g.window, gs));
   for (int i = 0; i < PRACTICE_ROCKS; i++) {
     // 20 degrees apart: at 30 the outer rock rose under the banner card

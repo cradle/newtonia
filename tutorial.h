@@ -149,6 +149,10 @@ private:
   // (the impatient pilot's exit, the menu key being the other).
   bool skip_on_ = false;
   WrappedPoint skip_beacon_ = WrappedPoint(0.0f, 0.0f);
+  // Which hand of the launch heading holds the skip beacon: +1 right
+  // (the default), -1 left (the one-hand RIGHT touch layout, whose
+  // controls fill the right). The practice rocks fan out on the other.
+  float skip_side_ = 1.0f;
   // THRUST: how long the thrusters have run (for the drift line).
   int thrust_ms_ = 0;
   // INPUT / HAND / CAMERA: the prompt.
