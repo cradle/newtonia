@@ -1869,13 +1869,18 @@ void NetLobby::waiting_room_update(int delta) {
   host_poll_seated(delta);
   for (size_t i = 0; i < seated_.size();) {
     NetTransport *t = seated_[i].session->transport();
-    if ((t && t->failed()) || seated_[i].said_bye) {
+    const bool silent = seated_[i].answered &&
+                        seated_[i].silent_ms >= LOBBY_SILENT_MS;
+    if ((t && t->failed()) || seated_[i].said_bye || silent) {
       char buf[48];
       snprintf(buf, sizeof(buf), "PLAYER %d LEFT", seated_[i].seat);
       set_status(buf);
       if (seated_[i].said_bye)
         NET_LOG("[lobby] waiting room: seat %d left pre-start\n",
                 seated_[i].seat);
+      else if (silent && !(t && t->failed()))
+        NET_LOG("[lobby] waiting room: seat %d stopped answering pre-start"
+                " (%d ms)\n", seated_[i].seat, seated_[i].silent_ms);
       else
         NET_LOG("[lobby] waiting room: seat %d link died pre-start\n",
                 seated_[i].seat);
@@ -2036,6 +2041,11 @@ void NetLobby::host_poll_seated(int delta) {
         if (r.u8() == Net::EV_BYE) by.said_bye = true;
         continue;
       }
+      if (h.msg_type == Net::MSG_PONG) {
+        by.answered = true;
+        by.silent_ms = 0;
+        continue;
+      }
       if (h.msg_type != Net::MSG_MEMBER_REFUSED) continue;
       std::string jid;
       if (!Net::read_member_refused(r, jid)) continue;
@@ -2046,6 +2056,20 @@ void NetLobby::host_poll_seated(int delta) {
       if (by.held_refusals.empty()) by.held_refusals_ms = 0;
       by.held_refusals.push_back(jid);
     }
+    // Heartbeat: ping on the unreliable channel (a stalled reliable queue
+    // must not read as silence), and count the quiet since the last PONG.
+    by.ping_ms += delta;
+    if (by.ping_ms >= LOBBY_PING_MS) {
+      by.ping_ms = 0;
+      std::vector<uint8_t> p;
+      Net::put_header(p, Net::MSG_PING, 1);  // from the host, seat 1
+      Net::put_u32(p, (uint32_t)SDL_GetTicks());
+      t->send_unreliable(&p[0], p.size());
+    }
+    if (by.answered)
+      by.silent_ms += delta < LOBBY_SILENCE_STEP_MS
+                          ? (delta > 0 ? delta : 0)
+                          : LOBBY_SILENCE_STEP_MS;
     if (by.held_refusals.empty()) continue;
     // Only from an accountable player, and only about someone seated after
     // them: whoever was here first stays. The worker's attestation travels
@@ -3311,6 +3335,18 @@ void NetLobby::tick(int delta) {
             screen_ = LobbyFailed;
             return;
           }
+          continue;
+        }
+        // The waiting room's heartbeat (and a running host's RTT probe):
+        // answer at once, so the host can tell a killed joiner from a
+        // quiet one. An older host never pings.
+        if (h.msg_type == Net::MSG_PING) {
+          uint32_t stamp = r.u32();
+          if (!r.ok || !session_->transport()) continue;
+          std::vector<uint8_t> out;
+          Net::put_header(out, Net::MSG_PONG, (uint8_t)session_->player_id());
+          Net::put_u32(out, stamp);
+          session_->transport()->send_unreliable(&out[0], out.size());
           continue;
         }
         if (h.msg_type == Net::MSG_ROOM_MEMBERS) {

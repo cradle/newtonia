@@ -24,6 +24,18 @@ past the ~35 min mark seen on 2026-10-27, against the beta worker, and
 check its log for `[lobby] room XXXXX reclaimed` and that a join still
 works afterwards.
 
+## Waiting-room heartbeat: field check
+
+The host now pings each seated joiner in the waiting room once a second and
+frees the seat when a joiner that has been answering goes quiet for 10 s
+(`NetLobby::host_poll_seated`), so a joiner whose app is killed no longer
+holds its seat until the link times out. `test/e2e/lobby_leave.sh` covers a
+killed joiner on a local link. Still to do by hand: host on the PC or the
+kit, join from the phone over a relayed link (type 0 before the code), kill
+the app from the recents screen, and check the host's PLAYERS count drops
+within about 10 s (log: `seat N stopped answering pre-start`). Also check a
+phone joiner that switches apps for a few seconds keeps its seat.
+
 ## Window mode: hand tests on macOS and Steam
 
 The desktop Options list has a WINDOW MODE row (FULLSCREEN / BORDERLESS /

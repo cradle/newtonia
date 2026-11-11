@@ -208,6 +208,15 @@ private:
     // out, which can be half a minute or more, and the roster kept the
     // seat the whole time.
     bool said_bye = false;
+    // Waiting-room heartbeat: the host pings each seated joiner every
+    // LOBBY_PING_MS and counts the time since its last answer. A joiner
+    // whose app was killed sends no goodbye, and a relayed link can take
+    // half a minute or more to fail, so without this the seat (and the
+    // count line) stayed taken all that time. Only a joiner that has
+    // answered once is held to it: an older build never answers.
+    int ping_ms = 0;
+    int silent_ms = 0;
+    bool answered = false;
   };
   std::vector<SeatedPeer> seated_;
   // Waiting-room roster selection (host, FOURPLAYER.md O3). -1 = no row
@@ -543,6 +552,13 @@ private:
   // kick's goodbye drain, from the other side). The lobby holds its
   // teardown for this long, then goes to the menu.
   static const int LEAVE_DRAIN_MS = 600;
+  // Waiting-room heartbeat (SeatedPeer::ping_ms). The timeout matches the
+  // game's own RX watchdog, so a joiner who switches apps for a moment
+  // keeps the seat. Each tick counts at most LOBBY_SILENCE_STEP_MS, so a
+  // host that was itself suspended doesn't wake up and drop everyone.
+  static const int LOBBY_PING_MS = 1000;
+  static const int LOBBY_SILENT_MS = 10000;
+  static const int LOBBY_SILENCE_STEP_MS = 250;
   int leaving_ms_ = 0;
   void finish_leave_to_menu();
   // Announce our identity to the worker; re-sent on every Room/Joined event
