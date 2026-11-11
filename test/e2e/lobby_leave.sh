@@ -10,7 +10,9 @@
 #
 # A 4-seat room with two joiners, so it never auto-starts: seat 3 presses Esc,
 # and the host must log the leave within a few seconds — well inside the time
-# a dead link takes — while seat 2 stays seated and START still works.
+# a dead link takes. Then a third joiner takes that seat and is killed
+# outright (no goodbye): the waiting-room heartbeat must free the seat
+# within about 10 s. Seat 2 stays seated throughout and START still works.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -66,6 +68,38 @@ kill -0 "${ROOM_PIDS[2]}" 2>/dev/null || room_fail "JOINER DIED LEAVING" joiner2
 kill "${ROOM_PIDS[2]}" 2>/dev/null
 unset 'ROOM_PIDS[2]' 'ROOM_WINS[2]'
 
+# A joiner whose app is KILLED sends no goodbye. The host's waiting-room
+# heartbeat (a ping a second, answered by the joiner) notices the silence
+# and frees the seat after 10 s, well before a relayed link would fail.
+echo "== joiner3 takes the free seat, then its app is killed"
+before=$(newtonia_windows)
+ROOM_PIDS[3]=$(launch joiner3)
+sleep 4
+ROOM_WINS[3]=$(new_window_since "$before")
+[ -n "${ROOM_WINS[3]}" ] || room_fail "NO WINDOW FOR joiner3" joiner3
+nav_join "${ROOM_WINS[3]}" "$ROOM_CODE" joiner3
+ok=
+for _ in $(seq 1 40); do
+  [ "$(grep -ac "seat 3 filled" "$OUT/host.log")" -ge 2 ] && { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "SEAT 3 NEVER REFILLED" host
+sleep 3  # a few heartbeats answered, so the host holds it to them
+kill -9 "${ROOM_PIDS[3]}" 2>/dev/null
+unset 'ROOM_PIDS[3]' 'ROOM_WINS[3]'
+killed_at=$(date +%s)
+ok=
+for _ in $(seq 1 25); do
+  grep -aq "seat 3 stopped answering pre-start\|seat 3 link died pre-start" \
+    "$OUT/host.log" && { ok=1; break; }
+  sleep 1
+done
+[ -n "$ok" ] || room_fail "HOST KEPT THE SEAT OF A KILLED JOINER" host
+echo "seat 3 freed $(( $(date +%s) - killed_at )) s after the kill"
+grep -a "seat 3 stopped answering\|seat 3 link died" "$OUT/host.log" | tail -1
+grep -aq "seat 2 stopped answering\|seat 2 link died pre-start" \
+  "$OUT/host.log" && room_fail "THE JOINER WHO STAYED WAS DROPPED" host
+
 echo "== START GAME with the one who stayed"
 xdotool key --window "${ROOM_WINS[0]}" Return; sleep 2
 ok=
@@ -79,4 +113,4 @@ room_alive
 assert_clean "$OUT/host.log" "$OUT/joiner1.log"
 
 room_kill_all
-echo "LOBBY-LEAVE-OK (a joiner who backed out was freed at once)"
+echo "LOBBY-LEAVE-OK (a joiner who backed out was freed at once, a killed one within seconds)"

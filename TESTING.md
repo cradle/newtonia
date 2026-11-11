@@ -996,8 +996,12 @@ test/e2e/lobby_leave.sh # A seated joiner pressing Esc in the waiting room
                      # few seconds. Without it the host waited for the link
                      # to die, which a relayed link can take half a minute
                      # to notice (field, 2026-10-27). Then the joiner who
-                     # stayed still starts. A killed joiner (no goodbye)
-                     # still waits for the link timeout
+                     # stayed still starts. Then a joiner is KILLED in
+                     # the waiting room (no goodbye): the host's heartbeat
+                     # (MSG_PING each second, answered by the joiner) frees
+                     # the seat 10 s later, logged as "seat 3 stopped
+                     # answering pre-start"; before it, the seat waited for
+                     # the link to fail
 test/e2e/lobby_reclaim.sh # A waiting-room host whose relay socket drops
                      # reclaims the room with its token (the kit saw the
                      # relay close an idle host ~35 min in, 2026-10-27, and
