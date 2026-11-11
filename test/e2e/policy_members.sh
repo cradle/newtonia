@@ -138,7 +138,7 @@ wait_log ALICE "room member .* identity attested platform=XBOX" 20 ||
   room_fail "ALICE NEVER HEARD WHO BOB IS" ALICE
 wait_log ALICE "another player in the room refused by platform policy" 20 ||
   room_fail "ALICE DID NOT LEAVE A ROOM WITH BOB IN IT" ALICE
-wait_log host "seat 3 link died pre-start" 30 ||
+wait_log host "seat 3 \(link died\|stopped answering\) pre-start" 30 ||
   room_fail "THE HOST NEVER FREED ALICE'S SEAT" host
 grep -aq "bootstrap adopted" "$OUT/ALICE.log" &&
   room_fail "ALICE ENTERED THE GAME" ALICE
@@ -153,7 +153,7 @@ wait_log CAROL "room members from the host: 1 other joiner" 20 ||
 
 echo "== BOB drops before the start; DAVE takes the free seat and is turned away"
 drop 1
-wait_log host "seat 2 link died pre-start" 45 || room_fail "BOB'S SEAT NOT FREED" host
+wait_log host "seat 2 \(link died\|stopped answering\) pre-start" 45 || room_fail "BOB'S SEAT NOT FREED" host
 join_as 4 DAVE
 wait_count host "seat 2 filled" 2 40 || room_fail "DAVE WAS NOT SEATED" host
 wait_log CAROL "asking the host to turn away a newer player" 20 ||
