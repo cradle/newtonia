@@ -2,18 +2,6 @@
 
 Follow-ups that need a person, a device or an account we don't have to hand.
 
-## Android cloud save launch hold: phone check
-
-At launch the menu now holds TUTORIAL, CONTINUE and NEW GAME (dimmed, with
-"checking cloud save" under the rows) until the first Play Games copy has
-merged, an attempt fails, or 5 s pass (`CloudSync::first_sync_pending`),
-so a run is never started over a stale local save. Covered headless with
-`NEWTONIA_TEST_CLOUD_HOLD_MS`. Still to do on the phone with the debug APK,
-watching `adb logcat -s SDL NewtoniaCloudSync`: a cold launch logs
-`cloud-sync: launch hold released (first copy merged) after N ms` (note N);
-in flight mode it releases at once or by 5 s; on a reinstall with a cloud
-save, CONTINUE appears before the rows go live.
-
 ## Waiting-room host reconnect: field check
 
 A waiting-room host now reclaims its room when the relay socket closes
