@@ -39,6 +39,9 @@ public:
   // + two viewport swaps each. NULL for glyphs without a prebuilt builder.
   static const MeshBuilder *glyph_builder(unsigned char c);
   static const float *text_colour();
+  // Draw the following text at a dim green (an unavailable row) until
+  // called again with false. Callers set it around a draw and clear it.
+  static void set_dimmed(bool dimmed);
   // The verified-tick glyph's character slot. A CONTROL byte deliberately:
   // net_sanitize_name() strips control bytes as a security boundary, so a
   // peer cannot smuggle this character into a display name and fake an

@@ -77,6 +77,18 @@ public final class PlayGamesSaves {
     private static native void nativeCloudData(byte[] data);
     // android_cloud_sync.cpp: two bundles folded into one. Any thread.
     private static native byte[] nativeMergeBundles(byte[] a, byte[] b);
+    // android_cloud_sync.cpp: an attempt ended without a copy, so the
+    // menu's launch hold (CloudSync::first_sync_pending) stops waiting.
+    private static native void nativeSyncFailed();
+
+    // UI thread only. Never throws: it runs inside listeners.
+    private static void syncFailed() {
+        try {
+            nativeSyncFailed();
+        } catch (Throwable t) {
+            Log.w(TAG, "reporting the failed sync failed", t);
+        }
+    }
 
     private PlayGamesSaves() {}
 
@@ -220,6 +232,7 @@ public final class PlayGamesSaves {
     private static void parked(byte[] push) {
         if (push != null) sPush = sPush == null ? push : merge(sPush, push);
         Log.i(TAG, "this Play Games profile has no Saved Games access; sync waits for the next resume");
+        syncFailed();
         sBusy = false;
     }
 
@@ -233,6 +246,7 @@ public final class PlayGamesSaves {
             pump();
             return;
         }
+        syncFailed();
         if (sRetryPosted || sRetry >= RETRY_MS.length) return;
         if (!sPullWanted && sPush == null) return;
         sRetryPosted = true;

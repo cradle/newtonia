@@ -40,6 +40,18 @@ bool poll();
 // compare it to the value they last saw.
 uint32_t local_generation();
 
+// True while the backend is still waiting on this launch's first cloud
+// copy, so the local savegame may be stale. The menu holds the rows that
+// start or load a solo run until it turns false: a NEW GAME picked before
+// a restored device's copy landed was stamped newer than the cloud's run
+// and replaced it everywhere. Only Android waits on the network at launch
+// (iOS merges iCloud's local copy in init); it turns false for good when
+// the first copy arrives, when the first attempt fails (offline, signed
+// out, no Saved Games access), or CLOUD_HOLD_MS after init, so a sign-in
+// that hangs never keeps the player out.
+bool first_sync_pending();
+const unsigned CLOUD_HOLD_MS = 5000;
+
 // After a successful local write (or, for SAVEGAME, a delete): push it.
 void local_written(File f);
 

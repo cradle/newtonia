@@ -355,6 +355,15 @@ static int menu_rows_bottom() {
   return is_touch_mode() ? -(menu_half_height() - 300)
                          : -(menu_half_height() - 320);
 }
+
+// Equally space n row blocks of height h between menu_rows_top() and
+// menu_rows_bottom() (the portrait-aware anchors near the top of this
+// file). ONE definition shared by draw_menu_rows and menu_row_at so taps
+// always land on what is drawn.
+static int menu_row_gap(int n, int h) {
+  return (menu_rows_top() - menu_rows_bottom() - n * h) / (n + 1);
+}
+
 static int menu_high_score_y() {
   return menu_rows_bottom() - (is_touch_mode() ? 30 : 20) - menu_cluster_pad();
 }
@@ -1202,7 +1211,7 @@ void Menu::draw() {
         currentTime);
   } else {
     Typer::draw_centered(0, menu_title_y(), "Newtonia", 80);
-    if (show_high_score()) {
+    if (show_high_score() && !CloudSync::first_sync_pending()) {
       // Below the row band, above the copyright (portrait-aware anchors —
       // touch sits a little lower, its row band being taller). Not on the
       // start screen: a stat-free screen by design, and the tutorial
@@ -1280,8 +1289,23 @@ void Menu::draw() {
       if (show_board_row()) rows.push_back("LEADERBOARD");
       if (show_stats_row()) rows.push_back("STATS");
       if (show_exit_row()) rows.push_back("EXIT");
-      draw_menu_rows(rows);
-      if (new_player_)
+      const bool held = CloudSync::first_sync_pending();
+      std::vector<bool> dimmed(rows.size(), false);
+      for (size_t i = 0; held && i < rows.size(); i++)
+        dimmed[i] = cloud_held_row((int)i);
+      draw_menu_rows(rows, held ? &dimmed : nullptr);
+      if (held) {
+        // In the gap under NEW GAME (the last held row), where the eye
+        // already is, at a size a phone in portrait can read. Row i's
+        // glyph block runs from its y down by h (draw_menu_rows).
+        const int sz = menu_row_size(), h = 2 * sz;
+        const int n = (int)rows.size(), gap = menu_row_gap(n, h);
+        const int i = base_menu_rows() - 1;
+        const int nsz = is_touch_mode() ? 15 : 9;
+        float row_y = menu_rows_top() - (i + 1) * gap - i * h;
+        Typer::draw_centered(0, row_y - h - (gap - 2 * nsz) / 2.0f,
+                             "checking cloud save", nsz);
+      } else if (new_player_)
         Typer::draw_centered(0, menu_high_score_y(),
                              "new here? try the tutorial",
                              is_touch_mode() ? 10 : 8);
@@ -1343,6 +1367,9 @@ void Menu::refresh_from_cloud() {
 // screen, or mid-confirmation, it is dropped rather than tearing that
 // screen down. Returns true when it started a state change.
 bool Menu::take_launch_shortcut() {
+  // Left pending through the launch cloud hold (well inside the
+  // shortcut's own 15 s age limit), so CONTINUE resumes the cloud's run.
+  if (CloudSync::first_sync_pending()) return false;
   LaunchShortcut::Kind k = LaunchShortcut::take();
   if (k == LaunchShortcut::NONE) return false;
   if (options_mode_ || replays_mode_ || stats_mode_ || board_mode_ ||
@@ -1931,28 +1958,30 @@ bool Menu::show_options_row() const {
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
 
-// Equally space n row blocks of height h between menu_rows_top() and
-// menu_rows_bottom() (the portrait-aware anchors near the top of this
-// file). ONE definition shared by draw_menu_rows and menu_row_at so taps
-// always land on what is drawn.
-static int menu_row_gap(int n, int h) {
-  return (menu_rows_top() - menu_rows_bottom() - n * h) / (n + 1);
-}
-
 // Touch draws bigger glyphs and no selection cursor; menu_row_at() mirrors
 // this exact geometry so taps land on what is drawn.
-void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
+void Menu::draw_menu_rows(const std::vector<std::string> &rows,
+                          const std::vector<bool> *dimmed) {
   const int sz = menu_row_size(), h = 2 * sz;
   int n = (int)rows.size();
   int gap = menu_row_gap(n, h);
   for (int i = 0; i < n; i++) {
     float y = menu_rows_top() - (i + 1) * gap - i * h;
+    bool dim = dimmed && i < (int)dimmed->size() && (*dimmed)[i];
+    if (dim) Typer::set_dimmed(true);
     // Touch draws the label bare — no cursor on any touch screen.
     if (is_touch_mode())
       Typer::draw_centered(0, y, rows[i].c_str(), sz);
     else
       MenuSelect::draw_row(y, rows[i], sz, menu_selection == i);
+    if (dim) Typer::set_dimmed(false);
   }
+}
+
+bool Menu::cloud_held_row(int row) const {
+  if (!CloudSync::first_sync_pending()) return false;
+  return (new_player_ && row == 0) || row == continue_row_index() ||
+         row == base_menu_rows() - 1;  // NEW GAME
 }
 
 int Menu::menu_row_at(float ny) const {
@@ -2737,6 +2766,9 @@ void Menu::decline_net_resume() {
 }
 
 void Menu::confirm_selection(PadId pad) {
+  // Held until the launch's cloud copy lands (cloud_held_row): ignored, the
+  // row is drawn dim and the notice under the rows says why.
+  if (!new_confirm_ && cloud_held_row(menu_selection)) return;
   if (new_player_ && menu_selection == 0) {
     // The start screen's TUTORIAL row runs the walk-through.
 #ifdef __EMSCRIPTEN__

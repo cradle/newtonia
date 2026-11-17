@@ -57,6 +57,14 @@ bool g_dirty = false;      // g_val differs from what the cloud holds
 bool g_started = false;
 uint32_t g_generation = 0;
 
+// The launch hold (cloud_sync.h first_sync_pending): set when the bridge
+// starts, cleared for good by the first copy, by the Java side's first
+// failed attempt (g_sync_failed), or by the CLOUD_HOLD_MS cap.
+bool g_first_pending = false;
+bool g_first_copy = false;  // any copy drained this run, readable or not
+Uint32 g_hold_start = 0;
+std::atomic<bool> g_sync_failed(false);
+
 // Copies delivered by the Java side (UI thread), drained by poll().
 std::mutex g_inbox_mutex;
 std::vector<std::string> g_inbox;
@@ -188,6 +196,14 @@ Java_org_newtonia_PlayGamesSaves_nativeCloudData(JNIEnv *env, jclass,
   g_pending = true;
 }
 
+// PlayGamesSaves.nativeSyncFailed (UI thread): an attempt ended without a
+// copy (offline, signed out, sign-in declined, no Saved Games access). The
+// Java side keeps retrying, but the launch hold stops waiting for it.
+extern "C" JNIEXPORT void JNICALL
+Java_org_newtonia_PlayGamesSaves_nativeSyncFailed(JNIEnv *, jclass) {
+  g_sync_failed = true;
+}
+
 // PlayGamesSaves.nativeMergeBundles (UI thread): two copies of the bundle
 // folded into one (CloudMerge::merge_bundles). Pure — no game state.
 static std::string java_bytes(JNIEnv *env, jbyteArray a) {
@@ -237,6 +253,8 @@ void init() {
     env->DeleteLocalRef(cls);
   }
   if (g_bridge) {
+    g_first_pending = true;
+    g_hold_start = SDL_GetTicks();
     env->CallStaticVoidMethod(g_bridge, g_init, activity);
     clear_exception(env);
   } else {
@@ -252,6 +270,7 @@ bool poll() {
     std::lock_guard<std::mutex> lock(g_inbox_mutex);
     copies.swap(g_inbox);
   }
+  if (!copies.empty()) g_first_copy = true;
   // Pending in-memory counters go to disk first, so the merge sees them.
   Stats::flush();
   unsigned changed = 0;
@@ -280,6 +299,20 @@ bool poll() {
 }
 
 uint32_t local_generation() { return g_generation; }
+
+bool first_sync_pending() {
+  if (!g_first_pending) return false;
+  Uint32 waited = SDL_GetTicks() - g_hold_start;
+  const char *why = g_first_copy             ? "first copy merged"
+                    : g_sync_failed.load()   ? "first attempt failed"
+                    : waited >= CLOUD_HOLD_MS ? "timed out"
+                                              : NULL;
+  if (!why) return true;
+  g_first_pending = false;
+  SDL_Log("cloud-sync: launch hold released (%s) after %u ms", why,
+          (unsigned)waited);
+  return false;
+}
 
 void local_written(File f) {
   if (!g_started) return;
