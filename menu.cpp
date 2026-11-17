@@ -355,6 +355,15 @@ static int menu_rows_bottom() {
   return is_touch_mode() ? -(menu_half_height() - 300)
                          : -(menu_half_height() - 320);
 }
+
+// Equally space n row blocks of height h between menu_rows_top() and
+// menu_rows_bottom() (the portrait-aware anchors near the top of this
+// file). ONE definition shared by draw_menu_rows and menu_row_at so taps
+// always land on what is drawn.
+static int menu_row_gap(int n, int h) {
+  return (menu_rows_top() - menu_rows_bottom() - n * h) / (n + 1);
+}
+
 static int menu_high_score_y() {
   return menu_rows_bottom() - (is_touch_mode() ? 30 : 20) - menu_cluster_pad();
 }
@@ -1285,10 +1294,18 @@ void Menu::draw() {
       for (size_t i = 0; held && i < rows.size(); i++)
         dimmed[i] = cloud_held_row((int)i);
       draw_menu_rows(rows, held ? &dimmed : nullptr);
-      if (held)
-        Typer::draw_centered(0, menu_high_score_y(), "checking cloud save",
-                             is_touch_mode() ? 10 : 8);
-      else if (new_player_)
+      if (held) {
+        // In the gap under NEW GAME (the last held row), where the eye
+        // already is, at a size a phone in portrait can read. Row i's
+        // glyph block runs from its y down by h (draw_menu_rows).
+        const int sz = menu_row_size(), h = 2 * sz;
+        const int n = (int)rows.size(), gap = menu_row_gap(n, h);
+        const int i = base_menu_rows() - 1;
+        const int nsz = is_touch_mode() ? 15 : 9;
+        float row_y = menu_rows_top() - (i + 1) * gap - i * h;
+        Typer::draw_centered(0, row_y - h - (gap - 2 * nsz) / 2.0f,
+                             "checking cloud save", nsz);
+      } else if (new_player_)
         Typer::draw_centered(0, menu_high_score_y(),
                              "new here? try the tutorial",
                              is_touch_mode() ? 10 : 8);
@@ -1940,14 +1957,6 @@ bool Menu::show_options_row() const {
 }
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
-
-// Equally space n row blocks of height h between menu_rows_top() and
-// menu_rows_bottom() (the portrait-aware anchors near the top of this
-// file). ONE definition shared by draw_menu_rows and menu_row_at so taps
-// always land on what is drawn.
-static int menu_row_gap(int n, int h) {
-  return (menu_rows_top() - menu_rows_bottom() - n * h) / (n + 1);
-}
 
 // Touch draws bigger glyphs and no selection cursor; menu_row_at() mirrors
 // this exact geometry so taps land on what is drawn.
