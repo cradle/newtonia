@@ -103,6 +103,10 @@ bool poll() {
   return sync_all();
 }
 
+// init() already merged iCloud's local copy; a brand-new phone's first
+// download arrives through poll() with no signal to wait on, so no hold.
+bool first_sync_pending() { return false; }
+
 uint32_t local_generation() { return g_generation; }
 
 void local_written(File f) {

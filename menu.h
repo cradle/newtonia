@@ -122,7 +122,14 @@ private:
   // Shared vertical row layout for the main menu (desktop cursor rows and
   // touch tap targets use the same geometry).
   static int menu_row_size();
-  void draw_menu_rows(const std::vector<std::string> &rows);
+  // dimmed (optional, one flag per row): rows drawn at the dim colour.
+  void draw_menu_rows(const std::vector<std::string> &rows,
+                      const std::vector<bool> *dimmed = nullptr);
+  // The launch cloud hold (CloudSync::first_sync_pending): TUTORIAL,
+  // CONTINUE and NEW GAME wait until this launch's first cloud copy has
+  // merged, or the hold gives up, so a run is never started or resumed
+  // over a stale local save. True when row is one of them and it holds.
+  bool cloud_held_row(int row) const;
   int  menu_row_at(float ny) const;  // -1 when the tap misses every row
   void open_options();
   void close_options();

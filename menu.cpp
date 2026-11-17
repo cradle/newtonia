@@ -1202,7 +1202,7 @@ void Menu::draw() {
         currentTime);
   } else {
     Typer::draw_centered(0, menu_title_y(), "Newtonia", 80);
-    if (show_high_score()) {
+    if (show_high_score() && !CloudSync::first_sync_pending()) {
       // Below the row band, above the copyright (portrait-aware anchors —
       // touch sits a little lower, its row band being taller). Not on the
       // start screen: a stat-free screen by design, and the tutorial
@@ -1280,8 +1280,15 @@ void Menu::draw() {
       if (show_board_row()) rows.push_back("LEADERBOARD");
       if (show_stats_row()) rows.push_back("STATS");
       if (show_exit_row()) rows.push_back("EXIT");
-      draw_menu_rows(rows);
-      if (new_player_)
+      const bool held = CloudSync::first_sync_pending();
+      std::vector<bool> dimmed(rows.size(), false);
+      for (size_t i = 0; held && i < rows.size(); i++)
+        dimmed[i] = cloud_held_row((int)i);
+      draw_menu_rows(rows, held ? &dimmed : nullptr);
+      if (held)
+        Typer::draw_centered(0, menu_high_score_y(), "checking cloud save",
+                             is_touch_mode() ? 10 : 8);
+      else if (new_player_)
         Typer::draw_centered(0, menu_high_score_y(),
                              "new here? try the tutorial",
                              is_touch_mode() ? 10 : 8);
@@ -1343,6 +1350,9 @@ void Menu::refresh_from_cloud() {
 // screen, or mid-confirmation, it is dropped rather than tearing that
 // screen down. Returns true when it started a state change.
 bool Menu::take_launch_shortcut() {
+  // Left pending through the launch cloud hold (well inside the
+  // shortcut's own 15 s age limit), so CONTINUE resumes the cloud's run.
+  if (CloudSync::first_sync_pending()) return false;
   LaunchShortcut::Kind k = LaunchShortcut::take();
   if (k == LaunchShortcut::NONE) return false;
   if (options_mode_ || replays_mode_ || stats_mode_ || board_mode_ ||
@@ -1941,18 +1951,28 @@ static int menu_row_gap(int n, int h) {
 
 // Touch draws bigger glyphs and no selection cursor; menu_row_at() mirrors
 // this exact geometry so taps land on what is drawn.
-void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
+void Menu::draw_menu_rows(const std::vector<std::string> &rows,
+                          const std::vector<bool> *dimmed) {
   const int sz = menu_row_size(), h = 2 * sz;
   int n = (int)rows.size();
   int gap = menu_row_gap(n, h);
   for (int i = 0; i < n; i++) {
     float y = menu_rows_top() - (i + 1) * gap - i * h;
+    bool dim = dimmed && i < (int)dimmed->size() && (*dimmed)[i];
+    if (dim) Typer::set_dimmed(true);
     // Touch draws the label bare — no cursor on any touch screen.
     if (is_touch_mode())
       Typer::draw_centered(0, y, rows[i].c_str(), sz);
     else
       MenuSelect::draw_row(y, rows[i], sz, menu_selection == i);
+    if (dim) Typer::set_dimmed(false);
   }
+}
+
+bool Menu::cloud_held_row(int row) const {
+  if (!CloudSync::first_sync_pending()) return false;
+  return (new_player_ && row == 0) || row == continue_row_index() ||
+         row == base_menu_rows() - 1;  // NEW GAME
 }
 
 int Menu::menu_row_at(float ny) const {
@@ -2737,6 +2757,9 @@ void Menu::decline_net_resume() {
 }
 
 void Menu::confirm_selection(PadId pad) {
+  // Held until the launch's cloud copy lands (cloud_held_row): ignored, the
+  // row is drawn dim and the notice under the rows says why.
+  if (!new_confirm_ && cloud_held_row(menu_selection)) return;
   if (new_player_ && menu_selection == 0) {
     // The start screen's TUTORIAL row runs the walk-through.
 #ifdef __EMSCRIPTEN__

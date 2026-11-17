@@ -108,6 +108,10 @@ const float *Typer::text_colour() {
   return colour;
 }
 
+void Typer::set_dimmed(bool dimmed) {
+  colour[1] = dimmed ? 0.35f : 1.0f;
+}
+
 std::string Typer::cursored(const std::string &text, bool selected) {
   return selected ? "> " + text + " <" : "  " + text + "  ";
 }
