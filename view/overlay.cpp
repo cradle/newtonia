@@ -1554,7 +1554,9 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         // Keyboard join hint — on Xbox the only join path is a second
         // controller, and Enter only ever joins the P2 seat (FOURPLAYER.md
         // D3: P3/P4 are controller-first).
-        else if(!is_steam_gamemode() && next_seat == 2)
+        // Only once a real key has been seen (keyboard_seen.h): a pad-only
+        // player can't press Enter.
+        else if(!is_steam_gamemode() && next_seat == 2 && keyboard_seen())
           Typer::draw_centered(0, top_y, "player 2 press enter to join",
                                8 * hud_grow(glgame));
 #endif

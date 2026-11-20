@@ -466,8 +466,11 @@ bool ShotScene::requested() {
 
 bool ShotScene::init() {
   s_out_path = SDL_getenv("NEWTONIA_SHOT");
-  // Renders show the desktop player's keyboard hints, as they always have.
-  note_keyboard_used();
+  // Renders show the desktop player's keyboard hints, as they always have,
+  // unless NEWTONIA_SHOT_NO_KEYBOARD=1 asks for a pad-only player's HUD
+  // (console store screenshots; pair it with NEWTONIA_PAD_STYLE).
+  const char *nokb = SDL_getenv("NEWTONIA_SHOT_NO_KEYBOARD");
+  if (!(nokb && nokb[0] == '1')) note_keyboard_used();
   const char *scene = SDL_getenv("NEWTONIA_SHOT_SCENE");
   if (scene && scene[0] && !parse_scene_file(scene)) return false;
   // Env overrides beat the scene file, so one script can be rendered at
