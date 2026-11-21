@@ -179,6 +179,16 @@ Notes:
 | `capsule_*.shot` | Store capsule art: the Typer title over bare starfield (`noship`) at each Steam capsule size — the library card and `capsule_library_header` banded with monochrome asteroid clusters — plus a bare-starfield page background |
 | `logo_transparent.shot` | 1280x720 RGBA logo: just the word, transparent everywhere else |
 
+## Console store screenshots (pad HUD)
+
+A shot normally renders the desktop player's HUD, keyboard hints and all.
+`NEWTONIA_SHOT_NO_KEYBOARD=1` renders it as a pad-only player sees it
+instead: no keyboard has been seen this run (`keyboard_seen.h`), so the
+weapons list names the pad's buttons and the keyboard-only hints (boost
+with E, player 2 press Enter) stay hidden. Pair it with
+`NEWTONIA_PAD_STYLE=xbox|ps5|...` to pick the glyphs, since no real pad
+is attached. The Xbox fork's store screenshots are rendered this way.
+
 ## Mobile store screenshots (touch OSD)
 
 `NEWTONIA_FORCE_TOUCH=1` renders any scene with the real touch UI — the

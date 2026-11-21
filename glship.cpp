@@ -1,4 +1,5 @@
 #include "glship.h"
+#include "keyboard_seen.h"
 #include "gltrail.h"
 #include "ship.h"
 #include "typer.h"
@@ -1147,8 +1148,12 @@ void GLShip::draw_weapons() const {
         else Typer::draw(x, bind_y, s, size);
       };
 
+      // A pad-only run (no real key seen, keyboard_seen.h) names the pad
+      // even before its first press: an Xbox or Deck pilot was shown the
+      // keyboard's SPC until they touched the stick.
+      const bool show_pad = last_input_was_controller || !keyboard_seen();
       Typer::draw(col_fire, bind_y, "FIRE ", size);
-      if (last_input_was_controller) {
+      if (show_pad) {
         draw_chip(col_fire_key, fire_act);
       } else {
         Typer::draw(col_fire_key, bind_y, key_str(fire_key_kb, buf), size);
@@ -1156,7 +1161,7 @@ void GLShip::draw_weapons() const {
 
       if (has_next) {
         Typer::draw(col_next, bind_y, "NEXT ", size);
-        if (last_input_was_controller) {
+        if (show_pad) {
           draw_chip(col_next_key, cycle_act);
         } else {
           Typer::draw(col_next_key, bind_y, key_str(cycle_key_kb, buf), size);
